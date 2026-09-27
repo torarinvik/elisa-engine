@@ -116,6 +116,8 @@ module RenderGraph:
             DuplicateDependency
             SelfDependency
             DependencyCycle
+            # Reserved for API compatibility; explicit read/write declarations
+            # are now modeled as ResourceAccess.ReadWrite.
             ReadWriteHazard
             UnorderedHazard
             ImportedWrite
@@ -278,7 +280,6 @@ module RenderGraph:
                 for resource in 0..<graph.resource_count |writers|:
                     pass_reads: bool = graph.passes[pass_slot].reads[resource]
                     pass_writes: bool = graph.passes[pass_slot].writes[resource]
-                    raise GraphError.ReadWriteHazard if pass_reads and pass_writes
                     if pass_writes:
                         writers[resource] <- writers[resource] + 1
             for first_pass in 0..<graph.pass_count:

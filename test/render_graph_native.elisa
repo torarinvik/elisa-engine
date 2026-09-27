@@ -80,6 +80,9 @@ module RenderGraphNativeTests:
         _ = catch RenderGraph::add_pass(&graph, 20):
             ok: 0
             error failure: return 5
+        _ = catch RenderGraph::add_pass(&graph, 30):
+            ok: 0
+            error failure: return 5
         _ = catch RenderGraph::write(&graph, 10, 2):
             ok: 0
             error failure: return 6
@@ -89,7 +92,19 @@ module RenderGraphNativeTests:
         _ = catch RenderGraph::write(&graph, 20, 3):
             ok: 0
             error failure: return 8
+        _ = catch RenderGraph::read(&graph, 30, 1):
+            ok: 0
+            error failure: return 8
+        _ = catch RenderGraph::read(&graph, 30, 3):
+            ok: 0
+            error failure: return 8
+        _ = catch RenderGraph::write(&graph, 30, 3):
+            ok: 0
+            error failure: return 8
         _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+            ok: 0
+            error failure: return 9
+        _ = catch RenderGraph::add_dependency(&graph, 20, 30):
             ok: 0
             error failure: return 9
         plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
@@ -98,7 +113,7 @@ module RenderGraphNativeTests:
         return 11 if plan.transient_slot_count != 1 or plan.alias_slots[1] != plan.alias_slots[2]
         configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
         configuration.output_resource_id <- output_id
-        configuration.operation_count <- 2
+        configuration.operation_count <- 3
         configuration.operations[0] <- RenderGraphRuntime::PassOperation{
             pass_id: 10,
             kind: RenderGraphRuntime::OperationKind.ClearColor,
@@ -108,6 +123,12 @@ module RenderGraphNativeTests:
         configuration.operations[1] <- RenderGraphRuntime::PassOperation{
             pass_id: 20,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
+            source_resource_id: 1,
+            destination_resource_id: 3,
+        }
+        configuration.operations[2] <- RenderGraphRuntime::PassOperation{
+            pass_id: 30,
+            kind: RenderGraphRuntime::OperationKind.BlendColor,
             source_resource_id: 1,
             destination_resource_id: 3,
         }

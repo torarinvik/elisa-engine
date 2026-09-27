@@ -2,6 +2,8 @@
 
 #include "wiGraphics.h"
 #include "wiRenderPath3D.h"
+#include "render_graph_blend.h"
+#include "render_graph_types.h"
 #include "render_graph_visualize.h"
 #include <array>
 #include <cmath>
@@ -11,51 +13,6 @@
 #include <mutex>
 
 namespace elisa::render_graph {
-
-constexpr uint32_t MAX_RESOURCES = 64;
-constexpr uint32_t MAX_PASSES = 32;
-constexpr uint32_t MAX_TARGETS = 64;
-constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
-
-enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
-enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
-enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
-enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
-enum class Operation : int32_t {
-    ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3, VisualizeLinearDepth = 4
-};
-
-struct Resource {
-    uint32_t id = 0;
-    SizeMode size_mode = SizeMode::Fixed;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    Format format = Format::Rgba8;
-    uint32_t samples = 1;
-    Lifetime lifetime = Lifetime::Transient;
-    bool initialized = false;
-    uint32_t target = NO_TARGET;
-    ImportSource import_source = ImportSource::None;
-};
-
-struct Pass {
-    uint32_t id = 0;
-    Operation operation = Operation::ClearColor;
-    uint32_t source_id = 0;
-    uint32_t destination_id = 0;
-};
-
-struct Configuration {
-    std::array<Resource, MAX_RESOURCES> resources{};
-    std::array<Pass, MAX_PASSES> passes{};
-    std::array<bool, MAX_RESOURCES> resource_set{};
-    std::array<bool, MAX_PASSES> pass_set{};
-    uint32_t resource_count = 0;
-    uint32_t pass_count = 0;
-    uint32_t output_id = 0;
-    bool building = false;
-    bool valid = false;
-};
 
 // Render-thread adapter for the validated Elisa planner. Configurations stage
 // transactionally; a failed allocation leaves the current postprocess image
@@ -119,12 +76,12 @@ public:
         if (!staging_.building || index >= staging_.pass_count || pass.id == 0 ||
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
-                pass.operation != Operation::VisualizeLinearDepth) ||
+                pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
-                pass.operation == Operation::VisualizeLinearDepth) &&
+                pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -318,6 +275,19 @@ public:
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
                     ++linear_depth_read_count_;
 #endif
+                } else if (pass.operation == Operation::BlendColor) {
+                    if (source->GetDesc().format == native_format(Format::Depth32) ||
+                        destination->GetDesc().format == native_format(Format::Depth32) ||
+                        source->GetDesc().format == native_format(Format::R32Float) ||
+                        destination->GetDesc().format == native_format(Format::R32Float) ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!blend_color(*source, *destination, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
                 } else if (source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
                     source->GetDesc().format != destination->GetDesc().format) {
@@ -407,59 +377,6 @@ private:
             if (config.resources[index].import_source == ImportSource::SceneColor) return index;
         }
         return NO_TARGET;
-    }
-
-    static bool configuration_valid(const Configuration& config) {
-        uint32_t scene_color_import_count = 0;
-        uint32_t linear_depth_import_count = 0;
-        std::array<bool, MAX_RESOURCES> initialized{};
-        for (uint32_t index = 0; index < config.resource_count; ++index) {
-            const Resource& resource = config.resources[index];
-            if (resource.import_source == ImportSource::SceneColor) ++scene_color_import_count;
-            if (resource.import_source == ImportSource::LinearDepth) ++linear_depth_import_count;
-            initialized[index] = resource.initialized;
-            if (resource.lifetime == Lifetime::Imported) continue;
-            for (uint32_t previous = 0; previous < index; ++previous) {
-                const Resource& other = config.resources[previous];
-                if (other.lifetime == Lifetime::Imported || other.target != resource.target) continue;
-                if (other.size_mode != resource.size_mode || other.width != resource.width ||
-                    other.height != resource.height || other.format != resource.format ||
-                    other.samples != resource.samples) return false;
-            }
-        }
-        if (scene_color_import_count != 1 || linear_depth_import_count > 1) return false;
-        const uint32_t output_index = resource_index(config, config.output_id);
-        if (output_index == NO_TARGET || config.resources[output_index].format == Format::Depth32) return false;
-        for (uint32_t index = 0; index < config.pass_count; ++index) {
-            const Pass& pass = config.passes[index];
-            const uint32_t destination = resource_index(config, pass.destination_id);
-            if (destination == NO_TARGET || config.resources[destination].lifetime == Lifetime::Imported) return false;
-            if (pass.operation == Operation::ClearColor && config.resources[destination].format == Format::Depth32) return false;
-            if (pass.operation == Operation::ClearDepth && config.resources[destination].format != Format::Depth32) return false;
-            if (pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
-                pass.operation == Operation::VisualizeLinearDepth) {
-                const uint32_t source = resource_index(config, pass.source_id);
-                if (source == NO_TARGET || source == destination || !initialized[source]) return false;
-                const Resource& source_desc = config.resources[source];
-                const Resource& destination_desc = config.resources[destination];
-                if (source_desc.size_mode != destination_desc.size_mode ||
-                    source_desc.width != destination_desc.width || source_desc.height != destination_desc.height) return false;
-                if (pass.operation == Operation::VisualizeLinearDepth) {
-                    if (source_desc.format != Format::R32Float || destination_desc.format == Format::Depth32 ||
-                        source_desc.samples != 1 || destination_desc.samples != 1) return false;
-                    initialized[destination] = true;
-                    continue;
-                }
-                if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32 ||
-                    source_desc.format != destination_desc.format) return false;
-                if (pass.operation == Operation::CopyColor &&
-                    (source_desc.samples != 1 || destination_desc.samples != 1)) return false;
-                if (pass.operation == Operation::ResolveColor &&
-                    (source_desc.samples <= 1 || destination_desc.samples != 1)) return false;
-            }
-            initialized[destination] = true;
-        }
-        return initialized[output_index];
     }
 
     bool prepare_targets(const wi::RenderPath3D& path, uint32_t width, uint32_t height) {
@@ -591,3 +508,5 @@ private:
 };
 
 } // namespace elisa::render_graph
+
+#include "render_graph_validation.h"

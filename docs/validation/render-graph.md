@@ -15,15 +15,17 @@ their stored width and height; the runtime resolves them after Wicked updates
 the render path's buffers.
 
 Compilation rejects invalid descriptors, duplicate or unknown IDs, cycles,
-same-pass read/write hazards, conflicting accesses without an ordering path,
+conflicting accesses without an ordering path,
 reads before initialization, writes to imported resources, unused resources,
 and transient resources without a writer. Multiple writes are accepted only
 when dependencies serialize them. Transient resources share a slot only when
 their lifetimes do not overlap and their size mode, dimensions, format, and
 sample count match. Before submission, the runtime recomputes and compares the
 compiled plan so mutated pass order, resource intervals, or alias slots cannot
-reach the native allocator. Each clear, depth-clear, or copy operation must match that
-pass's declared graph reads and writes. The selected output is a terminal use:
+reach the native allocator. Each operation must match that pass's declared
+graph reads and writes. Explicit `ReadWrite` access is valid for initialized
+resources; the backend accepts it only for operations with defined in-place
+semantics. The selected output is a terminal use:
 if its transient slot would be overwritten by a resource used after the output's
 first access, the runtime gives the output its own slot through composition.
 
@@ -32,15 +34,18 @@ and an optional imported linear-depth image from Wicked's shader-readable
 `depthBuffer_Copy`. Imports declare their source explicitly; linear depth uses
 R32_FLOAT and supports exact copies into graph-owned R32 targets plus a
 `VisualizeLinearDepth` pass that samples it with Wicked's built-in image shader
-and writes grayscale to a single-sample color target. Custom depth-sampling
+and writes grayscale to a single-sample color target. `BlendColor` draws a
+single-sample color source over an initialized, single-sample color destination
+using Wicked's alpha blend pipeline. Custom depth-sampling
 shaders and depth-tested geometry remain unsupported. Other targets use RGBA8,
 RGBA16F, Wicked's R11G11B10F main format, or D32 depth, with fixed or
 primary-internal extents. Color sample counts 1, 2, 4,
 and 8 are accepted only when Wicked creates the exact requested count; depth
 targets and imported scene color remain single-sampled. Operations are
 transparent black `ClearColor`, depth-one `ClearDepth`, exact single-sample
-`CopyColor`, and `ResolveColor` from a multisampled color target to a compatible
-single-sample target. A depth target can be cleared and transiently aliased, but
+`CopyColor`, `ResolveColor` from a multisampled color target to a compatible
+single-sample target, and `BlendColor` with an initialized single-sample color
+destination. A depth target can be cleared and transiently aliased, but
 cannot be sampled or selected for composition. The executor allocates targets
 on the render thread, maps transient resources sharing a planner slot to the
 same Wicked texture, and selects the configured color output as the path's
@@ -49,13 +54,18 @@ allocation; initialized persistent depth targets are rejected. Multiple
 imports, arbitrary shader callbacks, and load/store variants are rejected by
 the native boundary.
 
-The SDL3/Metal native smoke builds a two-pass graph: clear transient resource 2,
-then copy imported scene color to resource 3. The planner proves that the two
-transient lifetimes can share one target; the test rejects a forged plan and a
-copy operation that disagrees with its declared reads, then renders the
-transient clear target as output and verifies it stays black despite a
-later pass sharing the planner's original slot. It restores the scene-copy
-output and checks that the rendered scene returns. The smoke also exercises
+The SDL3/Metal native smoke builds a three-pass graph: clear transient resource
+2, copy imported scene color to resource 3, then alpha-blend imported scene
+color over resource 3 in place. The planner proves that the two transient
+lifetimes can share one target while keeping resource 3 live through the blend;
+the test rejects a forged plan and a copy operation that disagrees with its
+declared reads, then renders the transient clear target as output and verifies
+it stays black despite the later passes sharing the planner's original slot.
+It restores the blended scene output and checks that the rendered scene
+returns. A diagnostic isolated-order run passed the complete graph fixture on
+Metal, including its frame checks; the following quality-history check returned
+native test case 20. The regular runner reaches case 20 before the graph
+fixture, so its full SDL3/Metal run currently stops before R15. The smoke also exercises
 resize/restoration. Test-only failure injection forces target allocation and
 second-pass failures; both preserve the base postprocess output, leave the
 execution count unchanged, and recover on the next frame. Existing rendered

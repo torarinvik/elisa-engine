@@ -203,10 +203,10 @@ def main() -> i32:
     _ = catch RenderGraph::write(&readwrite, 10, 1):
         ok: 0
         error failure: return 41
-    hazard_rejected: bool = catch RenderGraph::compile(&readwrite):
-        value: false
-        error failure: true
-    return 43 if not hazard_rejected
+    readwrite_plan: RenderGraph::Plan = catch RenderGraph::compile(&readwrite):
+        value: value
+        error failure: return 42
+    return 43 if RenderGraph::access_if_known(readwrite, 10, 1) != RenderGraph::ResourceAccess.ReadWrite
 
     writers: mutable RenderGraph::Graph = RenderGraph::Graph()
     _ = catch RenderGraph::add_resource(&writers, texture(2,
