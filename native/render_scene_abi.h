@@ -329,6 +329,14 @@ int32_t elisa_render_scene_v1_animation_joint_index(
     int64_t handle, const char* joint_name, uint32_t* index);
 int32_t elisa_render_scene_v1_override_animation_pose(
     int64_t handle, const ElisaRenderSceneAnimationReadback* input);
+// Up to 64 requested vertices; each record is model xyz then world xyz.
+typedef struct ElisaRenderSceneSkinReadback {
+    float points[64u * 6u];
+    uint32_t count;
+} ElisaRenderSceneSkinReadback;
+int32_t elisa_render_scene_v1_read_skinned_vertices(
+    int64_t handle, uint32_t placement, const uint32_t* vertices, uint32_t count,
+    ElisaRenderSceneSkinReadback* output);
 typedef struct ElisaRenderSceneAnimationSubmission {
     float bones[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS];
     float morphs[ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS];

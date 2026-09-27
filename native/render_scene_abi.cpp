@@ -303,6 +303,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
 #include "render_scene_imported_scene_internal.inc"
 #include "render_scene_animation_internal.inc"
 #include "render_scene_animation_readback.inc"
+#include "render_scene_skin_readback.inc"
 #include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {

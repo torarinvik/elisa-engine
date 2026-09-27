@@ -1,0 +1,73 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_skin_readback.elisa"
+include "../src/runtime/render_scene_animation_readback.elisa"
+
+extend RenderScene:
+    public:
+        def skin_test_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+
+@callconv(c)
+extern elisa_render_scene_v1_test_skin_readback_atomic(handle: i64) -> i32
+
+def close(a: Geometry::Vec3, b: Geometry::Vec3) -> bool:
+    Geometry::vec3_length(Geometry::vec3_sub(a, b)) < 0.0002
+
+def exercise() -> i32 error[RenderScene::RenderSceneError]:
+    try RenderScene::initialize(320, 200, 10.0)
+    placement: mutable Geometry::Transform = Geometry::transform_identity()
+    placement.position <- Geometry::Vec3{x: 2.0, y: 1.0, z: -3.0}
+    placement.rotation <- Geometry::Quat{x: 0.0, y: 0.70710678, z: 0.0, w: 0.70710678}
+    placement.scale <- Geometry::Vec3{x: 1.5, y: 0.75, z: 2.0}
+    color: RenderScene::Color = RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}
+    a: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", Geometry::transform_identity(), color)
+    b: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", placement, color)
+    try RenderScene::play_animation(a, "idle_guard", true, 1.0, 0.0)
+    try RenderScene::play_animation(b, "idle_guard", true, 1.0, 0.0)
+    try RenderScene::advance_animation(a, 0.3)
+    try RenderScene::advance_animation(b, 0.3)
+    ids: mutable u32[RenderSceneSkinReadback::MAX_VERTICES] = zeroed
+    ids[1] <- 1
+    ids[2] <- 2
+    ids[3] <- 3
+    clock: f32 = try RenderScene::animation_progress(a)
+    first: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(a, 0, ids, 4)
+    twin: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(b, 0, ids, 4)
+    for index in 0..<4:
+        return 2 if not close(first.models[index], twin.models[index])
+        expected: Geometry::Vec3 = Geometry::transform_apply_point(placement, first.models[index])
+        return 3 if not close(expected, twin.worlds[index])
+        return 4 if not close(first.models[index], first.worlds[index])
+    snapshot: mutable RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    delta: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.015, z: 0.0}
+    for index in 0..<snapshot.pose.count |snapshot|:
+        snapshot.pose.models[index].position <- Geometry::vec3_add(snapshot.pose.models[index].position, delta)
+    try RenderScene::override_animation_pose(a, snapshot)
+    corrected: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(a, 0, ids, 4)
+    for index in 0..<4:
+        return 5 if not close(corrected.models[index], Geometry::vec3_add(first.models[index], delta))
+    after: f32 = try RenderScene::animation_progress(a)
+    return 6 if clock != after
+    ids[0] <- 4294967295
+    rejected: bool = catch RenderScene::read_skinned_vertices(a, 0, ids, 4):
+        value samples: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    return 7 if not rejected
+    return 8 if elisa_render_scene_v1_test_skin_readback_atomic(RenderScene::skin_test_handle(a)) != 1
+    try RenderScene::destroy(a)
+    try RenderScene::destroy(b)
+    0
+
+def main() -> i32:
+    config: Application::Config = Application::Config{title: "Current skin readback", width: 320, height: 200, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    result: i32 = catch exercise():
+        value: value
+        error failure: 20
+    scene_closed: bool = catch RenderScene::shutdown():
+        ok: true
+        error failure: false
+    closed: bool = Application::shutdown()
+    return 21 if not scene_closed or not closed
+    result

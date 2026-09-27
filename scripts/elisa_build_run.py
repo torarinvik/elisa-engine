@@ -419,7 +419,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-Wl,-rpath," + str(wicked_source),
     ])
     if native_test_probes:
-        command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
+        command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1", "-DELISA_RENDER_SCENE_TEST_PROBE=1"])
     for framework in FRAMEWORKS:
         command.extend(["-framework", framework])
     command.extend(["-o", str(staged_output)])
