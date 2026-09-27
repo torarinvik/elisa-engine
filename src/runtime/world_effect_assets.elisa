@@ -31,6 +31,8 @@ module WorldEffectAssets:
             true
 
         def decal_valid(effect: RenderScene::Decal) -> bool:
+            rotation_length: f32 = Geometry::quat_length(effect.rotation)
+            return false if not Geometry::quat_is_finite(effect.rotation) or not finite(rotation_length) or rotation_length <= 0.0
             return false if not finite(effect.color.red) or not finite(effect.color.green) or not finite(effect.color.blue) or not finite(effect.color.alpha)
             return false if effect.color.red < 0.0 or effect.color.red > 1.0 or effect.color.green < 0.0 or effect.color.green > 1.0
             return false if effect.color.blue < 0.0 or effect.color.blue > 1.0 or effect.color.alpha < 0.0 or effect.color.alpha > 1.0

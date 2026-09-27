@@ -8,14 +8,17 @@ The native adapter owns at most 32 live effects per scene through reusable
 generation-checked slots. Exhaustion returns the typed `Capacity` error. Emitter creation
 validates the particle limit, count, lifetime, size, position, and bounded
 velocity before calling `EmittedParticleSystem::SetMaxParticleCount`. Decal
-creation and updates validate finite colors, positive range, and nonnegative
-slope blending. A stale or foreign handle is rejected at the ABI boundary, and
-the typed Elisa API prevents mixing emitter and decal handles.
+creation and updates validate finite colors, a finite nonzero quaternion,
+positive range, and nonnegative slope blending. The bridge normalizes decal
+rotation, sets Wicked's transform scale from the requested range, and keeps the
+Wicked material color synchronized with the decal component. A stale or foreign
+handle is rejected at the ABI boundary, and the typed Elisa API prevents mixing
+emitter and decal handles.
 
 The native smoke creates an emitter and decal, verifies the actual Wicked
-component fields, advances the emitter, updates the decal, rejects malformed
-values, and checks destruction plus stale-handle rejection. It runs with the
-SDL3/Metal gate:
+component fields (including decal rotation and projected range), advances the
+emitter, updates the decal, rejects malformed values, and checks destruction
+plus stale-handle rejection. It runs with the SDL3/Metal gate:
 
 ```text
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \

@@ -25,6 +25,7 @@ module RenderSceneEffectsNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_effect_decal(handle: i64,
+            qx: f32, qy: f32, qz: f32, qw: f32,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i32
 
@@ -45,6 +46,8 @@ module RenderSceneEffectsNativeTests:
         def exercise() -> i32:
             position: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 3.0, z: -1.0}
             velocity: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 4.0, z: 1.0}
+            identity_rotation: Geometry::Quat = Geometry::quat_identity()
+            updated_rotation: Geometry::Quat = Geometry::Quat{x: 0.0, y: 1.0, z: 0.0, w: 0.0}
             color: RenderScene::Color = RenderScene::Color{red: 0.7, green: 0.2, blue: 0.9, alpha: 0.5}
             emitter: RenderScene::EmitterHandle = catch RenderScene::create_emitter(
                 RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
@@ -64,24 +67,26 @@ module RenderSceneEffectsNativeTests:
             return 4 if ticked != 0
 
             decal: RenderScene::DecalHandle = catch RenderScene::create_decal(
-                RenderScene::Decal(position, color, RANGE, SLOPE_BLEND)):
+                RenderScene::Decal(position, identity_rotation, color, RANGE, SLOPE_BLEND)):
                 value: value
                 error failure: return 5
             raw_decal: i64 = RenderScene::native_smoke_decal_handle(decal)
             return 6 if elisa_render_scene_v1_test_effect_decal(raw_decal,
+                identity_rotation.x, identity_rotation.y, identity_rotation.z, identity_rotation.w,
                 color.red, color.green, color.blue, color.alpha, RANGE, SLOPE_BLEND) != 1
             invalid_update: i32 = catch RenderScene::update_decal(decal,
-                RenderScene::Decal(position, color, 0.0, SLOPE_BLEND)):
+                RenderScene::Decal(position, identity_rotation, color, 0.0, SLOPE_BLEND)):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 7 if invalid_update != 1
             updated_color: RenderScene::Color = RenderScene::Color{red: 0.1, green: 0.8, blue: 0.4, alpha: 1.0}
             updated: i32 = catch RenderScene::update_decal(decal,
-                RenderScene::Decal(position, updated_color, 4.0, 0.5)):
+                RenderScene::Decal(position, updated_rotation, updated_color, 4.0, 0.5)):
                 ok: 0
                 error failure: 1
             return 8 if updated != 0 or elisa_render_scene_v1_test_effect_decal(raw_decal,
+                updated_rotation.x, updated_rotation.y, updated_rotation.z, updated_rotation.w,
                 updated_color.red, updated_color.green, updated_color.blue, updated_color.alpha, 4.0, 0.5) != 1
             destroyed_decal: i32 = catch RenderScene::destroy_decal(decal):
                 ok: 0
@@ -159,7 +164,7 @@ module RenderSceneEffectsNativeTests:
                 error failure: return 15
             return 16 if attached_emitter != 0 or WorldEffects::binding_count(&effects) != 1
             attached_decal: i32 = catch WorldEffects::spawn_decal(&world, &effects, entity,
-                RenderScene::Decal(Geometry::vec3_zero(), color, 2.0, 0.25)):
+                RenderScene::Decal(Geometry::vec3_zero(), identity_rotation, color, 2.0, 0.25)):
                 ok: 0
                 error failure: return 17
             return 18 if attached_decal != 0 or WorldEffects::binding_count(&effects) != 1
@@ -213,6 +218,7 @@ module WorldEffectEventNativeTests:
 
         @callconv(c)
         extern elisa_render_scene_v1_test_effect_decal(handle: i64,
+            qx: f32, qy: f32, qz: f32, qw: f32,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i32
 
@@ -222,6 +228,10 @@ module WorldEffectEventNativeTests:
 
     public:
         def exercise() -> i32:
+            identity_rotation: Geometry::Quat = Geometry::quat_identity()
+            profile_decal_rotation: Geometry::Quat = Geometry::Quat{
+                x: 0.0, y: 1.0, z: 0.0, w: 0.0,
+            }
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1
@@ -275,7 +285,7 @@ module WorldEffectEventNativeTests:
                 error failure: 2
             return 5 if duplicate_profile != 1 or WorldEffectAssets::profile_count(&catalog) != 1
             authored_decal: WorldEffectAssets::EffectDefinition = WorldEffectAssets::decal_definition(
-                DECAL_PROFILE_ID, RenderScene::Decal(Geometry::vec3_zero(), decal_color, 3.5, 0.5), 0.4, 0.05,
+                DECAL_PROFILE_ID, RenderScene::Decal(Geometry::vec3_zero(), profile_decal_rotation, decal_color, 3.5, 0.5), 0.4, 0.05,
                 WorldEffectAssets::RetriggerPolicy.Reject)
             _ = catch WorldEffectAssets::register(&catalog, authored_decal):
                 ok: 0
@@ -289,7 +299,7 @@ module WorldEffectEventNativeTests:
                 error failure: return 56
             return 45 if WorldEffectAssets::profile_count(&catalog) != 3
             invalid_duration_profile: WorldEffectAssets::EffectDefinition = WorldEffectAssets::decal_definition(
-                94, RenderScene::Decal(Geometry::vec3_zero(), decal_color, 1.0, 0.0), 1.0, -0.1,
+                94, RenderScene::Decal(Geometry::vec3_zero(), identity_rotation, decal_color, 1.0, 0.0), 1.0, -0.1,
                 WorldEffectAssets::RetriggerPolicy.Reject)
             invalid_duration: i32 = catch WorldEffectAssets::register(&catalog, invalid_duration_profile):
                 ok: 0
@@ -407,6 +417,8 @@ module WorldEffectEventNativeTests:
                 error failure: return 49
             decal_handle: i64 = RenderScene::native_smoke_decal_handle(decal)
             return 50 if elisa_render_scene_v1_test_effect_decal(decal_handle,
+                profile_decal_rotation.x, profile_decal_rotation.y,
+                profile_decal_rotation.z, profile_decal_rotation.w,
                 decal_color.red, decal_color.green, decal_color.blue, decal_color.alpha, 3.5, 0.5) != 1
             return 51 if elisa_render_scene_v1_test_effect_position(decal_handle,
                 decal_position.x, decal_position.y, decal_position.z) != 1

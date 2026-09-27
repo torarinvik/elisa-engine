@@ -34,6 +34,18 @@ bool valid_effect_position(float x, float y, float z) {
     return bounded(x) && bounded(y) && bounded(z);
 }
 
+bool valid_effect_rotation(float x, float y, float z, float w) {
+    if (!finite(x) || !finite(y) || !finite(z) || !finite(w)) return false;
+    const double length = std::hypot(std::hypot(double(x), double(y)), std::hypot(double(z), double(w)));
+    return std::isfinite(length) && length > 1.0e-6;
+}
+
+XMFLOAT4 normalize_effect_rotation(float x, float y, float z, float w) {
+    const double length = std::hypot(std::hypot(double(x), double(y)), std::hypot(double(z), double(w)));
+    return XMFLOAT4(float(double(x) / length), float(double(y) / length),
+        float(double(z) / length), float(double(w) / length));
+}
+
 int32_t effect_failure(const RenderSceneService& state, const probe::EffectHandle& handle) {
     return state.effects->entity(handle) == wi::ecs::INVALID_ENTITY
         ? ELISA_RENDER_SCENE_UNKNOWN_HANDLE : ELISA_RENDER_SCENE_BACKEND_FAILED;
@@ -100,9 +112,11 @@ extern "C" int32_t elisa_render_scene_v1_update_effect_position(
 
 extern "C" int64_t elisa_render_scene_v1_create_effect_decal(
     float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
     float red, float green, float blue, float alpha,
     float range, float slope_blend) {
-    if (!valid_effect_position(px, py, pz) || !valid_color(red, green, blue, alpha) ||
+    if (!valid_effect_position(px, py, pz) || !valid_effect_rotation(qx, qy, qz, qw) ||
+        !valid_color(red, green, blue, alpha) ||
         !finite(range) || range <= 0.0f || !finite(slope_blend) || slope_blend < 0.0f) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
@@ -111,6 +125,7 @@ extern "C" int64_t elisa_render_scene_v1_create_effect_decal(
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     probe::DecalDesc desc;
+    desc.rotation = normalize_effect_rotation(qx, qy, qz, qw);
     desc.color = XMFLOAT4(red, green, blue, alpha);
     desc.range = range;
     desc.slope_blend = slope_blend;
@@ -122,9 +137,11 @@ extern "C" int64_t elisa_render_scene_v1_create_effect_decal(
 }
 
 extern "C" int32_t elisa_render_scene_v1_update_effect_decal(
-    int64_t handle_value, float red, float green, float blue, float alpha,
+    int64_t handle_value, float qx, float qy, float qz, float qw,
+    float red, float green, float blue, float alpha,
     float range, float slope_blend) {
-    if (!valid_color(red, green, blue, alpha) || !finite(range) || range <= 0.0f ||
+    if (!valid_effect_rotation(qx, qy, qz, qw) || !valid_color(red, green, blue, alpha) ||
+        !finite(range) || range <= 0.0f ||
         !finite(slope_blend) || slope_blend < 0.0f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -134,6 +151,7 @@ extern "C" int32_t elisa_render_scene_v1_update_effect_decal(
     if (!decode_effect_handle(state, handle_value, handle)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (handle.kind != probe::EffectKind::Decal) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     probe::DecalDesc desc;
+    desc.rotation = normalize_effect_rotation(qx, qy, qz, qw);
     desc.color = XMFLOAT4(red, green, blue, alpha);
     desc.range = range;
     desc.slope_blend = slope_blend;
@@ -168,7 +186,8 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_emitter(
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_effect_decal(
-    int64_t handle_value, float red, float green, float blue, float alpha,
+    int64_t handle_value, float qx, float qy, float qz, float qw,
+    float red, float green, float blue, float alpha,
     float range, float slope_blend) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);
@@ -177,9 +196,16 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_decal(
     if (!decode_effect_handle(state, handle_value, handle) || handle.kind != probe::EffectKind::Decal) return 0;
     const auto entity = state.effects->entity(handle);
     const auto* decal = state.scene->decals.GetComponent(entity);
-    if (decal == nullptr) return 0;
+    const auto* transform = state.scene->transforms.GetComponent(entity);
+    if (decal == nullptr || transform == nullptr) return 0;
+    const XMVECTOR expected_rotation = XMQuaternionNormalize(XMVectorSet(qx, qy, qz, qw));
+    const XMVECTOR actual_rotation = XMQuaternionNormalize(XMLoadFloat4(&transform->rotation_local));
+    const bool rotation_matches = XMVectorGetX(XMVector4Length(XMVectorSubtract(expected_rotation, actual_rotation))) < 1.0e-5f ||
+        XMVectorGetX(XMVector4Length(XMVectorAdd(expected_rotation, actual_rotation))) < 1.0e-5f;
     return decal->color.x == red && decal->color.y == green && decal->color.z == blue &&
-        decal->color.w == alpha && decal->range == range && decal->slopeBlendPower == slope_blend ? 1 : 0;
+        decal->color.w == alpha && decal->range == range && decal->slopeBlendPower == slope_blend &&
+        transform->scale_local.x == range * 0.5f && transform->scale_local.y == range * 0.5f &&
+        transform->scale_local.z == range * 0.5f && rotation_matches ? 1 : 0;
 }
 
 extern "C" int32_t elisa_render_scene_v1_test_effect_position(
@@ -204,4 +230,5 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_component_count(int32_t kin
     if (kind == 1) return static_cast<int32_t>(state.scene->decals.GetCount());
     return -1;
 }
+
 #endif

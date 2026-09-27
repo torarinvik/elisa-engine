@@ -21,8 +21,8 @@ def main() -> i32:
         ok: 0
         error failure: 3
     application_shutdown: bool = Application::shutdown()
-    return 4 if scene_shutdown != 0 or not application_shutdown or not baseline_before_shutdown
     return event_status if event_status != 0
+    return 4 if scene_shutdown != 0 or not application_shutdown or not baseline_before_shutdown
 
     restarted_application: Application::InitializeStatus = Application::initialize(config)
     return 5 if restarted_application != Application::InitializeStatus.Ready

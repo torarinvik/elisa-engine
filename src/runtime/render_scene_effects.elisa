@@ -31,11 +31,13 @@ extend RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_create_effect_decal(
             px: f32, py: f32, pz: f32,
+            qx: f32, qy: f32, qz: f32, qw: f32,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i64
 
         @callconv(c)
         extern elisa_render_scene_v1_update_effect_decal(handle: i64,
+            qx: f32, qy: f32, qz: f32, qw: f32,
             red: f32, green: f32, blue: f32, alpha: f32,
             range: f32, slope_blend: f32) -> i32
 
@@ -66,6 +68,8 @@ extend RenderScene:
 
         def decal_valid(effect: Decal) -> bool:
             return false if not position_valid(effect.position)
+            rotation_length: f32 = Geometry::quat_length(effect.rotation)
+            return false if not Geometry::quat_is_finite(effect.rotation) or not finite(rotation_length) or rotation_length <= 0.0
             return false if not finite(effect.color.red) or not finite(effect.color.green) or not finite(effect.color.blue) or not finite(effect.color.alpha)
             return false if effect.color.red < 0.0 or effect.color.red > 1.0 or effect.color.green < 0.0 or effect.color.green > 1.0
             return false if effect.color.blue < 0.0 or effect.color.blue > 1.0 or effect.color.alpha < 0.0 or effect.color.alpha > 1.0
@@ -167,14 +171,16 @@ extend RenderScene:
 
         struct Decal:
             position: Geometry::Vec3
+            rotation: Geometry::Quat
             color: RenderScene::Color
             range: f32
             slope_blend: f32
 
-        def Decal(position: Geometry::Vec3, color: RenderScene::Color,
+        def Decal(position: Geometry::Vec3, rotation: Geometry::Quat, color: RenderScene::Color,
             range: f32, slope_blend: f32) -> Decal:
             Decal{
                 position: position,
+                rotation: Geometry::quat_normalize(rotation),
                 color: color,
                 range: range,
                 slope_blend: slope_blend,
@@ -207,6 +213,7 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if not decal_valid(effect)
             native_value: i64 = elisa_render_scene_v1_create_effect_decal(
                 effect.position.x, effect.position.y, effect.position.z,
+                effect.rotation.x, effect.rotation.y, effect.rotation.z, effect.rotation.w,
                 effect.color.red, effect.color.green, effect.color.blue, effect.color.alpha,
                 effect.range, effect.slope_blend)
             if native_value <= 0:
@@ -217,6 +224,7 @@ extend RenderScene:
         def update_decal(handle: DecalHandle, effect: Decal) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if not decal_valid(effect)
             try check_status(elisa_render_scene_v1_update_effect_decal(handle.native_value,
+                effect.rotation.x, effect.rotation.y, effect.rotation.z, effect.rotation.w,
                 effect.color.red, effect.color.green, effect.color.blue, effect.color.alpha,
                 effect.range, effect.slope_blend))
 

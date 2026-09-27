@@ -28,6 +28,7 @@ struct EmitterDesc {
 };
 
 struct DecalDesc {
+    XMFLOAT4 rotation = XMFLOAT4(0, 0, 0, 1);
     XMFLOAT4 color = XMFLOAT4(1, 1, 1, 1);
     float range = 1.0f;
     float slope_blend = 0.0f;
@@ -76,14 +77,19 @@ public:
         const auto entity = scene_.Entity_CreateDecal("elisa_effect_decal", "", "");
         auto* decal = scene_.decals.GetComponent(entity);
         auto* transform = scene_.transforms.GetComponent(entity);
-        if (decal == nullptr || transform == nullptr) {
+        auto* material = scene_.materials.GetComponent(entity);
+        if (decal == nullptr || transform == nullptr || material == nullptr) {
             scene_.Entity_Remove(entity);
             return fail(status, EffectCreateStatus::BackendFailure);
         }
+        material->SetBaseColor(desc.color);
         decal->color = desc.color;
         decal->range = desc.range;
         decal->slopeBlendPower = desc.slope_blend;
+        XMStoreFloat4(&transform->rotation_local, XMQuaternionNormalize(XMLoadFloat4(&desc.rotation)));
+        transform->scale_local = XMFLOAT3(desc.range * 0.5f, desc.range * 0.5f, desc.range * 0.5f);
         transform->translation_local = position;
+        transform->SetDirty();
         transform->UpdateTransform();
         Entry& entry = entries_[slot];
         if (!activate(entry, entity, EffectKind::Decal)) {
@@ -119,10 +125,17 @@ public:
         Entry* entry = get(handle);
         if (entry == nullptr || handle.kind != EffectKind::Decal || !valid(desc)) return false;
         auto* decal = scene_.decals.GetComponent(entry->entity);
-        if (decal == nullptr) return false;
+        auto* transform = scene_.transforms.GetComponent(entry->entity);
+        auto* material = scene_.materials.GetComponent(entry->entity);
+        if (decal == nullptr || transform == nullptr || material == nullptr) return false;
+        material->SetBaseColor(desc.color);
         decal->color = desc.color;
         decal->range = desc.range;
         decal->slopeBlendPower = desc.slope_blend;
+        XMStoreFloat4(&transform->rotation_local, XMQuaternionNormalize(XMLoadFloat4(&desc.rotation)));
+        transform->scale_local = XMFLOAT3(desc.range * 0.5f, desc.range * 0.5f, desc.range * 0.5f);
+        transform->SetDirty();
+        transform->UpdateTransform();
         return true;
     }
 
@@ -162,6 +175,9 @@ private:
     static bool valid(const DecalDesc& desc) {
         return std::isfinite(desc.color.x) && std::isfinite(desc.color.y) && std::isfinite(desc.color.z) &&
             std::isfinite(desc.color.w) && desc.color.w >= 0.0f && desc.color.w <= 1.0f &&
+            std::isfinite(desc.rotation.x) && std::isfinite(desc.rotation.y) &&
+            std::isfinite(desc.rotation.z) && std::isfinite(desc.rotation.w) &&
+            XMVectorGetX(XMVector4Length(XMLoadFloat4(&desc.rotation))) > 1.0e-6f &&
             std::isfinite(desc.range) && desc.range > 0.0f && std::isfinite(desc.slope_blend) && desc.slope_blend >= 0.0f;
     }
     bool activate(Entry& entry, wi::ecs::Entity entity, EffectKind kind) {

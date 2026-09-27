@@ -336,10 +336,12 @@ int64_t elisa_render_scene_v1_create_effect_emitter(
 int32_t elisa_render_scene_v1_tick_effect_emitter(int64_t handle, float delta_seconds);
 int64_t elisa_render_scene_v1_create_effect_decal(
     float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
     float red, float green, float blue, float alpha,
     float range, float slope_blend);
 int32_t elisa_render_scene_v1_update_effect_decal(
-    int64_t handle, float red, float green, float blue, float alpha,
+    int64_t handle, float qx, float qy, float qz, float qw,
+    float red, float green, float blue, float alpha,
     float range, float slope_blend);
 int32_t elisa_render_scene_v1_destroy_effect(int64_t handle);
 int32_t elisa_render_scene_v1_set_lit_material(int64_t handle, float roughness, float metallic);
