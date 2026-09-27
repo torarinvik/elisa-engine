@@ -28,6 +28,51 @@ constexpr int MAX_STRAIGHT_POINTS = 256;
 constexpr int MAX_GRID_DIMENSION = 16384;
 constexpr uint64_t MAX_GRID_CELLS = 1024 * 1024;
 constexpr double MAX_CONFIG_SCALE = 16384.0;
+constexpr int MAX_AREA_VOLUMES = 16;
+constexpr int MAX_OFFMESH_LINKS = 16;
+constexpr float MAX_LINK_RADIUS = 8.0f;
+// Area 1 is plain walkable ground and area 2 every off-mesh link. Areas below
+// FLAGGED_AREAS also set their own flag bit so a filter can exclude them.
+constexpr unsigned char WALK_AREA = 1;
+constexpr unsigned char LINK_AREA = 2;
+constexpr int FLAGGED_AREAS = 16;
+
+// Every non-null polygon carries the walkable bit 1; flagged areas add 1 << area.
+inline uint16_t area_flags(unsigned char area) {
+    if (area == RC_NULL_AREA) return 0;
+    return static_cast<uint16_t>(1u | (area < FLAGGED_AREAS ? (1u << area) : 0u));
+}
+
+// Which polygons a query may cross and what each flagged area costs per metre.
+struct QueryFilter {
+    QueryFilter(uint16_t include = 0xffff) : include_flags(include) { costs.fill(1.0f); }
+    uint16_t include_flags;
+    uint16_t exclude_flags = 0;
+    std::array<float, FLAGGED_AREAS> costs{};
+
+    dtQueryFilter detour() const {
+        dtQueryFilter result;
+        result.setIncludeFlags(include_flags);
+        result.setExcludeFlags(exclude_flags);
+        for (int area = 0; area < FLAGGED_AREAS; ++area) result.setAreaCost(area, costs[area]);
+        return result;
+    }
+};
+
+// An axis-aligned volume whose walkable spans take `area` after erosion.
+struct AreaVolume {
+    float min[3]{};
+    float max[3]{};
+    unsigned char area = WALK_AREA;
+};
+
+// A jump or drop between two surface points that are not connected by walking.
+struct OffMeshLink {
+    float start[3]{};
+    float end[3]{};
+    float radius = 0.5f;
+    bool bidirectional = false;
+};
 
 struct AgentProfile {
     float height = 2.0f;
@@ -42,6 +87,10 @@ struct BakeInput {
     const int* indices = nullptr;
     int triangle_count = 0;
     const unsigned char* areas = nullptr;
+    const AreaVolume* volumes = nullptr;
+    int volume_count = 0;
+    const OffMeshLink* links = nullptr;
+    int link_count = 0;
     AgentProfile agent{};
     float cell_size = 0.3f;
     float cell_height = 0.2f;
@@ -71,6 +120,8 @@ struct PathResult {
     int polygon_count = 0;
     std::array<float, MAX_STRAIGHT_POINTS * 3> points{};
     int point_count = 0;
+    // DT_STRAIGHTPATH_* bits per point; OFFMESH_CONNECTION marks a link start.
+    std::array<unsigned char, MAX_STRAIGHT_POINTS> point_flags{};
     // False when Detour could only route toward the reachable polygon nearest
     // the goal; the status is then Partial rather than Success.
     bool reaches_goal = false;
@@ -116,14 +167,13 @@ public:
     const std::vector<unsigned char>& serialized_tile() const { return tile_data_; }
 
     NearestResult nearest_point(const float position[3], const float extents[3],
-        uint16_t include_flags = 0xffff) const {
+        const QueryFilter& query_filter = QueryFilter()) const {
         NearestResult result;
         if (!ready() || position == nullptr || extents == nullptr || !finite_vec(position) ||
             !finite_vec(extents) || extents[0] <= 0.0f || extents[1] <= 0.0f || extents[2] <= 0.0f) {
             return result;
         }
-        dtQueryFilter filter;
-        filter.setIncludeFlags(include_flags);
+        const dtQueryFilter filter = query_filter.detour();
         if (dtStatusFailed(query_->findNearestPoly(position, extents, &filter, &result.polygon,
             result.point.data())) || result.polygon == 0) {
             result.status = QueryStatus::NoPath;
@@ -142,14 +192,13 @@ public:
     }
 
     RaycastResult raycast(const float start[3], const float end[3], const float extents[3],
-        uint16_t include_flags = 0xffff) const {
+        const QueryFilter& query_filter = QueryFilter()) const {
         RaycastResult result;
-        const NearestResult nearest = nearest_point(start, extents, include_flags);
+        const NearestResult nearest = nearest_point(start, extents, query_filter);
         if (nearest.status != QueryStatus::Success || end == nullptr || !finite_vec(end)) {
             return result;
         }
-        dtQueryFilter filter;
-        filter.setIncludeFlags(include_flags);
+        const dtQueryFilter filter = query_filter.detour();
         float t = 0.0f;
         float normal[3]{};
         const dtStatus status = query_->raycast(nearest.polygon, nearest.point.data(), end,
@@ -166,13 +215,13 @@ public:
     }
 
     QueryStatus query_path(const float start[3], const float end[3], const float extents[3],
-        uint16_t include_flags = 0xffff) const {
+        const QueryFilter& query_filter = QueryFilter()) const {
         PathResult ignored;
-        return query_path(start, end, extents, ignored, include_flags);
+        return query_path(start, end, extents, ignored, query_filter);
     }
 
     QueryStatus query_path(const float start[3], const float end[3], const float extents[3],
-        PathResult& result, uint16_t include_flags = 0xffff) const {
+        PathResult& result, const QueryFilter& query_filter = QueryFilter()) const {
         result = {};
         result.status = QueryStatus::InvalidInput;
         if (!ready() || start == nullptr || end == nullptr || extents == nullptr ||
@@ -180,8 +229,7 @@ public:
             extents[0] <= 0.0f || extents[1] <= 0.0f || extents[2] <= 0.0f) {
             return result.status;
         }
-        dtQueryFilter filter;
-        filter.setIncludeFlags(include_flags);
+        const dtQueryFilter filter = query_filter.detour();
         dtPolyRef start_ref = 0;
         dtPolyRef end_ref = 0;
         float start_point[3]{};
@@ -205,7 +253,7 @@ public:
             result.polygons[result.polygon_count - 1] == end_ref;
         int straight_count = 0;
         const dtStatus straight_status = query_->findStraightPath(start_point, end_point,
-            result.polygons.data(), result.polygon_count, result.points.data(), nullptr,
+            result.polygons.data(), result.polygon_count, result.points.data(), result.point_flags.data(),
             nullptr, &straight_count, MAX_STRAIGHT_POINTS);
         if (dtStatusFailed(straight_status) || straight_count <= 0) {
             result.status = truncated ? QueryStatus::Capacity : QueryStatus::NoPath;
@@ -261,6 +309,37 @@ inline bool valid_input(const BakeInput& input, std::string& error) {
     for (int i = 0; i < input.triangle_count * 3; ++i) {
         if (input.indices[i] < 0 || input.indices[i] >= input.vertex_count) {
             error = "navmesh triangle index out of range";
+            return false;
+        }
+    }
+    if (input.volume_count < 0 || input.volume_count > MAX_AREA_VOLUMES ||
+        (input.volume_count > 0 && input.volumes == nullptr) || input.link_count < 0 ||
+        input.link_count > MAX_OFFMESH_LINKS || (input.link_count > 0 && input.links == nullptr)) {
+        error = "navmesh area volumes or links exceed their bounds";
+        return false;
+    }
+    for (int i = 0; i < input.volume_count; ++i) {
+        const AreaVolume& volume = input.volumes[i];
+        for (int axis = 0; axis < 3; ++axis) {
+            if (!std::isfinite(volume.min[axis]) || !std::isfinite(volume.max[axis]) ||
+                volume.min[axis] > volume.max[axis] || volume.area == RC_NULL_AREA ||
+                volume.area >= DT_MAX_AREAS) {
+                error = "invalid navmesh area volume";
+                return false;
+            }
+        }
+    }
+    for (int i = 0; i < input.link_count; ++i) {
+        const OffMeshLink& link = input.links[i];
+        const float* points[2] = {link.start, link.end};
+        for (const float* point : points) {
+            if (!std::isfinite(point[0]) || !std::isfinite(point[1]) || !std::isfinite(point[2])) {
+                error = "non-finite navmesh link";
+                return false;
+            }
+        }
+        if (!std::isfinite(link.radius) || link.radius <= 0.0f || link.radius > MAX_LINK_RADIUS) {
+            error = "invalid navmesh link radius";
             return false;
         }
     }
@@ -347,8 +426,12 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
         rcFilterLedgeSpans(&context, config.walkableHeight, config.walkableClimb, *heightfield);
         rcFilterWalkableLowHeightSpans(&context, config.walkableHeight, *heightfield);
         ok = rcBuildCompactHeightfield(&context, config.walkableHeight, config.walkableClimb,
-            *heightfield, *compact) && rcErodeWalkableArea(&context, config.walkableRadius, *compact) &&
-            rcBuildDistanceField(&context, *compact) && rcBuildRegions(&context, *compact, 0,
+            *heightfield, *compact) && rcErodeWalkableArea(&context, config.walkableRadius, *compact);
+        for (int i = 0; ok && i < input.volume_count; ++i) {
+            rcMarkBoxArea(&context, input.volumes[i].min, input.volumes[i].max,
+                input.volumes[i].area, *compact);
+        }
+        ok = ok && rcBuildDistanceField(&context, *compact) && rcBuildRegions(&context, *compact, 0,
                 config.minRegionArea, config.mergeRegionArea) &&
             rcBuildContours(&context, *compact, config.maxSimplificationError, config.maxEdgeLen, *contours) &&
             rcBuildPolyMesh(&context, *contours, config.maxVertsPerPoly, *poly_mesh) &&
@@ -362,8 +445,20 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
         return false;
     }
     for (int i = 0; i < poly_mesh->npolys; ++i) {
-        if (poly_mesh->areas[i] == RC_WALKABLE_AREA) poly_mesh->areas[i] = 1;
-        poly_mesh->flags[i] = poly_mesh->areas[i] == RC_NULL_AREA ? 0 : 1;
+        if (poly_mesh->areas[i] == RC_WALKABLE_AREA) poly_mesh->areas[i] = WALK_AREA;
+        poly_mesh->flags[i] = area_flags(poly_mesh->areas[i]);
+    }
+    const int links = input.link_count;
+    std::vector<float> link_vertices(links * 6), link_radii(links);
+    std::vector<unsigned char> link_directions(links), link_areas(links, LINK_AREA);
+    std::vector<unsigned short> link_flags(links, area_flags(LINK_AREA));
+    std::vector<unsigned int> link_ids(links);
+    for (int i = 0; i < links; ++i) {
+        std::copy(input.links[i].start, input.links[i].start + 3, link_vertices.begin() + i * 6);
+        std::copy(input.links[i].end, input.links[i].end + 3, link_vertices.begin() + i * 6 + 3);
+        link_radii[i] = input.links[i].radius;
+        link_directions[i] = input.links[i].bidirectional ? DT_OFFMESH_CON_BIDIR : 0;
+        link_ids[i] = static_cast<unsigned int>(i + 1);
     }
     dtNavMeshCreateParams params{};
     params.verts = poly_mesh->verts; params.vertCount = poly_mesh->nverts;
@@ -376,6 +471,10 @@ inline bool bake(const BakeInput& input, NavMeshArtifact& artifact, std::string&
     params.walkableClimb = input.agent.climb; rcVcopy(params.bmin, poly_mesh->bmin);
     rcVcopy(params.bmax, poly_mesh->bmax); params.cs = config.cs; params.ch = config.ch;
     params.buildBvTree = true;
+    params.offMeshConVerts = link_vertices.data(); params.offMeshConRad = link_radii.data();
+    params.offMeshConDir = link_directions.data(); params.offMeshConAreas = link_areas.data();
+    params.offMeshConFlags = link_flags.data(); params.offMeshConUserID = link_ids.data();
+    params.offMeshConCount = links;
     unsigned char* nav_data = nullptr;
     int nav_data_size = 0;
     ok = dtCreateNavMeshData(&params, &nav_data, &nav_data_size);
@@ -440,9 +539,15 @@ public:
     }
 
     NearestResult nearest_point(TileHandle handle, const float position[3],
-        const float extents[3], uint16_t include_flags = 0xffff) const {
+        const float extents[3], const QueryFilter& query_filter = QueryFilter()) const {
         if (!live(handle)) return NearestResult{};
-        return tiles_[handle.slot].artifact->nearest_point(position, extents, include_flags);
+        return tiles_[handle.slot].artifact->nearest_point(position, extents, query_filter);
+    }
+
+    RaycastResult raycast(TileHandle handle, const float start[3], const float end[3],
+        const float extents[3], const QueryFilter& query_filter = QueryFilter()) const {
+        if (!live(handle)) return RaycastResult{};
+        return tiles_[handle.slot].artifact->raycast(start, end, extents, query_filter);
     }
 
     uint32_t live_count() const {
@@ -452,13 +557,13 @@ public:
     }
 
     QueryStatus query_path(TileHandle handle, const float start[3], const float end[3],
-        const float extents[3], PathResult& result, uint16_t include_flags = 0xffff) const {
+        const float extents[3], PathResult& result, const QueryFilter& query_filter = QueryFilter()) const {
         if (!live(handle)) {
             result = {};
             result.status = QueryStatus::InvalidInput;
             return result.status;
         }
-        return tiles_[handle.slot].artifact->query_path(start, end, extents, result, include_flags);
+        return tiles_[handle.slot].artifact->query_path(start, end, extents, result, query_filter);
     }
 
 private:

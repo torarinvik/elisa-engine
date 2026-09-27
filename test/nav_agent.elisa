@@ -95,4 +95,13 @@ def main() -> i32:
             count <- count + 1 if NavRoute::push(&full, at(index.f32(), 0.0))
     return 15 if pushed != NavRoute::MAX_POINTS or NavRoute::count(&full) != NavRoute::MAX_POINTS
     return 16 if NavRoute::point(&full, NavRoute::MAX_POINTS).x != 0.0
+
+    # Link marks land on the latest point only, and never past the end.
+    linked: mutable NavRoute::Route = NavRoute::Route(NavRoute::Status.Found)
+    NavRoute::mark_link(&linked)
+    _ = NavRoute::push(&linked, at(0.0, 0.0))
+    _ = NavRoute::push(&linked, at(1.0, 0.0))
+    NavRoute::mark_link(&linked)
+    return 17 if NavRoute::starts_link(&linked, 0) or not NavRoute::starts_link(&linked, 1)
+    return 18 if NavRoute::starts_link(&linked, 2)
     0

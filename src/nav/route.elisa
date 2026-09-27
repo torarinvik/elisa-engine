@@ -22,9 +22,11 @@ module NavRoute:
             status: mutable Status
             count: mutable usize
             points: mutable Geometry::Vec3[MAX_POINTS]
+            # True where the point starts an off-mesh link (a jump or drop).
+            links: mutable bool[MAX_POINTS]
 
         def Route(status: Status) -> Route:
-            Route{status: status, count: 0, points: zeroed}
+            Route{status: status, count: 0, points: zeroed, links: zeroed}
 
         # Returns false, dropping the point, once the route is full.
         def push(route: mutable Route&, point: Geometry::Vec3) -> bool:
@@ -32,6 +34,14 @@ module NavRoute:
             route.points[route.count] <- point
             route.count <- route.count + 1
             true
+
+        # Marks the most recent point as the start of an off-mesh link.
+        def mark_link(route: mutable Route&) -> void:
+            if route.count > 0:
+                route.links[route.count - 1] <- true
+
+        def starts_link(route: Route&, index: usize) -> bool:
+            index < route.count and route.links[index]
 
         def status(route: Route&) -> Status:
             route.status

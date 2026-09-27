@@ -64,7 +64,7 @@
             walked: f32 = walk.ticks.f32() * GuideTune::SPEED * Runtime::fixed_step_seconds()
             length: f32 = NavRoute::length(&agent.route)
             return 105 if walked < length - 1.0 or walked > length * 1.5 + 1.0
-            # The pen is closed: the guide stops at the nearest reachable point.
+            # The pen door is shut: the guide stops at the nearest reachable point.
             pen: Geometry::Vec3 = Geometry::Vec3{x: GuideTune::PEN_X, y: 0.0, z: GuideTune::PEN_Z}
             toward_pen: NavAgent::State = try plan_guide(session, guide, &agent, pen)
             return 106 if toward_pen != NavAgent::State.Moving or agent.route.status != NavRoute::Status.Unreachable
@@ -86,6 +86,7 @@
             fresh: NavMesh::Handle = try NavMesh::bake(NavMesh::default_profile())
             return 112 if fresh.generation == old.generation or not NavMesh::live(fresh) or not is_stale(old)
             guide.mesh <- fresh
+            try apply_door(fresh, guide.door_open)
             home: NavAgent::State = try plan_guide(session, guide, &agent, guide_post(false))
             return 113 if home != NavAgent::State.Moving or agent.route.status != NavRoute::Status.Found
             0

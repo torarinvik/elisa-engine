@@ -112,11 +112,10 @@ controller and renderer:
 
 ## Gaps
 
-- The ramp and other rotated boxes are not staged, so the navmesh does not
-  cover the ramp or the summit. Off-mesh links, area costs, tiled or cached
-  bakes, and debug overlays remain open (N01/N02).
-- Obstruction replanning is proven for stuck and pushed cases. Door and
-  platform links (N03) are not.
+- Update 2026-09-28: the ramp, door areas, area costs and drop links are now
+  staged and checked. See
+  [`course-navigation-links.md`](course-navigation-links.md). Tiled or cached
+  bakes and debug overlays remain open (N01).
 - Rig playback uses the engine's fixed-rate clip sampler (C02). Production ozz
   sampling contexts are still not integrated or measured. The two rigs use
   separate `create_mesh` instances, each with its own clip state; R08 shared

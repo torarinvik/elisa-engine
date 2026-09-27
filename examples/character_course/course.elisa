@@ -154,10 +154,10 @@ module CharacterCourse:
         def box_color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
             RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
 
-        def add_static_box(session: RuntimeServices::Session&,
+        def create_static_body(session: RuntimeServices::Session&,
             center: Geometry::Vec3, half_extents: Geometry::Vec3,
-            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
-            _ = try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
+            rotation: Geometry::Quat) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
                 kind: PhysicsRuntime::BodyKind.Static,
                 shape: PhysicsRuntime::BodyShape.Box,
                 position: center,
@@ -168,13 +168,20 @@ module CharacterCourse:
                 sensor: false,
                 collision_layer: Tune::CHARACTER_LAYER,
             })
-            half_scale: Geometry::Vec3 = Geometry::Vec3{
-                x: half_extents.x, y: half_extents.y, z: half_extents.z}
-            _ = try RenderScene::create(RenderScene::Primitive.Box,
+
+        def create_box_render(center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat, color: RenderScene::Color) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+            try RenderScene::create(RenderScene::Primitive.Box,
                 Geometry::Transform{position: center, rotation: rotation,
-                    scale: half_scale}, color)
-            if is_axis_aligned(rotation):
-                try NavMesh::add_box(center, half_extents)
+                    scale: half_extents}, color)
+
+        # A static course box: physics body, render box and navmesh geometry.
+        def add_static_box(session: RuntimeServices::Session&,
+            center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            _ = try create_static_body(session, center, half_extents, rotation)
+            _ = try create_box_render(center, half_extents, rotation, color)
+            try NavMesh::add_oriented_box(center, half_extents, rotation)
 
         def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
             _ = try add_static_box(session,
@@ -307,6 +314,8 @@ module CharacterCourse:
 
         include "./guide_test.inc"
 
+        include "./links_test.inc"
+
         include "./play.inc"
 
         def run_after_open(session: mutable RuntimeServices::Session&,
@@ -358,6 +367,8 @@ module CharacterCourse:
                 return sound_status if sound_status != 0
                 guide_status: i32 = try guide_test(session, &guide)
                 return guide_status if guide_status != 0
+                links_status: i32 = try links_test(session, &guide)
+                return links_status if links_status != 0
                 rig_status: i32 = try rig_test()
                 return rig_status if rig_status != 0
                 try NavMesh::unload(guide.mesh)

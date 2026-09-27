@@ -1,6 +1,8 @@
 # Recast/Detour navigation meshes for native applications. Game code stages
-# walkable geometry as axis-aligned boxes in world metres (+Y up), bakes it
-# for one agent profile and asks for bounded corridors. The native service
+# walkable geometry as solid boxes in world metres (+Y up), marks custom
+# areas (doorways, mud) and off-mesh links (drops, jumps), bakes it for one
+# agent profile and asks for bounded corridors. Each mesh can forbid an area
+# or make it dearer with `set_area`, so a closed door reroutes agents. The native service
 # (`native/navigation_service_abi.cpp`) owns the Detour mesh; a `Handle` names
 # one published mesh and goes stale when it is unloaded, so a reloaded mesh
 # never answers through an old handle.
@@ -20,6 +22,13 @@ module NavMesh:
 
         const MAX_BOXES: usize = 64
         const MAX_MESHES: usize = 8
+        const MAX_AREA_VOLUMES: usize = 16
+        const MAX_LINKS: usize = 16
+        # Plain ground, off-mesh links, and the range free for `mark_area`.
+        const WALK_AREA: u32 = 1
+        const LINK_AREA: u32 = 2
+        const FIRST_CUSTOM_AREA: u32 = 3
+        const LAST_AREA: u32 = 15
 
         struct Profile:
             radius: f32
@@ -38,6 +47,12 @@ module NavMesh:
         struct Snap:
             found: bool
             point: Geometry::Vec3
+
+        struct RayHit:
+            # A wall, a mesh edge or a forbidden area stopped the ray.
+            hit: bool
+            # How far along start -> end the ray got, 1.0 when clear.
+            fraction: f32
 
     private:
         const module Status:
@@ -65,6 +80,31 @@ module NavMesh:
         @callconv(c)
         extern elisa_navigation_v1_add_box(center_x: f32, center_y: f32, center_z: f32,
             half_x: f32, half_y: f32, half_z: f32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_add_oriented_box(center_x: f32, center_y: f32, center_z: f32,
+            half_x: f32, half_y: f32, half_z: f32, qx: f32, qy: f32, qz: f32, qw: f32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_mark_area(min_x: f32, min_y: f32, min_z: f32,
+            max_x: f32, max_y: f32, max_z: f32, area: u32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_add_link(start_x: f32, start_y: f32, start_z: f32,
+            end_x: f32, end_y: f32, end_z: f32, radius: f32, bidirectional: i32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_set_area(slot: u32, generation: u32, area: u32,
+            enabled: i32, cost: f32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_route_point_link(index: u32, link_start: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_raycast(slot: u32, generation: u32,
+            start_x: f32, start_y: f32, start_z: f32, end_x: f32, end_y: f32, end_z: f32,
+            extent_x: f32, extent_y: f32, extent_z: f32,
+            hit: mutable i32&, fraction: mutable f32&) -> i32
 
         @callconv(c)
         extern elisa_navigation_v1_bake(agent_radius: f32, agent_height: f32,
@@ -120,8 +160,11 @@ module NavMesh:
                 x: mutable f32 = 0.0
                 y: mutable f32 = 0.0
                 z: mutable f32 = 0.0
+                link: mutable i32 = 0
                 if elisa_navigation_v1_route_point(index.u32(), &x, &y, &z) == Status::OK:
                     _ = NavRoute::push(route, Geometry::Vec3{x: x, y: y, z: z})
+                    if elisa_navigation_v1_route_point_link(index.u32(), &link) == Status::OK and link != 0:
+                        NavRoute::mark_link(route)
 
     public:
         # The agent the character course's capsule needs (0.25 m radius,
@@ -142,6 +185,26 @@ module NavMesh:
         def add_box(center: Geometry::Vec3, half_extents: Geometry::Vec3) -> void error[NavMeshError]:
             try check_status(elisa_navigation_v1_add_box(center.x, center.y, center.z,
                 half_extents.x, half_extents.y, half_extents.z))
+
+        # A solid box turned by a unit quaternion, such as a ramp.
+        def add_oriented_box(center: Geometry::Vec3, half_extents: Geometry::Vec3,
+            rotation: Geometry::Quat) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_add_oriented_box(center.x, center.y, center.z,
+                half_extents.x, half_extents.y, half_extents.z,
+                rotation.x, rotation.y, rotation.z, rotation.w))
+
+        # Walkable ground inside [low, high] takes `area`, from
+        # FIRST_CUSTOM_AREA to LAST_AREA. At most MAX_AREA_VOLUMES.
+        def mark_area(low: Geometry::Vec3, high: Geometry::Vec3, area: u32) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_mark_area(low.x, low.y, low.z,
+                high.x, high.y, high.z, area))
+
+        # An off-mesh link from `start` to `end` (both ways when
+        # `bidirectional`), each within `radius` of the mesh. At most MAX_LINKS.
+        def add_link(start: Geometry::Vec3, end: Geometry::Vec3, radius: f32,
+            bidirectional: bool) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_add_link(start.x, start.y, start.z,
+                end.x, end.y, end.z, radius, 1 if bidirectional else 0))
 
         # Bake the staged boxes and publish the mesh. At most MAX_MESHES live.
         def bake(profile: Profile) -> Handle error[NavMeshError]:
@@ -186,3 +249,20 @@ module NavMesh:
                 position.x, position.y, position.z, extents.x, extents.y, extents.z,
                 &code, &x, &y, &z))
             Snap{found: code == RouteCode::FOUND, point: Geometry::Vec3{x: x, y: y, z: z}}
+
+        # Allow or forbid `area` (WALK_AREA to LAST_AREA) on this mesh and set
+        # its cost per metre, at least 1. New bakes allow every area at cost 1.
+        def set_area(handle: Handle, area: u32, enabled: bool, cost: f32) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_set_area(handle.slot, handle.generation,
+                area, 1 if enabled else 0, cost))
+
+        # A straight walk over the mesh from the polygon under `start`; a
+        # start off the mesh is a hit at fraction 0.
+        def raycast(handle: Handle, start: Geometry::Vec3, end: Geometry::Vec3,
+            extents: Geometry::Vec3) -> RayHit error[NavMeshError]:
+            hit: mutable i32 = 0
+            fraction: mutable f32 = 0.0
+            try check_status(elisa_navigation_v1_raycast(handle.slot, handle.generation,
+                start.x, start.y, start.z, end.x, end.y, end.z,
+                extents.x, extents.y, extents.z, &hit, &fraction))
+            RayHit{hit: hit != 0, fraction: fraction}
