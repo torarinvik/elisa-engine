@@ -76,3 +76,11 @@ Both fighters pass exact selected counts and minimum/centroid agreement within
 0.02 mm across horizontal/tilted planes and interrupted blends. Duplicate-joint
 replacement rejects and retains the previous cache. This API is not yet used
 by gameplay. Evidence: game `build/skin-contact-joint-selection.json`.
+
+A test-only `test_joint_trace` diagnostic records up to eight validated current
+world-space joint positions per row, under the scene owner lock. It is compiled
+only with renderer test probes. A separate unmodified actor supplies the FK
+reference for the game's 120 Hz trajectory audit, preventing corrected blend
+snapshots from contaminating the baseline. All 16 clips on both fighters pass
+pose/clearance invariants. Reports and velocity/jerk comparisons live in game
+`build/contact-trajectory-audit`; motion quality is not inferred from clearance.

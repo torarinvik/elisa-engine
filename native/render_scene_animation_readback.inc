@@ -105,3 +105,31 @@ extern "C" int32_t elisa_render_scene_v1_test_animation_joint_position(
     return std::abs(position.x-x) < .0002f && std::abs(position.y-y) < .0002f &&
         std::abs(position.z-z) < .0002f ? 1 : 0;
 }
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+// Bounded trajectory diagnostics for native IK/FK motion regression fixtures.
+extern "C" int32_t elisa_render_scene_v1_test_joint_trace(int64_t handle,
+        uint32_t label, uint32_t step, const uint32_t* joints, uint32_t count) {
+    if (!joints || count == 0 || count > 8) return 0;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return 0;
+    const auto& entities = state.instances[slot].joint_entities;
+    XMFLOAT3 points[8];
+    for (uint32_t index = 0; index < count; ++index) {
+        if (joints[index] >= entities.size()) return 0;
+        const auto* transform = state.scene->transforms.GetComponent(entities[joints[index]]);
+        if (!transform) return 0;
+        points[index] = probe::coordinates::from_wicked(transform->GetPosition());
+        if (!std::isfinite(points[index].x) || !std::isfinite(points[index].y) ||
+            !std::isfinite(points[index].z)) return 0;
+    }
+    std::fprintf(stdout, "JOINT_TRACE %u %u", label, step);
+    for (uint32_t index = 0; index < count; ++index)
+        std::fprintf(stdout, " %.9g %.9g %.9g", points[index].x, points[index].y, points[index].z);
+    std::fprintf(stdout, "\n");
+    return 1;
+}
+#endif
