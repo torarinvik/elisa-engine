@@ -2,11 +2,15 @@ include "../src/backend/render_graph.elisa"
 include "../src/runtime/render_graph_runtime.elisa"
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
+include "render_graph_blend_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
     const RETIREMENT_TARGET_DIMENSION: u32 = 1024
     const RETIREMENT_MIN_BYTES: u64 = 8 * 1024 * 1024
+    const INVALID_BLEND_OPACITY: f32 = 1.01
+    const TRANSPARENT_BLEND_OPACITY: f32 = 0.0
+    const HALF_BLEND_OPACITY: f32 = 0.5
 
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_fail_next_allocation() -> i32
@@ -119,18 +123,21 @@ module RenderGraphNativeTests:
             kind: RenderGraphRuntime::OperationKind.ClearColor,
             source_resource_id: 0,
             destination_resource_id: 2,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[1] <- RenderGraphRuntime::PassOperation{
             pass_id: 20,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
             source_resource_id: 1,
             destination_resource_id: 3,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[2] <- RenderGraphRuntime::PassOperation{
             pass_id: 30,
             kind: RenderGraphRuntime::OperationKind.BlendColor,
             source_resource_id: 1,
             destination_resource_id: 3,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         invalid_configuration: mutable RenderGraphRuntime::Configuration = configuration
         invalid_configuration.operations[1].source_resource_id <- 3
@@ -232,24 +239,28 @@ module RenderGraphNativeTests:
             kind: RenderGraphRuntime::OperationKind.ClearDepth,
             source_resource_id: 0,
             destination_resource_id: 2,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[1] <- RenderGraphRuntime::PassOperation{
             pass_id: 20,
             kind: RenderGraphRuntime::OperationKind.ClearColor,
             source_resource_id: 0,
             destination_resource_id: 3,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[2] <- RenderGraphRuntime::PassOperation{
             pass_id: 30,
             kind: RenderGraphRuntime::OperationKind.ResolveColor,
             source_resource_id: 3,
             destination_resource_id: 4,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[3] <- RenderGraphRuntime::PassOperation{
             pass_id: 40,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
             source_resource_id: 1,
             destination_resource_id: 5,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         invalid_depth_configuration: mutable RenderGraphRuntime::Configuration = configuration
         invalid_depth_configuration.operations[1].kind <- RenderGraphRuntime::OperationKind.ClearDepth
@@ -309,12 +320,14 @@ module RenderGraphNativeTests:
             kind: RenderGraphRuntime::OperationKind.VisualizeLinearDepth,
             source_resource_id: 2,
             destination_resource_id: 3,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[1] <- RenderGraphRuntime::PassOperation{
             pass_id: 20,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
             source_resource_id: 1,
             destination_resource_id: 4,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
         return 132 if result != RenderGraphRuntime::CONFIGURE_OK
@@ -398,18 +411,21 @@ module RenderGraphNativeTests:
             kind: RenderGraphRuntime::OperationKind.ClearColor,
             source_resource_id: 0,
             destination_resource_id: 2,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[1] <- RenderGraphRuntime::PassOperation{
             pass_id: 20,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
             source_resource_id: 2,
             destination_resource_id: 3,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         configuration.operations[2] <- RenderGraphRuntime::PassOperation{
             pass_id: 30,
             kind: RenderGraphRuntime::OperationKind.CopyColor,
             source_resource_id: 1,
             destination_resource_id: 4,
+            opacity: RenderGraphRuntime::FULL_OPACITY,
         }
         result: i32 = RenderGraphRuntime::configure(graph, plan, configuration)
         return 107 if result != RenderGraphRuntime::CONFIGURE_OK
@@ -420,6 +436,14 @@ module RenderGraphNativeTests:
             for attempt in 0..<2:
                 return 2 if Application::pump() != Application::PumpStatus.Running
             return 3 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or RenderGraphRuntime::execution_count() == 0
+            return 219 if RenderGraphBlendTests::configure(INVALID_BLEND_OPACITY) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+            return 230 if RenderGraphBlendTests::configure(TRANSPARENT_BLEND_OPACITY) != SUCCESS
+            return 236 if not RenderGraphBlendTests::native_rejects_bad_opacity()
+            return 231 if Application::pump() != Application::PumpStatus.Running
+            return 232 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() != 0
+            return 233 if RenderGraphBlendTests::configure(HALF_BLEND_OPACITY) != SUCCESS
+            return 234 if Application::pump() != Application::PumpStatus.Running
+            return 235 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             before_suspension: u64 = RenderGraphRuntime::execution_count()
             return 36 if elisa_render_scene_v1_render_graph_test_suspend_next_frame() != SUCCESS
             return 37 if Application::pump() != Application::PumpStatus.Running

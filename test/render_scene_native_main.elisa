@@ -323,7 +323,9 @@ def exercise_render_scene() -> i32:
         break if rendered_geometry != 0
         return 19 if Application::pump() != Application::PumpStatus.Running
         rendered_geometry <- elisa_render_scene_v1_last_frame_center_differs_from_corner()
-    return 20 if rendered_geometry == 0 or RenderSceneQualitySettingsNativeTests::verify_history_transitions() != 0
+    return 20 if rendered_geometry == 0
+    history_status: i32 = RenderSceneQualitySettingsNativeTests::verify_history_transitions()
+    return elisa_render_scene_v1_test_failed_case(281, history_status) if history_status != 0
     render_graph_status: i32 = RenderGraphNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(280, render_graph_status) if render_graph_status != 0
     restore_render_projection: i32 = catch RenderScene::set_camera_orthographic_height(14.0):

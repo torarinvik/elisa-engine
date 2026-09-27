@@ -3,6 +3,7 @@ module RenderSceneQualitySettingsNativeTests:
     private:
         const module Limits:
             SETTLE_FRAME_COUNT: i32 = 3
+            INITIAL_RENDER_SCALE: f32 = 1.0
             QUALITY_PROFILE_HIGH: u32 = 0
             QUALITY_PROFILE_MEDIUM: u32 = 1
             QUALITY_PROFILE_LOW: u32 = 2
@@ -145,7 +146,7 @@ module RenderSceneQualitySettingsNativeTests:
             0
 
         def verify_history_transitions() -> i32:
-            return 120 if elisa_render_scene_v1_test_temporal_history_resources(0.75, 1) != 1
+            return 120 if elisa_render_scene_v1_test_temporal_history_resources(Limits::INITIAL_RENDER_SCALE, 1) != 1
             profile: mutable Quality::Profile = Quality::Profile()
             profile.tonemap <- Quality::Tonemap.Uchimura
             profile.render_scale <- 0.5

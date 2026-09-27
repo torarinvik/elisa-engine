@@ -5,6 +5,10 @@ module RenderGraphRuntime:
         const module Native:
             OK: i32 = 0
             NO_TARGET: u32 = 4294967295
+        const module Limits:
+            MIN_BLEND_OPACITY: f32 = 0.0
+            MAX_BLEND_OPACITY: f32 = 1.0
+            DEFAULT_BLEND_OPACITY: f32 = 1.0
         const INVALID_PLAN: i32 = -100
         const NATIVE_REJECTED: i32 = -101
         @callconv(c)
@@ -16,9 +20,9 @@ module RenderGraphRuntime:
             format: i32, samples: u32, lifetime: i32, initialized: i32,
             target_slot: u32, import_source: i32) -> i32
         @callconv(c)
-        extern elisa_render_scene_v1_render_graph_set_pass(
+        extern elisa_render_scene_v1_render_graph_set_pass_with_opacity(
             index: u32, id: u32, operation: i32, source_id: u32,
-            destination_id: u32) -> i32
+            destination_id: u32, opacity: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_commit() -> i32
         @callconv(c)
@@ -54,6 +58,8 @@ module RenderGraphRuntime:
             5
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
+            return false if operation.opacity != operation.opacity or operation.opacity < Limits::MIN_BLEND_OPACITY or operation.opacity > Limits::MAX_BLEND_OPACITY
+            return false if operation.kind != OperationKind.BlendColor and operation.opacity != Limits::DEFAULT_BLEND_OPACITY
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -108,6 +114,7 @@ module RenderGraphRuntime:
                 return NATIVE_REJECTED
             Native::OK
     public:
+        const FULL_OPACITY: f32 = Limits::DEFAULT_BLEND_OPACITY
         const CONFIGURE_OK: i32 = 0
         const CONFIGURE_INVALID_PLAN: i32 = INVALID_PLAN
         const CONFIGURE_NATIVE_REJECTED: i32 = NATIVE_REJECTED
@@ -126,6 +133,16 @@ module RenderGraphRuntime:
             kind: OperationKind
             source_resource_id: u32
             destination_resource_id: u32
+            opacity: f32
+        def blend_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32, opacity: f32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.BlendColor,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                opacity: opacity,
+            }
         struct Configuration:
             output_resource_id: u32
             operations: PassOperation[RenderGraph::MAX_PASSES]
@@ -183,9 +200,10 @@ module RenderGraphRuntime:
                     return abort_with_status(INVALID_PLAN)
                 if not operation_matches_graph(graph, plan, operation):
                     return abort_with_status(INVALID_PLAN)
-                status <- elisa_render_scene_v1_render_graph_set_pass(
+                status <- elisa_render_scene_v1_render_graph_set_pass_with_opacity(
                     index.u32(), operation.pass_id, native_operation(operation.kind),
-                    operation.source_resource_id, operation.destination_resource_id)
+                    operation.source_resource_id, operation.destination_resource_id,
+                    operation.opacity)
                 status <- check_staging_status(status)
                 return status if status != Native::OK
             status <- elisa_render_scene_v1_render_graph_commit()

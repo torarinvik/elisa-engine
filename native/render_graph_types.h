@@ -10,6 +10,9 @@ constexpr uint32_t MAX_RESOURCES = 64;
 constexpr uint32_t MAX_PASSES = 32;
 constexpr uint32_t MAX_TARGETS = 64;
 constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
+constexpr float MIN_BLEND_OPACITY = 0.0f;
+constexpr float MAX_BLEND_OPACITY = 1.0f;
+constexpr float DEFAULT_BLEND_OPACITY = 1.0f;
 
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
@@ -38,6 +41,7 @@ struct Pass {
     Operation operation = Operation::ClearColor;
     uint32_t source_id = 0;
     uint32_t destination_id = 0;
+    float opacity = DEFAULT_BLEND_OPACITY;
 };
 
 struct Configuration {

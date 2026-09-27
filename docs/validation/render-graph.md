@@ -90,6 +90,21 @@ both primary scene color and linear depth, visualizes depth into a transient
 color target, and then restores scene color as the composed output. A test-only
 GPU readback confirms the depth visualization is spatially nonuniform.
 
+`BlendColor` accepts an Elisa-authored opacity from 0 through 1. The legacy
+native `set_pass` entry point retains full-opacity behavior; the additive
+`set_pass_with_opacity` entry point validates the value again before staging.
+The native application fixture clears an output, blends scene color at zero
+opacity and verifies a black frame, then repeats at half opacity and verifies
+the scene becomes spatially visible. Opacity outside the range is rejected by
+the Elisa adapter before the native graph is staged, and a direct native ABI
+test confirms the executor repeats that check.
+
+The 2026-09-27 SDL3/Metal render-only application run reached and passed the
+full graph fixture after correcting the preceding quality-history expectation.
+The graph checks run in the ordinary Elisa application entry, not a standalone
+native probe. High/Low rendered references also pass after the documented
+macOS 27 High-reference refresh.
+
 Run the focused planner test with:
 
 ```sh

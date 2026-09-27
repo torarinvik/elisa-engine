@@ -85,6 +85,11 @@ public:
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
+        if (!std::isfinite(pass.opacity) || pass.opacity < MIN_BLEND_OPACITY ||
+            pass.opacity > MAX_BLEND_OPACITY ||
+            (pass.operation != Operation::BlendColor && pass.opacity != DEFAULT_BLEND_OPACITY)) {
+            return INVALID_ARGUMENT;
+        }
         for (uint32_t previous = 0; previous < staging_.pass_count; ++previous) {
             if (staging_.pass_set[previous] && previous != index &&
                 staging_.passes[previous].id == pass.id) return INVALID_ARGUMENT;
@@ -284,7 +289,7 @@ public:
                         last_status_ = INVALID_ARGUMENT;
                         return;
                     }
-                    if (!blend_color(*source, *destination, command_list)) {
+                    if (!blend_color(*source, *destination, pass.opacity, command_list)) {
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
