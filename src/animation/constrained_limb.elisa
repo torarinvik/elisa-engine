@@ -25,6 +25,7 @@ module ConstrainedLimb:
             InvalidInput
             InvalidChain
             InvalidConstraints
+            BendConflict
 
         struct Result:
             converged: bool
@@ -98,3 +99,33 @@ module ConstrainedLimb:
                     stalled <- previous-residual <= 0.0000001
             pose <- best
             Result{converged: residual <= tolerance, iterations: iterations, residual: residual, geometric_reach: distance >= span and distance <= a+b, limits_encountered: limited, stalled: stalled}
+
+        # Memory is caller-owned in model space; reset after teleport/space change.
+        # Seed with parallel-transported bend, then apply the constrained solve.
+        # A resolved bend cannot cross to the opposite hemisphere silently: an
+        # incompatible limit/pole result rejects pose and memory atomically.
+        # This is positional continuity, not velocity-preserving inertialization.
+        def solve_stable(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&, upper: usize, lower: usize, end: usize, target: Geometry::Vec3, bend_hint: Geometry::Vec3, memory: mutable Ik::BendMemory&, settings: PoseJointLimits::Constraints&, tolerance: f32, budget: usize) -> Result error[SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError, Pose::PoseError]:
+            raise SolveError.InvalidInput if not Geometry::vec3_is_finite(bend_hint)
+            if memory.initialized:
+                direction_length: f32 = Geometry::vec3_length(memory.direction)
+                bend_length: f32 = Geometry::vec3_length(memory.bend)
+                raise SolveError.InvalidInput if not Geometry::vec3_is_finite(memory.direction) or not Geometry::vec3_is_finite(memory.bend) or direction_length < 0.999 or direction_length > 1.001 or bend_length < 0.999 or bend_length > 1.001 or direction_length-direction_length != 0.0 or bend_length-bend_length != 0.0
+                raise SolveError.InvalidInput if Geometry::vec3_dot(memory.direction,memory.bend) > 0.001 or Geometry::vec3_dot(memory.direction,memory.bend) < -0.001
+            candidate: mutable Pose::Pose = pose
+            next_memory: mutable Ik::BendMemory = memory
+            seeded: bool = try Pose::pose_correct_limb_stable(&candidate,skeleton,upper,lower,end,target,bend_hint,&next_memory)
+            result: Result = try solve(&candidate,skeleton,upper,lower,end,target,settings,tolerance,budget)
+            actual_direction: Geometry::Vec3 = Geometry::vec3_sub(candidate.models[end].position,candidate.models[upper].position)
+            if Geometry::vec3_length(actual_direction) > 0.0001:
+                preferred: Geometry::Vec3 = Ik::stable_bend(&next_memory,actual_direction,bend_hint)
+                axis: Geometry::Vec3 = next_memory.direction
+                offset: Geometry::Vec3 = Geometry::vec3_sub(candidate.models[lower].position,candidate.models[upper].position)
+                projected: Geometry::Vec3 = Geometry::vec3_sub(offset,Geometry::vec3_scale(axis,Geometry::vec3_dot(offset,axis)))
+                if Geometry::vec3_length(projected) > 0.0001:
+                    actual_bend: Geometry::Vec3 = Geometry::vec3_normalize(projected)
+                    raise SolveError.BendConflict if Geometry::vec3_dot(actual_bend,preferred) < -0.001
+                    next_memory.bend <- actual_bend
+            pose <- candidate
+            memory <- next_memory
+            result

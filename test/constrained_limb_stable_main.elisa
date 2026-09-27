@@ -1,0 +1,51 @@
+include "../src/animation/constrained_limb.elisa"
+
+def exercise() -> i32 error[Pose::PoseError,ConstrainedLimb::SolveError,PoseJointLimits::ConstraintError,JointLimits::LimitError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    local: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton,-1,local)
+    local.position <- Geometry::Vec3{x: 1.0,y: 0.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    return 1 if not Pose::skeleton_add(&skeleton,1,local)
+    source: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    settings: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(3)
+    memory: mutable Ik::BendMemory = Ik::bend_memory()
+    for frame in 0..<121 |memory|:
+        pose: mutable Pose::Pose = source
+        t: f32 = frame.f32()/120.0
+        target: Geometry::Vec3 = Geometry::Vec3{x: 1.999-0.1*t,y: 0.02*t,z: 0.0}
+        hint: Geometry::Vec3 = Geometry::Vec3{x: 1.0,y: 0.0000001,z: 0.0} if frame > 30 and frame < 60 else Geometry::Vec3{x: 0.0,y: 1.0 if frame < 90 else -1.0,z: 0.0}
+        result: ConstrainedLimb::Result = try ConstrainedLimb::solve_stable(&pose,skeleton,0,1,2,target,hint,&memory,settings,0.0001,32)
+        return 2 if not result.converged
+        return 3 if pose.models[1].position.y < 0.0 or memory.bend.y < 0.9
+        return 4 if Geometry::vec3_distance(pose.models[2].position,target)>0.0001
+    # A negative hinge forces a conflicting bend: reject without changing state.
+    saved: Ik::BendMemory = memory
+    settings.enabled[1] <- true
+    settings.limits[1] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.785398163,maximum_twist: 1.570796327}
+    blocked: mutable Pose::Pose = source
+    conflict: bool = catch ConstrainedLimb::solve_stable(&blocked,skeleton,0,1,2,Geometry::Vec3{x: 1.5,y: 0.0,z: 0.0},Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0},&memory,settings,0.0001,32):
+        value: false
+        ConstrainedLimb::SolveError.BendConflict: true
+        error failure: false
+    return 5 if not conflict
+    return 6 if Geometry::vec3_distance(blocked.models[1].position,source.models[1].position)>0.0 or Geometry::vec3_distance(memory.bend,saved.bend)>0.0 or Geometry::vec3_distance(memory.direction,saved.direction)>0.0
+    settings.enabled[1] <- false
+    memory.direction <- Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0}
+    invalid: bool = catch ConstrainedLimb::solve_stable(&blocked,skeleton,0,1,2,Geometry::Vec3{x: 1.5,y: 0.0,z: 0.0},Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0},&memory,settings,0.0001,32):
+        value: false
+        error failure: true
+    return 7 if not invalid or Geometry::vec3_distance(blocked.models[2].position,source.models[2].position)>0.0
+    memory <- saved
+    # Failure after the analytic seed still cannot advance caller memory.
+    late_invalid: bool = catch ConstrainedLimb::solve_stable(&blocked,skeleton,0,1,2,Geometry::Vec3{x: 1.5,y: 0.0,z: 0.0},Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0},&memory,settings,0.0001,33):
+        value: false
+        ConstrainedLimb::SolveError.InvalidInput: true
+        error failure: false
+    return 8 if not late_invalid or Geometry::vec3_distance(memory.bend,saved.bend)>0.0 or Geometry::vec3_distance(memory.direction,saved.direction)>0.0 or Geometry::vec3_distance(blocked.models[1].position,source.models[1].position)>0.0
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 20
