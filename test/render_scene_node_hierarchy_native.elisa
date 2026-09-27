@@ -102,7 +102,7 @@ module RenderSceneNodeHierarchyNativeTests:
 
         # An off-axis panel pose turned about all three axes. The quaternion
         # need not be unit length; the render service normalizes it.
-        const module Pose:
+        const module PanelPose:
             X: f32 = 1.5
             Z: f32 = -0.5
             QX: f32 = 0.2
@@ -245,14 +245,14 @@ module RenderSceneNodeHierarchyNativeTests:
             return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK
             staged: i32 = elisa_render_scene_v1_snapshot_stage(handle, 1, PANEL_ROW, PANEL_ROW,
                 Ids::MESHES, HIERARCHY, Ids::SETS, Set::STRIPS,
-                Pose::X, VISIBLE_Y, Pose::Z, Pose::QX, Pose::QY, Pose::QZ, Pose::QW, 12.0, 1.0, 8.0)
+                PanelPose::X, VISIBLE_Y, PanelPose::Z, PanelPose::QX, PanelPose::QY, PanelPose::QZ, PanelPose::QW, 12.0, 1.0, 8.0)
             if staged != NATIVE_OK:
                 _ = elisa_render_scene_v1_snapshot_abort()
                 return false
             return false if elisa_render_scene_v1_snapshot_commit() != NATIVE_OK
             return false if elisa_render_scene_v1_snapshot_result(0) != handle
-            elisa_render_scene_v1_test_snapshot_world_matches(PANEL_ROW, Pose::X, VISIBLE_Y, Pose::Z,
-                Pose::QX, Pose::QY, Pose::QZ, Pose::QW, 12.0, 1.0, 8.0) == 1
+            elisa_render_scene_v1_test_snapshot_world_matches(PANEL_ROW, PanelPose::X, VISIBLE_Y, PanelPose::Z,
+                PanelPose::QX, PanelPose::QY, PanelPose::QZ, PanelPose::QW, 12.0, 1.0, 8.0) == 1
 
         def retire(handle: i64) -> bool:
             return false if elisa_render_scene_v1_snapshot_begin(1) != NATIVE_OK

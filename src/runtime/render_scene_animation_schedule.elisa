@@ -1,0 +1,149 @@
+# Owns the per-frame advancement set for native clip playback. The schedule's
+# private handle buffer lives in RenderScene's module so opaque instance handles
+# never cross the public namespace boundary or allocate during frame updates.
+include "./render_scene.elisa"
+
+extend RenderScene:
+    private:
+        def animation_schedule_slot(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey) -> usize:
+            target: mutable AnimationScheduleKey = key
+            slot: mutable usize = RenderSceneAnimationSchedule::MAX_TRACKED
+            for index in 0..<schedule.count |slot, schedule, target|:
+                slot <- index if schedule.keys[index].value == target.value
+            slot
+
+        def animation_schedule_track(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey, handle: InstanceHandle) -> void:
+            schedule.keys[schedule.count] <- key
+            schedule.handles[schedule.count] <- handle
+            schedule.count <- schedule.count + 1
+
+    public:
+        struct AnimationScheduleKey:
+            value: i64
+
+        struct AnimationSchedule:
+            private:
+                keys: mutable AnimationScheduleKey[RenderSceneAnimationSchedule::MAX_TRACKED]
+                handles: mutable InstanceHandle[RenderSceneAnimationSchedule::MAX_TRACKED]
+                count: mutable usize
+                paused: mutable bool
+
+        struct AnimationUpdateReport:
+            advanced: usize
+
+        def AnimationScheduleKey(value: i64) -> AnimationScheduleKey:
+            AnimationScheduleKey{value: value}
+
+        def AnimationSchedule() -> AnimationSchedule:
+            AnimationSchedule{keys: zeroed, handles: zeroed, count: 0, paused: false}
+
+        def animation_schedule_count(schedule: AnimationSchedule&) -> usize:
+            schedule.count
+
+        def animation_schedule_pause(schedule: mutable AnimationSchedule&, paused: bool) -> void:
+            schedule.paused <- paused
+
+        def animation_schedule_play(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey, handle: InstanceHandle, clip_name: cstr,
+            loop: bool, speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:
+            slot: usize = animation_schedule_slot(schedule, key)
+            raise RenderSceneError.InvalidValue if key.value <= 0 or slot < RenderSceneAnimationSchedule::MAX_TRACKED
+            raise RenderSceneError.Capacity if schedule.count >= RenderSceneAnimationSchedule::MAX_TRACKED
+            try play_animation(handle, clip_name, loop, speed, blend_seconds)
+            animation_schedule_track(schedule, key, handle)
+
+        def animation_schedule_play_blended(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey, handle: InstanceHandle, clip_name: cstr,
+            loop: bool, speed: f32, blend_seconds: f32,
+            transition: AnimationTransition) -> void error[RenderSceneError]:
+            slot: usize = animation_schedule_slot(schedule, key)
+            raise RenderSceneError.InvalidValue if key.value <= 0 or slot < RenderSceneAnimationSchedule::MAX_TRACKED
+            raise RenderSceneError.Capacity if schedule.count >= RenderSceneAnimationSchedule::MAX_TRACKED
+            try play_animation_blended(handle, clip_name, loop, speed, blend_seconds,
+                transition)
+            animation_schedule_track(schedule, key, handle)
+
+        def animation_schedule_stop(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey, blend_seconds: f32) -> void error[RenderSceneError]:
+            slot: usize = animation_schedule_slot(schedule, key)
+            raise RenderSceneError.InvalidValue if slot == RenderSceneAnimationSchedule::MAX_TRACKED
+            try stop_animation(schedule.handles[slot], blend_seconds)
+
+        def animation_schedule_forget(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey) -> bool:
+            index: usize = animation_schedule_slot(schedule, key)
+            return false if index == RenderSceneAnimationSchedule::MAX_TRACKED
+            last: usize = schedule.count - 1
+            schedule.keys[index] <- schedule.keys[last] if index != last
+            schedule.handles[index] <- schedule.handles[last] if index != last
+            schedule.keys[last] <- zeroed
+            schedule.handles[last] <- zeroed
+            schedule.count <- last
+            true
+
+        # A failed backend destroy leaves the entry registered for retry.
+        def animation_schedule_destroy(schedule: mutable AnimationSchedule&,
+            key: AnimationScheduleKey) -> void error[RenderSceneError]:
+            slot: usize = animation_schedule_slot(schedule, key)
+            raise RenderSceneError.InvalidValue if slot == RenderSceneAnimationSchedule::MAX_TRACKED
+            try destroy(schedule.handles[slot])
+            _ = animation_schedule_forget(schedule, key)
+
+        def animation_schedule_advance(schedule: mutable AnimationSchedule&,
+            delta_seconds: f32) -> AnimationUpdateReport error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if delta_seconds != delta_seconds or delta_seconds < 0.0 or delta_seconds > 1.0 or delta_seconds - delta_seconds != 0.0
+            return AnimationUpdateReport{advanced: 0} if schedule.paused or delta_seconds == 0.0
+            delta: mutable f32 = delta_seconds
+            advanced: usize = for index in 0..<schedule.count |advanced: usize = 0, schedule, delta| -> advanced:
+                try advance_animation(schedule.handles[index], delta)
+                advanced <- advanced + 1
+            AnimationUpdateReport{advanced: advanced}
+
+module RenderSceneAnimationSchedule:
+    public:
+        const MAX_TRACKED: usize = RenderScene::MAX_INSTANCES
+
+        def AnimationKey(value: i64) -> RenderScene::AnimationScheduleKey:
+            RenderScene::AnimationScheduleKey(value)
+
+        def Schedule() -> RenderScene::AnimationSchedule:
+            RenderScene::AnimationSchedule()
+
+        def tracked_count(schedule: RenderScene::AnimationSchedule&) -> usize:
+            RenderScene::animation_schedule_count(schedule)
+
+        def set_paused(schedule: mutable RenderScene::AnimationSchedule&, paused: bool) -> void:
+            RenderScene::animation_schedule_pause(schedule, paused)
+
+        def play(schedule: mutable RenderScene::AnimationSchedule&,
+            key: RenderScene::AnimationScheduleKey, handle: RenderScene::InstanceHandle,
+            clip_name: cstr, loop: bool, speed: f32,
+            blend_seconds: f32) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::animation_schedule_play(schedule, key, handle, clip_name,
+                loop, speed, blend_seconds)
+
+        def play_blended(schedule: mutable RenderScene::AnimationSchedule&,
+            key: RenderScene::AnimationScheduleKey, handle: RenderScene::InstanceHandle,
+            clip_name: cstr, loop: bool, speed: f32, blend_seconds: f32,
+            transition: RenderScene::AnimationTransition) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::animation_schedule_play_blended(schedule, key, handle,
+                clip_name, loop, speed, blend_seconds, transition)
+
+        def stop(schedule: mutable RenderScene::AnimationSchedule&,
+            key: RenderScene::AnimationScheduleKey,
+            blend_seconds: f32) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::animation_schedule_stop(schedule, key, blend_seconds)
+
+        def forget(schedule: mutable RenderScene::AnimationSchedule&,
+            key: RenderScene::AnimationScheduleKey) -> bool:
+            RenderScene::animation_schedule_forget(schedule, key)
+
+        def destroy(schedule: mutable RenderScene::AnimationSchedule&,
+            key: RenderScene::AnimationScheduleKey) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::animation_schedule_destroy(schedule, key)
+
+        def advance(schedule: mutable RenderScene::AnimationSchedule&,
+            delta_seconds: f32) -> RenderScene::AnimationUpdateReport error[RenderScene::RenderSceneError]:
+            try RenderScene::animation_schedule_advance(schedule, delta_seconds)

@@ -94,10 +94,29 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
             return 9 if invalid_weight != 1
-            set_bone: i32 = catch RenderScene::set_bone_transform(&pose, 0, shifted):
-                ok: 0
-                error failure: 1
-            return 3 if set_bone != 0
+            skeleton: mutable AnimationAssets::SkeletonAsset = AnimationAssets::SkeletonAsset(
+                AnimationAssets::RigId{value: 7})
+            bind_pose: Geometry::Transform = Geometry::transform_identity()
+            inverse_bind: f32[Geometry::MATRIX_ELEMENTS] = Geometry::transform_to_matrix(bind_pose)
+            skeleton_added: bool = AnimationAssets::skeleton_add_joint(&skeleton,
+                AnimationAssets::JointId{value: 1}, -1, bind_pose, inverse_bind)
+            return 58 if not skeleton_added
+            clip: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(
+                AnimationAssets::ClipId{value: 11}, skeleton.rig_id, 10, 10)
+            first_key: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 0, 0, bind_pose)
+            second_key: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 0, 10, shifted)
+            return 59 if not first_key or not second_key
+            sampled_pose: RenderScene::AnimationPose = catch RenderScene::animation_pose_from_clip(
+                &skeleton, &clip, 10):
+                value: value
+                error failure: return 60
+            invalid_sample_tick: i32 = catch RenderScene::animation_pose_from_clip(
+                &skeleton, &clip, 11):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 61 if invalid_sample_tick != 1
+            pose <- sampled_pose
             second_pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
             second_shifted: Geometry::Transform = Geometry::Transform{
                 position: Geometry::Vec3{x: OTHER_SHIFT_X, y: 0.0, z: 0.0},
@@ -210,25 +229,84 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 37
-            play_morph: i32 = catch RenderScene::play_animation(morph_animation, "weights", true, 1.0, 0.0):
+            animation_schedule: mutable RenderScene::AnimationSchedule =
+                RenderSceneAnimationSchedule::Schedule()
+            animation_key: RenderScene::AnimationScheduleKey =
+                RenderSceneAnimationSchedule::AnimationKey(1)
+            second_animation_key: RenderScene::AnimationScheduleKey =
+                RenderSceneAnimationSchedule::AnimationKey(2)
+            play_morph: i32 = catch RenderSceneAnimationSchedule::play(&animation_schedule,
+                animation_key, morph_animation, "weights", true, 1.0, 0.0):
                 ok: 0
                 error failure: 1
-            return 38 if play_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
+            return 38 if play_morph != 0 or RenderSceneAnimationSchedule::tracked_count(&animation_schedule) != 1 or elisa_render_scene_v1_test_morph_animation_weights(
                 RenderScene::native_smoke_handle(morph_animation), 0.0, 0.2) != 1
-            advance_morph: i32 = catch RenderScene::advance_animation(morph_animation, 0.5):
+            duplicate_key_play: i32 = catch RenderSceneAnimationSchedule::play(
+                &animation_schedule, animation_key, morph_animation, "weights", true, 1.0, 0.0):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 57 if duplicate_key_play != 1 or RenderSceneAnimationSchedule::tracked_count(&animation_schedule) != 1
+            second_morph_animation: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/animated-morph-panel.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.7, green: 0.8, blue: 0.9, alpha: 1.0}):
+                value: value
+                error failure: return 46
+            play_second_morph: i32 = catch RenderSceneAnimationSchedule::play(&animation_schedule,
+                second_animation_key, second_morph_animation, "weights", true, 1.0, 0.0):
                 ok: 0
                 error failure: 1
-            return 39 if advance_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
-                RenderScene::native_smoke_handle(morph_animation), 0.5, 0.2) != 1
-            stop_morph: i32 = catch RenderScene::stop_animation(morph_animation, 0.0):
+            return 47 if play_second_morph != 0 or RenderSceneAnimationSchedule::tracked_count(&animation_schedule) != 2 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(second_morph_animation), 0.0, 0.2) != 1
+            invalid_animation_delta: i32 = catch RenderSceneAnimationSchedule::advance(
+                &animation_schedule, 1.1):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 42 if invalid_animation_delta != 1
+            RenderSceneAnimationSchedule::set_paused(&animation_schedule, true)
+            paused_update: RenderScene::AnimationUpdateReport = catch RenderSceneAnimationSchedule::advance(
+                &animation_schedule, 0.5):
+                value: value
+                error failure: return 48
+            return 49 if paused_update.advanced != 0 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(morph_animation), 0.0, 0.2) != 1 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(second_morph_animation), 0.0, 0.2) != 1
+            RenderSceneAnimationSchedule::set_paused(&animation_schedule, false)
+            animation_update: RenderScene::AnimationUpdateReport = catch RenderSceneAnimationSchedule::advance(
+                &animation_schedule, 0.5):
+                value: value
+                error failure: return 50
+            return 51 if animation_update.advanced != 2 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(morph_animation), 0.5, 0.2) != 1 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(second_morph_animation), 0.5, 0.2) != 1
+            stop_morph: i32 = catch RenderSceneAnimationSchedule::stop(
+                &animation_schedule, animation_key, 0.0):
                 ok: 0
                 error failure: 1
             return 40 if stop_morph != 0 or elisa_render_scene_v1_test_morph_animation_weights(
                 RenderScene::native_smoke_handle(morph_animation), 0.4, 0.2) != 1
-            morph_destroyed: i32 = catch RenderScene::destroy(morph_animation):
+            morph_destroyed: i32 = catch RenderSceneAnimationSchedule::destroy(
+                &animation_schedule, animation_key):
                 ok: 0
                 error failure: 1
-            return 41 if morph_destroyed != 0
+            return 52 if morph_destroyed != 0 or RenderSceneAnimationSchedule::tracked_count(&animation_schedule) != 1
+            remaining_update: RenderScene::AnimationUpdateReport = catch RenderSceneAnimationSchedule::advance(
+                &animation_schedule, 0.25):
+                value: value
+                error failure: return 53
+            return 54 if remaining_update.advanced != 1 or elisa_render_scene_v1_test_morph_animation_weights(
+                RenderScene::native_smoke_handle(second_morph_animation), 0.75, 0.2) != 1
+            stop_second_morph: i32 = catch RenderSceneAnimationSchedule::stop(
+                &animation_schedule, second_animation_key, 0.0):
+                ok: 0
+                error failure: 1
+            return 55 if stop_second_morph != 0
+            second_morph_destroyed: i32 = catch RenderSceneAnimationSchedule::destroy(
+                &animation_schedule, second_animation_key):
+                ok: 0
+                error failure: 1
+            return 56 if second_morph_destroyed != 0 or RenderSceneAnimationSchedule::tracked_count(&animation_schedule) != 0
             0
 
 module RenderSceneImportedSceneNativeTests:
