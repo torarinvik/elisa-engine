@@ -1,6 +1,6 @@
 # Elisa Engine — native implementation backlog
 
-**Updated:** 2026-09-25. **Focus:** reusable Wicked + SDL3 backend services and their library integrations.
+**Updated:** 2026-09-27. **Focus:** reliable, playable, packaged games on Wicked + SDL3.
 **Baseline:** inspect the current tree and linked validation notes before starting work.
 This is the active execution plan. [Architecture](Elisa_Engine_Architecture_and_Plan.md) defines the ownership model; [capabilities](docs/capabilities.md) records evidence.
 Unfinished tasks below are proposals, not claims of existing engine support.
@@ -29,102 +29,74 @@ Deliver a persistent playable host, reusable subsystem services, a practical edi
   installation or renderer feature parity must not block the native development gate.
 - Reuse the selected stack. Do not introduce another renderer, foreign gameplay ECS,
   high-level UI framework, or competing public scheduler to avoid engine work.
-- Box2D, ACL, Steam Audio, FBX import, and richer authoring now have concrete tasks.
-  They are no longer dismissed because the maze demo did not need them. Follow their
-  prerequisites; do not fetch the entire specialist-library roadmap in advance.
+- Specialist integrations remain a backlog until a concrete game requirement or measured
+  bottleneck justifies them. Finish usable paths through the selected stack first.
 
 ## What exists, and what must not be mistaken for completion
 
 The checked world, private owner fields, expression style, affine rejection fixtures, maze gameplay, scene recorder, asset cooking, and implementation-linked proofs exist. Preserve them. The current runtime executor is a **serial reference**, not a thread pool.
-`native/wicked_probe.cpp` is a finite diagnostic host: it uses a canonical manifest, synthetic input, and library probes. It is not a general game runner.
-Jolt currently appears through Wicked's physics path; ozz, Recast/Detour, miniaudio, Tracy, text, and GNS have integration evidence of varying depth, often probe-only.
+The ordinary Elisa Application/RenderScene path, public Jolt physics services (P01–P06),
+miniaudio playback and world attachment, rendered animation, navigation queries, and
+relocated macOS packaging already have implementation evidence below. Extend these paths;
+do not rebuild them from their original probe descriptions. Remaining acceptance varies
+by service: unchecked tasks often contain substantial working implementations.
 A linked library, a policy enum, or one successful scene is not a public runtime service. The existing source inventory is the starting point, not a reason to rewrite working code.
 
 ## Agent execution contract
 
-1. Pick the first highest-priority task with completed prerequisites. Work through one
-   coherent playable or testable slice; do not scaffold every wrapper before using one.
-2. Read the relevant existing modules, ADRs, local library headers, and pinned source.
-   Verify APIs and actual platform support there; this plan does not certify upstream features.
-3. Elisa owns gameplay, world identity, scheduling policy, asset orchestration, animation
-   behavior, navigation decisions, replication, editor models, and the public API.
-   Keep C/C++/Objective-C shims narrow: opaque handles, plain ABI data, vendor operations.
-4. Use last-expression returns, scoped loops with result bindings, and block expressions
-   that contain temporary variables. Use `def Type() -> Type` constructors and named constants.
-   Prefer suitable Elisa standard-library facilities over new engine utilities.
-5. Use qualified module dependencies, small public surfaces, private owner fields, and
-   phase-limited borrows. Keep vendor types out of public Elisa interfaces. Stay below
-   600 lines per source/document file, including this plan; split by responsibility.
-6. Preserve real error unions and failure atomicity. Define resource/thread/allocator
-   ownership, callback lifetime, cancellation, capacity behavior, and destruction order.
-7. A compiler, ElisaScript, or prover limitation blocking this style becomes a minimized
-   regression and a fix in its owning repository. Do not flatten scopes or weaken checks
-   as the permanent workaround; record the required toolchain revision.
-8. Completion requires a public API used by real gameplay/editor code, positive and
-   adversarial tests, native evidence where applicable, and documentation. Mocks validate
-   contracts but cannot establish library or GPU integration. Tests must assert outcomes.
-9. Record performance claims in optimized builds: warm-up policy, hardware, scene size,
-   CPU/GPU time, p50/p95/p99, allocations, and peak memory. Qualifiers and block syntax
-   should add no runtime machinery; verify generated code when that is the claim.
-10. Change `[ ]` to `[x]` only with commit, command, result, artifact path, and limitations
-    recorded in a linked `docs/validation/` note. Update capability labels precisely.
-    Commit coherent changes. Do not mark a subsystem complete from its first smoke test.
-11. If blocked, record the exact cause and a concrete prerequisite task, then continue
-    another ready task. Hardware-unavailable checks remain unverified, never silently green.
-    Product decisions such as the project's license do not block unrelated implementation.
+1. Follow the ordered active queue below, then task prerequisites; subsystem P labels describe eventual importance, not permission to bypass the queue. Work through one coherent playable or testable slice; do not scaffold every wrapper before using one.
+2. Read the relevant existing modules, ADRs, local library headers, and pinned source. Verify APIs and actual platform support there; this plan does not certify upstream features.
+3. Elisa owns gameplay, world identity, scheduling policy, asset orchestration, animation behavior, navigation decisions, replication, editor models, and the public API. Keep C/C++/Objective-C shims narrow: opaque handles, plain ABI data, vendor operations.
+4. Use last-expression returns, scoped loops with result bindings, and block expressions that contain temporary variables. Use `def Type() -> Type` constructors and named constants. Prefer suitable Elisa standard-library facilities over new engine utilities.
+5. Use qualified module dependencies, small public surfaces, private owner fields, and phase-limited borrows. Keep vendor types out of public Elisa interfaces. Stay below 600 lines per source/document file, including this plan; split by responsibility.
+6. Preserve real error unions and failure atomicity. Define resource/thread/allocator ownership, callback lifetime, cancellation, capacity behavior, and destruction order.
+7. A compiler, ElisaScript, or prover limitation blocking this style becomes a minimized regression and a fix in its owning repository. Do not flatten scopes or weaken checks as the permanent workaround; record the required toolchain revision.
+8. Completion requires a public API used by real gameplay/editor code, positive and adversarial tests, native evidence where applicable, and documentation. Mocks validate contracts but cannot establish library or GPU integration. Tests must assert outcomes.
+9. Record performance claims in optimized builds: warm-up policy, hardware, scene size, CPU/GPU time, p50/p95/p99, allocations, and peak memory. Qualifiers and block syntax should add no runtime machinery; verify generated code when that is the claim.
+10. Change `[ ]` to `[x]` only with commit, command, result, artifact path, and limitations recorded in a linked `docs/validation/` note. Update capability labels precisely. Commit coherent changes. Do not mark a subsystem complete from its first smoke test.
+11. If blocked, record the exact cause and a concrete prerequisite task, then continue another ready task. Hardware-unavailable checks remain unverified, never silently green. Product decisions such as the project's license do not block unrelated implementation.
 
-## Delivery milestones
+## Active delivery queue — highest return first
 
-| Milestone | Exit evidence | Main task groups |
+Work on one bounded deliverable at a time. Start with item 1's existing-game baseline,
+then use the second game to expose reusable API gaps. Reuse completed F/A/P work and
+existing samples. Do not restart a checked task or complete every unchecked subsystem
+before producing a playable result. Full task acceptance remains below; a completed
+queue slice does not imply completion of every referenced task.
+
+| Order | Deliverable and next concrete work | Acceptance / stop condition |
 |---|---|---|
-| M0 — reusable host | Visible interactive maze, proper close, resize, restart, reproducible native-only command; existing probes still pass | F01–F10, R01, I01 |
-| M1 — reusable game runtime | Authored scene with multiple assets, streamed resources, PBR, collisions, save/load; no maze-specific host logic | W01–W06, A01–A06, R02–R05, R13, R15, P01–P04, S01–S02 |
-| M2 — character playground | Animated controllable character, terrain/slopes, moving platforms, nav agents, spatial sound, debug overlays | C01–C08, N01–N04, P05–P08, S03–S04, R06–R09 |
-| M3 — author and package | Editor creates/edits/saves a second game; standalone Release package runs outside the source tree | E01–E09, I02–I07, Q01–Q04, Q07 |
-| M4 — scale and network | Measured crowd/streaming scene and two-process multiplayer game; soak tests and native CI evidence | W07–W10, N05–N06, T01–T08, Q05–Q09 |
-| M5 — breadth | Tested opt-in advanced systems, each exercised by a shipped example | Remaining P2/P3 tasks |
+| 1 | **Reproducible game gate — Q01/Q03.** Capture the working compiler, ElisaScript, prover, Wicked/SDL3, SDK and build identities; run the shared gate and a representative native game through the documented entry points. Separate portable CI from GPU workstation checks. | A fresh checkout can provision/build with documented commands; incompatible tools fail clearly. Retain structured failures and artifacts. GPU-unavailable jobs remain explicitly unverified. |
+| 2 | **A second playable public-API client — Q07a.** Reuse current physics, rendering, audio, input and UI in a small exploration/interaction game with movement, an objective, pause, restart and win/fail feedback. Inventory missing calls before adding APIs. | An ordinary Elisa project completes the gameplay loop with no game-specific native exports. A bounded automated run checks state transitions; manual play checks controls and presentation. Use this same client for subsequent work. |
+| 3 | **Package that client — Q02/Q04.** Extend the existing relocated macOS package path to the second game; finish required shader/asset/notice coverage and local failure diagnostics. Limit R13 work to permutations the game actually uses. | Optimized package runs offline with source/Homebrew access denied, including restart and teardown; logs identify build and failing resource. Record clean-machine validation separately. Signing credentials or license decisions do not block local package testing. |
+| 4 | **Durable scenes and lifecycle — W04/W06, relevant W03/W08, Q06a.** Connect the durable scene reader to fresh-world reconstruction and stable asset-ID resource creation. Exercise spawn/despawn and event cleanup in the same game. | Save, quit, load and restart preserve authored overrides and gameplay state. Stale references, malformed saves and failed loads do not publish partial worlds. Repeated cycles show bounded live resources and no sanitizer failures in supported adapters. |
+| 5 | **Usable controls and settings — remaining I01/I02/I03/I06.** Add saved rebinding, missing movement/pointer input, reliable focus/context transitions, readable resize/DPI behavior, and keyboard/controller menu operation as the client requires. | Pause/settings/restart work without stuck actions or leaked gameplay input; invalid settings recover safely. Validate physical controller behavior when hardware exists, and label mapping-only tests accurately. |
+| 6 | **Complete the game's audio path — remaining S01–S03/S05.** Reuse existing clips, buses, voice budgets and WorldAudio. Implement a bounded streamed music path, cancellation and event-triggered sound ownership; add device recovery where the running client exposes a gap. | Music plus impacts/ambience survive pause, scene replacement and shutdown; event sounds fire once, released resources are reusable, and callbacks have no blocking IO/allocation. Measure underruns and memory on the actual workload. |
+| 7 | **Animated characters and one navigation consumer — C01/C02/R08, N01–N03.** Finish cooked clip/nav loading and connect existing playback/path services to an independently moving character. Add only the C03/C04 transition/root-motion behavior needed by the client. | Two instances keep independent playback/route state; an agent navigates an obstacle, handles no-path, unloads and reloads safely. Prove rendered motion and gameplay results; production ozz sampling remains an explicit gap until integrated and measured. |
 
-**F08 is complete for the supported provider set. A04's production asynchronous
-asset path is implemented and validated.** Continue with A05–A07, then the native
-backend sequence below. Do not restart completed identity, field-privacy, render
-extraction, or mesh/material API work. Milestones are outcome gates; individual
-feature tasks may advance as soon as their explicit dependencies are ready.
+**Selection rule:** fix failures in the current deliverable before expanding it. Prefer
+removing a shipping blocker, repeated manual step, ownership defect, or demonstrated
+frame/startup bottleneck over another wrapper, visual effect, or standalone showcase.
+Record a baseline and an expected outcome before performance work; stop when the
+acceptance criterion passes. Do not broaden a slice to the entire subsystem roadmap.
 
-## Current execution queue
+## Deferred work and promotion triggers
 
-Select the first ready item below unless new test evidence changes the order. Each item
-points to the full acceptance criteria in its task entry; keep work vertical and leave
-the public API connected to a real Elisa client. A06’s wider-format and non-Metal checks
-depend on Q08 hardware and do not block native Metal slices using the current API.
+These tasks remain useful, but are outside the active queue unless they unblock an
+acceptance criterion above. Existing implementations and regressions remain maintained.
 
-1. **R05–R07/R13/R15 — continue the core Wicked renderer service.** Connect lights/environment, quality negotiation, packaged shader permutations, and dependent render passes. Exercise resize, suspension, unsupported-feature fallbacks, and visual references in one authored scene; measure cold startup separately from steady-state frames.
-2. **P01–P06 — make Jolt the gameplay physics service.** Elisa owns body and shape
-   identity, fixed-step scheduling, interpolation, filtered queries, contact delivery,
-   and character control. Prove one physics step per committed tick, no render-driven
-   simulation, rollback on creation failure, and a playable obstacle-course sample.
-3. **S01–S03/S05 — finish miniaudio as a game audio service.** Add generation-safe clips,
-   streaming, buses, voice budgets, world attachment, spatial playback, and device-loss
-   recovery. Test exhaustion, cancellation, fallback selection, and ordered shutdown in
-   an ordinary game session.
-4. **C01–C05/N01–N04 — turn ozz and Recast/Detour into gameplay services.** Cook
-   skeleton/clip and multi-tile navigation assets, add bounded generation-checked runtime
-   handles, then connect animation, IK, agent movement, and replanning to Elisa World.
-   Demonstrate both in a controllable character sample with unload/reload coverage.
-5. **I01–I07 — complete SDL3 input and Wicked UI/text services.** Use action maps for
-   keyboard, mouse, and controller input; render interactive Elisa-owned UI; connect
-   FreeType/HarfBuzz font shaping and IME text entry with focus/accessibility behavior.
-   Validate high-DPI resize, device removal, and deterministic input delivery.
-6. **W04/W05, R10/R11, and A10/A11 — scale the same backend vertically.** Stream scene
-   cells and resource generations, preserve references through hot reload, and add
-   visibility/LOD plus terrain/vegetation only with measured scene and memory budgets.
-7. **Q01–Q04/Q07 — prove the engine can ship.** Add representative backend regression
-   scenes, reproducible native CI/toolchain setup, useful crash diagnostics, a Release
-   package that runs outside the checkout, and a second authored game using the public
-   services. Move the editor shell E01–E09 forward after these runtime contracts exist.
+| Backlog | Promote when |
+|---|---|
+| Additional renderer passes/quality modes (R05–R07/R09/R15–R20) | The playable client has a specific visual defect, required missing feature, or measured GPU/startup bottleneck. Preserve current effects rather than adding showcase breadth. |
+| Streaming, terrain, parallelism and scale (W05/W07/W10, A10/A11, R10/R11, C09) | Representative content exceeds a recorded memory/frame/loading budget; start with the measured bottleneck. |
+| Full animation graphs, IK, retargeting and specialist audio (C03–C07, S04) | The game's motion or sound requirements cannot be met by the validated simpler path. |
+| Editor suite, advanced widgets and text authoring (E01–E10, I04/I05/I07–I10) | A repeated authoring workflow or an actual text/localization requirement blocks the game. Basic accessible menus remain active above. |
+| Multiplayer/GNS (T01–T08), additional OS targets (Q08), Godot feature parity | A concrete target game/platform requires them after the native single-player package works. Shared-contract compatibility fixes remain in scope. |
+| Box2D, ACL, vehicles, XR and other specialist integrations (P09–P12, X01–X07) | A named consumer and acceptance workload justify the dependency and maintenance cost. |
 
-Once this P1 native runtime lane is demonstrated in a packaged second game, advance the
-P2 scale/network work and P3 specialists (including Box2D, ACL, Steam Audio, and XR)
-according to their dependencies and measured consumers.
+**Milestones:** first a repeatable existing-game gate; then a packaged second game;
+then durable scene/resource ownership; then character/audio/navigation depth justified
+by that game. Editor and large-scale/network milestones follow demonstrated demand.
 
 ## F — native foundation and lifecycle
 
@@ -575,10 +547,14 @@ according to their dependencies and measured consumers.
   Add bounded structured logs, source/build IDs, symbolized crash artifacts, reproducible launch arguments, and optional explicitly configured Sentry Native integration. Done: a packaged induced failure yields usable local diagnostics; telemetry requires configuration and excludes private project/user content by default.
 - [ ] **Q05 · P2 · Tracy and engine performance budgets** — After: W07, R10, C09.
   Instrument simulation, jobs, IO, uploads, GPU frames, audio, locks, and allocation lifetimes; establish scene/hardware-specific regression budgets. Done: optimized-build traces locate bottlenecks, include cold/warm runs, and distinguish profiling overhead from engine cost.
+- [ ] **Q06a · P1 · Local game lifecycle stress** — After: F05, Q07a.
+  Repeatedly restart, load/unload, pause/resume and resize the second game, with bounded iteration counts and injected resource failures. Done: retain reproduction traces and live resource counts; supported native adapters pass ASan/UBSan, and memory stabilizes after warm-up. This slice does not depend on networking, hot reload or world streaming.
 - [ ] **Q06 · P2 · Soak, stress, and sanitizer coverage** — After: F05, W05, A10, T06.
   Automate repeated load/unload, reload, connect/disconnect, resize, and input stress with fault injection. Done: multi-hour runs have bounded resources and usable reproduction traces; ASan/UBSan and supported thread/GPU validation paths cover real adapters, with unsupported checks disclosed.
   Progress: the project runner and RenderScene native smoke inspect linked Wicked-side archive tags and compile a probe with the selected native linker compiler before cooking or linking. Mismatched compiler/archive libc++ ABIs fail early with an actionable message. On macOS the default compiler is Apple's `/usr/bin/clang++`, matching the standard SDL3 archives even if Homebrew LLVM comes first on `PATH`. A shutdown crash was reproduced with the mixed-toolchain optimized archive and does not reproduce with the consistent SDL3 archive; see [`docs/validation/wicked-abi-consistency.md`](docs/validation/wicked-abi-consistency.md). Progress on 2026-09-26: a fresh Homebrew Clang 23.1.1 optimized build passes the five-archive ABI check, native texture probe, and three-launch shader/archive benchmark after SDK include fixes and preserving null receiver semantics in the Metal translation unit. The ordinary runner now also builds its engine bridges without RTTI, allowing the RTTI-disabled optimized Wicked archive to link. With the repository Stage1 compiler, the maze and finite smoke entry build successfully and all nine staged-maze sandbox checks pass; the older installed compiler snapshot still fails the maze entry without a diagnostic. Apple Clang still crashes compiling two optimized source files; broader teardown stress remains.
-- [ ] **Q07 · P1 · Second authored game and SDK example** — After: E06, P05, C08, S05, Q02.
+- [ ] **Q07a · P1 · Minimal second game through public APIs** — After: F02, R03, P05.
+  Build a small exploration/interaction client from existing services, with a documented project entry point, movement, objective, pause, restart and win/fail feedback. Done: scripted gameplay assertions and manual play demonstrate the loop with gameplay entirely in Elisa; record missing public API calls as bounded follow-ups. Full editor authoring, IK and audio-event assets are not prerequisites. Package this client through Q02 before expanding its scope.
+- [ ] **Q07 · P1 · Full authored game and SDK example** — After: Q07a, E06, P05, C08, S05, Q02.
   Build a small third-person exploration/combat game using public APIs and editor-authored assets rather than maze-specific shims. Done: documented new-project-to-package steps work; any sample-only native gameplay logic is moved into reusable Elisa services or the game's Elisa code.
 - [ ] **Q08 · P2 · Windows and Linux native targets** — After: Q02, Q03, F09.
   Implement/test platform shims, dependency builds, SDL3 windows, shader compilation, and the Wicked graphics path appropriate to each target. Done: the same authored sample passes startup, gameplay, input, rendering, resource teardown, and packaging on actual Windows and Linux environments.
