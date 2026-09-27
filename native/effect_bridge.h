@@ -10,6 +10,7 @@
 namespace probe {
 
 enum class EffectKind : uint8_t { Emitter, Decal };
+enum class EffectCreateStatus : uint8_t { Ok, InvalidValue, Capacity, BackendFailure, GenerationExhausted };
 
 struct EffectHandle {
     uint32_t slot = UINT32_MAX;
@@ -42,13 +43,17 @@ public:
         : scene_(scene), owner_(reinterpret_cast<uintptr_t>(this)) {}
     EffectBridge(const EffectBridge&) = delete;
 
-    EffectHandle create_emitter(const EmitterDesc& desc, const XMFLOAT3& position) {
-        if (!valid(desc)) return {};
+    EffectHandle create_emitter(const EmitterDesc& desc, const XMFLOAT3& position,
+        EffectCreateStatus* status = nullptr) {
+        if (!valid(desc)) return fail(status, EffectCreateStatus::InvalidValue);
         const uint32_t slot = free_slot();
-        if (slot == MAX_EFFECTS) return {};
+        if (slot == MAX_EFFECTS) return fail(status, EffectCreateStatus::Capacity);
         const auto entity = scene_.Entity_CreateEmitter("elisa_effect_emitter", position);
         auto* emitter = scene_.emitters.GetComponent(entity);
-        if (emitter == nullptr) return {};
+        if (emitter == nullptr) {
+            scene_.Entity_Remove(entity);
+            return fail(status, EffectCreateStatus::BackendFailure);
+        }
         emitter->SetMaxParticleCount(desc.max_particles);
         emitter->count = desc.count;
         emitter->life = desc.lifetime;
@@ -57,31 +62,35 @@ public:
         Entry& entry = entries_[slot];
         if (!activate(entry, entity, EffectKind::Emitter)) {
             scene_.Entity_Remove(entity);
-            return {};
+            return fail(status, EffectCreateStatus::GenerationExhausted);
         }
+        if (status != nullptr) *status = EffectCreateStatus::Ok;
         return {slot, entry.generation, owner_, EffectKind::Emitter};
     }
 
-    EffectHandle create_decal(const DecalDesc& desc, const XMFLOAT3& position) {
-        if (!valid(desc)) return {};
+    EffectHandle create_decal(const DecalDesc& desc, const XMFLOAT3& position,
+        EffectCreateStatus* status = nullptr) {
+        if (!valid(desc)) return fail(status, EffectCreateStatus::InvalidValue);
         const uint32_t slot = free_slot();
-        if (slot == MAX_EFFECTS) return {};
+        if (slot == MAX_EFFECTS) return fail(status, EffectCreateStatus::Capacity);
         const auto entity = scene_.Entity_CreateDecal("elisa_effect_decal", "", "");
         auto* decal = scene_.decals.GetComponent(entity);
-        if (decal == nullptr) return {};
+        auto* transform = scene_.transforms.GetComponent(entity);
+        if (decal == nullptr || transform == nullptr) {
+            scene_.Entity_Remove(entity);
+            return fail(status, EffectCreateStatus::BackendFailure);
+        }
         decal->color = desc.color;
         decal->range = desc.range;
         decal->slopeBlendPower = desc.slope_blend;
-        auto* transform = scene_.transforms.GetComponent(entity);
-        if (transform != nullptr) {
-            transform->translation_local = position;
-            transform->UpdateTransform();
-        }
+        transform->translation_local = position;
+        transform->UpdateTransform();
         Entry& entry = entries_[slot];
         if (!activate(entry, entity, EffectKind::Decal)) {
             scene_.Entity_Remove(entity);
-            return {};
+            return fail(status, EffectCreateStatus::GenerationExhausted);
         }
+        if (status != nullptr) *status = EffectCreateStatus::Ok;
         return {slot, entry.generation, owner_, EffectKind::Decal};
     }
 
@@ -145,6 +154,10 @@ private:
             std::isfinite(desc.velocity.x) && std::isfinite(desc.velocity.y) && std::isfinite(desc.velocity.z) &&
             std::abs(desc.velocity.x) <= MAX_VELOCITY && std::abs(desc.velocity.y) <= MAX_VELOCITY &&
             std::abs(desc.velocity.z) <= MAX_VELOCITY;
+    }
+    static EffectHandle fail(EffectCreateStatus* status, EffectCreateStatus failure) {
+        if (status != nullptr) *status = failure;
+        return {};
     }
     static bool valid(const DecalDesc& desc) {
         return std::isfinite(desc.color.x) && std::isfinite(desc.color.y) && std::isfinite(desc.color.z) &&

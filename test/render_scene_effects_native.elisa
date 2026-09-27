@@ -4,6 +4,8 @@ extend RenderScene:
     public:
         def native_smoke_emitter_handle(handle: EmitterHandle) -> i64:
             handle.native_value
+        def native_smoke_emitter_from_handle(handle: i64) -> EmitterHandle:
+            EmitterHandle{native_value: handle}
         def native_smoke_decal_handle(handle: DecalHandle) -> i64:
             handle.native_value
 
@@ -92,6 +94,45 @@ module RenderSceneEffectsNativeTests:
                 error failure: 1
             return 11 if destroyed_emitter != 0
             return 27 if not native_effect_baseline_is_empty()
+
+            pool: mutable i64[RenderSceneEffects::MAX_EFFECTS] = zeroed
+            for index in 0..<RenderSceneEffects::MAX_EFFECTS |pool|:
+                pooled: RenderScene::EmitterHandle = catch RenderScene::create_emitter(
+                    RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
+                    value: value
+                    error failure: return 28
+                pool[index] <- RenderScene::native_smoke_emitter_handle(pooled)
+            capacity_result: i32 = catch RenderScene::create_emitter(
+                RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
+                value: 0
+                RenderScene::RenderSceneError.Capacity: 1
+                error failure: 2
+            return 29 if capacity_result != 1
+            for index in 0..<RenderSceneEffects::MAX_EFFECTS |pool|:
+                _ = catch RenderScene::destroy_emitter(
+                    RenderScene::native_smoke_emitter_from_handle(pool[index])):
+                    ok: 0
+                    error failure: return 30
+            stale_before_reuse: i32 = catch RenderScene::tick_emitter(
+                RenderScene::native_smoke_emitter_from_handle(pool[0]), 0.1):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 31 if stale_before_reuse != 1
+            reused: RenderScene::EmitterHandle = catch RenderScene::create_emitter(
+                RenderScene::Emitter(position, MAX_PARTICLES, COUNT, LIFETIME, SIZE, velocity)):
+                value: value
+                error failure: return 32
+            stale_after_reuse: i32 = catch RenderScene::tick_emitter(
+                RenderScene::native_smoke_emitter_from_handle(pool[0]), 0.1):
+                ok: 0
+                RenderScene::RenderSceneError.UnknownHandle: 1
+                error failure: 2
+            return 33 if stale_after_reuse != 1
+            _ = catch RenderScene::destroy_emitter(reused):
+                ok: 0
+                error failure: return 34
+            return 35 if not native_effect_baseline_is_empty()
 
             world: World::World = catch World::World():
                 value: value

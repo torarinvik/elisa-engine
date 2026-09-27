@@ -38,6 +38,17 @@ int32_t effect_failure(const RenderSceneService& state, const probe::EffectHandl
     return state.effects->entity(handle) == wi::ecs::INVALID_ENTITY
         ? ELISA_RENDER_SCENE_UNKNOWN_HANDLE : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
+
+int32_t effect_create_failure(probe::EffectCreateStatus status) {
+    switch (status) {
+    case probe::EffectCreateStatus::InvalidValue: return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    case probe::EffectCreateStatus::Capacity: return ELISA_RENDER_SCENE_CAPACITY;
+    case probe::EffectCreateStatus::BackendFailure: return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    case probe::EffectCreateStatus::GenerationExhausted: return ELISA_RENDER_SCENE_GENERATION_EXHAUSTED;
+    case probe::EffectCreateStatus::Ok: return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_BACKEND_FAILED;
+}
 }
 
 extern "C" int64_t elisa_render_scene_v1_create_effect_emitter(
@@ -55,9 +66,11 @@ extern "C" int64_t elisa_render_scene_v1_create_effect_emitter(
     desc.lifetime = lifetime;
     desc.size = size;
     desc.velocity = XMFLOAT3(velocity_x, velocity_y, velocity_z);
-    const probe::EffectHandle handle = state.effects->create_emitter(desc, XMFLOAT3(px, py, pz));
+    probe::EffectCreateStatus create_status = probe::EffectCreateStatus::Ok;
+    const probe::EffectHandle handle = state.effects->create_emitter(
+        desc, XMFLOAT3(px, py, pz), &create_status);
     const int64_t encoded = encode_effect_handle(handle);
-    return encoded == 0 ? ELISA_RENDER_SCENE_INVALID_ARGUMENT : encoded;
+    return encoded == 0 ? effect_create_failure(create_status) : encoded;
 }
 
 extern "C" int32_t elisa_render_scene_v1_tick_effect_emitter(int64_t handle_value, float delta_seconds) {
@@ -101,9 +114,11 @@ extern "C" int64_t elisa_render_scene_v1_create_effect_decal(
     desc.color = XMFLOAT4(red, green, blue, alpha);
     desc.range = range;
     desc.slope_blend = slope_blend;
-    const probe::EffectHandle handle = state.effects->create_decal(desc, XMFLOAT3(px, py, pz));
+    probe::EffectCreateStatus create_status = probe::EffectCreateStatus::Ok;
+    const probe::EffectHandle handle = state.effects->create_decal(
+        desc, XMFLOAT3(px, py, pz), &create_status);
     const int64_t encoded = encode_effect_handle(handle);
-    return encoded == 0 ? ELISA_RENDER_SCENE_INVALID_ARGUMENT : encoded;
+    return encoded == 0 ? effect_create_failure(create_status) : encoded;
 }
 
 extern "C" int32_t elisa_render_scene_v1_update_effect_decal(

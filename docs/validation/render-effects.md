@@ -4,7 +4,8 @@
 value descriptors and generation checked scalar handles. Elisa callers never
 receive a Wicked entity or component pointer.
 
-The native adapter owns at most 32 live effects per scene. Emitter creation
+The native adapter owns at most 32 live effects per scene through reusable
+generation-checked slots. Exhaustion returns the typed `Capacity` error. Emitter creation
 validates the particle limit, count, lifetime, size, position, and bounded
 velocity before calling `EmittedParticleSystem::SetMaxParticleCount`. Decal
 creation and updates validate finite colors, positive range, and nonnegative
@@ -42,9 +43,11 @@ and despawn cleanup to the existing bounded service.
 
 The focused event smoke verifies emitter and decal profiles, duplicate IDs,
 phase dispatch and per-owner position capture, the real Wicked emitter and
-decal fields, duplicate processing rejection, and cleanup after both owners
-despawn. It checks native component counts after cleanup and after a full
-RenderScene shutdown/reinitialize cycle. Run it with the SDL3/Metal toolchain:
+decal fields, fills the native effect slots and verifies capacity rejection,
+releases and reuses a slot while rejecting its stale handle, and checks cleanup
+after both owners despawn. It also checks native component counts after cleanup
+and after a full RenderScene shutdown/reinitialize cycle. Run it with the
+SDL3/Metal toolchain:
 
 ```text
 ELISA_RENDER_SCENE_NATIVE_ONLY=1 \
@@ -56,6 +59,6 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 python3 scripts/render_scene_native_smoke.py
 ```
 
-The remaining R09 work is a rendered combat or environmental example, transient
-effect pooling/retrigger policy, and checking heap-memory baselines across
-restarts.
+Native fixed-slot pooling and owner cleanup are covered. The remaining R09 work
+is time-based effect expiry and retrigger policy, a rendered combat or
+environmental example, and checking heap-memory baselines across restarts.
