@@ -1,0 +1,188 @@
+# Recast/Detour navigation meshes for native applications. Game code stages
+# walkable geometry as axis-aligned boxes in world metres (+Y up), bakes it
+# for one agent profile and asks for bounded corridors. The native service
+# (`native/navigation_service_abi.cpp`) owns the Detour mesh; a `Handle` names
+# one published mesh and goes stale when it is unloaded, so a reloaded mesh
+# never answers through an old handle.
+#
+# Opt-in: include this file from the application. `elisa_build_run.py` links
+# the service and Recast/Detour into every native application.
+include "./route.elisa"
+
+module NavMesh:
+    public:
+        error NavMeshError:
+            InvalidArgument
+            Capacity
+            BakeFailed
+            StaleHandle
+            ApiMismatch
+
+        const MAX_BOXES: usize = 64
+        const MAX_MESHES: usize = 8
+
+        struct Profile:
+            radius: f32
+            height: f32
+            # Tallest step the agent walks up without jumping.
+            max_climb: f32
+            max_slope_degrees: f32
+            # Voxel size: smaller is more exact and slower to bake.
+            cell_size: f32
+            cell_height: f32
+
+        struct Handle:
+            slot: u32
+            generation: u32
+
+        struct Snap:
+            found: bool
+            point: Geometry::Vec3
+
+    private:
+        const module Status:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = 1
+            CAPACITY: i32 = 2
+            BAKE_FAILED: i32 = 3
+            STALE_HANDLE: i32 = 4
+            ABI_VERSION: u32 = 1
+
+        const module RouteCode:
+            FOUND: i32 = 0
+            UNREACHABLE: i32 = 1
+            TRUNCATED: i32 = 3
+
+        const module Slot:
+            NONE: u32 = 4294967295
+
+        @callconv(c)
+        extern elisa_navigation_abi_version() -> u32
+
+        @callconv(c)
+        extern elisa_navigation_v1_begin() -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_add_box(center_x: f32, center_y: f32, center_z: f32,
+            half_x: f32, half_y: f32, half_z: f32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_bake(agent_radius: f32, agent_height: f32,
+            max_climb: f32, max_slope_degrees: f32, cell_size: f32, cell_height: f32,
+            slot: mutable u32&, generation: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_live(slot: u32, generation: u32, live: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_unload(slot: u32, generation: u32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_query_path(slot: u32, generation: u32,
+            start_x: f32, start_y: f32, start_z: f32, end_x: f32, end_y: f32, end_z: f32,
+            extent_x: f32, extent_y: f32, extent_z: f32,
+            route: mutable i32&, point_count: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_route_point(index: u32,
+            x: mutable f32&, y: mutable f32&, z: mutable f32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_nearest(slot: u32, generation: u32,
+            x: f32, y: f32, z: f32, extent_x: f32, extent_y: f32, extent_z: f32,
+            route: mutable i32&, nearest_x: mutable f32&, nearest_y: mutable f32&,
+            nearest_z: mutable f32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_live_count() -> u32
+
+        def check_status(status: i32) -> void error[NavMeshError]:
+            raise NavMeshError.InvalidArgument if status == Status::INVALID_ARGUMENT
+            raise NavMeshError.Capacity if status == Status::CAPACITY
+            raise NavMeshError.BakeFailed if status == Status::BAKE_FAILED
+            raise NavMeshError.StaleHandle if status == Status::STALE_HANDLE
+            raise NavMeshError.InvalidArgument if status != Status::OK
+
+        def route_status(code: i32, count: u32) -> NavRoute::Status:
+            if count.usize() > NavRoute::MAX_POINTS or code == RouteCode::TRUNCATED:
+                NavRoute::Status.Truncated
+            elif code == RouteCode::FOUND:
+                NavRoute::Status.Found
+            elif code == RouteCode::UNREACHABLE:
+                NavRoute::Status.Unreachable
+            else:
+                NavRoute::Status.OffMesh
+
+        # Copies the corridor the last query left on this thread.
+        def copy_points(route: mutable NavRoute::Route&, count: u32) -> void:
+            for index in 0..<NavRoute::MAX_POINTS |route|:
+                break if index >= count.usize()
+                x: mutable f32 = 0.0
+                y: mutable f32 = 0.0
+                z: mutable f32 = 0.0
+                if elisa_navigation_v1_route_point(index.u32(), &x, &y, &z) == Status::OK:
+                    _ = NavRoute::push(route, Geometry::Vec3{x: x, y: y, z: z})
+
+    public:
+        # The agent the character course's capsule needs (0.25 m radius,
+        # 1.4 m tall, 0.35 m steps, 45 degree slopes) on a 10 cm grid.
+        def default_profile() -> Profile:
+            Profile{radius: 0.25, height: 1.4, max_climb: 0.35, max_slope_degrees: 45.0,
+                cell_size: 0.1, cell_height: 0.05}
+
+        def empty_handle() -> Handle:
+            Handle{slot: Slot::NONE, generation: 0}
+
+        # Discard staged boxes; published meshes stay live.
+        def begin() -> void error[NavMeshError]:
+            raise NavMeshError.ApiMismatch if elisa_navigation_abi_version() != Status::ABI_VERSION
+            try check_status(elisa_navigation_v1_begin())
+
+        # A solid box: its top is walkable, its sides block. At most MAX_BOXES.
+        def add_box(center: Geometry::Vec3, half_extents: Geometry::Vec3) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_add_box(center.x, center.y, center.z,
+                half_extents.x, half_extents.y, half_extents.z))
+
+        # Bake the staged boxes and publish the mesh. At most MAX_MESHES live.
+        def bake(profile: Profile) -> Handle error[NavMeshError]:
+            slot: mutable u32 = Slot::NONE
+            generation: mutable u32 = 0
+            try check_status(elisa_navigation_v1_bake(profile.radius, profile.height,
+                profile.max_climb, profile.max_slope_degrees, profile.cell_size,
+                profile.cell_height, &slot, &generation))
+            Handle{slot: slot, generation: generation}
+
+        def live(handle: Handle) -> bool:
+            flag: mutable i32 = 0
+            return false if elisa_navigation_v1_live(handle.slot, handle.generation, &flag) != Status::OK
+            flag != 0
+
+        def unload(handle: Handle) -> void error[NavMeshError]:
+            try check_status(elisa_navigation_v1_unload(handle.slot, handle.generation))
+
+        def live_count() -> usize:
+            elisa_navigation_v1_live_count().usize()
+
+        # `extents` is how far off the mesh either endpoint may be. An
+        # unreachable goal or an endpoint off the mesh is a route status, not
+        # an error; a stale handle is an error.
+        def find_route(handle: Handle, start: Geometry::Vec3, goal: Geometry::Vec3,
+            extents: Geometry::Vec3) -> NavRoute::Route error[NavMeshError]:
+            code: mutable i32 = 0
+            count: mutable u32 = 0
+            try check_status(elisa_navigation_v1_query_path(handle.slot, handle.generation,
+                start.x, start.y, start.z, goal.x, goal.y, goal.z,
+                extents.x, extents.y, extents.z, &code, &count))
+            route: mutable NavRoute::Route = NavRoute::Route(route_status(code, count))
+            copy_points(&route, count)
+            route
+
+        def nearest(handle: Handle, position: Geometry::Vec3, extents: Geometry::Vec3) -> Snap error[NavMeshError]:
+            code: mutable i32 = 0
+            x: mutable f32 = 0.0
+            y: mutable f32 = 0.0
+            z: mutable f32 = 0.0
+            try check_status(elisa_navigation_v1_nearest(handle.slot, handle.generation,
+                position.x, position.y, position.z, extents.x, extents.y, extents.z,
+                &code, &x, &y, &z))
+            Snap{found: code == RouteCode::FOUND, point: Geometry::Vec3{x: x, y: y, z: z}}

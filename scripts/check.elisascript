@@ -536,9 +536,9 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    for audio_test in ["audio_spatial", "audio_events"]:
+    for policy_test in ["audio_spatial", "audio_events", "nav_agent"]:
         # A typed local built from an f-string inside this loop traps elisascript --check; keep the paths inline.
-        if run_visible(compiler, ["-emit", "exe", "-o", str(root.joinpath(f"build/{audio_test}-test")), str(root.joinpath(f"test/{audio_test}.elisa"))]) != 0 or run_visible(str(root.joinpath(f"build/{audio_test}-test")), []) != 0:
+        if run_visible(compiler, ["-emit", "exe", "-o", str(root.joinpath(f"build/{policy_test}-test")), str(root.joinpath(f"test/{policy_test}.elisa"))]) != 0 or run_visible(str(root.joinpath(f"build/{policy_test}-test")), []) != 0:
             return 1
     codec_test_binary: sview = str(root.joinpath("build/anim-codec-test"))
     _ =

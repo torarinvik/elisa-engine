@@ -68,7 +68,8 @@
         def interactive_loop(session: mutable RuntimeServices::Session&,
             character: mutable PhysicsRuntime::CharacterHandle,
             avatar: RenderScene::InstanceHandle,
-            instruction: RenderScene::OverlayTextHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError]:
+            instruction: RenderScene::OverlayTextHandle,
+            guide: mutable Guide) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
             running: mutable bool = true
             crouched: mutable bool = false
             state: mutable GameState = GameState()
@@ -91,13 +92,15 @@
             if CourseSounds::start(&sounds, session) != CourseSounds::STARTED:
                 _ = CourseSounds::stop(&sounds)
             sound_tick: mutable u64 = 0
+            guide_agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
+            rigs: Rigs = optional_rigs()
             grounded: mutable bool = true
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -216,8 +219,9 @@
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
                             direction: Geometry::Vec3 = movement_direction(input)
-                            for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds|:
+                            for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds, guide, guide_agent|:
                                 sound_tick <- sound_tick + 1
+                                try patrol_guide(session, guide, guide_agent)
                                 jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
                                 if jump_queued and jump_sounds:
                                     _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, sound_tick)
@@ -241,6 +245,8 @@
                                 _ = try refresh_status(instruction, state, crouched)
                             _ = try update_avatar(avatar, pose, crouched)
                             _ = try update_camera(pose)
+                            _ = try show_guide(session, guide)
+                            _ = try advance_rigs(rigs, elapsed_delta.f32() / 1000000.0)
                         else:
                             previous_elapsed_nanos <- frame.elapsed_nanos
                     # Resize applies on every running frame, whatever input arrived.
@@ -248,4 +254,5 @@
                         _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
                         resize_serial <- frame.resize_serial
             _ = CourseSounds::stop(&sounds)
+            try NavMesh::unload(guide.mesh)
             0

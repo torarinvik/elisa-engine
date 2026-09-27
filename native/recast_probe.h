@@ -29,7 +29,8 @@ inline bool probe_recast_navigation() {
     const auto vertex_index = [cells](int x, int z) { return z * (cells + 1) + x; };
     for (int z = 0; z < cells; ++z) {
         for (int x = 0; x < cells; ++x) {
-            if (z == cells / 2 && x != cells / 2) continue;
+            // A three-cell gap: one cell erodes shut under the agent radius.
+            if (z == cells / 2 && (x < cells / 2 - 1 || x > cells / 2 + 1)) continue;
             const int a = vertex_index(x, z);
             const int b = vertex_index(x + 1, z);
             const int c = vertex_index(x + 1, z + 1);
@@ -62,7 +63,7 @@ inline bool probe_recast_navigation() {
     probe::nav::PathResult path;
     const auto status = artifact.query_path(start, end, extents, path);
     if (!check(status == probe::nav::QueryStatus::Success && path.polygon_count > 1 &&
-        path.point_count > 1, "detour finds a path around the wall")) {
+        path.point_count > 1 && path.reaches_goal, "detour finds a path around the wall")) {
         return false;
     }
     const int successful_polys = path.polygon_count;

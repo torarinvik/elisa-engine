@@ -71,6 +71,9 @@ struct PathResult {
     int polygon_count = 0;
     std::array<float, MAX_STRAIGHT_POINTS * 3> points{};
     int point_count = 0;
+    // False when Detour could only route toward the reachable polygon nearest
+    // the goal; the status is then Partial rather than Success.
+    bool reaches_goal = false;
 };
 
 struct NearestResult {
@@ -198,6 +201,8 @@ public:
         }
         result.polygon_count = std::min(count, MAX_PATH_POLYS);
         const bool truncated = count > MAX_PATH_POLYS;
+        result.reaches_goal = !dtStatusDetail(status, DT_PARTIAL_RESULT) &&
+            result.polygons[result.polygon_count - 1] == end_ref;
         int straight_count = 0;
         const dtStatus straight_status = query_->findStraightPath(start_point, end_point,
             result.polygons.data(), result.polygon_count, result.points.data(), nullptr,
@@ -207,7 +212,7 @@ public:
             return result.status;
         }
         result.point_count = std::min(straight_count, MAX_STRAIGHT_POINTS);
-        result.status = truncated || straight_count > MAX_STRAIGHT_POINTS
+        result.status = truncated || straight_count > MAX_STRAIGHT_POINTS || !result.reaches_goal
             ? QueryStatus::Partial : QueryStatus::Success;
         return result.status;
     }
@@ -432,6 +437,18 @@ public:
         if (!live(handle)) return false;
         tiles_[handle.slot].artifact.reset();
         return true;
+    }
+
+    NearestResult nearest_point(TileHandle handle, const float position[3],
+        const float extents[3], uint16_t include_flags = 0xffff) const {
+        if (!live(handle)) return NearestResult{};
+        return tiles_[handle.slot].artifact->nearest_point(position, extents, include_flags);
+    }
+
+    uint32_t live_count() const {
+        uint32_t count = 0;
+        for (const Tile& tile : tiles_) count += tile.artifact != nullptr ? 1 : 0;
+        return count;
     }
 
     QueryStatus query_path(TileHandle handle, const float start[3], const float end[3],

@@ -1,0 +1,127 @@
+# Corridor following for one navigation agent. The agent only decides a
+# desired horizontal direction each tick; the caller's character controller
+# moves the body and owns its transform, and the caller asks `NavMesh` for a
+# new route when the agent reports `Stuck`.
+include "./route.elisa"
+
+module NavAgent:
+    public:
+        enum State:
+            # No route assigned yet.
+            Idle
+            Moving
+            # Reached the goal.
+            Arrived
+            # Reached the closest reachable point; the goal itself is cut off.
+            Stranded
+            # The query found no corridor at all.
+            Blocked
+            # No progress toward the waypoint for too long, or a truncated
+            # route ran out: request a new route from the current position.
+            Stuck
+
+        struct Tuning:
+            # Horizontal distance at which a waypoint counts as reached.
+            arrive_radius: f32
+            # The agent must close at least `min_progress` metres on its
+            # waypoint within every `stuck_ticks` ticks, or it reports `Stuck`.
+            min_progress: f32
+            stuck_ticks: u32
+
+        struct Steering:
+            state: State
+            # Unit horizontal direction toward the waypoint; zero unless Moving.
+            direction: Geometry::Vec3
+            # Horizontal distance to the waypoint being approached.
+            remaining: f32
+
+        struct Agent:
+            tuning: Tuning
+            route: mutable NavRoute::Route
+            next: mutable usize
+            state: mutable State
+            best: mutable f32
+            idle_ticks: mutable u32
+
+        def default_tuning() -> Tuning:
+            Tuning{arrive_radius: 0.3, min_progress: 0.25, stuck_ticks: 45}
+
+        def Agent(tuning: Tuning) -> Agent:
+            Agent{
+                tuning: tuning,
+                route: NavRoute::Route(NavRoute::Status.OffMesh),
+                next: 0,
+                state: State.Idle,
+                best: Limits::FAR,
+                idle_ticks: 0,
+            }
+
+        # Follow a new route from its start. Point 0 is where the query
+        # started, so the agent heads for point 1.
+        def assign(agent: mutable Agent&, route: NavRoute::Route) -> State:
+            agent.route <- route
+            agent.next <- 1
+            agent.best <- Limits::FAR
+            agent.idle_ticks <- 0
+            blocked: bool = route.status == NavRoute::Status.OffMesh or route.count == 0
+            agent.state <- State.Blocked if blocked else State.Moving
+            agent.state
+
+        def state(agent: Agent&) -> State:
+            agent.state
+
+        def next_index(agent: Agent&) -> usize:
+            agent.next
+
+        def waypoint(agent: Agent&) -> Geometry::Vec3:
+            NavRoute::point(&agent.route, agent.next)
+
+        def steer(agent: mutable Agent&, position: Geometry::Vec3) -> Steering:
+            return still(agent.state) if agent.state != State.Moving
+            reached: usize = first_unreached(agent, position)
+            if reached != agent.next:
+                agent.next <- reached
+                agent.best <- Limits::FAR
+                agent.idle_ticks <- 0
+            if agent.next >= agent.route.count:
+                agent.state <- finished_state(agent.route.status)
+                return still(agent.state)
+            distance: f32 = NavRoute::horizontal_distance(position, agent.route.points[agent.next])
+            # `best` is the distance when the current progress window opened.
+            if distance < agent.best - agent.tuning.min_progress:
+                agent.best <- distance
+                agent.idle_ticks <- 0
+            else:
+                agent.idle_ticks <- agent.idle_ticks + 1
+            if agent.idle_ticks >= agent.tuning.stuck_ticks:
+                agent.state <- State.Stuck
+                return still(agent.state)
+            target: Geometry::Vec3 = agent.route.points[agent.next]
+            direction: Geometry::Vec3 = Geometry::Vec3{
+                x: (target.x - position.x) / distance,
+                y: 0.0,
+                z: (target.z - position.z) / distance,
+            }
+            Steering{state: State.Moving, direction: direction, remaining: distance}
+
+    private:
+        const module Limits:
+            FAR: f32 = 1000000000.0
+
+        def still(state: State) -> Steering:
+            Steering{state: state, direction: Geometry::vec3_zero(), remaining: 0.0}
+
+        def finished_state(status: NavRoute::Status) -> State:
+            if status == NavRoute::Status.Found:
+                State.Arrived
+            elif status == NavRoute::Status.Unreachable:
+                State.Stranded
+            else:
+                State.Stuck
+
+        # Skip every waypoint already within the arrival radius.
+        def first_unreached(agent: Agent&, position: Geometry::Vec3) -> usize:
+            for step in 0..<NavRoute::MAX_POINTS |cursor: usize = agent.next| -> cursor:
+                break if cursor >= agent.route.count
+                break if NavRoute::horizontal_distance(position, agent.route.points[cursor]) > agent.tuning.arrive_radius
+                cursor <- cursor + 1

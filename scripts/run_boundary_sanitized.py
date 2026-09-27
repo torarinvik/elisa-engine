@@ -8,7 +8,8 @@ FreeType/HarfBuzz shaping) without a renderer, so AddressSanitizer and
 UndefinedBehaviorSanitizer can run on that boundary anywhere. It then runs the
 asset worker harness, the thread behind asynchronous snapshot asset requests,
 under ThreadSanitizer, and the streamed-audio harness under both, where a
-live null device drains the music ring while the main thread refills it. A
+live null device drains the music ring while the main thread refills it, and
+the application navigation ABI under AddressSanitizer and UBSan. A
 nonzero exit status is a sanitizer finding or a failing check.
 
 Requires `python3 scripts/fetch_ozz.py` and `python3 scripts/fetch_recast.py`,
@@ -82,6 +83,30 @@ def run_stream_harness(sanitizer: str) -> int:
     return run_result.returncode
 
 
+def run_navigation_service(recast: Path, recast_libs: list[Path]) -> int:
+    output = ENGINE_ROOT / "build/navigation-service-asan"
+    arguments = [
+        "c++", "-std=c++17", "-O1", "-g",
+        "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
+        "-I", str(recast / "Recast/Include"), "-I", str(recast / "Detour/Include"),
+        str(ENGINE_ROOT / "native/navigation_service_abi.cpp"),
+        str(ENGINE_ROOT / "test/navigation_service_test.cpp"),
+        *(str(lib) for lib in recast_libs),
+        "-o", str(output),
+    ]
+    compile_result = subprocess.run(arguments, capture_output=True, text=True, check=False)
+    if compile_result.returncode != 0:
+        sys.stderr.write(compile_result.stderr)
+        return compile_result.returncode
+    environment = dict(os.environ)
+    environment["ASAN_OPTIONS"] = "detect_leaks=0:abort_on_error=1"
+    environment["UBSAN_OPTIONS"] = "halt_on_error=1"
+    run_result = subprocess.run([str(output)], capture_output=True, text=True, check=False, env=environment)
+    sys.stdout.write(run_result.stdout)
+    sys.stderr.write(run_result.stderr)
+    return run_result.returncode
+
+
 def main() -> int:
     brew_include = Path(os.environ.get("HOMEBREW_INCLUDE_DIR", "/opt/homebrew/include"))
     brew_library = Path(os.environ.get("HOMEBREW_LIBRARY_DIR", "/opt/homebrew/lib"))
@@ -132,6 +157,9 @@ def main() -> int:
     if run_result.returncode != 0:
         return run_result.returncode
     print("sanitized boundary harness passed: no AddressSanitizer or UBSan finding")
+    status = run_navigation_service(recast, recast_libs)
+    if status != 0:
+        return status
     for sanitizer in ("address,undefined", "thread"):
         status = run_stream_harness(sanitizer)
         if status != 0:
