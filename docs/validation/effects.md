@@ -9,4 +9,6 @@ which keeps owner/lifetime policy outside the vendor API.
 
 Evidence: the SDL3/Wicked gate creates, updates, ticks, and destroys one emitter
 and one decal, rejects a foreign handle, and verifies component-count baselines.
-Elisa event spawning and rendered combat effects remain open R09 work.
+Authored profile selection from dispatched world events is covered in
+[`render-effects.md`](render-effects.md); rendered combat effects, transient
+pooling/retrigger policy, and restart baselines remain open R09 work.

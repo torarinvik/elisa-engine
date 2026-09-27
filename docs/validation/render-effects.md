@@ -32,5 +32,29 @@ cleanup returns the binding count to zero. Handle pools and native values stay
 behind their owning modules; callers only hold the checked public descriptor
 and handle types.
 
-The remaining R09 work is authored event spawning and a rendered combat or
-environmental example that exercises restart and pooled resource baselines.
+`WorldEffectAssets::Catalog` stores up to 32 validated authored emitter/decal
+profiles under positive IDs. A dispatched `Spawn` event uses its payload as the
+profile ID. `WorldEvents::emit_world` snapshots the entity position into the
+event, so effect creation does not need to borrow the World while consuming a
+queue phase. `WorldEffects::spawn_dispatched_events` attaches the native handle
+to the event owner, applies emitter time scale, and leaves transform following
+and despawn cleanup to the existing bounded service.
+
+The focused event smoke verifies emitter and decal profiles, duplicate IDs,
+phase dispatch and per-owner position capture, the real Wicked emitter and
+decal fields, duplicate processing rejection, and cleanup after both owners
+despawn. Run it with the SDL3/Metal toolchain:
+
+```text
+ELISA_RENDER_SCENE_NATIVE_ONLY=1 \
+ELISA_RENDER_SCENE_NATIVE_MAIN=test/render_scene_effect_events_native_main.elisa \
+ELISA_COMPILER_BIN=../Elisa-compiler/bin/elisac-stage1 \
+WICKED_ROOT=../amazing-labyrinth-wickedengine \
+WICKED_BUILD=../amazing-labyrinth-wickedengine/build-elisa-sdl3 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/render_scene_native_smoke.py
+```
+
+The remaining R09 work is a rendered combat or environmental example, transient
+effect pooling/retrigger policy, and restart checks that return native counts
+and memory to baseline.

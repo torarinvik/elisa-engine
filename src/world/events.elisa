@@ -2,6 +2,7 @@
 # free: native or gameplay code drains a phase explicitly, so reentrant
 # delivery cannot mutate the world while a phase borrow is active.
 include "./world.elisa"
+include "../math/geometry.elisa"
 
 module WorldEvents:
     private:
@@ -59,6 +60,8 @@ module WorldEvents:
             kind: EventKind
             listener_id: i64
             entity: World::EntityRef
+            # `emit_world` snapshots this position so consumers need not reborrow World.
+            position: mutable Geometry::Vec3
             payload: i64
             delivered: mutable bool
 
@@ -124,7 +127,9 @@ module WorldEvents:
                 queue.event_count <- queue.event_count + 1
 
             def emit_world(queue: mutable Queue&, world: World::World&, event: Event) -> void error[EventError]:
-                raise EventError.InvalidEntity if not World::world_is_live(world, event.entity)
+                pose: mutable Geometry::Transform = Geometry::transform_identity()
+                raise EventError.InvalidEntity if not World::world_try_transform(world, event.entity, &pose)
+                event.position <- pose.position
                 try emit(queue, event)
 
             def dispatch(queue: mutable Queue&, phase: Phase) -> usize error[EventError]:
@@ -146,7 +151,7 @@ module WorldEvents:
                 seen: mutable usize = 0
                 selected: mutable Event = Event{phase: phase, kind: EventKind.Spawn,
                     listener_id: 0, entity: World::EntityRef{world_epoch: 0, id: 0},
-                    payload: 0, delivered: false}
+                    position: Geometry::vec3_zero(), payload: 0, delivered: false}
                 for index in 0..<queue.event_count |found, seen, selected, queue|:
                     event: Event = queue.events[index]
                     if event.phase == phase and event.delivered:

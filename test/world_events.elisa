@@ -14,7 +14,7 @@ def main() -> i32:
     _ = catch WorldEvents::subscribe(&queue, 7, WorldEvents::Phase.Simulation):
         ok: 0
         error failure: return 3
-    _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity: entity, payload: 3, delivered: false}):
+    _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity: entity, position: Geometry::vec3_zero(), payload: 3, delivered: false}):
         ok: 0
         error failure: return 4
     rebegin: i32 = catch WorldEvents::begin_frame(&queue):
@@ -44,17 +44,17 @@ def main() -> i32:
     _ = catch World::world_despawn(&world, entity):
         ok: true
         error failure: return 11
-    stale_world: i32 = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Physics, kind: WorldEvents::EventKind.Damage, listener_id: 0, entity: entity, payload: 4, delivered: false}):
+    stale_world: i32 = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Physics, kind: WorldEvents::EventKind.Damage, listener_id: 0, entity: entity, position: Geometry::vec3_zero(), payload: 4, delivered: false}):
         ok: 0
         WorldEvents::EventError.InvalidEntity: 1
         error failure: 2
     return 12 if stale_world != 1
-    wrong_epoch: i32 = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Physics, kind: WorldEvents::EventKind.Damage, listener_id: 0, entity: World::EntityRef{world_epoch: entity.world_epoch + 1, id: entity.id}, payload: 5, delivered: false}):
+    wrong_epoch: i32 = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{phase: WorldEvents::Phase.Physics, kind: WorldEvents::EventKind.Damage, listener_id: 0, entity: World::EntityRef{world_epoch: entity.world_epoch + 1, id: entity.id}, position: Geometry::vec3_zero(), payload: 5, delivered: false}):
         ok: 0
         WorldEvents::EventError.InvalidEntity: 1
         error failure: 2
     return 13 if wrong_epoch != 1
-    rejected: i32 = catch WorldEvents::emit(&queue, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity: entity, payload: 4, delivered: false}):
+    rejected: i32 = catch WorldEvents::emit(&queue, WorldEvents::Event{phase: WorldEvents::Phase.Simulation, kind: WorldEvents::EventKind.Damage, listener_id: 7, entity: entity, position: Geometry::vec3_zero(), payload: 4, delivered: false}):
         ok: 0
         WorldEvents::EventError.InvalidPhase: 1
         error failure: 2
@@ -76,6 +76,7 @@ def main() -> i32:
         kind: WorldEvents::EventKind.Despawn,
         listener_id: 7,
         entity: scheduled_entity,
+        position: Geometry::vec3_zero(),
         payload: 0,
         delivered: false,
     }):

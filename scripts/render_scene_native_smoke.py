@@ -90,7 +90,8 @@ def main() -> int:
     build.mkdir(exist_ok=True)
     controls_only = os.environ.get("ELISA_RENDER_SCENE_CONTROLS_ONLY") == "1"
     debug_only = os.environ.get("ELISA_RENDER_SCENE_DEBUG_ONLY") == "1"
-    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only or debug_only
+    native_only = os.environ.get("ELISA_RENDER_SCENE_NATIVE_ONLY") == "1"
+    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only or debug_only or native_only
     profile_cost_only = os.environ.get("ELISA_RENDER_SCENE_PROFILE_COST_ONLY") == "1"
     if profile_cost_only and not render_only:
         print("profile-cost-only mode requires ELISA_RENDER_SCENE_RENDER_ONLY=1", file=sys.stderr)
@@ -454,6 +455,9 @@ def main() -> int:
                     dependency_link.unlink(missing_ok=True)
     if status == 0 and os.environ.get("ELISA_RENDER_SCENE_SELECTION_ONLY") == "1":
         print("World-selection overlay visibility, identity composition, and cleanup passed on SDL3/Metal.")
+        return 0
+    if status == 0 and native_only:
+        print("Native SDL3/Metal runtime checks passed.")
         return 0
     if status == 0 and debug_only:
         try:

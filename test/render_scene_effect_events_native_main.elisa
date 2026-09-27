@@ -1,0 +1,24 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_effects.elisa"
+include "./render_scene_effects_native.elisa"
+
+def main() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa Effect Event Smoke",
+        width: 320,
+        height: 200,
+        hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    event_status: i32 = WorldEffectEventNativeTests::exercise()
+    scene_shutdown: i32 = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 3
+    application_shutdown: bool = Application::shutdown()
+    return 4 if scene_shutdown != 0 or not application_shutdown
+    event_status

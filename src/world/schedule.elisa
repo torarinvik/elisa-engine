@@ -138,6 +138,7 @@ module WorldSchedule:
                     kind: WorldEvents::EventKind.Spawn,
                     listener_id: 0,
                     entity: World::EntityRef{world_epoch: 0, id: 0},
+                    position: Geometry::vec3_zero(),
                     payload: 0,
                     delivered: false,
                 }

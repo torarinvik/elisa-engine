@@ -1,0 +1,110 @@
+# Fixed-capacity, validated effect definitions selected by typed world-event
+# payload ids. Definitions contain only render descriptors; live handles remain
+# owned by WorldEffects.
+include "./render_scene_effects.elisa"
+include "../math/geometry.elisa"
+
+module WorldEffectAssets:
+    private:
+        const module Limits:
+            MAX_PROFILES: usize = 32
+            MAX_TIME_SCALE: f32 = 8.0
+
+        def finite(value: f32) -> bool:
+            value - value == 0.0
+
+        def time_scale_valid(value: f32) -> bool:
+            finite(value) and value >= 0.0 and value <= Limits::MAX_TIME_SCALE
+
+        def emitter_valid(effect: RenderScene::Emitter) -> bool:
+            return false if effect.max_particles == 0 or effect.max_particles > RenderSceneEffects::MAX_PARTICLES
+            return false if not finite(effect.count) or effect.count < 0.0 or effect.count > effect.max_particles.f32()
+            return false if not finite(effect.lifetime) or effect.lifetime <= 0.0
+            return false if not finite(effect.size) or effect.size <= 0.0
+            return false if not Geometry::vec3_is_finite(effect.velocity)
+            return false if effect.velocity.x < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.x > RenderSceneEffects::MAX_VELOCITY
+            return false if effect.velocity.y < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.y > RenderSceneEffects::MAX_VELOCITY
+            return false if effect.velocity.z < -RenderSceneEffects::MAX_VELOCITY or effect.velocity.z > RenderSceneEffects::MAX_VELOCITY
+            true
+
+        def decal_valid(effect: RenderScene::Decal) -> bool:
+            return false if not finite(effect.color.red) or not finite(effect.color.green) or not finite(effect.color.blue) or not finite(effect.color.alpha)
+            return false if effect.color.red < 0.0 or effect.color.red > 1.0 or effect.color.green < 0.0 or effect.color.green > 1.0
+            return false if effect.color.blue < 0.0 or effect.color.blue > 1.0 or effect.color.alpha < 0.0 or effect.color.alpha > 1.0
+            return false if not finite(effect.range) or effect.range <= 0.0
+            return false if not finite(effect.slope_blend) or effect.slope_blend < 0.0
+            true
+
+        def profile_index(catalog: Catalog&, id: i64) -> usize:
+            found: mutable usize = Limits::MAX_PROFILES
+            for index in 0..<catalog.count:
+                found <- index if catalog.profiles[index].id == id
+            found
+
+    public:
+        const MAX_PROFILES: usize = Limits::MAX_PROFILES
+
+        enum DefinitionKind:
+            Emitter
+            Decal
+
+        error CatalogError:
+            InvalidId
+            DuplicateId
+            Capacity
+            InvalidDefinition
+            NotFound
+
+        struct EffectDefinition:
+            id: i64
+            kind: DefinitionKind
+            emitter: RenderScene::Emitter
+            decal: RenderScene::Decal
+            time_scale: f32
+
+        affine struct Catalog:
+            private:
+                profiles: mutable EffectDefinition[Limits::MAX_PROFILES]
+                count: mutable usize
+
+        def emitter_definition(id: i64, descriptor: RenderScene::Emitter,
+            time_scale: f32) -> EffectDefinition:
+            EffectDefinition{
+                id: id,
+                kind: DefinitionKind.Emitter,
+                emitter: descriptor,
+                decal: zeroed,
+                time_scale: time_scale,
+            }
+
+        def decal_definition(id: i64, descriptor: RenderScene::Decal,
+            time_scale: f32) -> EffectDefinition:
+            EffectDefinition{
+                id: id,
+                kind: DefinitionKind.Decal,
+                emitter: zeroed,
+                decal: descriptor,
+                time_scale: time_scale,
+            }
+
+        def Catalog() -> Catalog:
+            Catalog{profiles: zeroed, count: 0}
+
+        def profile_count(catalog: Catalog&) -> usize:
+            catalog.count
+
+        def register(catalog: mutable Catalog&,
+            profile: EffectDefinition) -> void error[CatalogError]:
+            raise CatalogError.InvalidId if profile.id <= 0
+            raise CatalogError.DuplicateId if profile_index(catalog, profile.id) < Limits::MAX_PROFILES
+            raise CatalogError.Capacity if catalog.count >= Limits::MAX_PROFILES
+            raise CatalogError.InvalidDefinition if not time_scale_valid(profile.time_scale)
+            raise CatalogError.InvalidDefinition if profile.kind == DefinitionKind.Emitter and not emitter_valid(profile.emitter)
+            raise CatalogError.InvalidDefinition if profile.kind == DefinitionKind.Decal and not decal_valid(profile.decal)
+            catalog.profiles[catalog.count] <- profile
+            catalog.count <- catalog.count + 1
+
+        def get(catalog: Catalog&, id: i64) -> EffectDefinition error[CatalogError]:
+            index: usize = profile_index(catalog, id)
+            raise CatalogError.NotFound if index >= Limits::MAX_PROFILES
+            catalog.profiles[index]

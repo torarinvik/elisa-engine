@@ -141,4 +141,198 @@ module RenderSceneEffectsNativeTests:
                 value: value
                 error failure: return 25
             return 26 if despawn_report.detached_despawned != 1 or WorldEffects::binding_count(&effects) != 0
+
+            0
+
+module WorldEffectEventNativeTests:
+    private:
+        const LISTENER_ID: i64 = 73
+        const PROFILE_ID: i64 = 91
+        const DECAL_PROFILE_ID: i64 = 92
+        const PROFILE_PARTICLES: u32 = 48
+        const PROFILE_COUNT: f32 = 9.0
+        const PROFILE_LIFETIME: f32 = 2.0
+        const PROFILE_SIZE: f32 = 0.6
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_emitter(handle: i64,
+            max_particles: u32, count: f32, lifetime: f32, size: f32,
+            velocity_x: f32, velocity_y: f32, velocity_z: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_decal(handle: i64,
+            red: f32, green: f32, blue: f32, alpha: f32,
+            range: f32, slope_blend: f32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_position(handle: i64,
+            px: f32, py: f32, pz: f32) -> i32
+
+    public:
+        def exercise() -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 1
+            entity: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: return 2
+            _ = catch World::world_set_transform(&world, entity, Geometry::Transform{
+                position: Geometry::Vec3{x: 8.0, y: 2.0, z: -4.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }):
+                ok: 0
+                error failure: return 3
+            decal_entity: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+                value: value
+                error failure: return 42
+            decal_position: Geometry::Vec3 = Geometry::Vec3{x: -3.0, y: 1.0, z: 5.0}
+            _ = catch World::world_set_transform(&world, decal_entity, Geometry::Transform{
+                position: decal_position,
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }):
+                ok: 0
+                error failure: return 43
+            velocity: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 4.0, z: 1.0}
+            decal_color: RenderScene::Color = RenderScene::Color{
+                red: 0.3, green: 0.6, blue: 0.9, alpha: 0.7,
+            }
+            catalog: mutable WorldEffectAssets::Catalog = WorldEffectAssets::Catalog()
+            authored_emitter: WorldEffectAssets::EffectDefinition = WorldEffectAssets::emitter_definition(
+                PROFILE_ID, RenderScene::Emitter(Geometry::vec3_zero(), PROFILE_PARTICLES,
+                    PROFILE_COUNT, PROFILE_LIFETIME, PROFILE_SIZE, velocity), 0.75)
+            _ = catch WorldEffectAssets::register(&catalog, authored_emitter):
+                ok: 0
+                error failure: return 4
+            duplicate_profile: i32 = catch WorldEffectAssets::register(&catalog, authored_emitter):
+                ok: 0
+                WorldEffectAssets::CatalogError.DuplicateId: 1
+                error failure: 2
+            return 5 if duplicate_profile != 1 or WorldEffectAssets::profile_count(&catalog) != 1
+            authored_decal: WorldEffectAssets::EffectDefinition = WorldEffectAssets::decal_definition(
+                DECAL_PROFILE_ID, RenderScene::Decal(Geometry::vec3_zero(), decal_color, 3.5, 0.5), 0.4)
+            _ = catch WorldEffectAssets::register(&catalog, authored_decal):
+                ok: 0
+                error failure: return 44
+            return 45 if WorldEffectAssets::profile_count(&catalog) != 2
+            effects: mutable WorldEffects::Effects = WorldEffects::Effects()
+            return 39 if WorldEffects::binding_count(&effects) != 0
+            queue: mutable WorldEvents::Queue = WorldEvents::Queue()
+            _ = catch WorldEvents::begin_frame(&queue):
+                ok: 0
+                error failure: return 6
+            _ = catch WorldEvents::subscribe(&queue, LISTENER_ID, WorldEvents::Phase.Simulation):
+                ok: 0
+                error failure: return 7
+            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+                phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.Spawn,
+                listener_id: LISTENER_ID,
+                entity: entity,
+                position: Geometry::vec3_zero(),
+                payload: PROFILE_ID,
+                delivered: false,
+            }):
+                ok: 0
+                error failure: return 8
+            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+                phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.Damage,
+                listener_id: 0,
+                entity: entity,
+                position: Geometry::vec3_zero(),
+                payload: 999,
+                delivered: false,
+            }):
+                ok: 0
+                error failure: return 9
+            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+                phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.Spawn,
+                listener_id: LISTENER_ID,
+                entity: decal_entity,
+                position: Geometry::vec3_zero(),
+                payload: DECAL_PROFILE_ID,
+                delivered: false,
+            }):
+                ok: 0
+                error failure: return 46
+            _ = catch WorldEvents::advance_phase(&queue, WorldEvents::Phase.Simulation):
+                ok: 0
+                error failure: return 10
+            dispatched: usize = catch WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation):
+                value: value
+                error failure: return 11
+            dispatched_spawn: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
+                &queue, WorldEvents::Phase.Simulation, 0):
+                value: value
+                error failure: return 27
+            dispatched_damage: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
+                &queue, WorldEvents::Phase.Simulation, 1):
+                value: value
+                error failure: return 40
+            dispatched_decal: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
+                &queue, WorldEvents::Phase.Simulation, 2):
+                value: value
+                error failure: return 47
+            return 41 if dispatched_damage.kind != WorldEvents::EventKind.Damage or dispatched_damage.payload != 999
+            return 48 if dispatched_decal.entity.id != decal_entity.id or dispatched_decal.position.x != decal_position.x or dispatched_decal.position.y != decal_position.y or dispatched_decal.position.z != decal_position.z
+            return 28 if dispatched_spawn.entity.id != entity.id or dispatched_spawn.entity.world_epoch != entity.world_epoch
+            return 37 if dispatched_spawn.position.x != 8.0 or dispatched_spawn.position.y != 2.0 or dispatched_spawn.position.z != -4.0
+            return 29 if not World::world_is_live(world, dispatched_spawn.entity)
+            resolved_profile: WorldEffectAssets::EffectDefinition = catch WorldEffectAssets::get(
+                catalog, PROFILE_ID):
+                value: value
+                error failure: return 30
+            return 31 if resolved_profile.id != PROFILE_ID or resolved_profile.kind != WorldEffectAssets::DefinitionKind.Emitter or resolved_profile.time_scale != 0.75
+            return 38 if resolved_profile.emitter.max_particles != PROFILE_PARTICLES or resolved_profile.emitter.count != PROFILE_COUNT or resolved_profile.emitter.lifetime != PROFILE_LIFETIME or resolved_profile.emitter.size != PROFILE_SIZE or resolved_profile.emitter.velocity.x != velocity.x or resolved_profile.emitter.velocity.y != velocity.y or resolved_profile.emitter.velocity.z != velocity.z
+            event_report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
+                &effects, &queue, WorldEvents::Phase.Simulation, &catalog, dispatched):
+                value: value
+                error WorldEffects::WorldEffectsError.EntityAlreadyAttached: return 123
+                error WorldEffects::WorldEffectsError.Capacity: return 124
+                error WorldEffects::WorldEffectsError.BindingTableCorrupt: return 125
+                error WorldEvents::EventError.InactiveFrame: return 126
+                error WorldEvents::EventError.InvalidPhase: return 127
+                error WorldEvents::EventError.InvalidIndex: return 128
+                error WorldEffectAssets::CatalogError.NotFound: return 129
+                error RenderScene::RenderSceneError.InvalidValue: return 141
+                error RenderScene::RenderSceneError.NotInitialized: return 142
+                error RenderScene::RenderSceneError.Capacity: return 143
+                error RenderScene::RenderSceneError.UnknownHandle: return 144
+                error RenderScene::RenderSceneError.BackendFailure: return 145
+                error failure: return 120
+            return 13 if dispatched != 3 or event_report.scanned != 3 or event_report.spawned != 2 or WorldEffects::binding_count(&effects) != 2
+            emitter: RenderScene::EmitterHandle = catch WorldEffects::emitter_handle(&effects, entity):
+                value: value
+                error failure: return 14
+            handle: i64 = RenderScene::native_smoke_emitter_handle(emitter)
+            return 15 if elisa_render_scene_v1_test_effect_emitter(handle, PROFILE_PARTICLES,
+                PROFILE_COUNT, PROFILE_LIFETIME, PROFILE_SIZE, velocity.x, velocity.y, velocity.z) != 1 or elisa_render_scene_v1_test_effect_position(handle, 8.0, 2.0, -4.0) != 1
+            decal: RenderScene::DecalHandle = catch WorldEffects::decal_handle(&effects, decal_entity):
+                value: value
+                error failure: return 49
+            decal_handle: i64 = RenderScene::native_smoke_decal_handle(decal)
+            return 50 if elisa_render_scene_v1_test_effect_decal(decal_handle,
+                decal_color.red, decal_color.green, decal_color.blue, decal_color.alpha, 3.5, 0.5) != 1
+            return 51 if elisa_render_scene_v1_test_effect_position(decal_handle,
+                decal_position.x, decal_position.y, decal_position.z) != 1
+            duplicate_spawn: i32 = catch WorldEffects::spawn_dispatched_events(&effects,
+                &queue, WorldEvents::Phase.Simulation, &catalog, dispatched):
+                value: 0
+                WorldEffects::WorldEffectsError.EntityAlreadyAttached: 1
+                error failure: 2
+            return 16 if duplicate_spawn != 1
+            _ = WorldEvents::end_frame(&queue)
+            _ = catch World::world_despawn(&world, entity):
+                ok: 0
+                error failure: return 17
+            _ = catch World::world_despawn(&world, decal_entity):
+                ok: 0
+                error failure: return 52
+            cleanup: WorldEffects::UpdateReport = catch WorldEffects::update(&world, &effects, 0.1):
+                value: value
+                error failure: return 18
+            return 19 if cleanup.detached_despawned != 2 or WorldEffects::binding_count(&effects) != 0
             0
