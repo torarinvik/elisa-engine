@@ -45,7 +45,7 @@ module RenderGraphNormalsFromDepthTests:
                 samples: 1,
                 lifetime: RenderGraph::Lifetime.Imported,
                 initialized: true,
-                import_source: RenderGraph::ImportSource.LinearDepth,
+                import_source: RenderGraph::ImportSource.SceneDepth,
             }
 
         def scene_color_resource(id: u32) -> RenderGraph::ResourceDescriptor:

@@ -77,7 +77,7 @@ module RenderGraphRuntime:
             4
         def native_import_source(source: RenderGraph::ImportSource) -> i32:
             return 1 if source == RenderGraph::ImportSource.SceneColor
-            return 2 if source == RenderGraph::ImportSource.LinearDepth
+            return 2 if source == RenderGraph::ImportSource.SceneDepth
             0
         def native_lifetime(lifetime: RenderGraph::Lifetime) -> i32:
             return 0 if lifetime == RenderGraph::Lifetime.Imported
@@ -92,7 +92,7 @@ module RenderGraphRuntime:
             return 1 if kind == OperationKind.CopyColor
             return 2 if kind == OperationKind.ClearDepth
             return 3 if kind == OperationKind.ResolveColor
-            return 4 if kind == OperationKind.VisualizeLinearDepth
+            return 4 if kind == OperationKind.VisualizeDepth
             return 5 if kind == OperationKind.BlendColor
             return 6 if kind == OperationKind.AdjustSaturation
             return 7 if kind == OperationKind.ScaleColor
@@ -147,7 +147,7 @@ module RenderGraphRuntime:
                         destination <- descriptor
                         destination_found <- true
                 return false if not source_found or not destination_found
-                return false if source.import_source != RenderGraph::ImportSource.LinearDepth or source.format != RenderGraph::Format.R32Float or source.samples != 1
+                return false if source.import_source != RenderGraph::ImportSource.SceneDepth or source.format != RenderGraph::Format.R32Float or source.samples != 1
                 return false if destination.format != RenderGraph::Format.Rgba16Float or destination.samples != 1
                 return false if source.size_mode != destination.size_mode or source.width != destination.width or source.height != destination.height
             for index in 0..<plan.resource_count:
@@ -164,7 +164,7 @@ module RenderGraphRuntime:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
                     else:
                         expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration or operation.kind == OperationKind.NormalsFromDepth:
+                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration or operation.kind == OperationKind.NormalsFromDepth:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 else:
@@ -219,7 +219,7 @@ module RenderGraphRuntime:
             CopyColor
             ClearDepth
             ResolveColor
-            VisualizeLinearDepth
+            VisualizeDepth
             BlendColor
             AdjustSaturation
             ScaleColor

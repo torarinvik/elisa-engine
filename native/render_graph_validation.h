@@ -15,12 +15,12 @@ inline uint32_t find_resource(const Configuration& config, uint32_t id) {
 
 inline bool configuration_valid(const Configuration& config) {
     uint32_t scene_color_import_count = 0;
-    uint32_t linear_depth_import_count = 0;
+    uint32_t scene_depth_import_count = 0;
     std::array<bool, MAX_RESOURCES> initialized{};
     for (uint32_t index = 0; index < config.resource_count; ++index) {
         const Resource& resource = config.resources[index];
         if (resource.import_source == ImportSource::SceneColor) ++scene_color_import_count;
-        if (resource.import_source == ImportSource::LinearDepth) ++linear_depth_import_count;
+        if (resource.import_source == ImportSource::SceneDepth) ++scene_depth_import_count;
         initialized[index] = resource.initialized;
         if (resource.lifetime == Lifetime::Imported) continue;
         for (uint32_t previous = 0; previous < index; ++previous) {
@@ -31,7 +31,7 @@ inline bool configuration_valid(const Configuration& config) {
                 other.samples != resource.samples) return false;
         }
     }
-    if (scene_color_import_count != 1 || linear_depth_import_count > 1) return false;
+    if (scene_color_import_count != 1 || scene_depth_import_count > 1) return false;
     const uint32_t output_index = find_resource(config, config.output_id);
     if (output_index == NO_TARGET || config.resources[output_index].format == Format::Depth32) return false;
     for (uint32_t index = 0; index < config.pass_count; ++index) {
@@ -50,7 +50,7 @@ inline bool configuration_valid(const Configuration& config) {
         const Resource& destination_desc = config.resources[destination];
         if (source_desc.size_mode != destination_desc.size_mode ||
             source_desc.width != destination_desc.width || source_desc.height != destination_desc.height) return false;
-        if (pass.operation == Operation::VisualizeLinearDepth) {
+        if (pass.operation == Operation::VisualizeDepth) {
             if (source_desc.format != Format::R32Float || destination_desc.format == Format::Depth32 ||
                 source_desc.samples != 1 || destination_desc.samples != 1) return false;
             initialized[destination] = true;
@@ -127,7 +127,7 @@ inline bool configuration_valid(const Configuration& config) {
             continue;
         }
         if (pass.operation == Operation::NormalsFromDepth) {
-            if (source_desc.import_source != ImportSource::LinearDepth ||
+            if (source_desc.import_source != ImportSource::SceneDepth ||
                 source_desc.format != Format::R32Float || source_desc.samples != 1 ||
                 destination_desc.format != Format::Rgba16Float || destination_desc.samples != 1) return false;
             initialized[destination] = true;

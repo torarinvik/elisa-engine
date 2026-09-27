@@ -217,8 +217,8 @@ extern "C" uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(
     return service().render_graph.color_resolve_count_for_test();
 }
 
-extern "C" uint64_t elisa_render_scene_v1_render_graph_test_linear_depth_read_count(void) {
-    return service().render_graph.linear_depth_read_count_for_test();
+extern "C" uint64_t elisa_render_scene_v1_render_graph_test_scene_depth_read_count(void) {
+    return service().render_graph.scene_depth_read_count_for_test();
 }
 
 extern "C" uint64_t elisa_render_scene_v1_render_graph_test_device_memory_usage(void) {

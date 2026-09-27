@@ -38,7 +38,7 @@ module RenderGraphNativeTests:
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_color_resolve_count() -> u64
     @callconv(c)
-    extern elisa_render_scene_v1_render_graph_test_linear_depth_read_count() -> u64
+    extern elisa_render_scene_v1_render_graph_test_scene_depth_read_count() -> u64
     @callconv(c)
     extern elisa_render_scene_v1_render_graph_test_device_memory_usage() -> u64
     @callconv(c)
@@ -60,7 +60,7 @@ module RenderGraphNativeTests:
             import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
         }
 
-    def linear_depth_import(id: u32) -> RenderGraph::ResourceDescriptor:
+    def scene_depth_import(id: u32) -> RenderGraph::ResourceDescriptor:
         RenderGraph::ResourceDescriptor{
             id: id,
             size_mode: RenderGraph::SizeMode.PrimaryInternal,
@@ -70,7 +70,7 @@ module RenderGraphNativeTests:
             samples: 1,
             lifetime: RenderGraph::Lifetime.Imported,
             initialized: true,
-            import_source: RenderGraph::ImportSource.LinearDepth,
+            import_source: RenderGraph::ImportSource.SceneDepth,
         }
 
     def configure_clear_copy_graph(output_id: u32) -> i32:
@@ -308,13 +308,13 @@ module RenderGraphNativeTests:
         return 80 if result != RenderGraphRuntime::CONFIGURE_OK
         0
 
-    def configure_linear_depth_graph() -> i32:
+    def configure_scene_depth_graph() -> i32:
         graph: mutable RenderGraph::Graph = RenderGraph::Graph()
         _ = catch RenderGraph::add_resource(&graph, primary_color(1,
                 RenderGraph::Lifetime.Imported, true)):
             ok: 0
             error failure: return 120
-        _ = catch RenderGraph::add_resource(&graph, linear_depth_import(2)):
+        _ = catch RenderGraph::add_resource(&graph, scene_depth_import(2)):
             ok: 0
             error failure: return 121
         _ = catch RenderGraph::add_resource(&graph, primary_color(3,
@@ -354,7 +354,7 @@ module RenderGraphNativeTests:
         configuration.operation_count <- 2
         configuration.operations[0] <- RenderGraphRuntime::PassOperation{
             pass_id: 10,
-            kind: RenderGraphRuntime::OperationKind.VisualizeLinearDepth,
+            kind: RenderGraphRuntime::OperationKind.VisualizeDepth,
             source_resource_id: 2,
             destination_resource_id: 3,
             value: RenderGraphRuntime::FULL_OPACITY,
@@ -691,24 +691,24 @@ module RenderGraphNativeTests:
             return 209 if memory_pending <= memory_retired or memory_pending - memory_retired < RETIREMENT_MIN_BYTES
             return 210 if configure_clear_copy_graph(3) != SUCCESS
             return 211 if Application::pump() != Application::PumpStatus.Running
-            depth_import_setup: i32 = configure_linear_depth_graph()
+            depth_import_setup: i32 = configure_scene_depth_graph()
             return 212 + depth_import_setup if depth_import_setup != 0
-            depth_reads_before: u64 = elisa_render_scene_v1_render_graph_test_linear_depth_read_count()
+            depth_reads_before: u64 = elisa_render_scene_v1_render_graph_test_scene_depth_read_count()
             return 213 if Application::pump() != Application::PumpStatus.Running
             return 214 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
-            return 215 if elisa_render_scene_v1_render_graph_test_linear_depth_read_count() != depth_reads_before + 1
+            return 215 if elisa_render_scene_v1_render_graph_test_scene_depth_read_count() != depth_reads_before + 1
             return 216 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             return 217 if configure_clear_copy_graph(3) != SUCCESS
             return 218 if Application::pump() != Application::PumpStatus.Running
             depth_normals_before: u64 = elisa_render_scene_v1_last_frame_hash()
-            depth_normals_reads_before: u64 = elisa_render_scene_v1_render_graph_test_linear_depth_read_count()
+            depth_normals_reads_before: u64 = elisa_render_scene_v1_render_graph_test_scene_depth_read_count()
             return 302 if RenderGraphNormalsFromDepthTests::configure(RenderGraph::Format.Rgba8) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
             return 303 if not RenderGraphNormalsFromDepthTests::rejects_output_format()
             return 304 if not RenderGraphNormalsFromDepthTests::rejects_scene_color_source()
             return 305 if RenderGraphNormalsFromDepthTests::configure(RenderGraph::Format.Rgba16Float) != SUCCESS
             return 306 if Application::pump() != Application::PumpStatus.Running
             return 307 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
-            return 308 if elisa_render_scene_v1_render_graph_test_linear_depth_read_count() != depth_normals_reads_before + 1
+            return 308 if elisa_render_scene_v1_render_graph_test_scene_depth_read_count() != depth_normals_reads_before + 1
             return 309 if elisa_render_scene_v1_last_frame_hash() == depth_normals_before
             return 310 if configure_clear_copy_graph(3) != SUCCESS
             return 311 if Application::pump() != Application::PumpStatus.Running

@@ -5,7 +5,7 @@
 
 namespace elisa::render_graph {
 
-inline bool visualize_linear_depth(wi::graphics::Texture& source,
+inline bool visualize_depth(wi::graphics::Texture& source,
     wi::graphics::Texture& destination, wi::graphics::CommandList command_list) {
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     if (device == nullptr) return false;

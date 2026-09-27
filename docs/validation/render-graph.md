@@ -30,10 +30,11 @@ if its transient slot would be overwritten by a resource used after the output's
 first access, the runtime gives the output its own slot through composition.
 
 The native executor currently accepts one imported primary scene-color image
-and an optional imported linear-depth image from Wicked's shader-readable
-`depthBuffer_Copy`. Imports declare their source explicitly; linear depth uses
-R32_FLOAT and supports exact copies into graph-owned R32 targets plus a
-`VisualizeLinearDepth` pass that samples it with Wicked's built-in image shader
+and an optional imported scene-depth image from Wicked's shader-readable
+`depthBuffer_Copy`. Imports declare their source explicitly; `SceneDepth` is
+R32_FLOAT normalized projected depth in Wicked's post-projection convention, not linear
+view-space distance. It supports exact copies into graph-owned R32 targets plus a
+`VisualizeDepth` pass that samples it with Wicked's built-in image shader
 and writes grayscale to a single-sample color target. `NormalsFromDepth` uses
 Wicked's built-in depth reconstruction compute shader, accepts only this
 imported R32_FLOAT resource, and writes single-sample RGBA16F normals. Its
@@ -98,7 +99,7 @@ raises allocation while the old targets await retirement; after the window,
 allocation falls by at least 8 MiB. This measurement is specific to the tested
 macOS Metal path. Device-loss recovery and broader rendered graph references
 remain open R15 work. The final graph fixture imports
-both primary scene color and linear depth, visualizes depth into a transient
+both primary scene color and scene depth, visualizes depth into a transient
 color target, and then restores scene color as the composed output. A test-only
 GPU readback confirms the depth visualization is spatially nonuniform.
 
@@ -157,7 +158,8 @@ runs the pass at 2.0, confirms the GPU frame hash changes, and restores the norm
 scene graph. The complete pinned render-only smoke passes on macOS 27 / Apple M5.
 
 `NormalsFromDepth` uses Wicked's `wi::renderer::Postprocess_NormalsFromDepth`
-compute shader. It accepts the imported single-sample R32_FLOAT depth image and
+compute shader, which reconstructs world positions from projected depth. It
+accepts the imported single-sample R32_FLOAT depth image and
 writes encoded world-space normals to a single-sample RGBA16F UAV target. Elisa
 and native validation reject other source identities and output formats. The
 SDL3/Metal fixture verifies depth is read, checks the GPU frame hash changes,

@@ -35,10 +35,11 @@ constexpr float DEFAULT_CHROMATIC_ABERRATION = 0.0f;
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
 enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
-enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
+// SceneDepth is normalized projected depth, not linear view-space distance.
+enum class ImportSource : int32_t { None = 0, SceneColor = 1, SceneDepth = 2 };
 enum class Operation : int32_t {
     ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3,
-    VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7,
+    VisualizeDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7,
     TintColor = 8, Fxaa = 9, Sharpen = 10, ChromaticAberration = 11,
     NormalsFromDepth = 12
 };

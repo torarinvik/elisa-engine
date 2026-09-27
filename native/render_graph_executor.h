@@ -50,7 +50,7 @@ public:
             (resource.lifetime == Lifetime::Imported &&
                 (!resource.initialized || resource.target != NO_TARGET || resource.samples != 1 ||
                  (resource.import_source != ImportSource::SceneColor &&
-                    resource.import_source != ImportSource::LinearDepth))) ||
+                    resource.import_source != ImportSource::SceneDepth))) ||
             (resource.lifetime != Lifetime::Imported &&
                 ((resource.initialized && resource.lifetime == Lifetime::Transient) ||
                  resource.import_source != ImportSource::None)) ||
@@ -58,7 +58,7 @@ public:
             (resource.import_source == ImportSource::SceneColor &&
                 resource.format != Format::Rgba8 && resource.format != Format::Rgba16Float &&
                 resource.format != Format::R11G11B10Float) ||
-            (resource.import_source == ImportSource::LinearDepth && resource.format != Format::R32Float) ||
+            (resource.import_source == ImportSource::SceneDepth && resource.format != Format::R32Float) ||
             (resource.format == Format::Depth32 && resource.lifetime == Lifetime::Persistent &&
                 resource.initialized) ||
             (resource.format == Format::Depth32 && resource.samples != 1) ||
@@ -79,7 +79,7 @@ public:
         if (!staging_.building || index >= staging_.pass_count || pass.id == 0 ||
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
-                pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
+                pass.operation != Operation::VisualizeDepth && pass.operation != Operation::BlendColor &&
                 pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor &&
                 pass.operation != Operation::TintColor && pass.operation != Operation::Fxaa &&
                 pass.operation != Operation::Sharpen && pass.operation != Operation::ChromaticAberration &&
@@ -88,7 +88,7 @@ public:
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
-                pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
+                pass.operation == Operation::VisualizeDepth || pass.operation == Operation::BlendColor ||
                 pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor ||
                 pass.operation == Operation::TintColor || pass.operation == Operation::Fxaa ||
                 pass.operation == Operation::Sharpen || pass.operation == Operation::ChromaticAberration ||
@@ -178,7 +178,7 @@ public:
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         depth_clear_count_ = 0;
         color_resolve_count_ = 0;
-        linear_depth_read_count_ = 0;
+        scene_depth_read_count_ = 0;
         fail_next_allocation_ = false;
         fail_pass_index_ = NO_TARGET;
         suspend_next_frame_ = false;
@@ -223,9 +223,9 @@ public:
         return color_resolve_count_;
     }
 
-    uint64_t linear_depth_read_count_for_test() const {
+    uint64_t scene_depth_read_count_for_test() const {
         std::lock_guard<std::mutex> guard(mutex_);
-        return linear_depth_read_count_;
+        return scene_depth_read_count_;
     }
 #endif
 
@@ -308,19 +308,19 @@ public:
                     last_status_ = INVALID_ARGUMENT;
                     return;
                 }
-                if (pass.operation == Operation::VisualizeLinearDepth) {
+                if (pass.operation == Operation::VisualizeDepth) {
                     if (source->GetDesc().format != native_format(Format::R32Float) ||
                         destination->GetDesc().format == native_format(Format::Depth32) ||
                         source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
                         last_status_ = INVALID_ARGUMENT;
                         return;
                     }
-                    if (!visualize_linear_depth(*source, *destination, command_list)) {
+                    if (!visualize_depth(*source, *destination, command_list)) {
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-                    ++linear_depth_read_count_;
+                    ++scene_depth_read_count_;
 #endif
                 } else if (pass.operation == Operation::BlendColor) {
                     if (source->GetDesc().format == native_format(Format::Depth32) ||
@@ -433,7 +433,7 @@ public:
                     }
                     wi::renderer::Postprocess_NormalsFromDepth(*source, *destination, command_list);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
-                    ++linear_depth_read_count_;
+                    ++scene_depth_read_count_;
 #endif
                 } else if (source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
@@ -589,7 +589,7 @@ private:
     static const wi::graphics::Texture* import_texture(const Resource& resource,
         const wi::RenderPath3D& path) {
         if (resource.import_source == ImportSource::SceneColor) return path.GetLastPostprocessRT();
-        if (resource.import_source == ImportSource::LinearDepth) return &path.depthBuffer_Copy;
+        if (resource.import_source == ImportSource::SceneDepth) return &path.depthBuffer_Copy;
         return nullptr;
     }
 
@@ -665,7 +665,7 @@ private:
     bool last_fallback_preserved_ = false;
     uint64_t depth_clear_count_ = 0;
     uint64_t color_resolve_count_ = 0;
-    uint64_t linear_depth_read_count_ = 0;
+    uint64_t scene_depth_read_count_ = 0;
 #endif
 };
 
