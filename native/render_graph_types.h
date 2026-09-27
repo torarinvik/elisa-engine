@@ -39,7 +39,8 @@ enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
 enum class Operation : int32_t {
     ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3,
     VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7,
-    TintColor = 8, Fxaa = 9, Sharpen = 10, ChromaticAberration = 11
+    TintColor = 8, Fxaa = 9, Sharpen = 10, ChromaticAberration = 11,
+    NormalsFromDepth = 12
 };
 
 struct Resource {

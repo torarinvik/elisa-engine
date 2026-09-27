@@ -1,0 +1,165 @@
+include "../src/backend/render_graph.elisa"
+include "../src/runtime/render_graph_runtime.elisa"
+
+module RenderGraphNormalsFromDepthTests:
+    private:
+        const module Native:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            NORMALS_FROM_DEPTH: i32 = 12
+            PRIMARY_INTERNAL: i32 = 1
+            RGBA8: i32 = 0
+            RGBA16_FLOAT: i32 = 1
+            R32_FLOAT: i32 = 4
+            SINGLE_SAMPLE: u32 = 1
+            IMPORTED: i32 = 0
+            TRANSIENT: i32 = 2
+            SCENE_COLOR: i32 = 1
+            LINEAR_DEPTH: i32 = 2
+            NO_TARGET: u32 = 4294967295
+
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_begin(
+            resource_count: u32, pass_count: u32, output_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_resource(
+            index: u32, id: u32, size_mode: i32, width: u32, height: u32,
+            format: i32, samples: u32, lifetime: i32, initialized: i32,
+            target_slot: u32, import_source: i32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_commit() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_abort() -> i32
+
+        def depth_resource(id: u32) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.R32Float,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Imported,
+                initialized: true,
+                import_source: RenderGraph::ImportSource.LinearDepth,
+            }
+
+        def scene_color_resource(id: u32) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.R11G11B10Float,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Imported,
+                initialized: true,
+                import_source: RenderGraph::ImportSource.SceneColor,
+            }
+
+        def normal_resource(id: u32, format: RenderGraph::Format) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: format,
+                samples: 1,
+                lifetime: RenderGraph::Lifetime.Transient,
+                initialized: false,
+                import_source: RenderGraph::ImportSource.None,
+            }
+
+        def native_rejects_output_format() -> bool:
+            begin_status: i32 = elisa_render_scene_v1_render_graph_begin(3, 1, 2)
+            return false if begin_status != Native::OK
+            scene_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                1, 3, Native::PRIMARY_INTERNAL, 0, 0, Native::RGBA8,
+                Native::SINGLE_SAMPLE, Native::IMPORTED, 1, Native::NO_TARGET,
+                Native::SCENE_COLOR)
+            source_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                0, 1, Native::PRIMARY_INTERNAL, 0, 0, Native::R32_FLOAT,
+                Native::SINGLE_SAMPLE, Native::IMPORTED, 1, Native::NO_TARGET,
+                Native::LINEAR_DEPTH)
+            destination_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                2, 2, Native::PRIMARY_INTERNAL, 0, 0, Native::RGBA8,
+                Native::SINGLE_SAMPLE, Native::TRANSIENT, 0, 0, 0)
+            pass_status: i32 = elisa_render_scene_v1_render_graph_set_pass(
+                0, 10, Native::NORMALS_FROM_DEPTH, 1, 2)
+            commit_status: i32 = elisa_render_scene_v1_render_graph_commit()
+            abort_status: i32 = elisa_render_scene_v1_render_graph_abort()
+            all_statuses_valid: bool = scene_status == Native::OK and source_status == Native::OK and destination_status == Native::OK and pass_status == Native::OK and commit_status == Native::INVALID_ARGUMENT and abort_status == Native::OK
+            all_statuses_valid
+
+        def native_rejects_scene_color_source() -> bool:
+            begin_status: i32 = elisa_render_scene_v1_render_graph_begin(2, 1, 2)
+            return false if begin_status != Native::OK
+            source_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                0, 1, Native::PRIMARY_INTERNAL, 0, 0, Native::RGBA8,
+                Native::SINGLE_SAMPLE, Native::IMPORTED, 1, Native::NO_TARGET,
+                Native::SCENE_COLOR)
+            destination_status: i32 = elisa_render_scene_v1_render_graph_set_resource(
+                1, 2, Native::PRIMARY_INTERNAL, 0, 0, Native::RGBA16_FLOAT,
+                Native::SINGLE_SAMPLE, Native::TRANSIENT, 0, 0, 0)
+            pass_status: i32 = elisa_render_scene_v1_render_graph_set_pass(
+                0, 10, Native::NORMALS_FROM_DEPTH, 1, 2)
+            commit_status: i32 = elisa_render_scene_v1_render_graph_commit()
+            abort_status: i32 = elisa_render_scene_v1_render_graph_abort()
+            all_statuses_valid: bool = source_status == Native::OK and destination_status == Native::OK and pass_status == Native::OK and commit_status == Native::INVALID_ARGUMENT and abort_status == Native::OK
+            all_statuses_valid
+
+    public:
+        def rejects_output_format() -> bool:
+            native_rejects_output_format()
+
+        def rejects_scene_color_source() -> bool:
+            native_rejects_scene_color_source()
+
+        def configure(format: RenderGraph::Format) -> i32:
+            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+            _ = catch RenderGraph::add_resource(&graph, scene_color_resource(1)):
+                ok: 0
+                error failure: return 1
+            _ = catch RenderGraph::add_resource(&graph, depth_resource(2)):
+                ok: 0
+                error failure: return 2
+            _ = catch RenderGraph::add_resource(&graph, normal_resource(3, RenderGraph::Format.R11G11B10Float)):
+                ok: 0
+                error failure: return 3
+            _ = catch RenderGraph::add_resource(&graph, normal_resource(4, format)):
+                ok: 0
+                error failure: return 4
+            _ = catch RenderGraph::add_pass(&graph, 10):
+                ok: 0
+                error failure: return 5
+            _ = catch RenderGraph::add_pass(&graph, 20):
+                ok: 0
+                error failure: return 6
+            _ = catch RenderGraph::read(&graph, 10, 1):
+                ok: 0
+                error failure: return 7
+            _ = catch RenderGraph::write(&graph, 10, 3):
+                ok: 0
+                error failure: return 8
+            _ = catch RenderGraph::read(&graph, 20, 2):
+                ok: 0
+                error failure: return 9
+            _ = catch RenderGraph::write(&graph, 20, 4):
+                ok: 0
+                error failure: return 10
+            _ = catch RenderGraph::add_dependency(&graph, 10, 20):
+                ok: 0
+                error failure: return 11
+            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+                value: value
+                error failure: return 12
+            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+            configuration.output_resource_id <- 4
+            configuration.operation_count <- 2
+            configuration.operations[0] <- RenderGraphRuntime::copy_operation(10, 1, 3)
+            configuration.operations[1] <- RenderGraphRuntime::normals_from_depth_operation(20, 2, 4)
+            RenderGraphRuntime::configure(graph, plan, configuration)

@@ -9,6 +9,7 @@ include "render_graph_tint_native.elisa"
 include "render_graph_fxaa_native.elisa"
 include "render_graph_sharpen_native.elisa"
 include "render_graph_chromatic_aberration_native.elisa"
+include "render_graph_normals_from_depth_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
@@ -699,6 +700,19 @@ module RenderGraphNativeTests:
             return 216 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             return 217 if configure_clear_copy_graph(3) != SUCCESS
             return 218 if Application::pump() != Application::PumpStatus.Running
+            depth_normals_before: u64 = elisa_render_scene_v1_last_frame_hash()
+            depth_normals_reads_before: u64 = elisa_render_scene_v1_render_graph_test_linear_depth_read_count()
+            return 302 if RenderGraphNormalsFromDepthTests::configure(RenderGraph::Format.Rgba8) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+            return 303 if not RenderGraphNormalsFromDepthTests::rejects_output_format()
+            return 304 if not RenderGraphNormalsFromDepthTests::rejects_scene_color_source()
+            return 305 if RenderGraphNormalsFromDepthTests::configure(RenderGraph::Format.Rgba16Float) != SUCCESS
+            return 306 if Application::pump() != Application::PumpStatus.Running
+            return 307 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+            return 308 if elisa_render_scene_v1_render_graph_test_linear_depth_read_count() != depth_normals_reads_before + 1
+            return 309 if elisa_render_scene_v1_last_frame_hash() == depth_normals_before
+            return 310 if configure_clear_copy_graph(3) != SUCCESS
+            return 311 if Application::pump() != Application::PumpStatus.Running
+            return 312 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
             saturation_status: i32 = exercise_saturation()
             return saturation_status if saturation_status != 0
             scale_status: i32 = exercise_color_scale()

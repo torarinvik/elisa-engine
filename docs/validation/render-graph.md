@@ -34,7 +34,11 @@ and an optional imported linear-depth image from Wicked's shader-readable
 `depthBuffer_Copy`. Imports declare their source explicitly; linear depth uses
 R32_FLOAT and supports exact copies into graph-owned R32 targets plus a
 `VisualizeLinearDepth` pass that samples it with Wicked's built-in image shader
-and writes grayscale to a single-sample color target. `BlendColor` draws a
+and writes grayscale to a single-sample color target. `NormalsFromDepth` uses
+Wicked's built-in depth reconstruction compute shader, accepts only this
+imported R32_FLOAT resource, and writes single-sample RGBA16F normals. Its
+graph-owned output receives unordered-access support only when a normals pass
+writes its target slot. `BlendColor` draws a
 single-sample color source over an initialized, single-sample color destination
 using Wicked's alpha blend pipeline. `AdjustSaturation` reads a color resource
 and writes a separate, matching single-sample color target through Wicked's
@@ -151,6 +155,15 @@ source and RGBA8/RGBA16F UAV destination requirements used by FXAA and Sharpen.
 The SDL3/Metal fixture rejects an invalid amount and an unsupported output format,
 runs the pass at 2.0, confirms the GPU frame hash changes, and restores the normal
 scene graph. The complete pinned render-only smoke passes on macOS 27 / Apple M5.
+
+`NormalsFromDepth` uses Wicked's `wi::renderer::Postprocess_NormalsFromDepth`
+compute shader. It accepts the imported single-sample R32_FLOAT depth image and
+writes encoded world-space normals to a single-sample RGBA16F UAV target. Elisa
+and native validation reject other source identities and output formats. The
+SDL3/Metal fixture verifies depth is read, checks the GPU frame hash changes,
+and restores scene color; the full pinned render-only smoke passes on macOS 27 /
+Apple M5. Authored custom depth-sampling shaders and depth-tested graph geometry
+remain unsupported.
 
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.

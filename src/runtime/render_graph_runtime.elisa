@@ -99,7 +99,8 @@ module RenderGraphRuntime:
             return 8 if kind == OperationKind.TintColor
             return 9 if kind == OperationKind.Fxaa
             return 10 if kind == OperationKind.Sharpen
-            11
+            return 11 if kind == OperationKind.ChromaticAberration
+            12
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             return false if operation.value != operation.value
@@ -131,6 +132,24 @@ module RenderGraphRuntime:
                 return false if destination.format != RenderGraph::Format.Rgba8 and destination.format != RenderGraph::Format.Rgba16Float
                 return false if source.samples != 1 or destination.samples != 1
                 return false if source.size_mode != destination.size_mode or source.width != destination.width or source.height != destination.height
+            if operation.kind == OperationKind.NormalsFromDepth:
+                source: mutable RenderGraph::ResourceDescriptor = zeroed
+                destination: mutable RenderGraph::ResourceDescriptor = zeroed
+                source_found: mutable bool = false
+                destination_found: mutable bool = false
+                for index in 0..<plan.resource_count:
+                    descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+                    return false if not RenderGraph::resource_descriptor_at(graph, index, &descriptor)
+                    if descriptor.id == operation.source_resource_id:
+                        source <- descriptor
+                        source_found <- true
+                    if descriptor.id == operation.destination_resource_id:
+                        destination <- descriptor
+                        destination_found <- true
+                return false if not source_found or not destination_found
+                return false if source.import_source != RenderGraph::ImportSource.LinearDepth or source.format != RenderGraph::Format.R32Float or source.samples != 1
+                return false if destination.format != RenderGraph::Format.Rgba16Float or destination.samples != 1
+                return false if source.size_mode != destination.size_mode or source.width != destination.width or source.height != destination.height
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -145,7 +164,7 @@ module RenderGraphRuntime:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
                     else:
                         expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration:
+                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa or operation.kind == OperationKind.Sharpen or operation.kind == OperationKind.ChromaticAberration or operation.kind == OperationKind.NormalsFromDepth:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 else:
@@ -208,6 +227,7 @@ module RenderGraphRuntime:
             Fxaa
             Sharpen
             ChromaticAberration
+            NormalsFromDepth
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
@@ -306,6 +326,32 @@ module RenderGraphRuntime:
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
                 value: amount,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
+            }
+        def normals_from_depth_operation(pass_id: u32,
+                source_resource_id: u32, destination_resource_id: u32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.NormalsFromDepth,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: Limits::DEFAULT_PASS_VALUE,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
+            }
+        def copy_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.CopyColor,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: Limits::DEFAULT_PASS_VALUE,
                 tint_red: Limits::DEFAULT_TINT_CHANNEL,
                 tint_green: Limits::DEFAULT_TINT_CHANNEL,
                 tint_blue: Limits::DEFAULT_TINT_CHANNEL,

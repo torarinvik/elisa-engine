@@ -82,7 +82,8 @@ public:
                 pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
                 pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor &&
                 pass.operation != Operation::TintColor && pass.operation != Operation::Fxaa &&
-                pass.operation != Operation::Sharpen && pass.operation != Operation::ChromaticAberration) ||
+                pass.operation != Operation::Sharpen && pass.operation != Operation::ChromaticAberration &&
+                pass.operation != Operation::NormalsFromDepth) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
@@ -90,7 +91,8 @@ public:
                 pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
                 pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor ||
                 pass.operation == Operation::TintColor || pass.operation == Operation::Fxaa ||
-                pass.operation == Operation::Sharpen || pass.operation == Operation::ChromaticAberration) &&
+                pass.operation == Operation::Sharpen || pass.operation == Operation::ChromaticAberration ||
+                pass.operation == Operation::NormalsFromDepth) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -417,6 +419,22 @@ public:
                     }
                     wi::renderer::Postprocess_Chromatic_Aberration(*source, *destination,
                         command_list, pass.chromatic_aberration);
+                } else if (pass.operation == Operation::NormalsFromDepth) {
+                    if (source->GetDesc().format != native_format(Format::R32Float) ||
+                        source->GetDesc().sample_count != 1 ||
+                        (static_cast<uint8_t>(source->GetDesc().bind_flags) &
+                            static_cast<uint8_t>(wi::graphics::BindFlag::SHADER_RESOURCE)) == 0 ||
+                        destination->GetDesc().format != native_format(Format::Rgba16Float) ||
+                        destination->GetDesc().sample_count != 1 ||
+                        (static_cast<uint8_t>(destination->GetDesc().bind_flags) &
+                            static_cast<uint8_t>(wi::graphics::BindFlag::UNORDERED_ACCESS)) == 0) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    wi::renderer::Postprocess_NormalsFromDepth(*source, *destination, command_list);
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+                    ++linear_depth_read_count_;
+#endif
                 } else if (source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
                     source->GetDesc().format != destination->GetDesc().format) {
@@ -579,7 +597,8 @@ private:
         for (uint32_t index = 0; index < active_.pass_count; ++index) {
             const Pass& pass = active_.passes[index];
             if (pass.operation != Operation::Fxaa && pass.operation != Operation::Sharpen &&
-                pass.operation != Operation::ChromaticAberration) continue;
+                pass.operation != Operation::ChromaticAberration &&
+                pass.operation != Operation::NormalsFromDepth) continue;
             const uint32_t destination = resource_index(active_, pass.destination_id);
             if (destination != NO_TARGET && active_.resources[destination].target == target) return true;
         }

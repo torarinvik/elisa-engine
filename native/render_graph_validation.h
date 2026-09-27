@@ -126,6 +126,13 @@ inline bool configuration_valid(const Configuration& config) {
             initialized[destination] = true;
             continue;
         }
+        if (pass.operation == Operation::NormalsFromDepth) {
+            if (source_desc.import_source != ImportSource::LinearDepth ||
+                source_desc.format != Format::R32Float || source_desc.samples != 1 ||
+                destination_desc.format != Format::Rgba16Float || destination_desc.samples != 1) return false;
+            initialized[destination] = true;
+            continue;
+        }
         if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32 ||
             source_desc.format != destination_desc.format) return false;
         if (pass.operation == Operation::CopyColor &&
