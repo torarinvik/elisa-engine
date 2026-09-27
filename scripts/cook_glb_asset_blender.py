@@ -157,6 +157,7 @@ def parse_arguments():
     parser.add_argument("--source", required=True, type=Path)
     parser.add_argument("--animation-source", type=Path)
     parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--animation-sample-rate", type=int, choices=(30, 60, 120))
     parser.add_argument("--max-triangles", type=int,
         help="coarsely reduce static meshes before bounded FBX conversion")
     return parser.parse_args(argv)
@@ -224,6 +225,9 @@ def recalculate_static_normals(meshes):
 def main():
     options = parse_arguments()
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    if options.animation_sample_rate is not None:
+        bpy.context.scene.render.fps = options.animation_sample_rate
+        bpy.context.scene.render.fps_base = 1.0
     glb_objects = imported(bpy.ops.import_scene.gltf, options.source)
     armatures = [item for item in glb_objects if item.type == "ARMATURE"]
     if not armatures:
@@ -282,6 +286,24 @@ def main():
     if options.animation_source is not None:
         previous_actions = set(bpy.data.actions)
         source_objects = imported(bpy.ops.import_scene.fbx, options.animation_source)
+        if options.animation_sample_rate is not None:
+            # FBX import sets the scene rate. Restore the requested conversion
+            # rate and retime only the newly imported source action keys.
+            imported_rate = bpy.context.scene.render.fps / bpy.context.scene.render.fps_base
+            ratio = options.animation_sample_rate / imported_rate
+            for action in bpy.data.actions:
+                if action in previous_actions:
+                    continue
+                for layer in action.layers:
+                    for strip in layer.strips:
+                        for bag in strip.channelbags:
+                            for curve in bag.fcurves:
+                                for key in curve.keyframe_points:
+                                    key.co.x = 1 + (key.co.x - 1) * ratio
+                                    key.handle_left.x = 1 + (key.handle_left.x - 1) * ratio
+                                    key.handle_right.x = 1 + (key.handle_right.x - 1) * ratio
+            bpy.context.scene.render.fps = options.animation_sample_rate
+            bpy.context.scene.render.fps_base = 1.0
         source_armature = armature_of(source_objects, "animation FBX")
         source_bones = {bone.name for bone in source_armature.data.bones}
         missing = sorted(bones - source_bones)

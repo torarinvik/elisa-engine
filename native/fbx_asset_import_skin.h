@@ -122,6 +122,11 @@ inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& s
     }
 
     size_t total_sample_floats = 0;
+    // Retain dense contact corrections authored at 60/120 Hz. Existing
+    // frame/sample budgets remain authoritative; no silent downsampling.
+    const double authored_rate = scene.settings.frames_per_second;
+    const uint32_t sample_rate = std::isfinite(authored_rate) && authored_rate > 30.0
+        ? uint32_t(std::min(120.0, std::ceil(authored_rate))) : ANIMATION_SAMPLE_RATE;
     for (const ufbx_anim_stack* stack : scene.anim_stacks) {
         if (stack == nullptr || !std::isfinite(stack->time_begin) || !std::isfinite(stack->time_end)) {
             fail(result, "primary FBX rig contains an invalid animation stack");
@@ -129,11 +134,15 @@ inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& s
         }
         const double duration = stack->time_end - stack->time_begin;
         if (duration <= 1.0e-6) continue;
+        if (authored_rate > 120.0) {
+            fail(result, "primary FBX animation authored rate exceeds the 120 Hz runtime limit");
+            return false;
+        }
         if (stack->anim == nullptr || duration > 120.0) {
             fail(result, "primary FBX animation is missing or exceeds the 120-second limit");
             return false;
         }
-        const double raw_frame_count = std::ceil(duration * double(ANIMATION_SAMPLE_RATE)) + 1.0;
+        const double raw_frame_count = std::ceil(duration * double(sample_rate)) + 1.0;
         if (!std::isfinite(raw_frame_count) || raw_frame_count < 2.0 || raw_frame_count > 3601.0 ||
             output.skin_joints.size() > (MAX_ANIMATION_SAMPLE_FLOATS - total_sample_floats) / 10 / size_t(raw_frame_count)) {
             fail(result, "primary FBX animation exceeds the bounded cooked-sample budget");
@@ -157,11 +166,11 @@ inline bool append_skin_rig(const ufbx_scene& scene, const ufbx_skin_deformer& s
         }
         clip.name.assign(stack->name.data ? stack->name.data : "", stack->name.length);
         clip.duration_seconds = float(duration);
-        clip.sample_rate = ANIMATION_SAMPLE_RATE;
+        clip.sample_rate = sample_rate;
         clip.frame_count = uint32_t(frame_count);
         clip.local_transforms.reserve(sample_floats);
         for (size_t frame = 0; frame < frame_count; ++frame) {
-            const double offset = std::min(double(frame) / double(ANIMATION_SAMPLE_RATE), duration);
+            const double offset = std::min(double(frame) / double(sample_rate), duration);
             const double time = stack->time_begin + offset;
             for (const ufbx_node* node : ordered) {
                 const ufbx_transform transform = ufbx_evaluate_transform(stack->anim, node, time);

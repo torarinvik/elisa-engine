@@ -113,6 +113,9 @@ def asset_cook_command(project: Path, declaration: object,
         raise BuildConfigurationError(f"asset_cooks[{index}] must be an object")
     output = declared_project_path(project, declaration.get("output"), f"asset_cooks[{index}].output", must_exist=False)
     importer = declaration.get("importer", "fbx")
+    animation_rate = declaration.get("animation_sample_rate")
+    if animation_rate is not None and (importer != "glb" or type(animation_rate) is not int or animation_rate not in (30, 60, 120)):
+        raise BuildConfigurationError(f"asset_cooks[{index}].animation_sample_rate requires glb and 30, 60 or 120")
     dependencies = declared_dependencies(project, declaration, index, output)
     textures = declared_textures(project, declaration, index, importer, output)
     if importer == "images":
@@ -177,6 +180,8 @@ def asset_cook_command(project: Path, declaration: object,
             command.append("--all-meshes")
         if max_triangles is not None:
             command.extend(["--max-triangles", str(max_triangles)])
+        if animation_rate is not None:
+            command.extend(["--animation-sample-rate", str(animation_rate)])
         animation_source_value = declaration.get("animation_source")
         if animation_source_value is not None:
             if importer != "glb":

@@ -180,6 +180,8 @@ def main(arguments: list[str]) -> int:
     parser.add_argument("--asset-path", help="project-relative identity recorded in the cooked package")
     parser.add_argument("--output", type=Path, help="destination .pkg or .elpk file")
     parser.add_argument("--animation-source", type=Path, help="optional FBX whose clips match GLB bone names")
+    parser.add_argument("--animation-sample-rate", type=int, choices=(30, 60, 120),
+        help="preserve animated conversion at this bounded rate (default conversion unchanged)")
     parser.add_argument("--texture-output", type=Path, help="destination for the first material's base-color image")
     parser.add_argument("--texture-max-size", type=int,
         help="bound the extracted image to this many pixels per side (needs Pillow)")
@@ -195,7 +197,7 @@ def main(arguments: list[str]) -> int:
         if options.self_test:
             if (options.source is not None or options.output is not None or options.asset_path is not None or
                     options.animation_source is not None or options.texture_output is not None or
-                    options.max_triangles is not None):
+                    options.max_triangles is not None or options.animation_sample_rate is not None):
                 parser.error("--self-test cannot be combined with asset paths or cooker options")
             self_test()
             return 0
@@ -242,6 +244,8 @@ def main(arguments: list[str]) -> int:
             command = [str(executable), "--background", "--factory-startup", "--python",
                 str(ROOT / "scripts/cook_glb_asset_blender.py"), "--", "--source", str(source),
                 "--output", str(converted)]
+            if options.animation_sample_rate is not None:
+                command.extend(["--animation-sample-rate", str(options.animation_sample_rate)])
             if animation_source is not None:
                 command.extend(["--animation-source", str(animation_source)])
             if options.max_triangles is not None:
