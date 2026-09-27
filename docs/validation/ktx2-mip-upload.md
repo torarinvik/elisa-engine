@@ -1,6 +1,6 @@
 # KTX2 mip-chain upload
 
-**Date:** 2026-09-24
+**Date:** 2026-09-24; dedicated Wicked gate rerun 2026-09-27
 **Scope:** Preserve mip chains from Basis KTX2 cooking through CPU decode and the Wicked texture descriptor.
 
 The test cooker now generates complete `4x4 → 2x2 → 1x1` UASTC chains for a 2D image and a six-face cubemap. The Basis probe checks each mip's dimensions and transcodes every level and face. The production uploader also checks that the created Wicked texture retains the source dimensions, face count, and mip count.
@@ -12,7 +12,18 @@ The test cooker now generates complete `4x4 → 2x2 → 1x1` UASTC chains for a 
 - The focused `clang++ -fsyntax-only` check passed for the changed dedicated cubemap descriptor assertion.
 - The existing native Wicked probe ran `ktx2only` against the newly generated assets and exited 0 on Metal. That binary predates the new cubemap descriptor assertion, so its result establishes successful cubemap upload but not that assertion's runtime evaluation.
 
-The scripted `elisascript scripts/wicked_probe.elisascript texture` gate stopped before rebuilding because the external Wicked checkout is at `32c6e60c87cb24758f5dfcda845d5120c6457c63`, while the engine manifest pins `f935d7695f814ebaa1c63666da62fb25dd6645e7`. The pin was left intact. Non-Metal devices and broader HDR/compressed formats remain unverified.
+The dedicated Wicked gate was rerun against the clean checkout at the exact revision pinned in `native/dependency-manifest.json`. It rebuilt the native bridge and passed the texture probe on macOS 27 with SDL3/Metal. This verified production texture upload, including KTX2 HDR choosing BC6H and the forced RGBA16F fallback retaining values above 1.0, along with ASTC upload and the existing alpha, normal-map, and cubemap paths.
+
+```sh
+WICKED_ROOT="$PWD/../amazing-labyrinth-wickedengine" \
+WICKED_BUILD="$PWD/../amazing-labyrinth-wickedengine/build-elisa-sdl3" \
+ELISA_COMPILER_BIN="$HOME/.elisac/elisac-stage1" \
+PYTHON_BIN=/opt/homebrew/bin/python3 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+"$HOME/.local/bin/elisascript" scripts/wicked_probe.elisascript texture
+```
+
+Non-Metal devices and broader HDR/compressed formats remain unverified.
 
 Commands for the focused checks, run from the engine root:
 
