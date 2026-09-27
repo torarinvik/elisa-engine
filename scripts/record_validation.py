@@ -22,6 +22,18 @@ from record_validation_assets import (
 from check_module_hygiene import policy as module_hygiene_policy
 
 
+def compiler_product_path(compiler: str, environ) -> Path:
+    """The binary that actually compiles: the wrapper runs ELISA_STAGE1_BIN
+    when set (a pinned snapshot), otherwise its checkout's bin/elisac-stage1."""
+    compiler_path = Path(compiler).resolve(strict=True)
+    if compiler_path.name != "elisac_stage1.sh":
+        return compiler_path
+    override = environ.get("ELISA_STAGE1_BIN", "")
+    if override:
+        return Path(override).resolve(strict=True)
+    return compiler_path.parent.parent / "bin/elisac-stage1"
+
+
 def git_state(path: Path) -> Optional[dict]:
     root = subprocess.run(
         ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
@@ -474,8 +486,7 @@ def main(arguments: list[str]) -> int:
         package_format = native_package_test(engine)
         cooked = cook_asset(engine)
         release = release_package(engine, compiler)
-        compiler_path = Path(compiler).resolve(strict=True)
-        compiler_product = compiler_path.parent.parent / "bin/elisac-stage1" if compiler_path.name == "elisac_stage1.sh" else compiler_path
+        compiler_product = compiler_product_path(compiler, os.environ)
         namespace_policy = module_hygiene_policy(engine)
         if namespace_policy["status"] != "passed":
             raise ValueError(f"module hygiene failed: {namespace_policy['violations']}")

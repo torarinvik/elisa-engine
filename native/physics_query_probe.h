@@ -30,28 +30,31 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
         if (!check(overflow_entities[index] != wi::ecs::INVALID_ENTITY &&
                 overflow_transform != nullptr && overflow_layer != nullptr,
                 "query overflow scene entities")) return false;
+        // Past every bounded overlap volume below (the farthest reaches z=3.5)
+        // but still on the z-axis ray, which ends at z=6.
         overflow_transform->translation_local = XMFLOAT3(0, 0,
-            3.5f + static_cast<float>(index) * 0.12f);
+            3.6f + static_cast<float>(index) * 0.12f);
         overflow_transform->scale_local = XMFLOAT3(0.08f, 0.08f, 0.08f);
         overflow_transform->UpdateTransform();
         overflow_layer->layerMask = 1u << 3;
     }
-    const auto physics_target = scene.Entity_CreateCube("elisa_query_physics_target");
+    // A physics-only body (no scene object) on its own layer, so only the
+    // merged query below sees it and the single-source checks stay on layer 3.
+    constexpr uint32_t physics_layer_mask = 1u << 4;
+    const auto physics_target = scene.Entity_CreateTransform("elisa_query_physics_target");
     auto* physics_transform = scene.transforms.GetComponent(physics_target);
-    auto* physics_layer = scene.layers.GetComponent(physics_target);
-    if (!check(physics_target != wi::ecs::INVALID_ENTITY && physics_transform != nullptr &&
-            physics_layer != nullptr, "query overflow physics entity")) return false;
+    if (!check(physics_target != wi::ecs::INVALID_ENTITY && physics_transform != nullptr,
+            "query overflow physics entity")) return false;
+    scene.layers.Create(physics_target).layerMask = physics_layer_mask;
     auto& physics_body = scene.rigidbodies.Create(physics_target);
     physics_body.shape = wi::scene::RigidBodyPhysicsComponent::BOX;
     physics_body.mass = 0.0f;
     physics_body.box.halfextents = XMFLOAT3(0.3f, 0.3f, 0.3f);
-    physics_body.collision_layer = 1u << 3;
     physics_transform->translation_local = XMFLOAT3(0, 0, -2.0f);
-    physics_transform->scale_local = XMFLOAT3(0.3f, 0.3f, 0.3f);
     physics_transform->UpdateTransform();
-    physics_layer->layerMask = 1u << 2;
-    scene.Update(0.0f);
-    scene.Update(0.0f);
+    // Physics skips non-positive timesteps, so a real step creates the body.
+    scene.Update(1.0f / 60.0f);
+    scene.Update(1.0f / 60.0f);
 
     PhysicsQueryBridge bridge(scene);
     const auto token = bridge.acquire();
@@ -85,7 +88,7 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
             1.0f, 1u << 3, hit) && hit.entity == target && hit.depth >= 0.0f,
             "query capsule overlap") ||
         !check(bridge.overlap_capsule_all(token, XMFLOAT3(0, 0, 1.4f), XMFLOAT3(0, 0, 1.6f),
-            3.0f, 1u << 3, hits) == 2 && contains_entity(hits, target) &&
+            1.5f, 1u << 3, hits) == 2 && contains_entity(hits, target) &&
             contains_entity(hits, secondary), "query capsule all overlaps")) return false;
 
     const uint32_t object_filter = wi::enums::FILTER_OBJECT_ALL;
@@ -105,7 +108,7 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
             1.0f, 1u << 3, hit, object_filter, false) && hit.entity == target,
             "query object-only capsule overlap") ||
         !check(bridge.overlap_capsule_all(token, XMFLOAT3(0, 0, 1.4f),
-            XMFLOAT3(0, 0, 1.6f), 3.0f, 1u << 3, hits, object_filter, false) == 2 &&
+            XMFLOAT3(0, 0, 1.6f), 1.5f, 1u << 3, hits, object_filter, false) == 2 &&
             contains_entity(hits, target) && contains_entity(hits, secondary),
             "query object-only capsule all overlaps")) return false;
 
@@ -122,7 +125,7 @@ inline bool probe_physics_queries(wi::scene::Scene& scene) {
             10.0f, 1u << 3, hits, wi::enums::FILTER_NONE, false) == 0 && hits.count == 0,
             "query empty filter")) return false;
     const size_t merged_hit_count = bridge.raycast_all(token,
-        XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f, 1u << 3, hits);
+        XMFLOAT3(0, 0, -4), XMFLOAT3(0, 0, 1), 10.0f, (1u << 3) | physics_layer_mask, hits);
     if (!check(merged_hit_count == PhysicsQueryBridge::MAX_HITS &&
             hits.values[0].entity == physics_target,
             "query all keeps nearest physics hit when scene buffer fills")) return false;

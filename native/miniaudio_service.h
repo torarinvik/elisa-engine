@@ -328,6 +328,12 @@ public:
         mix(output, frames);
     }
 
+    // Stops the device thread so only mix_for_test advances voices; exact
+    // sample comparisons race the running callback otherwise.
+    bool stop_device_for_test() {
+        return initialized_ && ma_device_stop(&device_) == MA_SUCCESS;
+    }
+
 private:
     bool initialize(const ma_backend* backends, size_t backend_count,
         uint32_t sample_rate, uint32_t channels) {

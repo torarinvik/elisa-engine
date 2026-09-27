@@ -24,7 +24,8 @@ inline std::vector<int16_t> spatial_mix_frames(audio::Service& service, uint32_t
 inline bool probe_miniaudio_spatial_mix(const std::vector<uint8_t>& wav, uint32_t rate,
     uint32_t clip_frames) {
     audio::Service service;
-    if (!check(service.initialize_null(rate, 1), "spatial mix service initializes")) return false;
+    if (!check(service.initialize_null(rate, 1) && service.stop_device_for_test(),
+            "spatial mix service initializes")) return false;
     const audio::ClipHandle clip = service.decode_clip(wav.data(), wav.size(), rate, 1);
     if (!check(clip.slot < audio::MAX_CLIPS, "spatial mix service decodes a clip")) return false;
 

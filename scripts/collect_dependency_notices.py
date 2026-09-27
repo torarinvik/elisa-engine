@@ -55,7 +55,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, default=ROOT / "native/notice-sources.json")
-    parser.add_argument("--wicked-root", type=Path, default=ROOT.parent / "WickedEngine")
+    parser.add_argument("--wicked-root", type=Path, default=ROOT.parent / "amazing-labyrinth-wickedengine")
     parser.add_argument("--brew-prefix", type=Path, default=Path("/opt/homebrew"))
     args = parser.parse_args()
     try:

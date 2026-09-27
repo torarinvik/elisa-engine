@@ -14,10 +14,10 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:
-        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|texture|frame|rerun|verify]")
+        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|build-gate|texture|frame|rerun|verify]")
         return 2
     phase: sview = "all" if arguments.count == 0 else arguments[0]
-    return 2 if phase != "all" and phase != "build" and phase != "texture" and phase != "frame" and phase != "rerun" and phase != "verify"
+    return 2 if phase != "all" and phase != "build" and phase != "build-gate" and phase != "texture" and phase != "frame" and phase != "rerun" and phase != "verify"
 
     root: Path = Script::source_path().parent().parent()
     dependency_status: i64 = run_visible(
@@ -27,10 +27,10 @@ def main(arguments: darray[sview]) -> i64:
         return dependency_status
     wicked_root: Path =
         configured: sview = get_environment_or("WICKED_ROOT", "")
-        path(configured) if configured != "" else root.joinpath("../WickedEngine")
+        root.joinpath(configured) if configured != "" else root.joinpath("../amazing-labyrinth-wickedengine")
     wicked_build: Path =
         configured: sview = get_environment_or("WICKED_BUILD", "")
-        path(configured) if configured != "" else wicked_root.joinpath("build-elisa-sdl3")
+        root.joinpath(configured) if configured != "" else wicked_root.joinpath("build-elisa-sdl3")
     wicked_source: Path = wicked_root.joinpath("WickedEngine")
     utility: Path = wicked_source.joinpath("Utility")
     library_root: Path = wicked_build.joinpath("WickedEngine")
@@ -71,7 +71,7 @@ def main(arguments: darray[sview]) -> i64:
     cook_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/cook_assets.py")), str(root)])
     if cook_status != 0:
         return cook_status
-    if phase == "all" or phase == "build" or phase == "texture":
+    if phase == "all" or phase == "build" or phase == "build-gate" or phase == "texture":
         basisu_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"),
             [str(root.joinpath("scripts/basisu_probe.py"))])
         if basisu_status != 0:
@@ -82,7 +82,7 @@ def main(arguments: darray[sview]) -> i64:
     # The C ABI archive makes the embedded game linkable; the live section
     # needs it before the probe is compiled.
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
-    if phase == "all" or phase == "build":
+    if phase == "all" or phase == "build" or phase == "build-gate":
         fbx_import_status: i64 = run_visible(
             get_environment_or("PYTHON_BIN", "python3"),
             [str(root.joinpath("scripts/test_fbx_import.py"))])
@@ -228,7 +228,7 @@ def main(arguments: darray[sview]) -> i64:
         "-framework", "CoreAudio", "-framework", "AVFoundation", "-framework", "VideoToolbox",
         "-framework", "Cocoa", "-o", str(output)
     ]
-    if phase == "all" or phase == "build" or phase == "texture":
+    if phase == "all" or phase == "build" or phase == "build-gate" or phase == "texture":
         compile_result: ProcessCapture =
             empty_input: sview = ""
             capture_process_result(executable(cxx), compile_arguments, empty_input)
@@ -246,17 +246,19 @@ def main(arguments: darray[sview]) -> i64:
             [str(root.joinpath("scripts/test_elisa_build_run.py"))])
         if runner_test_status != 0:
             return runner_test_status
-        application_smoke_status: i64 = run_visible(
-            get_environment_or("PYTHON_BIN", "python3"),
-            [str(root.joinpath("scripts/application_native_smoke.py"))])
-        if application_smoke_status != 0:
-            return application_smoke_status
-        render_scene_smoke_status: i64 = run_visible(
-            get_environment_or("PYTHON_BIN", "python3"),
-            [str(root.joinpath("scripts/render_scene_native_smoke.py"))])
-        if render_scene_smoke_status != 0:
-            return render_scene_smoke_status
-    return 0 if phase == "build"
+        if phase != "build-gate":
+            application_smoke_status: i64 = run_visible(
+                get_environment_or("PYTHON_BIN", "python3"),
+                [str(root.joinpath("scripts/application_native_smoke.py"))])
+            if application_smoke_status != 0:
+                return application_smoke_status
+        if phase != "build-gate":
+            render_scene_smoke_status: i64 = run_visible(
+                get_environment_or("PYTHON_BIN", "python3"),
+                [str(root.joinpath("scripts/render_scene_native_smoke.py"))])
+            if render_scene_smoke_status != 0:
+                return render_scene_smoke_status
+    return 0 if phase == "build" or phase == "build-gate"
 
     screenshot: sview = str(root.joinpath("build/wicked-frame.png"))
     rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))

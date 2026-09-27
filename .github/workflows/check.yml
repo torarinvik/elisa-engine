@@ -26,7 +26,7 @@ jobs:
           python-version: "3.14"
       - name: Python syntax
         run: |
-          python - <<'PY'
+          python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" python-syntax -- python - <<'PY'
           from pathlib import Path
           import py_compile
 
@@ -36,15 +36,17 @@ jobs:
           print(f"compiled {len(files)} Python files")
           PY
       - name: Elisa source-length policy
-        run: python scripts/check_source_length.py
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" source-length -- python scripts/check_source_length.py
       - name: Elisa module hygiene policy
-        run: python scripts/check_module_hygiene.py
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" module-hygiene -- python scripts/check_module_hygiene.py
       - name: Bounded import self-test
-        run: python scripts/cook_assets.py --self-test
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
+      - name: CI stage recorder self-test
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
       - name: Cook assets and verify the KTX containers
         run: |
-          python scripts/cook_assets.py "$PWD"
-          python - <<'PY'
+          python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" cook -- python scripts/cook_assets.py "$PWD"
+          python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ktx-verify -- python - <<'PY'
           from pathlib import Path
 
           identifier = bytes((0xAB, 0x4B, 0x54, 0x58, 0x20, 0x31, 0x31, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A))
@@ -56,6 +58,16 @@ jobs:
           assert (Path("build/catalogue.db")).is_file(), "cook produced no catalogue"
           print("cooked KTX containers and catalogue verified")
           PY
+      - name: Retain portable evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-portable-cook-${{ matrix.os }}
+          path: |
+            build/ci/
+            build/catalogue.db
+          if-no-files-found: warn
+          retention-days: 30
 
   # The real libraries that need a toolchain: the selected transport and the
   # Basis encoder are fetched, built, and run, and the boundary libraries run
@@ -73,12 +85,23 @@ jobs:
       - name: Install build dependencies
         run: brew install protobuf openssl@3 freetype harfbuzz zstd
       - name: GameNetworkingSockets transport
-        run: python3 scripts/gns_probe.py
+        run: python3 scripts/ci_stage.py build/ci native gns-probe -- python3 scripts/gns_probe.py
       - name: Basis Universal KTX2
-        run: python3 scripts/basisu_probe.py
+        run: python3 scripts/ci_stage.py build/ci native basisu-probe -- python3 scripts/basisu_probe.py
       - name: Fetch boundary dependencies
         run: |
-          python3 scripts/fetch_ozz.py
-          python3 scripts/fetch_recast.py
+          python3 scripts/ci_stage.py build/ci native fetch-ozz -- python3 scripts/fetch_ozz.py
+          python3 scripts/ci_stage.py build/ci native fetch-recast -- python3 scripts/fetch_recast.py
       - name: Boundary sanitizers (ASan + UBSan)
-        run: python3 scripts/run_boundary_sanitized.py
+        run: python3 scripts/ci_stage.py build/ci native boundary-sanitizers -- python3 scripts/run_boundary_sanitized.py
+      # Hosted runners have no GPU session: this artifact is headless evidence
+      # only (`hardware_verification: unverified`). GPU workstation evidence is
+      # `build/native-gate.json` from `native_gate.elisascript native`.
+      - name: Retain headless evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hosted-headless-native
+          path: build/ci/
+          if-no-files-found: warn
+          retention-days: 30
