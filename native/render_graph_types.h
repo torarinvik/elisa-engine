@@ -13,6 +13,9 @@ constexpr uint32_t NO_TARGET = std::numeric_limits<uint32_t>::max();
 constexpr float MIN_BLEND_OPACITY = 0.0f;
 constexpr float MAX_BLEND_OPACITY = 1.0f;
 constexpr float DEFAULT_BLEND_OPACITY = 1.0f;
+constexpr float MIN_SATURATION = 0.0f;
+constexpr float MAX_SATURATION = 2.0f;
+constexpr float DEFAULT_SATURATION = 1.0f;
 
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
@@ -20,7 +23,7 @@ enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
 enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
 enum class Operation : int32_t {
     ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3,
-    VisualizeLinearDepth = 4, BlendColor = 5
+    VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6
 };
 
 struct Resource {
@@ -42,6 +45,7 @@ struct Pass {
     uint32_t source_id = 0;
     uint32_t destination_id = 0;
     float opacity = DEFAULT_BLEND_OPACITY;
+    float saturation = DEFAULT_SATURATION;
 };
 
 struct Configuration {

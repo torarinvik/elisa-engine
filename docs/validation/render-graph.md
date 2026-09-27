@@ -36,7 +36,10 @@ R32_FLOAT and supports exact copies into graph-owned R32 targets plus a
 `VisualizeLinearDepth` pass that samples it with Wicked's built-in image shader
 and writes grayscale to a single-sample color target. `BlendColor` draws a
 single-sample color source over an initialized, single-sample color destination
-using Wicked's alpha blend pipeline. Custom depth-sampling
+using Wicked's alpha blend pipeline. `AdjustSaturation` reads a color resource
+and writes a separate, matching single-sample color target through Wicked's
+built-in image shader; its Elisa-authored value is bounded from 0 through 2.
+Custom depth-sampling
 shaders and depth-tested geometry remain unsupported. Other targets use RGBA8,
 RGBA16F, Wicked's R11G11B10F main format, or D32 depth, with fixed or
 primary-internal extents. Color sample counts 1, 2, 4,
@@ -98,6 +101,14 @@ opacity and verifies a black frame, then repeats at half opacity and verifies
 the scene becomes spatially visible. Opacity outside the range is rejected by
 the Elisa adapter before the native graph is staged, and a direct native ABI
 test confirms the executor repeats that check.
+
+`AdjustSaturation` uses its own additive scalar ABI, leaving the older pass
+entry points and opacity behavior intact. The native application fixture
+rejects an out-of-range value in both the Elisa adapter and native boundary,
+applies zero saturation to the rendered scene, and uses GPU readback hashing
+to confirm the frame changed before restoring the ordinary scene-color graph.
+The full render-only SDL3/Metal smoke passes against the manifest-pinned Wicked
+checkout on macOS 27 / Apple M5.
 
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.

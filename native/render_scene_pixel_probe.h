@@ -472,6 +472,22 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_center_differs_from_corner(v
     return differs ? 1 : 0;
 }
 
+extern "C" uint64_t elisa_render_scene_v1_last_frame_hash(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult3D();
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || !wi::helper::saveTextureToMemory(frame, pixels) || pixels.empty()) return 0;
+    uint64_t hash = FNV_OFFSET_BASIS;
+    for (uint8_t byte : pixels) {
+        hash ^= byte;
+        hash *= FNV_PRIME;
+    }
+    return hash;
+}
+
 extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_text(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

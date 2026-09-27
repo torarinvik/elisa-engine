@@ -401,11 +401,15 @@ int32_t elisa_render_scene_v1_render_graph_set_pass(
 int32_t elisa_render_scene_v1_render_graph_set_pass_with_opacity(
     uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
     uint32_t destination_id, float opacity);
+int32_t elisa_render_scene_v1_render_graph_set_pass_with_saturation(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id, float saturation);
 int32_t elisa_render_scene_v1_render_graph_commit(void);
 int32_t elisa_render_scene_v1_render_graph_abort(void);
 int32_t elisa_render_scene_v1_render_graph_status(void);
 uint64_t elisa_render_scene_v1_render_graph_execution_count(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+uint64_t elisa_render_scene_v1_last_frame_hash(void);
 uint64_t elisa_render_scene_v1_render_graph_test_depth_clear_count(void);
 uint64_t elisa_render_scene_v1_render_graph_test_color_resolve_count(void);
 uint64_t elisa_render_scene_v1_render_graph_test_linear_depth_read_count(void);

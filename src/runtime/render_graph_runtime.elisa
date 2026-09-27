@@ -9,6 +9,9 @@ module RenderGraphRuntime:
             MIN_BLEND_OPACITY: f32 = 0.0
             MAX_BLEND_OPACITY: f32 = 1.0
             DEFAULT_BLEND_OPACITY: f32 = 1.0
+            MIN_SATURATION: f32 = 0.0
+            MAX_SATURATION: f32 = 2.0
+            DEFAULT_PASS_VALUE: f32 = 1.0
         const INVALID_PLAN: i32 = -100
         const NATIVE_REJECTED: i32 = -101
         @callconv(c)
@@ -23,6 +26,10 @@ module RenderGraphRuntime:
         extern elisa_render_scene_v1_render_graph_set_pass_with_opacity(
             index: u32, id: u32, operation: i32, source_id: u32,
             destination_id: u32, opacity: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_saturation(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, saturation: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_commit() -> i32
         @callconv(c)
@@ -55,11 +62,14 @@ module RenderGraphRuntime:
             return 2 if kind == OperationKind.ClearDepth
             return 3 if kind == OperationKind.ResolveColor
             return 4 if kind == OperationKind.VisualizeLinearDepth
-            5
+            return 5 if kind == OperationKind.BlendColor
+            6
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
-            return false if operation.opacity != operation.opacity or operation.opacity < Limits::MIN_BLEND_OPACITY or operation.opacity > Limits::MAX_BLEND_OPACITY
-            return false if operation.kind != OperationKind.BlendColor and operation.opacity != Limits::DEFAULT_BLEND_OPACITY
+            return false if operation.value != operation.value
+            return false if operation.kind == OperationKind.BlendColor and (operation.value < Limits::MIN_BLEND_OPACITY or operation.value > Limits::MAX_BLEND_OPACITY)
+            return false if operation.kind == OperationKind.AdjustSaturation and (operation.value < Limits::MIN_SATURATION or operation.value > Limits::MAX_SATURATION)
+            return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.value != Limits::DEFAULT_PASS_VALUE
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -68,9 +78,12 @@ module RenderGraphRuntime:
                 expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
                 if operation.kind == OperationKind.ClearColor or operation.kind == OperationKind.ClearDepth:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.BlendColor:
+                elif operation.kind == OperationKind.BlendColor or operation.kind == OperationKind.AdjustSaturation:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
-                    expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
+                    if operation.kind == OperationKind.BlendColor:
+                        expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
+                    else:
+                        expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
@@ -128,12 +141,13 @@ module RenderGraphRuntime:
             ResolveColor
             VisualizeLinearDepth
             BlendColor
+            AdjustSaturation
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
             source_resource_id: u32
             destination_resource_id: u32
-            opacity: f32
+            value: f32
         def blend_operation(pass_id: u32, source_resource_id: u32,
                 destination_resource_id: u32, opacity: f32) -> PassOperation:
             PassOperation{
@@ -141,7 +155,16 @@ module RenderGraphRuntime:
                 kind: OperationKind.BlendColor,
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
-                opacity: opacity,
+                value: opacity,
+            }
+        def saturation_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32, saturation: f32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.AdjustSaturation,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: saturation,
             }
         struct Configuration:
             output_resource_id: u32
@@ -200,10 +223,16 @@ module RenderGraphRuntime:
                     return abort_with_status(INVALID_PLAN)
                 if not operation_matches_graph(graph, plan, operation):
                     return abort_with_status(INVALID_PLAN)
-                status <- elisa_render_scene_v1_render_graph_set_pass_with_opacity(
-                    index.u32(), operation.pass_id, native_operation(operation.kind),
-                    operation.source_resource_id, operation.destination_resource_id,
-                    operation.opacity)
+                if operation.kind == OperationKind.AdjustSaturation:
+                    status <- elisa_render_scene_v1_render_graph_set_pass_with_saturation(
+                        index.u32(), operation.pass_id, native_operation(operation.kind),
+                        operation.source_resource_id, operation.destination_resource_id,
+                        operation.value)
+                else:
+                    status <- elisa_render_scene_v1_render_graph_set_pass_with_opacity(
+                        index.u32(), operation.pass_id, native_operation(operation.kind),
+                        operation.source_resource_id, operation.destination_resource_id,
+                        operation.value)
                 status <- check_staging_status(status)
                 return status if status != Native::OK
             status <- elisa_render_scene_v1_render_graph_commit()
