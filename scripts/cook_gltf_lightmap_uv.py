@@ -132,6 +132,17 @@ def self_test() -> int:
         print("glTF lightmap UV self-test failed: atlas is unstable, invalid, or changed triangle order",
             file=sys.stderr)
         return 1
+    triangle_indices = list(struct.iter_unpack("<3I", first["indices"]))
+    vertex_count = len(first["source_vertices"])
+    overlapping_indices = struct.pack("<" + "I" * (len(triangle_indices) * 6),
+        *(index for triangle in triangle_indices for index in triangle),
+        *(index + vertex_count for triangle in triangle_indices for index in triangle))
+    overlapping_uvs = first["uv1s"] + first["uv1s"]
+    if (_atlas_has_positive_area_overlap(first["uv1s"], first["indices"]) or
+            not _atlas_has_positive_area_overlap(overlapping_uvs, overlapping_indices)):
+        print("glTF lightmap UV self-test failed: overlap fixture was missed or atlas triangles overlap",
+            file=sys.stderr)
+        return 1
     for resolution, padding in ((15, 4), (8193, 4), (128, 65)):
         try:
             generate(positions, indices, 4, resolution, padding)
@@ -144,8 +155,58 @@ def self_test() -> int:
         return status
     print(f"glTF lightmap UV self-test passed: {len(first['source_vertices'])} vertices, "
         f"{first['chart_count']} charts, deterministic {first['width']}x{first['height']} atlas; "
-        "authored, skinned, morphed and simplified streams remap correctly")
+        "overlap fixture rejected; authored, skinned, morphed and simplified streams remap correctly")
     return 0
+
+
+def _atlas_has_positive_area_overlap(uv1s: bytes, indices: bytes) -> bool:
+    """Check a small test atlas for positive-area triangle intersections."""
+    coordinates = [struct.unpack_from("<2f", uv1s, offset)
+        for offset in range(0, len(uv1s), 8)]
+    triangles = [tuple(coordinates[index] for index in triangle)
+        for triangle in struct.iter_unpack("<3I", indices)]
+
+    def cross(a: tuple[float, float], b: tuple[float, float], c: tuple[float, float]) -> float:
+        return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
+
+    def area(polygon: list[tuple[float, float]]) -> float:
+        return abs(sum(polygon[index][0] * polygon[(index + 1) % len(polygon)][1] -
+            polygon[(index + 1) % len(polygon)][0] * polygon[index][1]
+            for index in range(len(polygon)))) * 0.5 if len(polygon) >= 3 else 0.0
+
+    def intersection_area(subject: tuple[tuple[float, float], ...],
+            clip: tuple[tuple[float, float], ...]) -> float:
+        orientation = 1.0 if cross(clip[0], clip[1], clip[2]) >= 0.0 else -1.0
+        polygon = list(subject)
+        for edge in range(3):
+            start, end = clip[edge], clip[(edge + 1) % 3]
+            if not polygon:
+                return 0.0
+            output = []
+            previous = polygon[-1]
+            previous_distance = orientation * cross(start, end, previous)
+            for current in polygon:
+                current_distance = orientation * cross(start, end, current)
+                previous_inside = previous_distance >= -1.0e-12
+                current_inside = current_distance >= -1.0e-12
+                if previous_inside != current_inside:
+                    fraction = previous_distance / (previous_distance - current_distance)
+                    output.append((previous[0] + fraction * (current[0] - previous[0]),
+                        previous[1] + fraction * (current[1] - previous[1])))
+                if current_inside:
+                    output.append(current)
+                previous, previous_distance = current, current_distance
+            polygon = output
+        return area(polygon)
+
+    for first in range(len(triangles)):
+        if area(list(triangles[first])) <= 1.0e-12:
+            continue
+        for second in range(first + 1, len(triangles)):
+            if area(list(triangles[second])) > 1.0e-12 and intersection_area(
+                    triangles[first], triangles[second]) > 1.0e-10:
+                return True
+    return False
 
 
 def cooker_integration_self_test() -> int:

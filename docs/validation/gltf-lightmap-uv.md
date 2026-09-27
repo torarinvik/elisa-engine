@@ -1,6 +1,6 @@
 # glTF lightmap UV cooking
 
-**Date:** 2026-09-23
+**Date:** 2026-09-27
 **Scope:** Preserve authored glTF `TEXCOORD_1` or generate a bounded,
 deterministic xatlas atlas during offline cooking, then retain the vertex-aligned
 stream through cooked packages and Wicked mesh upload.
@@ -11,7 +11,9 @@ stream through cooked packages and Wicked mesh upload.
   passed. Repeated xatlas runs produce identical UVs, source-vertex mappings,
   and indices. Fixtures cover authored UV1 through MikkTSpace seam splits,
   generated UV1 on a multi-material mesh, skin weights, morph deltas, and
-  simplified placement ranges.
+  simplified placement ranges. The atlas check clips each fixture triangle
+  against every other triangle to reject positive-area overlap; a duplicated
+  UV fixture proves the check detects overlapping triangles.
 - `DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scripts/cook_gltf_asset.py --self-test`
   passed, including validation that atlas options require generation and stay
   within the configured resolution and padding limits.
@@ -36,7 +38,7 @@ together, including morph targets, skin influences, and placement ranges.
 
 This adds UV generation and GPU stream transport. It does not add lightmap
 material authoring, baking, sampling, or a lightmap render pass. Visual chart
-quality and mirrored-normal-map reference captures still need review. Runtime
-loading accepts authored UV1 without xatlas generation metadata and accepts
-generated UV1 only when its exact pinned generator revision and bounded
-settings are present.
+quality still needs review. The mirrored-normal-map capture is covered by
+[`mirrored-normal-map.md`](mirrored-normal-map.md). Runtime loading accepts
+authored UV1 without xatlas generation metadata and accepts generated UV1 only
+when its exact pinned generator revision and bounded settings are present.

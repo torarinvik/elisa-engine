@@ -92,7 +92,11 @@ int main() {
         atlas->width > resolution || atlas->height > resolution || mesh->vertexCount == 0 ||
         mesh->vertexCount > MAX_VERTICES || mesh->indexCount != index_count ||
         mesh->chartCount == 0 || mesh->vertexArray == nullptr || mesh->indexArray == nullptr) {
-        std::fprintf(stderr, "xatlas produced an invalid or empty atlas\n");
+        std::fprintf(stderr, "xatlas produced an invalid or empty atlas (size=%ux%u, vertices=%u, "
+            "indices=%u/%u, charts=%u)\n", atlas->width, atlas->height,
+            mesh == nullptr ? 0u : mesh->vertexCount,
+            mesh == nullptr ? 0u : mesh->indexCount, index_count,
+            mesh == nullptr ? 0u : mesh->chartCount);
         xatlas::Destroy(atlas);
         return 3;
     }
