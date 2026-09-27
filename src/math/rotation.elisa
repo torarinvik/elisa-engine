@@ -1,0 +1,42 @@
+# Quaternion interpolation policy stays in Elisa; libc supplies scalar trig.
+include "./geometry.elisa"
+
+module Rotation:
+    private:
+        @callconv(c)
+        extern acosf(value: f32) -> f32
+        @callconv(c)
+        extern sinf(value: f32) -> f32
+
+        def valid(rotation: Geometry::Quat) -> bool:
+            length: f32 = Geometry::quat_length(rotation)
+            Geometry::quat_is_finite(rotation) and length - length == 0.0 and length > 0.000001
+
+    public:
+        # Shortest arc with uniform angular progress. Near-identical rotations
+        # use the stable linear limit, followed by normalization. Invalid targets
+        # or weights retain the valid start; an invalid start becomes identity.
+        def slerp(start: Geometry::Quat, finish: Geometry::Quat, weight: f32) -> Geometry::Quat:
+            a: Geometry::Quat = Geometry::quat_normalize(start) if valid(start) else Geometry::quat_identity()
+            return a if weight - weight != 0.0 or weight <= 0.0 or not valid(finish)
+            b: Geometry::Quat = Geometry::quat_normalize(finish)
+            dot: f32 = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
+            sign: f32 = -1.0 if dot < 0.0 else 1.0
+            if weight >= 1.0:
+                return Geometry::Quat{x: b.x * sign, y: b.y * sign, z: b.z * sign, w: b.w * sign}
+            absolute: f32 = dot * sign
+            cosine: f32 = 1.0 if absolute > 1.0 else absolute
+            t: f32 = 0.0 if weight < 0.0 else (1.0 if weight > 1.0 else weight)
+            left: mutable f32 = 1.0 - t
+            right: mutable f32 = t
+            if cosine < 0.9995:
+                angle: f32 = acosf(cosine)
+                denominator: f32 = sinf(angle)
+                left <- sinf((1.0 - t) * angle) / denominator
+                right <- sinf(t * angle) / denominator
+            Geometry::quat_normalize(Geometry::Quat{
+                x: a.x * left + b.x * right * sign,
+                y: a.y * left + b.y * right * sign,
+                z: a.z * left + b.z * right * sign,
+                w: a.w * left + b.w * right * sign,
+            })

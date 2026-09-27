@@ -1,0 +1,41 @@
+# Rotation-only IK/FK blending retains FK offsets and scales, then evaluates
+# the hierarchy. Blending model positions directly would shorten bent limbs.
+include "./pose.elisa"
+include "../math/rotation.elisa"
+
+module IkFk:
+    public:
+        error BlendError:
+            ShapeMismatch
+            InvalidPose
+            InvalidWeight
+
+        # Weights address skeleton joints, not model palette cluster indices.
+        # Root/pelvis translation is a separate control; this function preserves
+        # FK translations. Full weight reproduces rotation-only IK with the same
+        # bone offsets; arbitrary IK translations are deliberately not applied.
+        def blend_rotations(skeleton: Pose::Skeleton&, fk: Pose::Pose&, ik: Pose::Pose&,
+            weights: f32[AnimationLimits::MAX_JOINTS]) -> Pose::Pose error[BlendError]:
+            raise BlendError.ShapeMismatch if fk.count != ik.count or fk.count != skeleton.count
+            raise BlendError.InvalidPose if not Pose::skeleton_valid(skeleton) or fk.count == 0
+            locals: mutable Pose::Skeleton = Pose::Skeleton()
+            for index in 0..<fk.count |locals|:
+                weight: f32 = weights[index]
+                raise BlendError.InvalidWeight if weight != weight or weight < 0.0 or weight > 1.0
+                parent: i64 = skeleton.joints[index].parent
+                left: Geometry::Transform = fk.models[index]
+                right: Geometry::Transform = ik.models[index]
+                raise BlendError.InvalidPose if not Geometry::transform_is_valid(left) or not Geometry::transform_is_valid(right)
+                left_length: f32 = Geometry::quat_length(left.rotation)
+                right_length: f32 = Geometry::quat_length(right.rotation)
+                raise BlendError.InvalidPose if left_length < 0.999 or left_length > 1.001 or right_length < 0.999 or right_length > 1.001 or left_length - left_length != 0.0 or right_length - right_length != 0.0
+                fk_local: Geometry::Transform = left if parent < 0 else Geometry::transform_apply_inverse(fk.models[parent.usize()], left)
+                ik_local: Geometry::Transform = right if parent < 0 else Geometry::transform_apply_inverse(ik.models[parent.usize()], right)
+                rotation: Geometry::Quat = Rotation::slerp(fk_local.rotation, ik_local.rotation, weight)
+                local: Geometry::Transform = Geometry::Transform{position: fk_local.position, rotation: rotation, scale: fk_local.scale}
+                raise BlendError.InvalidPose if not Pose::skeleton_add(&locals, parent, local)
+            evaluated: Pose::Pose = catch Pose::pose_evaluate(locals):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            raise BlendError.InvalidPose if evaluated.count == 0
+            evaluated

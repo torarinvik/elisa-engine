@@ -1,0 +1,68 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_animation_readback.elisa"
+include "../src/animation/ik_fk.elisa"
+
+extend RenderScene:
+    public:
+        def ik_fk_test_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+
+@callconv(c)
+extern elisa_render_scene_v1_test_animation_joint_position(handle: i64,
+    index: u32, x: f32, y: f32, z: f32) -> i32
+
+def near(a: f32, b: f32) -> bool:
+    gap: f32 = a - b
+    gap > -0.0002 and gap < 0.0002
+
+def exercise() -> i32 error[RenderScene::RenderSceneError, Pose::PoseError, IkFk::BlendError]:
+    try RenderScene::initialize(320, 200, 10.0)
+    rig: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+    try RenderScene::play_animation(rig, "idle_guard", true, 1.0, 0.0)
+    try RenderScene::advance_animation(rig, 0.3)
+    snapshot: mutable RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(rig)
+    fk: Pose::Pose = snapshot.pose
+    upper: usize = try RenderScene::animation_joint_index(rig, "mixamorig:LeftUpLeg")
+    lower: usize = try RenderScene::animation_joint_index(rig, "mixamorig:LeftLeg")
+    end: usize = try RenderScene::animation_joint_index(rig, "mixamorig:LeftFoot")
+    a: f32 = Geometry::vec3_length(Geometry::vec3_sub(fk.models[lower].position, fk.models[upper].position))
+    b: f32 = Geometry::vec3_length(Geometry::vec3_sub(fk.models[end].position, fk.models[lower].position))
+    target: Geometry::Vec3 = Geometry::vec3_add(fk.models[end].position, Geometry::Vec3{x: 0.0, y: 0.015, z: 0.0})
+    pole: Geometry::Vec3 = Geometry::vec3_sub(fk.models[lower].position, fk.models[upper].position)
+    corrected: mutable Pose::Pose = fk
+    solved: bool = try Pose::pose_correct_limb(&corrected, snapshot.skeleton, upper, lower, end, target, pole)
+    return 2 if not solved
+    for step in 0..<5 |snapshot|:
+        weight: f32 = step.f32() * 0.25
+        weights: mutable f32[AnimationLimits::MAX_JOINTS] = zeroed
+        weights[upper] <- weight
+        weights[lower] <- weight
+        weights[end] <- weight
+        blended: Pose::Pose = try IkFk::blend_rotations(snapshot.skeleton, fk, corrected, weights)
+        first: f32 = Geometry::vec3_length(Geometry::vec3_sub(blended.models[lower].position, blended.models[upper].position))
+        second: f32 = Geometry::vec3_length(Geometry::vec3_sub(blended.models[end].position, blended.models[lower].position))
+        return 3 if not near(first, a) or not near(second, b)
+        if step == 4:
+            point: Geometry::Vec3 = blended.models[end].position
+            return 4 if not near(point.x, target.x) or not near(point.y, target.y) or not near(point.z, target.z)
+        snapshot.pose <- blended
+        try RenderScene::override_animation_pose(rig, snapshot)
+        for index in 0..<blended.count:
+            point: Geometry::Vec3 = blended.models[index].position
+            return 5 if elisa_render_scene_v1_test_animation_joint_position(
+                RenderScene::ik_fk_test_handle(rig), index.u32(), point.x, point.y, point.z) != 1
+    try RenderScene::destroy(rig)
+    0
+
+def main() -> i32:
+    config: Application::Config = Application::Config{title: "Weighted IK FK", width: 320, height: 200, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    result: i32 = catch exercise():
+        value: value
+        error failure: 9
+    scene_closed: bool = catch RenderScene::shutdown():
+        ok: true
+        error failure: false
+    closed: bool = Application::shutdown()
+    return 6 if not scene_closed or not closed
+    result

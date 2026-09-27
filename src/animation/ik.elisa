@@ -1,7 +1,7 @@
 # Two-bone IK, solved analytically in Elisa. The engine owns animation and IK
 # policy: a sampler library supplies poses, but the constraint that bends a
 # limb toward a target is engine math. The solver reports the knee's cosine
-# rather than an angle, because the language has no inverse cosine and a
+# rather than an angle, because the analytic triangle solve avoids inverse cosine and a
 # cosine is exactly what the law of cosines produces. A caller that needs an
 # angle can compare against its own table; a caller that feeds a sampler can
 # use the cosine directly.
@@ -15,7 +15,7 @@ module Ik:
 
         # Unit vector perpendicular to direction as close as possible to the
         # bend hint; falls back to a stable axis when the hint is parallel to
-        # the limb. The engine has no inverse trig, so the solver works in the
+        # the limb. The solver works in the
         # projection/height plane directly.
         def perpendicular_unit(direction: Geometry::Vec3, hint: Geometry::Vec3) -> Geometry::Vec3:
             projected: Geometry::Vec3 = Geometry::vec3_sub(hint, Geometry::vec3_scale(direction, Geometry::vec3_dot(direction, hint)))

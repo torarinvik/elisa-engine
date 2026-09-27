@@ -4,6 +4,7 @@
 # other) only produces the local transforms; the composition order, the blend,
 # and the root-motion decision stay engine code. No backend advances a pose.
 include "../math/geometry.elisa"
+include "../math/rotation.elisa"
 include "./ik.elisa"
 include "./limits.elisa"
 
@@ -23,21 +24,6 @@ module Pose:
                 y: lerp_f32(start.y, finish.y, weight),
                 z: lerp_f32(start.z, finish.z, weight),
             }
-
-        # Normalized linear interpolation takes the shortest arc; the engine
-        # has no inverse cosine, and a short blend does not need slerp's
-        # constant speed. A zero dot means opposite rotations, where nlerp is
-        # ill-defined, so the right side is flipped by its sign.
-        def nlerp_quat(start: Geometry::Quat, finish: Geometry::Quat, weight: f32) -> Geometry::Quat:
-            dot: f32 = start.x * finish.x + start.y * finish.y + start.z * finish.z + start.w * finish.w
-            sign: f32 = Tune::FULL if dot >= Tune::NONE else Tune::NONE - Tune::FULL
-            blended: Geometry::Quat = Geometry::Quat{
-                x: lerp_f32(start.x, finish.x * sign, weight),
-                y: lerp_f32(start.y, finish.y * sign, weight),
-                z: lerp_f32(start.z, finish.z * sign, weight),
-                w: lerp_f32(start.w, finish.w * sign, weight),
-            }
-            Geometry::quat_normalize(blended)
 
     public:
         error PoseError:
@@ -97,7 +83,7 @@ module Pose:
             clamped: f32 = Tune::FULL if weight > Tune::FULL else Tune::NONE if weight < Tune::NONE else weight
             Geometry::Transform{
                 position: lerp_vec3(start.position, finish.position, clamped),
-                rotation: nlerp_quat(start.rotation, finish.rotation, clamped),
+                rotation: Rotation::slerp(start.rotation, finish.rotation, clamped),
                 scale: lerp_vec3(start.scale, finish.scale, clamped),
             }
 
