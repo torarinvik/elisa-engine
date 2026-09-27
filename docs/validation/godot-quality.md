@@ -32,17 +32,40 @@ godot --headless --path backends/godot --script res://quality_probe.gd
 
 It is also part of `scripts/check.elisascript`. This is adapter contract
 coverage. A display-backed Low/High smoke renders the same emissive material
-scene under both profiles, checks that at least 1,024 pixels and 0.02 mean RGB
-change, and compares each frame to its checked-in reference with peak/mean
-limits of 0.12/0.01. Run it on the tested host with:
+scene under both profiles and checks that at least 1,024 pixels and 0.02 mean
+RGB change. Compatibility additionally compares each frame to its checked-in
+reference with peak/mean limits of 0.12/0.01. The capture disables VSync,
+warms up 12 frames per profile, then samples 60 frames for CPU/GPU timing and
+renderer-reported video memory. Run Compatibility and the two RenderingDevice
+backends on the tested host with:
 
 ```sh
 GODOT_BIN=godot python3 scripts/godot_quality_visual_smoke.py
+GODOT_BIN=godot GODOT_RENDERING_METHOD=mobile python3 scripts/godot_quality_visual_smoke.py
+GODOT_BIN=godot GODOT_RENDERING_METHOD=forward_plus python3 scripts/godot_quality_visual_smoke.py
 ```
 
-On Godot 4.7.2 / macOS 27 / Apple M5 using Compatibility, the profiles changed
-all 64,000 pixels at 320×200, with 0.4522 mean RGB difference. Both captures
-matched their references exactly in repeated runs. The Low and High images are
-[`low.png`](references/godot-quality/low.png) and
-[`high.png`](references/godot-quality/high.png). Per-profile GPU/memory
-measurements and Forward+/Mobile runtime captures remain open.
+Each run writes a machine-readable report under `build/godot-quality/`. On
+Godot 4.7.2 / macOS 27 / Apple M5 at 320×200, all three renderers changed all
+64,000 pixels between Low and High. Compatibility matched both references
+exactly; its mean Low/High RGB difference was 0.4522. The Low and High images
+are [`low.png`](references/godot-quality/low.png) and
+[`high.png`](references/godot-quality/high.png).
+
+| Renderer | Low CPU p50 / p95 / p99 (ms) | High CPU p50 / p95 / p99 (ms) | Low / High video memory (MiB) | GPU timing |
+| --- | --- | --- | ---: | --- |
+| Compatibility | 0.288 / 0.459 / 0.600 | 0.985 / 1.501 / 1.715 | 6.88 / 7.70 | Unsupported by renderer |
+| Mobile | 0.106 / 0.145 / 0.153 | 0.085 / 0.125 / 0.232 | 15.00 / 79.67 | No samples returned |
+| Forward+ | 0.084 / 0.117 / 0.167 | 0.096 / 0.207 / 0.250 | 21.70 / 94.89 | No samples returned |
+
+The sample reports are
+[`Compatibility`](../../build/godot-quality/measurements-gl_compatibility.json),
+[`Mobile`](../../build/godot-quality/measurements-mobile.json), and
+[`Forward+`](../../build/godot-quality/measurements-forward_plus.json). GPU
+timing is unavailable on Compatibility; on the tested Apple Metal Mobile and
+Forward+ renderers, Godot returned zero GPU samples for both profiles. Video
+memory is a renderer-wide reading after each profile, including shared and
+retained allocations; the difference is not an isolated cost for a single
+quality feature. CPU/GPU timings can vary with device state. FSR2 applies on
+Forward+ and falls back on Compatibility and Mobile. GPU-time measurements on a
+supported renderer/driver remain open.

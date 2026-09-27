@@ -2,13 +2,16 @@ extends SceneTree
 
 const QualityService = preload("res://quality_service.gd")
 
+const WARMUP_FRAMES := 12
+const MEASURED_FRAMES := 60
+
 func _initialize() -> void:
 	call_deferred("_capture")
 
 func _capture() -> void:
 	var arguments := OS.get_cmdline_user_args()
-	if arguments.size() != 2:
-		_fail("expected <low.png> <high.png>")
+	if arguments.size() != 3:
+		_fail("expected <low.png> <high.png> <measurements.json>")
 		return
 	var scene := Node3D.new()
 	root.add_child(scene)
@@ -31,34 +34,58 @@ func _capture() -> void:
 	scene.add_child(light)
 
 	var service := QualityService.new()
+	var viewport := root.get_viewport()
+	var measured_frames := MEASURED_FRAMES
+	var high_upscaler := OS.get_environment("ELISA_GODOT_QUALITY_UPSCALER")
+	if high_upscaler.is_empty():
+		high_upscaler = "fsr2"
+	if not ["none", "fsr1", "fsr2"].has(high_upscaler):
+		_fail("ELISA_GODOT_QUALITY_UPSCALER must be none, fsr1, or fsr2")
+		return
+	var configured_samples := OS.get_environment("ELISA_GODOT_QUALITY_MEASURED_FRAMES")
+	if not configured_samples.is_empty():
+		if not configured_samples.is_valid_int() or int(configured_samples) < 3 or int(configured_samples) > 1000:
+			_fail("ELISA_GODOT_QUALITY_MEASURED_FRAMES must be an integer from 3 through 1000")
+			return
+		measured_frames = int(configured_samples)
+	var measure_gpu := OS.get_environment("ELISA_GODOT_QUALITY_GPU_TIMING") != "0"
+	RenderingServer.viewport_set_measure_render_time(viewport.get_viewport_rid(), true)
 	var low: Dictionary = service.apply_profile(_profile(false), root, environment, camera_attributes)
 	if low["error"] != QualityService.Status.OK:
 		_fail("Low profile application failed")
 		return
-	await _settle_frames()
+	print("Godot quality capture: measuring Low profile")
+	var low_metrics := await _measure_profile(viewport, measured_frames, measure_gpu)
+	print("Godot quality capture: Low profile measured")
 	if not _save_frame(arguments[0]):
 		_fail("Low profile capture could not be saved")
 		return
 
-	var high: Dictionary = service.apply_profile(_profile(true), root, environment, camera_attributes)
+	var high: Dictionary = service.apply_profile(_profile(true, high_upscaler), root, environment, camera_attributes)
+	var high_upscaler_supported: bool = service.capabilities().get(high_upscaler, high_upscaler == "none")
 	if high["error"] != QualityService.Status.OK \
-			or high["outcome"] != "upscaler_fallback" \
-			or not high["unsupported"].has("upscaler"):
-		_fail("High profile failed or did not expose its Compatibility fallback")
+			or (high_upscaler_supported and high["unsupported"].has("upscaler")) \
+			or (not high_upscaler_supported and (high["outcome"] != "upscaler_fallback" or not high["unsupported"].has("upscaler"))):
+		_fail("High profile did not match the active renderer's upscaler capability")
 		return
-	await _settle_frames()
+	print("Godot quality capture: measuring High profile")
+	var high_metrics := await _measure_profile(viewport, measured_frames, measure_gpu)
+	print("Godot quality capture: High profile measured")
 	if not _save_frame(arguments[1]):
 		_fail("High profile capture could not be saved")
+		return
+	if not _save_measurements(arguments[2], low_metrics, high_metrics, viewport, measured_frames, high_upscaler, measure_gpu):
+		_fail("Godot profile measurements could not be saved")
 		return
 	scene.queue_free()
 	await process_frame
 	quit(0)
 
-func _profile(high_quality: bool) -> Dictionary:
+func _profile(high_quality: bool, high_upscaler: String = "fsr2") -> Dictionary:
 	return {
 		"level": "high" if high_quality else "low",
 		"tonemap": "aces" if high_quality else "reinhard",
-		"upscaler": "fsr2" if high_quality else "none",
+		"upscaler": high_upscaler if high_quality else "none",
 		"render_scale": 1.0,
 		"bloom": high_quality,
 		"bloom_threshold": 0.65 if high_quality else 1.0,
@@ -131,10 +158,67 @@ func _add_scene_geometry(scene: Node3D) -> void:
 	beacon.material_override = beacon_material
 	scene.add_child(beacon)
 
-func _settle_frames() -> void:
-	for _frame in range(5):
+func _measure_profile(viewport: Viewport, measured_frames: int, measure_gpu: bool) -> Dictionary:
+	var cpu_samples: Array[float] = []
+	var gpu_samples: Array[float] = []
+	for frame_index in range(WARMUP_FRAMES + measured_frames):
 		await process_frame
-	await RenderingServer.frame_post_draw
+		await RenderingServer.frame_post_draw
+		if frame_index < WARMUP_FRAMES:
+			continue
+		var cpu_ms := RenderingServer.viewport_get_measured_render_time_cpu(viewport.get_viewport_rid())
+		var gpu_ms := RenderingServer.viewport_get_measured_render_time_gpu(viewport.get_viewport_rid()) if measure_gpu else 0.0
+		if cpu_ms > 0.0:
+			cpu_samples.append(cpu_ms)
+		if gpu_ms > 0.0:
+			gpu_samples.append(gpu_ms)
+	return {
+		"cpu_ms": _summarize(cpu_samples),
+		"gpu_ms": _summarize(gpu_samples),
+		"video_memory_bytes": RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_VIDEO_MEM_USED),
+	}
+
+func _summarize(samples: Array[float]) -> Dictionary:
+	if samples.is_empty():
+		return {"sample_count": 0, "p50": null, "p95": null, "p99": null}
+	var sorted := samples.duplicate()
+	sorted.sort()
+	return {
+		"sample_count": sorted.size(),
+		"p50": _percentile(sorted, 0.50),
+		"p95": _percentile(sorted, 0.95),
+		"p99": _percentile(sorted, 0.99),
+	}
+
+func _percentile(sorted: Array[float], percentile: float) -> float:
+	var index := clampi(int(ceil(percentile * sorted.size())) - 1, 0, sorted.size() - 1)
+	return sorted[index]
+
+func _save_measurements(filename: String, low: Dictionary, high: Dictionary, viewport: Viewport, measured_frames: int, high_upscaler: String, measure_gpu: bool) -> bool:
+	var rendering_method := RenderingServer.get_current_rendering_method()
+	var gpu_status := "unsupported_by_compatibility_renderer" if rendering_method == "gl_compatibility" else "unavailable_no_samples"
+	if not measure_gpu:
+		gpu_status = "disabled_by_configuration"
+	if low["gpu_ms"]["sample_count"] > 0 and high["gpu_ms"]["sample_count"] > 0:
+		gpu_status = "available"
+	var report := {
+		"schema": 1,
+		"godot_version": Engine.get_version_info()["string"],
+		"rendering_method": rendering_method,
+		"viewport_width": viewport.size.x,
+		"viewport_height": viewport.size.y,
+		"warmup_frames": WARMUP_FRAMES,
+		"measured_frames": measured_frames,
+		"high_upscaler": high_upscaler,
+		"gpu_timing_status": gpu_status,
+		"video_memory_scope": "renderer-wide allocation; includes shared resources and is not attributable to one profile",
+		"profiles": {"low": low, "high": high},
+	}
+	var file := FileAccess.open(filename, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_string(JSON.stringify(report, "\t") + "\n")
+	return file.get_error() == OK
 
 func _save_frame(filename: String) -> bool:
 	var frame := root.get_texture().get_image()
