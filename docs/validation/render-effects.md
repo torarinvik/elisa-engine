@@ -22,8 +22,7 @@ plus stale-handle rejection. It runs with the SDL3/Metal gate:
 
 ```text
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
-ELISA_ALLOW_STALE_STAGE1=1 \
-ELISA_COMPILER_BIN=/Users/torarinvikbjarko/Documents/Coding\ Projects/Elisa\ Projects/Elisa-compiler/scripts/elisac_stage1.sh \
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
 python3 scripts/render_scene_native_smoke.py
 ```
 
@@ -59,7 +58,7 @@ with the SDL3/Metal toolchain:
 ```text
 ELISA_RENDER_SCENE_NATIVE_ONLY=1 \
 ELISA_RENDER_SCENE_NATIVE_MAIN=test/render_scene_effect_events_native_main.elisa \
-ELISA_COMPILER_BIN=../Elisa-compiler/bin/elisac-stage1 \
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
 WICKED_ROOT=../amazing-labyrinth-wickedengine \
 WICKED_BUILD=../amazing-labyrinth-wickedengine/build-elisa-sdl3 \
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
