@@ -49,8 +49,10 @@ inline bool check_ktx2_bounded_reader(const std::filesystem::path& directory) {
 }
 
 inline bool check_ktx2_format_policy() {
-    const KTX2UploadFormats all{true, true, true, true, true, true, true};
+    const KTX2UploadFormats all{true, true, true, true, true, true, true, true};
     const KTX2UploadFormats hdr{false, false, false, false, false, true, true};
+    KTX2UploadFormats astc_only{};
+    astc_only.astc4x4 = true;
     return check(choose_ktx2_upload_encoding(false, all) == KTX2UploadEncoding::Bc1,
             "opaque KTX2 prefers BC1") &&
         check(choose_ktx2_upload_encoding(true, all) == KTX2UploadEncoding::Bc7,
@@ -71,6 +73,12 @@ inline bool check_ktx2_format_policy() {
             "normal data rejects missing safe formats") &&
         check(choose_ktx2_upload_encoding(true, {}) == KTX2UploadEncoding::Unsupported,
             "KTX2 rejects missing safe fallback") &&
+        check(choose_ktx2_upload_encoding(false, astc_only) == KTX2UploadEncoding::Astc4x4 &&
+            choose_ktx2_upload_encoding(true, astc_only) == KTX2UploadEncoding::Astc4x4,
+            "ASTC 4x4 safely handles opaque and alpha color when it is the only supported format") &&
+        check(choose_ktx2_upload_encoding(false, astc_only, KTX2TextureUsage::NormalData) ==
+                KTX2UploadEncoding::Astc4x4,
+            "ASTC 4x4 preserves normal data when BC5 is unavailable") &&
         check(choose_ktx2_upload_encoding(false, hdr, KTX2TextureUsage::Color, true) ==
                 KTX2UploadEncoding::Bc6h,
             "HDR KTX2 prefers BC6H without losing range") &&
@@ -90,7 +98,39 @@ inline bool check_ktx2_format_policy() {
                 wi::graphics::Format::BC6H_UF16 &&
             ktx2_wicked_format(KTX2UploadEncoding::Rgba16Float, false) ==
                 wi::graphics::Format::R16G16B16A16_FLOAT,
-            "HDR upload maps to Wicked's BC6H or RGBA16F formats");
+            "HDR upload maps to Wicked's BC6H or RGBA16F formats") &&
+        check(ktx2_wicked_format(KTX2UploadEncoding::Astc4x4, false) ==
+                wi::graphics::Format::ASTC_4X4_UNORM &&
+            ktx2_wicked_format(KTX2UploadEncoding::Astc4x4, true) ==
+                wi::graphics::Format::ASTC_4X4_UNORM_SRGB &&
+            wi::graphics::IsFormatBlockCompressed(wi::graphics::Format::ASTC_4X4_UNORM) &&
+            wi::graphics::GetFormatStride(wi::graphics::Format::ASTC_4X4_UNORM) == 16 &&
+            wi::graphics::GetFormatBlockSize(wi::graphics::Format::ASTC_4X4_UNORM) == 4,
+            "ASTC 4x4 maps to Wicked's linear and sRGB formats with 16-byte blocks");
+}
+
+inline bool check_ktx2_astc_upload(const std::filesystem::path& path) {
+    const KTX2UploadFormats supported = query_ktx2_upload_formats(wi::graphics::GetDevice(), true);
+    if (!supported.astc4x4) {
+        std::fprintf(stdout, "KTX2 ASTC upload: skipped (device does not support ASTC 4x4)\n");
+        return true;
+    }
+    std::vector<uint8_t> encoded;
+    if (!check(read_bounded_ktx2_container(path.lexically_normal().string(), encoded),
+        "ASTC KTX2 alpha fixture reads within budget")) return false;
+    KTX2UploadFormats astc_only{};
+    astc_only.astc4x4 = true;
+    const wi::Resource resource = elisa::rendering::textures::detail::load_ktx2_texture_resource(
+        encoded, KTX2TextureUsage::Color, &astc_only);
+    if (!check(resource.IsValid() && resource.GetTexture().IsValid() &&
+        resource.GetTexture().GetDesc().format == wi::graphics::Format::ASTC_4X4_UNORM_SRGB &&
+        resource.GetTexture().GetDesc().width == 6 && resource.GetTexture().GetDesc().height == 5,
+        "6x5 alpha KTX2 transcodes and uploads as queried ASTC 4x4 sRGB")) return false;
+    wi::vector<uint8_t> blocks;
+    if (!check(wi::helper::saveTextureToMemory(resource.GetTexture(), blocks) && blocks.size() >= 64,
+        "6x5 ASTC upload reads back four complete compressed blocks")) return false;
+    std::fprintf(stdout, "KTX2 ASTC upload: 6x5 alpha texture, 4 ASTC 4x4 blocks\n");
+    return true;
 }
 
 enum class KTX2RGBAFallbackFixture { OpaqueColor, AlphaColor, NormalData };
@@ -280,6 +320,7 @@ inline bool check_ktx2_upload_fixtures(const std::filesystem::path& cooked_direc
         check_ktx2_hdr_upload(cooked_directory / "maze_tile_hdr.ktx2") &&
         check_ktx2_cubemap_upload(cooked_directory / "maze_tile_cube.ktx2") &&
         check_ktx2_alpha_upload(cooked_directory / "maze_tile_alpha.ktx2") &&
+        check_ktx2_astc_upload(cooked_directory / "maze_tile_astc_odd.ktx2") &&
         check_ktx2_rgba8_fallback(cooked_directory / "maze_tile_alpha.ktx2",
             KTX2RGBAFallbackFixture::AlphaColor);
 }

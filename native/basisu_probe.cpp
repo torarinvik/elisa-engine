@@ -73,8 +73,8 @@ static bool check_ktx2_upload_shapes() {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2 || argc > 8) {
-        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2 [hdr.ktx2 [swizzled-normal.ktx2 [swizzled-srgb.ktx2]]]]]]\n");
+    if (argc < 2 || argc > 9) {
+        std::fprintf(stderr, "usage: basisu-probe <texture.ktx2> [cubemap.ktx2 [alpha.ktx2 [normal.ktx2 [hdr.ktx2 [swizzled-normal.ktx2 [swizzled-srgb.ktx2 [astc-odd.ktx2]]]]]]]\n");
         return 2;
     }
     std::ifstream input(argv[1], std::ios::binary);
@@ -192,7 +192,28 @@ int main(int argc, char** argv) {
         if (!probe::check(alpha.transcode_image_level(
             0, 0, 0, bc3_block, 1, basist::transcoder_texture_format::cTFBC3_RGBA, 0, 1),
             "alpha KTX2 transcodes to one BC3 block")) return 1;
+        uint8_t astc_block[16] = {};
+        if (!probe::check(alpha.transcode_image_level(
+            0, 0, 0, astc_block, 1, basist::transcoder_texture_format::cTFASTC_LDR_4x4_RGBA, 0, 1),
+            "alpha KTX2 transcodes to one ASTC 4x4 block")) return 1;
+        std::fprintf(stdout, "basisu ASTC transcode: one alpha-preserving 4x4 block\n");
         std::fprintf(stdout, "basisu alpha transcode: first_alpha=%u\n", (unsigned)alpha_rgba[3]);
+    }
+    if (argc >= 9) {
+        std::ifstream astc_input(argv[8], std::ios::binary);
+        if (!probe::check(astc_input.good(), "odd-dimension ASTC KTX2 file readable")) return 1;
+        const std::vector<uint8_t> astc_bytes(
+            (std::istreambuf_iterator<char>(astc_input)), std::istreambuf_iterator<char>());
+        basist::ktx2_transcoder astc;
+        if (!probe::check(astc.init(astc_bytes.data(), (uint32_t)astc_bytes.size()) &&
+            astc.get_width() == 6 && astc.get_height() == 5 && astc.get_has_alpha() != 0 &&
+            astc.is_srgb(), "odd-dimension ASTC KTX2 metadata parses")) return 1;
+        if (!probe::check(astc.start_transcoding(), "odd-dimension ASTC KTX2 starts transcoding")) return 1;
+        uint8_t blocks[4 * 16] = {};
+        if (!probe::check(astc.transcode_image_level(0, 0, 0, blocks, 4,
+            basist::transcoder_texture_format::cTFASTC_LDR_4x4_RGBA, 0, 2),
+            "6x5 ASTC texture transcodes to its four 4x4 blocks")) return 1;
+        std::fprintf(stdout, "basisu ASTC odd-dimension transcode: 6x5 -> 4 blocks\n");
     }
     if (argc >= 5) {
         std::ifstream normal_input(argv[4], std::ios::binary);
@@ -272,7 +293,7 @@ int main(int argc, char** argv) {
         std::fprintf(stdout, "basisu normal BC5 transcode: xy=%u,%u\n",
             (unsigned)bc5_pixels[0].r, (unsigned)bc5_pixels[0].g);
     }
-    if (argc == 8) {
+    if (argc >= 8) {
         std::ifstream color_input(argv[7], std::ios::binary);
         if (!probe::check(color_input.good(), "KTX2 swizzled sRGB file readable")) return 1;
         const std::vector<uint8_t> color_bytes(

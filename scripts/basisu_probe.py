@@ -100,6 +100,7 @@ def main() -> int:
     normal_swizzled = ENGINE_ROOT / "build/cooked/maze_tile_normal_swizzled.ktx2"
     color_swizzled = ENGINE_ROOT / "build/cooked/maze_tile_color_swizzled.ktx2"
     hdr = ENGINE_ROOT / "build/cooked/maze_tile_hdr.ktx2"
+    astc_odd = ENGINE_ROOT / "build/cooked/maze_tile_astc_odd.ktx2"
     normal_pixels = bytes((96, 192, 232, 255)) * 16
     with tempfile.TemporaryDirectory(prefix="elisa-basisu-normal-") as workdir:
         source = Path(workdir) / "normal.png"
@@ -111,6 +112,11 @@ def main() -> int:
         color_source.write_bytes(cook_assets.write_png(4, 4, color_pixels))
         hdr_source = Path(workdir) / "range.hdr"
         write_hdr_fixture(hdr_source)
+        astc_source = Path(workdir) / "astc-odd.png"
+        astc_pixels = b"".join(
+            bytes((40 + x * 25, 50 + y * 30, 180 - x * 10, 80 + (x + y) * 12))
+            for y in range(5) for x in range(6))
+        astc_source.write_bytes(cook_assets.write_png(6, 5, astc_pixels))
         normal_result = subprocess.run([
             basisu, "-ktx2", "-uastc", "-normal_map", "-linear", str(source),
             "-output_file", str(normal),
@@ -125,6 +131,9 @@ def main() -> int:
         hdr_result = subprocess.run([
             basisu, "-ktx2", "-hdr", "-uastc_level", "0", str(hdr_source),
             "-output_file", str(hdr),
+        ], capture_output=True, text=True, check=False)
+        astc_result = subprocess.run([
+            basisu, "-ktx2", "-uastc", str(astc_source), "-output_file", str(astc_odd),
         ], capture_output=True, text=True, check=False)
     relay(normal_result)
     if normal_result.returncode != 0 or not normal.is_file():
@@ -155,6 +164,10 @@ def main() -> int:
     if hdr_result.returncode != 0 or not hdr.is_file():
         print("basisu probe: could not cook the HDR fixture", file=sys.stderr)
         return hdr_result.returncode if hdr_result.returncode != 0 else 1
+    relay(astc_result)
+    if astc_result.returncode != 0 or not astc_odd.is_file():
+        print("basisu probe: could not cook the odd-dimension ASTC fixture", file=sys.stderr)
+        return astc_result.returncode if astc_result.returncode != 0 else 1
     try:
         hdr_dimensions = encoded_image_dimensions(hdr.read_bytes())
     except ValueError as error:
@@ -191,7 +204,7 @@ def main() -> int:
         return compile_result.returncode if compile_result.returncode != 0 else 1
 
     run = subprocess.run([str(probe), str(ktx2), str(cube), str(alpha), str(normal), str(hdr),
-            str(normal_swizzled), str(color_swizzled)],
+            str(normal_swizzled), str(color_swizzled), str(astc_odd)],
         capture_output=True, text=True, check=False)
     relay(run)
     if run.returncode != 0 or MARKER not in run.stdout:
@@ -203,6 +216,12 @@ def main() -> int:
     if "basisu alpha transcode:" not in run.stdout:
         print("basisu probe: alpha did not survive transcoding", file=sys.stderr)
         return 1
+    if "basisu ASTC transcode:" not in run.stdout:
+        print("basisu probe: ASTC 4x4 alpha output was not verified", file=sys.stderr)
+        return 1
+    if "basisu ASTC odd-dimension transcode:" not in run.stdout:
+        print("basisu probe: ASTC block rounding for odd dimensions was not verified", file=sys.stderr)
+        return 1
     if "basisu normal BC5 transcode:" not in run.stdout:
         print("basisu probe: BC5 did not preserve both normal-map channels", file=sys.stderr)
         return 1
@@ -212,7 +231,7 @@ def main() -> int:
     if "basisu HDR transcode:" not in run.stdout:
         print("basisu probe: HDR dynamic range was not verified", file=sys.stderr)
         return 1
-    print("Basis Universal validated color, cubemap, alpha, normal-map, and HDR fixtures.")
+    print("Basis Universal validated color, cubemap, alpha, ASTC, normal-map, and HDR fixtures.")
     return 0
 
 

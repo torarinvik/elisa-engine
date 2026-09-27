@@ -12,11 +12,11 @@ and KTX structural probes remain alongside this GPU upload check.
 
 Loose KTX2 project texture assets and KTX2 sections registered through
 RenderScene load through the pinned Basis transcoder in `native/ktx2_upload.h`.
-It transcodes bounded mip chains to queried BC1 (opaque), BC7/BC3 (alpha), or
-RGBA8 formats, preserves the KTX2 transfer function in
+It transcodes bounded mip chains to queried BC1 (opaque), BC7/BC3 (alpha),
+ASTC 4x4 on capable devices, or a safe RGBA8 fallback. It preserves the KTX2 transfer function in
 Wicked's UNORM/SRGB formats, and assigns the color texture to the authored goal
-material. Normal-data usage prefers linear BC5_RG and falls back to channel-
-preserving RGBA8 when the device lacks BC5 support. The opaque color fixture is
+material. Normal-data usage prefers linear BC5_RG, then ASTC 4x4, with channel-
+preserving RGBA8 as the fallback. The opaque color fixture is
 linear; the alpha fixture is sRGB, so both transfer paths are covered.
 
 Container and upload-payload memory are capped at 64 MiB; empty and oversized
@@ -28,11 +28,14 @@ checks opaque BC1 and alpha BC7/BC3 Basis targets, verifies alpha and sRGB
 metadata, and checks distinct colors on all cube faces. A linear UASTC normal
 fixture stores authored X/Y in red/alpha, transcodes to BC5, and verifies both
 channels against the source values. The Wicked `texture` phase runs a focused
-upload smoke that verifies queried format selection, BC5/RGBA normal fallback,
-alpha safety, and cube shape. The render-scene smoke
-registers both loose and bundle KTX2 assets and samples them from Elisa
-materials. The glTF cooker packages embedded PNG/JPEG and Basis KTX2 sources
-selected with `KHR_texture_basisu`.
+upload smoke that verifies queried format selection, BC5/ASTC/RGBA normal
+fallback, ASTC alpha upload on capable devices, alpha safety, and cube shape.
+On the Apple M5 Metal device, a 6x5 sRGB alpha fixture uploads as ASTC 4x4 and
+reads back all four compressed blocks, covering the partial edge blocks. The
+render-scene smoke registers both loose and bundle KTX2 assets and samples them
+from Elisa materials. The glTF cooker packages embedded PNG/JPEG and Basis KTX2
+sources selected with `KHR_texture_basisu`. Vulkan format mapping and support
+checks compile in Wicked; runtime behavior on Vulkan devices remains unverified.
 
 The CPU probe also mutates 15 KTX2 header, DFD, key/value, and mip-index fields;
 the pinned Basis parser rejects each before transcoding.

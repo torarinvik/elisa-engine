@@ -80,6 +80,7 @@ inline KTX2UploadFormats query_ktx2_upload_formats(wi::graphics::GraphicsDevice*
             ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
             ktx2_format_supported(device, wi::graphics::Format::BC6H_UF16),
             ktx2_format_supported(device, wi::graphics::Format::R16G16B16A16_FLOAT),
+            ktx2_format_supported(device, wi::graphics::Format::ASTC_4X4_UNORM),
         };
         cache.srgb = {
             ktx2_format_supported(device, wi::graphics::Format::R8G8B8A8_UNORM_SRGB),
@@ -89,6 +90,7 @@ inline KTX2UploadFormats query_ktx2_upload_formats(wi::graphics::GraphicsDevice*
             ktx2_format_supported(device, wi::graphics::Format::BC5_UNORM),
             cache.linear.bc6h,
             cache.linear.rgba16f,
+            ktx2_format_supported(device, wi::graphics::Format::ASTC_4X4_UNORM_SRGB),
         };
     }
     return srgb ? cache.srgb : cache.linear;
@@ -101,6 +103,7 @@ inline basist::transcoder_texture_format ktx2_basis_format(KTX2UploadEncoding en
     case KTX2UploadEncoding::Bc5: return basist::transcoder_texture_format::cTFBC5_RG;
     case KTX2UploadEncoding::Bc6h: return basist::transcoder_texture_format::cTFBC6H;
     case KTX2UploadEncoding::Bc7: return basist::transcoder_texture_format::cTFBC7_RGBA;
+    case KTX2UploadEncoding::Astc4x4: return basist::transcoder_texture_format::cTFASTC_LDR_4x4_RGBA;
     case KTX2UploadEncoding::Rgba16Float: return basist::transcoder_texture_format::cTFRGBA_HALF;
     default: return basist::transcoder_texture_format::cTFRGBA32;
     }
@@ -118,6 +121,8 @@ inline wi::graphics::Format ktx2_wicked_format(KTX2UploadEncoding encoding, bool
         return wi::graphics::Format::BC6H_UF16;
     case KTX2UploadEncoding::Bc7:
         return srgb ? wi::graphics::Format::BC7_UNORM_SRGB : wi::graphics::Format::BC7_UNORM;
+    case KTX2UploadEncoding::Astc4x4:
+        return srgb ? wi::graphics::Format::ASTC_4X4_UNORM_SRGB : wi::graphics::Format::ASTC_4X4_UNORM;
     case KTX2UploadEncoding::Rgba16Float:
         return wi::graphics::Format::R16G16B16A16_FLOAT;
     default:
@@ -132,7 +137,7 @@ inline uint32_t ktx2_block_bytes(KTX2UploadEncoding encoding) {
 inline bool ktx2_encoding_is_compressed(KTX2UploadEncoding encoding) {
     return encoding == KTX2UploadEncoding::Bc1 || encoding == KTX2UploadEncoding::Bc3 ||
         encoding == KTX2UploadEncoding::Bc5 || encoding == KTX2UploadEncoding::Bc6h ||
-        encoding == KTX2UploadEncoding::Bc7;
+        encoding == KTX2UploadEncoding::Bc7 || encoding == KTX2UploadEncoding::Astc4x4;
 }
 
 struct KTX2ChannelSwizzle {
@@ -264,7 +269,7 @@ inline bool ktx2_formats_are_subset(const KTX2UploadFormats& requested,
     return (!requested.rgba8 || available.rgba8) && (!requested.bc1 || available.bc1) &&
         (!requested.bc3 || available.bc3) && (!requested.bc7 || available.bc7) &&
         (!requested.bc5 || available.bc5) && (!requested.bc6h || available.bc6h) &&
-        (!requested.rgba16f || available.rgba16f);
+        (!requested.rgba16f || available.rgba16f) && (!requested.astc4x4 || available.astc4x4);
 }
 
 // The optional mask lets native probes exercise a real fallback path on a
