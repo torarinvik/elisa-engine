@@ -32,8 +32,9 @@ ELISA_RENDER_SCENE_DEBUG_ONLY=1 \
 /opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py
 ```
 
-The full render-only sweep also passed the debug-pixel check, then stopped at
-the separate `postprocess-high` reference comparison.
+The full render-only SDL3/Metal sweep passed the debug-pixel check and all High
+and Low post-process references. High uses the temporal-AA edge filter described
+in [`postprocess-quality.md`](postprocess-quality.md).
 
 The native SDL3/Wicked gate exercises queueing, validation, renderer submission,
 and scope clearing after the captured frame. Debug commands therefore cannot

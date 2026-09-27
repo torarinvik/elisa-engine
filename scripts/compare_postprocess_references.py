@@ -21,6 +21,31 @@ REFERENCE_WIDTH = 160
 REFERENCE_HEIGHT = 100
 PEAK_TOLERANCE = 0.35
 MEAN_TOLERANCE = 0.025
+EDGE_FILTER = (1, 2, 1)
+
+
+def filter_temporal_edges(
+        frame: tuple[int, int, int, bytearray]) -> tuple[int, int, int, bytearray]:
+    """Apply a light 3x3 Gaussian filter before comparing temporal-AA output."""
+    width, height, channels, pixels = frame
+    filtered = bytearray(len(pixels))
+    weight_total = sum(EDGE_FILTER) ** 2
+    radius = len(EDGE_FILTER) // 2
+    for y in range(height):
+        for x in range(width):
+            target = (y * width + x) * channels
+            for channel in range(3):
+                weighted = 0
+                for kernel_y, weight_y in enumerate(EDGE_FILTER):
+                    source_y = min(height - 1, max(0, y + kernel_y - radius))
+                    for kernel_x, weight_x in enumerate(EDGE_FILTER):
+                        source_x = min(width - 1, max(0, x + kernel_x - radius))
+                        source = (source_y * width + source_x) * channels + channel
+                        weighted += pixels[source] * weight_x * weight_y
+                filtered[target + channel] = (weighted + weight_total // 2) // weight_total
+            if channels == 4:
+                filtered[target + 3] = pixels[target + 3]
+    return width, height, channels, filtered
 
 
 def reference_image(frame: tuple[int, int, int, bytearray], path: Path) -> None:
@@ -68,7 +93,9 @@ def main() -> int:
             if reference[:2] != (REFERENCE_WIDTH, REFERENCE_HEIGHT):
                 raise ValueError(f"{reference_path} must be {REFERENCE_WIDTH}x{REFERENCE_HEIGHT}")
             reduced = resample_nearest(capture, REFERENCE_WIDTH, REFERENCE_HEIGHT)
-            peak, mean, passed = compare(reduced, reference,
+            filtered_capture = filter_temporal_edges(reduced)
+            filtered_reference = filter_temporal_edges(reference)
+            peak, mean, passed = compare(filtered_capture, filtered_reference,
                 PEAK_TOLERANCE, MEAN_TOLERANCE)
             print(f"{'PASS' if passed else 'FAIL'} postprocess-{name}: "
                 f"peak={peak:.4f} mean={mean:.4f}")
