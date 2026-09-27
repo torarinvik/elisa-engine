@@ -138,3 +138,13 @@ merged results stay in distance order.
   smoke sequence. The focused native application and complete `frame` phase
   passed independently; the combined script’s full 12-project smoke sequence
   remains unverified in one invocation.
+
+## Gameplay and audio integration (2026-09-27)
+
+`examples/maze/physics.elisa` selects Jolt bodies only for the wall sphere cast and
+key-sensor overlap. The maze SDL3/Metal self-test passed after this change, confirming
+a physics obstacle blocks movement and the Jolt sensor gates key collection.
+`WorldAudio::update_with_physics` routes layer-filtered occlusion rays through the
+runtime session; its native probe verifies a Jolt blocker and restoration after removal.
+The focused `physics-runtime-query-smoke` also passed on the merged pinned Wicked/Jolt
+checkout, covering direct and session filters, bounded shape queries, and contact events.

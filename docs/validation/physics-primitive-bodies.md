@@ -2,7 +2,8 @@
 
 **Status:** direct primitive bodies, shared primitive shapes, caller-array mesh
 shapes, cooked-asset convex/triangle-mesh shapes, and reusable compound shapes
-pass the focused SDL3/Metal native smoke on macOS. P02 remains open.
+pass the focused SDL3/Metal native smoke on macOS. P02 is complete: lifecycle,
+capacity recovery, world teardown, and restored-shape query behavior are covered.
 
 `PhysicsRuntime::BodyDesc` selects `BodyShape.Box`, `BodyShape.Sphere`, or
 `BodyShape.Capsule`. Box dimensions are half-extents. Sphere uses `x` as its

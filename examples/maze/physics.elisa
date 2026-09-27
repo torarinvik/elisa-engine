@@ -20,6 +20,13 @@ module MazePhysics:
             PHYSICS_STEP_SECONDS: f32 = 1.0 / 60.0
             WALL_HEIGHT: f32 = 0.0
 
+        def gameplay_query_filter() -> PhysicsRuntime::PhysicsQueryFilter:
+            PhysicsRuntime::PhysicsQueryFilter{
+                scene_objects: false,
+                scene_colliders: false,
+                physics_bodies: true,
+            }
+
         def wall_description(x: i64, y: i64) -> PhysicsRuntime::BodyDesc:
             half_extent: f32 = MazeLayout::maze_wall_half_extent()
             PhysicsRuntime::BodyDesc{
@@ -65,17 +72,18 @@ module MazePhysics:
                     Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}
             origin: Geometry::Vec3 = MazeLayout::maze_cell_position(
                 state.player_x, state.player_y, Tune::WALL_HEIGHT)
-            hit: PhysicsQueries::ShapeHit = try RuntimeServices::physics_sphere_cast(
+            hit: PhysicsQueries::ShapeHit = try RuntimeServices::physics_sphere_cast_filtered(
                 session, origin, vector, MazeLayout::maze_cell_pitch(),
-                Tune::PLAYER_RADIUS, Tune::WALL_QUERY_MASK)
+                Tune::PLAYER_RADIUS, Tune::WALL_QUERY_MASK, gameplay_query_filter())
             not hit.hit
 
         def key_sensor_overlaps(session: RuntimeServices::Session&,
             x: i64, y: i64) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             buffer: mutable PhysicsQueries::ShapeHitBuffer = PhysicsQueries::ShapeHitBuffer()
             position: Geometry::Vec3 = MazeLayout::maze_cell_position(x, y, Tune::WALL_HEIGHT)
-            count: usize = try RuntimeServices::physics_overlap_sphere_all(session,
-                position, Tune::KEY_QUERY_RADIUS, Tune::KEY_QUERY_MASK, buffer)
+            count: usize = try RuntimeServices::physics_overlap_sphere_all_filtered(session,
+                position, Tune::KEY_QUERY_RADIUS, Tune::KEY_QUERY_MASK,
+                gameplay_query_filter(), buffer)
             count == 1 and buffer.count == count
 
     public:

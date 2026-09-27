@@ -215,6 +215,18 @@ module WorldHierarchy:
                 hierarchy.nodes[child].dirty <- true if hierarchy.nodes[child].parent == id
             true
 
+        # A bound descendant inherits a pending parent teleport: publishing
+        # its physics pose must also bypass interpolation for the moved branch.
+        def hierarchy_teleport_pending(hierarchy: Hierarchy&, id: i64) -> bool:
+            cursor: mutable i64 = id
+            for _ in 0..<WorldHierarchy::MAX_NODES |hierarchy, cursor|:
+                return false if cursor == WorldHierarchy::ROOT
+                slot: usize = hierarchy_slot_of(hierarchy, cursor)
+                return false if slot == WorldHierarchy::MAX_NODES
+                return true if hierarchy.nodes[slot].teleport_pending
+                cursor <- hierarchy.nodes[slot].parent
+            false
+
         def hierarchy_update(hierarchy: mutable Hierarchy&) -> void:
             hierarchy.tick <- hierarchy.tick + 1
             for _ in 0..<WorldHierarchy::MAX_NODES:

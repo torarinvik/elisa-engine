@@ -21,8 +21,13 @@ publishes each due fixed pose, and verifies equal committed ticks, accumulator
 remainders, and sampled render poses. The portable and native interpolation
 probes also sample identical committed histories at both cadences. The adjacent
 real-Jolt body gate verifies kinematic target publication plus dynamic sleep and
-wake stability. Integrated native scene capture and competing-simulation
-rejection remain broader P04 gates.
+wake stability. `test/world_hierarchy_render_native_main.elisa` now validates
+the complete public session path from a kinematic hierarchy target through a
+Jolt fixed tick and interpolated snapshot into a live Wicked render and pick.
+The same native session client verifies pause freezes a bound Jolt body,
+teleports bypass interpolation after the Jolt commit, and a 100-tick elapsed
+hitch is limited to four physics steps. Per-frame pixel equivalence and
+30/120-Hz session-clock comparison remain broader P04 gates.
 
 `Runtime::StepClock` can also be paused independently of the application host. While paused,
 advancing ignores wall time and leaves the tick and interpolation remainder untouched. Resume

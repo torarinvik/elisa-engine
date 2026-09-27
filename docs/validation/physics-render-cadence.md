@@ -32,8 +32,8 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools /opt/homebrew/bin/python3 scri
 
 The cadence client validates its midpoint and final captures as PNGs and
 compares their decoded RGBA pixels. This is native SDL3/Metal evidence for
-macOS. It does not compare every intermediate frame or exercise the full
-game-session clock-to-hierarchy path.
+macOS. It does not compare every intermediate frame. The full session-clock
+to-hierarchy path is exercised by the client below.
 
 `test/world_physics_pose_native_main.elisa` also checks error preservation in
 `WorldPhysics`: it binds a dynamic body, shuts down and reopens the owning
@@ -51,16 +51,25 @@ then checks the half-alpha `WorldRendering` snapshot is between the old and
 new physics poses while the authoritative hierarchy remains at the new pose.
 The focused SDL3/Metal client built and ran successfully on macOS 27.
 
-`test/world_hierarchy_render_native_main.elisa` separately takes that kind of
-half-alpha hierarchy snapshot through `WorldRendering::extract_hierarchy` and
-submits it to a live Wicked instance. It checks that the committed hierarchy
-pose stays authoritative, that picking at the sampled pose resolves to the
-same gameplay entity, and that the object visibly moves between two backbuffer
-captures. The pipeline wait is followed by warm-up frames so the first image
+`test/world_hierarchy_render_native_main.elisa` opens the public
+`RuntimeServices` session, binds a hierarchy entity as a kinematic Jolt body,
+authors a new local target, and advances one fixed tick through
+`WorldPhysics::advance_and_sync_hierarchy`. It checks that the read-only target
+composition leaves the authoritative pose unchanged before stepping, that the
+committed hierarchy pose reaches the target after stepping, and that alpha
+0.5 extracts the expected midpoint. It also pauses the session, supplies a
+100-tick elapsed interval, and verifies both the session tick and bound Jolt
+body pose stay frozen before resuming. A live teleport then bypasses midpoint
+blending through the Jolt commit, and a 100-tick hitch runs only the configured
+four catch-up steps. The client submits the extracted snapshot to Wicked and
+checks entity picking plus visible movement between backbuffer captures. The
+pipeline wait is followed by warm-up frames so the first image
 contains the object. On the validated macOS host, the 320x200 hidden window
 produces 640x400 backing-store PNGs; the smoke checks the two captures have
-matching dimensions, contain visible pixels, and differ by at least 128 pixels.
-Run only this client with:
+matching dimensions, contain visible pixels, and differ by at least 128
+pixels. The 2026-09-27 run compiled the complete public runtime bundle and
+passed against the merged pinned Wicked/Jolt checkout. Run only this client
+with:
 
 ```sh
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
@@ -68,14 +77,11 @@ ELISA_NATIVE_SMOKE_ONLY=world-hierarchy-render-smoke \
 python3 scripts/application_native_smoke.py
 ```
 
-This focused client uses `elisa_build_run.py --no-public-runtime` because its
-entry file includes each needed module explicitly. The default project runner
-still compiles `src/runtime/public.elisa`. That full bundle currently reaches
-four unrelated Stage1 C-archive declines in capability/provider-report
-functions, so the session-clock version of the hierarchy-to-Wicked smoke is
-blocked until that compiler backend gap is fixed. The focused render smoke
-validates hierarchy extraction, live rendering, and picking independently of
-that full runtime bundle.
+The client explicitly includes `src/runtime/public.elisa`; the smoke runner
+uses `--no-public-runtime` to avoid adding the same module bundle a second time.
+This now validates the same public bundle used by ordinary engine projects,
+along with the session clock, Jolt commit, hierarchy extraction, live rendering,
+and picking in one run.
 
 The portable interpolation test also covers quaternion sign equivalence and
 shortest-path blending across the ±180° boundary. Physics poses may use either

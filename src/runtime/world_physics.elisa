@@ -182,7 +182,8 @@ module WorldPhysics:
             poses: mutable Geometry::Transform[WorldPhysics::MAX_BINDINGS] = zeroed
             depths: mutable usize[WorldPhysics::MAX_BINDINGS] = zeroed
             order: mutable usize[WorldPhysics::MAX_BINDINGS] = zeroed
-            for index in 0..<bindings.count |session, hierarchy, bindings, poses, depths, order|:
+            teleports: mutable bool[WorldPhysics::MAX_BINDINGS] = zeroed
+            for index in 0..<bindings.count |session, hierarchy, bindings, poses, depths, order, teleports|:
                 existing: mutable Geometry::Transform = Geometry::transform_identity()
                 depth: mutable usize = 0
                 raise WorldPhysicsError.SynchronizationFailure if not WorldHierarchy::hierarchy_try_target_world(
@@ -198,6 +199,8 @@ module WorldPhysics:
                 poses[index] <- updated
                 depths[index] <- depth
                 order[index] <- index
+                teleports[index] <- WorldHierarchy::hierarchy_teleport_pending(
+                    hierarchy, bindings.entities[index].id)
             if bindings.count > 1:
                 for _ in 0..<bindings.count |order, depths|:
                     for cursor in 0..<bindings.count - 1 |order, depths|:
@@ -206,10 +209,10 @@ module WorldPhysics:
                             right: usize = order[cursor + 1]
                             order[cursor] <- right
                             order[cursor + 1] <- left
-            for slot in 0..<bindings.count |hierarchy, bindings, poses, order|:
+            for slot in 0..<bindings.count |hierarchy, bindings, poses, order, teleports|:
                 index: usize = order[slot]
                 applied: bool = WorldHierarchy::hierarchy_apply_physics(
-                    hierarchy, bindings.entities[index].id, poses[index], false)
+                    hierarchy, bindings.entities[index].id, poses[index], teleports[index])
                 raise WorldPhysicsError.SynchronizationFailure if not applied
 
         # One session frame advances the fixed clock, stages World-owned

@@ -71,4 +71,11 @@ def main() -> i32:
     WorldHierarchy::hierarchy_update(&checked)
     return 31 if not WorldHierarchy::hierarchy_try_world(&checked, 2, &stale_child)
     return 32 if stale_child.position.x != 8.0
+    ancestor_teleport: Geometry::Transform = Geometry::transform_translate(root_moved,
+        Geometry::Vec3{x: 12.0, y: 0.0, z: 0.0})
+    return 33 if not WorldHierarchy::hierarchy_set_local(&checked,
+        1, ancestor_teleport, true)
+    return 34 if not WorldHierarchy::hierarchy_teleport_pending(checked, 1)
+    return 35 if not WorldHierarchy::hierarchy_teleport_pending(checked, 2)
+    return 36 if WorldHierarchy::hierarchy_teleport_pending(checked, 999)
     0
