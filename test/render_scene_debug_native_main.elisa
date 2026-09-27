@@ -1,0 +1,67 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+include "./render_scene_debug_native.elisa"
+
+module RenderSceneDebugNativeMain:
+    private:
+        const module Tune:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 200
+            CAMERA_HEIGHT: f32 = 6.0
+            CAMERA_DEPTH: f32 = 8.0
+            CAMERA_TARGET_Y: f32 = 0.0
+            WARMUP_FRAMES: usize = 3
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Debug Drawing Smoke",
+                width: Tune::WIDTH,
+                height: Tune::HEIGHT,
+                hidden: true,
+            }
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+
+            initialized: i32 = catch RenderScene::initialize(
+                Tune::WIDTH, Tune::HEIGHT, 10.0):
+                ok: 0
+                error failure: 1
+            if initialized != 0:
+                _ = Application::shutdown()
+                return 2
+
+            camera: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: Tune::CAMERA_HEIGHT, z: Tune::CAMERA_DEPTH},
+                Geometry::Vec3{x: 0.0, y: Tune::CAMERA_TARGET_Y, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            if camera != 0:
+                _ = catch RenderScene::shutdown():
+                    ok: 0
+                    error failure: 1
+                _ = Application::shutdown()
+                return 3
+
+            for _ in 0..<Tune::WARMUP_FRAMES:
+                if Application::pump() != Application::PumpStatus.Running:
+                    _ = catch RenderScene::shutdown():
+                        ok: 0
+                        error failure: 1
+                    _ = Application::shutdown()
+                    return 4
+
+            result: i32 = RenderSceneDebugNativeTests::exercise()
+            _ = catch RenderScene::debug_clear():
+                ok: 0
+                error failure: 1
+            _ = catch RenderScene::shutdown():
+                ok: 0
+                error failure: 1
+            return 5 if not Application::shutdown()
+            result
+
+def main() -> i32:
+    RenderSceneDebugNativeMain::run()

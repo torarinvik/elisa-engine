@@ -23,6 +23,7 @@ from cook_gltf_lod_package import cook_lod_chain, parse_lod_ratios
 import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
+import compare_renders
 import gltf_texture_self_test
 import gltf_clearcoat_self_test
 import gltf_mirrored_normal_fixture
@@ -88,12 +89,13 @@ def main() -> int:
     build = ROOT / "build"
     build.mkdir(exist_ok=True)
     controls_only = os.environ.get("ELISA_RENDER_SCENE_CONTROLS_ONLY") == "1"
-    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only
+    debug_only = os.environ.get("ELISA_RENDER_SCENE_DEBUG_ONLY") == "1"
+    render_only = os.environ.get("ELISA_RENDER_SCENE_RENDER_ONLY") == "1" or controls_only or debug_only
     profile_cost_only = os.environ.get("ELISA_RENDER_SCENE_PROFILE_COST_ONLY") == "1"
     if profile_cost_only and not render_only:
         print("profile-cost-only mode requires ELISA_RENDER_SCENE_RENDER_ONLY=1", file=sys.stderr)
         return 2
-    if render_only and not profile_cost_only:
+    if render_only and not profile_cost_only and not debug_only:
         (build / "cooked").mkdir(parents=True, exist_ok=True)
     if not render_only:
         ktx2_status = run([sys.executable, str(ROOT / "scripts/basisu_probe.py")])
@@ -289,7 +291,8 @@ def main() -> int:
     executable = build / "render-scene-native-smoke"
     native_main = Path(os.environ.get(
         "ELISA_RENDER_SCENE_NATIVE_MAIN",
-        ROOT / ("test/render_scene_renderer_controls_main.elisa" if controls_only else
+        ROOT / ("test/render_scene_debug_native_main.elisa" if debug_only else
+            "test/render_scene_renderer_controls_main.elisa" if controls_only else
             "test/render_scene_quality_cost_main.elisa" if profile_cost_only else
             "test/render_scene_native_main.elisa"),
     )).resolve()
@@ -375,6 +378,8 @@ def main() -> int:
     shadow_rasterizer_variant_capture = build / "render-scene-shadow-rasterizer-variant.png"
     postprocess_high_capture = build / "render-scene-postprocess-high.png"
     postprocess_low_capture = build / "render-scene-postprocess-low.png"
+    debug_baseline_capture = build / "render-scene-debug-disabled.png"
+    debug_visible_capture = build / "render-scene-debug-visible.png"
     captures = [mirrored_normal_capture, mirrored_normal_no_occlusion_capture,
         clearcoat_baseline_capture, clearcoat_coated_capture,
         point_light_left_capture, point_light_right_capture,
@@ -383,7 +388,8 @@ def main() -> int:
         lighting_transparent_capture, lighting_opaque_capture,
         shadow_receiver_baseline_capture, shadow_receiver_variant_capture,
         shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture,
-        postprocess_high_capture, postprocess_low_capture]
+        postprocess_high_capture, postprocess_low_capture,
+        debug_baseline_capture, debug_visible_capture]
     capture_lod_quality = False
     if not profile_cost_only:
         for capture in captures:
@@ -407,6 +413,8 @@ def main() -> int:
         runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
         runtime_env["ELISA_POSTPROCESS_HIGH_CAPTURE"] = str(postprocess_high_capture)
         runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
+        runtime_env["ELISA_DEBUG_DRAW_BASELINE_CAPTURE"] = str(debug_baseline_capture)
+        runtime_env["ELISA_DEBUG_DRAW_VISIBLE_CAPTURE"] = str(debug_visible_capture)
         lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
         capture_lod_quality = not render_only or lod_fixture_available
         if capture_lod_quality:
@@ -447,12 +455,47 @@ def main() -> int:
     if status == 0 and os.environ.get("ELISA_RENDER_SCENE_SELECTION_ONLY") == "1":
         print("World-selection overlay visibility, identity composition, and cleanup passed on SDL3/Metal.")
         return 0
+    if status == 0 and debug_only:
+        try:
+            baseline = compare_renders.read_png(debug_baseline_capture)
+            visible = compare_renders.read_png(debug_visible_capture)
+        except (OSError, ValueError) as error:
+            print(f"Debug-drawing smoke did not write valid baseline and overlay captures: {error}", file=sys.stderr)
+            return 1
+        if baseline[:3] != visible[:3]:
+            print("Debug-drawing baseline and overlay captures have mismatched dimensions.", file=sys.stderr)
+            return 1
+        channels = baseline[2]
+        changed_pixels = sum(1 for offset in range(0, len(baseline[3]), channels)
+            if baseline[3][offset:offset + 3] != visible[3][offset:offset + 3])
+        if changed_pixels < 64:
+            print(f"Wicked debug drawing changed only {changed_pixels} visible pixels.", file=sys.stderr)
+            return 1
+        print(f"Wicked debug box, line, and text changed {changed_pixels} pixels at {baseline[0]}x{baseline[1]}.")
+        return 0
     if status == 0 and controls_only:
         print("Render controls, static LOD generation, and fallbacks passed on SDL3/Metal.")
         return 0
     if status == 0 and profile_cost_only:
         print("High/Medium/Low quality profile GPU and allocation measurements completed on SDL3/Metal.")
         return 0
+    if status == 0 and not debug_only and native_main.name == "render_scene_native_main.elisa":
+        try:
+            baseline = compare_renders.read_png(debug_baseline_capture)
+            visible = compare_renders.read_png(debug_visible_capture)
+        except (OSError, ValueError) as error:
+            print(f"Debug-drawing smoke did not write valid baseline and overlay captures: {error}", file=sys.stderr)
+            return 1
+        if baseline[:3] != visible[:3]:
+            print("Debug-drawing baseline and overlay captures have mismatched dimensions.", file=sys.stderr)
+            return 1
+        channels = baseline[2]
+        changed_pixels = sum(1 for offset in range(0, len(baseline[3]), channels)
+            if baseline[3][offset:offset + 3] != visible[3][offset:offset + 3])
+        if changed_pixels < 64:
+            print(f"Wicked debug drawing changed only {changed_pixels} visible pixels.", file=sys.stderr)
+            return 1
+        print(f"Wicked debug box, line, and text changed {changed_pixels} pixels at {baseline[0]}x{baseline[1]}.")
     if status == 0 and capture_lod_quality:
         quality_status = run([sys.executable, str(ROOT / "scripts/compare_renders.py"),
             "lod-quality", str(fine_lod_capture), str(coarse_lod_capture)])

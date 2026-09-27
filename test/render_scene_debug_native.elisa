@@ -1,13 +1,21 @@
 include "../src/runtime/render_scene_debug.elisa"
+include "../src/runtime/application_capture.elisa"
 include "../src/math/geometry.elisa"
 
 module RenderSceneDebugNativeTests:
+    private:
+        def save_capture(environment_name: cstr) -> bool:
+            path: cstr = Application::environment_value(environment_name)
+            path != "" and Application::save_screenshot(path)
+
     public:
         def exercise() -> i32:
             cleared: i32 = catch RenderScene::debug_clear():
                 ok: 0
                 error failure: 1
             return 1 if cleared != 0
+            return 14 if Application::pump() != Application::PumpStatus.Running
+            return 15 if not save_capture("ELISA_DEBUG_DRAW_BASELINE_CAPTURE")
             box_status: i32 = catch RenderScene::debug_box(
                 Geometry::Bounds3{
                     minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
@@ -70,6 +78,7 @@ module RenderSceneDebugNativeTests:
                 value: value
                 error failure: return 11
             return 12 if auto_flushed != 0
+            return 16 if not save_capture("ELISA_DEBUG_DRAW_VISIBLE_CAPTURE")
             cleared_after_flush: i32 = catch RenderScene::debug_clear():
                 ok: 0
                 error failure: 1

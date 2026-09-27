@@ -171,8 +171,6 @@ def exercise_render_scene() -> i32:
         error failure: return 123
     overlay_updates: i32 = RenderSceneImageNativeTests::exercise_overlays(hud_panel)
     return elisa_render_scene_v1_test_failed_case(229, overlay_updates) if overlay_updates != 0
-    debug_updates: i32 = RenderSceneDebugNativeTests::exercise()
-    return elisa_render_scene_v1_test_failed_case(231, debug_updates) if debug_updates != 0
     invalid_transform: Geometry::Transform = Geometry::Transform{
         position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
         rotation: Geometry::quat_identity(),
@@ -578,6 +576,8 @@ def exercise_render_scene() -> i32:
         value: value
         error failure: return 27
     return 28 if RenderScene::instance_count() != 1
+    debug_updates: i32 = RenderSceneDebugNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(231, debug_updates) if debug_updates != 0
     application_shutdown: bool = Application::shutdown()
     return 29 if not application_shutdown
     return 30 if RenderScene::is_initialized() or RenderScene::instance_count() != 0

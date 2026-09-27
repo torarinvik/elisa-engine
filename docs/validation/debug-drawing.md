@@ -17,6 +17,24 @@ flush behavior, inverted bounds, and an out-of-range position. The SDL3/Metal
 gate passes these cases through the real Wicked debug renderer and still checks
 the existing frame and resource invariants.
 
+`test/render_scene_debug_native_main.elisa` runs that contract in a focused
+hidden SDL3/Metal scene. It saves a frame with debug drawing cleared, submits a
+box, two lines, and depth-tested text, then saves the visible frame. The native
+smoke decodes both 640x400 PNGs and requires at least 64 changed pixels. On
+macOS 27, the focused gate passed with 778 changed pixels. Run it with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" \
+WICKED_ROOT="../amazing-labyrinth-wickedengine" \
+WICKED_BUILD="../amazing-labyrinth-wickedengine/build-elisa-sdl3" \
+ELISA_RENDER_SCENE_DEBUG_ONLY=1 \
+/opt/homebrew/bin/python3.14 scripts/render_scene_native_smoke.py
+```
+
+The full render-only sweep also passed the debug-pixel check, then stopped at
+the separate `postprocess-high` reference comparison.
+
 The native SDL3/Wicked gate exercises queueing, validation, renderer submission,
 and scope clearing after the captured frame. Debug commands therefore cannot
 change frame-determinism or topology evidence for the gameplay render.
