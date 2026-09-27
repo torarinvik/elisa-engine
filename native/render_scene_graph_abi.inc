@@ -101,6 +101,26 @@ extern "C" int32_t elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
     return state.render_graph.set_pass(index, pass);
 }
 
+extern "C" int32_t elisa_render_scene_v1_render_graph_set_pass_with_tint(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id, float red, float green, float blue, float alpha) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    elisa::render_graph::Pass pass{
+        id,
+        static_cast<elisa::render_graph::Operation>(operation),
+        source_id,
+        destination_id,
+    };
+    pass.tint_red = red;
+    pass.tint_green = green;
+    pass.tint_blue = blue;
+    pass.tint_alpha = alpha;
+    return state.render_graph.set_pass(index, pass);
+}
+
 extern "C" int32_t elisa_render_scene_v1_render_graph_commit(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

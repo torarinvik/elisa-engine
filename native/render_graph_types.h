@@ -19,6 +19,12 @@ constexpr float DEFAULT_SATURATION = 1.0f;
 constexpr float MIN_COLOR_SCALE = 0.0f;
 constexpr float MAX_COLOR_SCALE = 8.0f;
 constexpr float DEFAULT_COLOR_SCALE = 1.0f;
+constexpr float MIN_TINT_CHANNEL = 0.0f;
+constexpr float MAX_TINT_CHANNEL = 8.0f;
+constexpr float DEFAULT_TINT_CHANNEL = 1.0f;
+constexpr float MIN_TINT_ALPHA = 0.0f;
+constexpr float MAX_TINT_ALPHA = 1.0f;
+constexpr float DEFAULT_TINT_ALPHA = 1.0f;
 
 enum class SizeMode : int32_t { Fixed = 0, PrimaryInternal = 1 };
 enum class Format : int32_t { Rgba8 = 0, Rgba16Float = 1, Depth32 = 2, R11G11B10Float = 3, R32Float = 4 };
@@ -26,7 +32,8 @@ enum class Lifetime : int32_t { Imported = 0, Persistent = 1, Transient = 2 };
 enum class ImportSource : int32_t { None = 0, SceneColor = 1, LinearDepth = 2 };
 enum class Operation : int32_t {
     ClearColor = 0, CopyColor = 1, ClearDepth = 2, ResolveColor = 3,
-    VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7
+    VisualizeLinearDepth = 4, BlendColor = 5, AdjustSaturation = 6, ScaleColor = 7,
+    TintColor = 8
 };
 
 struct Resource {
@@ -50,6 +57,10 @@ struct Pass {
     float opacity = DEFAULT_BLEND_OPACITY;
     float saturation = DEFAULT_SATURATION;
     float color_scale = DEFAULT_COLOR_SCALE;
+    float tint_red = DEFAULT_TINT_CHANNEL;
+    float tint_green = DEFAULT_TINT_CHANNEL;
+    float tint_blue = DEFAULT_TINT_CHANNEL;
+    float tint_alpha = DEFAULT_TINT_ALPHA;
 };
 
 struct Configuration {

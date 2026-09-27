@@ -5,6 +5,7 @@
 #include "render_graph_blend.h"
 #include "render_graph_scale_color.h"
 #include "render_graph_saturation.h"
+#include "render_graph_tint.h"
 #include "render_graph_types.h"
 #include "render_graph_visualize.h"
 #include <array>
@@ -79,13 +80,15 @@ public:
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
                 pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
-                pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor) ||
+                pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor &&
+                pass.operation != Operation::TintColor) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
                 pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
-                pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor) &&
+                pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor ||
+                pass.operation == Operation::TintColor) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -102,6 +105,15 @@ public:
         if (!std::isfinite(pass.color_scale) || pass.color_scale < MIN_COLOR_SCALE ||
             pass.color_scale > MAX_COLOR_SCALE ||
             (pass.operation != Operation::ScaleColor && pass.color_scale != DEFAULT_COLOR_SCALE)) {
+            return INVALID_ARGUMENT;
+        }
+        if (!std::isfinite(pass.tint_red) || pass.tint_red < MIN_TINT_CHANNEL || pass.tint_red > MAX_TINT_CHANNEL ||
+            !std::isfinite(pass.tint_green) || pass.tint_green < MIN_TINT_CHANNEL || pass.tint_green > MAX_TINT_CHANNEL ||
+            !std::isfinite(pass.tint_blue) || pass.tint_blue < MIN_TINT_CHANNEL || pass.tint_blue > MAX_TINT_CHANNEL ||
+            !std::isfinite(pass.tint_alpha) || pass.tint_alpha < MIN_TINT_ALPHA || pass.tint_alpha > MAX_TINT_ALPHA ||
+            (pass.operation != Operation::TintColor &&
+                (pass.tint_red != DEFAULT_TINT_CHANNEL || pass.tint_green != DEFAULT_TINT_CHANNEL ||
+                 pass.tint_blue != DEFAULT_TINT_CHANNEL || pass.tint_alpha != DEFAULT_TINT_ALPHA))) {
             return INVALID_ARGUMENT;
         }
         for (uint32_t previous = 0; previous < staging_.pass_count; ++previous) {
@@ -332,6 +344,21 @@ public:
                         return;
                     }
                     if (!scale_color(*source, *destination, pass.color_scale, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
+                } else if (pass.operation == Operation::TintColor) {
+                    if (source->GetDesc().format == native_format(Format::Depth32) ||
+                        destination->GetDesc().format == native_format(Format::Depth32) ||
+                        source->GetDesc().format == native_format(Format::R32Float) ||
+                        destination->GetDesc().format == native_format(Format::R32Float) ||
+                        source->GetDesc().format != destination->GetDesc().format ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!tint_color(*source, *destination, pass.tint_red, pass.tint_green,
+                        pass.tint_blue, pass.tint_alpha, command_list)) {
                         last_status_ = BACKEND_FAILED;
                         return;
                     }

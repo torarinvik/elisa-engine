@@ -121,6 +121,13 @@ out-of-range value at both validation boundaries, scales the scene to zero, and
 checks that the read-back image becomes uniform black before restoring scene
 color. The full render-only smoke passes on the pinned SDL3/Metal backend.
 
+`TintColor` multiplies red, green, blue (0–8) and alpha (0–1) independently
+through Wicked's `wi::image::Params::color`. The Elisa planner adapter and
+native ABI both reject out-of-range channels, including alpha above 1. The
+render-only fixture tints all RGB channels to zero, verifies a changed uniform
+black GPU readback, then restores scene color. The pinned SDL3/Metal smoke
+passes on macOS 27 / Apple M5.
+
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.
 The graph checks run in the ordinary Elisa application entry, not a standalone

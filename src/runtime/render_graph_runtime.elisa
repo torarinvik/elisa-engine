@@ -13,6 +13,12 @@ module RenderGraphRuntime:
             MAX_SATURATION: f32 = 2.0
             MIN_COLOR_SCALE: f32 = 0.0
             MAX_COLOR_SCALE: f32 = 8.0
+            MIN_TINT_CHANNEL: f32 = 0.0
+            MAX_TINT_CHANNEL: f32 = 8.0
+            MIN_TINT_ALPHA: f32 = 0.0
+            MAX_TINT_ALPHA: f32 = 1.0
+            DEFAULT_TINT_CHANNEL: f32 = 1.0
+            DEFAULT_TINT_ALPHA: f32 = 1.0
             DEFAULT_PASS_VALUE: f32 = 1.0
         const INVALID_PLAN: i32 = -100
         const NATIVE_REJECTED: i32 = -101
@@ -36,6 +42,11 @@ module RenderGraphRuntime:
         extern elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
             index: u32, id: u32, operation: i32, source_id: u32,
             destination_id: u32, color_scale: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_tint(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, red: f32, green: f32, blue: f32,
+            alpha: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_commit() -> i32
         @callconv(c)
@@ -70,14 +81,18 @@ module RenderGraphRuntime:
             return 4 if kind == OperationKind.VisualizeLinearDepth
             return 5 if kind == OperationKind.BlendColor
             return 6 if kind == OperationKind.AdjustSaturation
-            7
+            return 7 if kind == OperationKind.ScaleColor
+            8
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             return false if operation.value != operation.value
+            return false if operation.tint_red != operation.tint_red or operation.tint_green != operation.tint_green or operation.tint_blue != operation.tint_blue or operation.tint_alpha != operation.tint_alpha
             return false if operation.kind == OperationKind.BlendColor and (operation.value < Limits::MIN_BLEND_OPACITY or operation.value > Limits::MAX_BLEND_OPACITY)
             return false if operation.kind == OperationKind.AdjustSaturation and (operation.value < Limits::MIN_SATURATION or operation.value > Limits::MAX_SATURATION)
             return false if operation.kind == OperationKind.ScaleColor and (operation.value < Limits::MIN_COLOR_SCALE or operation.value > Limits::MAX_COLOR_SCALE)
+            return false if operation.kind == OperationKind.TintColor and (operation.tint_red < Limits::MIN_TINT_CHANNEL or operation.tint_red > Limits::MAX_TINT_CHANNEL or operation.tint_green < Limits::MIN_TINT_CHANNEL or operation.tint_green > Limits::MAX_TINT_CHANNEL or operation.tint_blue < Limits::MIN_TINT_CHANNEL or operation.tint_blue > Limits::MAX_TINT_CHANNEL or operation.tint_alpha < Limits::MIN_TINT_ALPHA or operation.tint_alpha > Limits::MAX_TINT_ALPHA)
             return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.kind != OperationKind.ScaleColor and operation.value != Limits::DEFAULT_PASS_VALUE
+            return false if operation.kind != OperationKind.TintColor and (operation.tint_red != Limits::DEFAULT_TINT_CHANNEL or operation.tint_green != Limits::DEFAULT_TINT_CHANNEL or operation.tint_blue != Limits::DEFAULT_TINT_CHANNEL or operation.tint_alpha != Limits::DEFAULT_TINT_ALPHA)
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -86,7 +101,7 @@ module RenderGraphRuntime:
                 expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
                 if operation.kind == OperationKind.ClearColor or operation.kind == OperationKind.ClearDepth:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.BlendColor or operation.kind == OperationKind.AdjustSaturation or operation.kind == OperationKind.ScaleColor:
+                elif operation.kind == OperationKind.BlendColor or operation.kind == OperationKind.AdjustSaturation or operation.kind == OperationKind.ScaleColor or operation.kind == OperationKind.TintColor:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     if operation.kind == OperationKind.BlendColor:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
@@ -151,12 +166,17 @@ module RenderGraphRuntime:
             BlendColor
             AdjustSaturation
             ScaleColor
+            TintColor
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
             source_resource_id: u32
             destination_resource_id: u32
             value: f32
+            tint_red: f32
+            tint_green: f32
+            tint_blue: f32
+            tint_alpha: f32
         def blend_operation(pass_id: u32, source_resource_id: u32,
                 destination_resource_id: u32, opacity: f32) -> PassOperation:
             PassOperation{
@@ -165,6 +185,10 @@ module RenderGraphRuntime:
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
                 value: opacity,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
             }
         def saturation_operation(pass_id: u32, source_resource_id: u32,
                 destination_resource_id: u32, saturation: f32) -> PassOperation:
@@ -174,6 +198,10 @@ module RenderGraphRuntime:
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
                 value: saturation,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
             }
         def scale_color_operation(pass_id: u32, source_resource_id: u32,
                 destination_resource_id: u32, scale: f32) -> PassOperation:
@@ -183,6 +211,24 @@ module RenderGraphRuntime:
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
                 value: scale,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
+            }
+        def tint_color_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32, red: f32, green: f32,
+                blue: f32, alpha: f32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.TintColor,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: Limits::DEFAULT_PASS_VALUE,
+                tint_red: red,
+                tint_green: green,
+                tint_blue: blue,
+                tint_alpha: alpha,
             }
         struct Configuration:
             output_resource_id: u32
@@ -194,7 +240,7 @@ module RenderGraphRuntime:
                 operations: zeroed,
                 operation_count: 0,
             }
-        # Sends a compiled lifetime plan and one clear/copy operation for each
+        # Sends a compiled lifetime plan and a typed render operation for each
         # pass. The native path adopts it atomically and allocates targets on
         # the render thread when the internal resolution is known.
         def configure(graph: RenderGraph::Graph&, plan: RenderGraph::Plan&,
@@ -251,6 +297,12 @@ module RenderGraphRuntime:
                         index.u32(), operation.pass_id, native_operation(operation.kind),
                         operation.source_resource_id, operation.destination_resource_id,
                         operation.value)
+                elif operation.kind == OperationKind.TintColor:
+                    status <- elisa_render_scene_v1_render_graph_set_pass_with_tint(
+                        index.u32(), operation.pass_id, native_operation(operation.kind),
+                        operation.source_resource_id, operation.destination_resource_id,
+                        operation.tint_red, operation.tint_green, operation.tint_blue,
+                        operation.tint_alpha)
                 else:
                     status <- elisa_render_scene_v1_render_graph_set_pass_with_opacity(
                         index.u32(), operation.pass_id, native_operation(operation.kind),

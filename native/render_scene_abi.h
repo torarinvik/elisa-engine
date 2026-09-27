@@ -388,7 +388,8 @@ int32_t elisa_render_scene_v1_update_environment_probe(
 int32_t elisa_render_scene_v1_destroy_environment_probe(int64_t handle);
 int32_t elisa_render_scene_v1_refresh_environment_probe(int64_t handle);
 // Stage and commit an Elisa-planned postprocess graph. The native adapter
-// validates scalar descriptors again before the render path accepts it.
+// validates resource descriptors and operation parameters again before the
+// render path accepts it.
 int32_t elisa_render_scene_v1_render_graph_begin(
     uint32_t resource_count, uint32_t pass_count, uint32_t output_id);
 int32_t elisa_render_scene_v1_render_graph_set_resource(
@@ -407,6 +408,9 @@ int32_t elisa_render_scene_v1_render_graph_set_pass_with_saturation(
 int32_t elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
     uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
     uint32_t destination_id, float color_scale);
+int32_t elisa_render_scene_v1_render_graph_set_pass_with_tint(
+    uint32_t index, uint32_t id, int32_t operation, uint32_t source_id,
+    uint32_t destination_id, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_render_graph_commit(void);
 int32_t elisa_render_scene_v1_render_graph_abort(void);
 int32_t elisa_render_scene_v1_render_graph_status(void);
