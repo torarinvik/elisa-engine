@@ -1,4 +1,6 @@
 # Playable Jolt character course built entirely from public Elisa runtime APIs.
+include "./progress.elisa"
+
 module CharacterCourse:
     private:
         const module Tune:
@@ -9,6 +11,10 @@ module CharacterCourse:
             ACTION_JUMP: i64 = 5
             ACTION_CROUCH: i64 = 6
             ACTION_QUIT: i64 = 7
+            ACTION_PAUSE: i64 = 8
+            ACTION_RESTART: i64 = 9
+            ACTION_SAVE: i64 = 10
+            ACTION_LOAD: i64 = 11
             CHARACTER_LAYER: u32 = 0
             CHARACTER_RADIUS: f32 = 0.25
             STANDING_HALF_HEIGHT: f32 = 0.45
@@ -68,7 +74,82 @@ module CharacterCourse:
             SELF_TEST_TICKS: usize = 150
             SELF_TEST_MIN_PROGRESS: f32 = 2.5
             SELF_TEST_MIN_STEP_RISE: f32 = 0.1
+            SELF_TEST_RESTART_TOLERANCE: f32 = 0.01
+            SELF_TEST_FAILURE_MARGIN: f32 = 1.0
+            STATE_TEST_PAUSE_CODE: i32 = 50
+            STATE_TEST_RESUME_CODE: i32 = 51
+            STATE_TEST_FAIL_CODE: i32 = 52
+            STATE_TEST_FAIL_LOCK_CODE: i32 = 53
+            STATE_TEST_FAIL_RESTART_CODE: i32 = 54
+            STATE_TEST_WIN_CODE: i32 = 55
+            STATE_TEST_WIN_LOCK_CODE: i32 = 56
+            STATE_TEST_TERMINAL_PAUSE_CODE: i32 = 57
+            STATE_TEST_WIN_RESTART_CODE: i32 = 58
+            SELF_TEST_RESTART_POSITION_CODE: i32 = 59
+            PROGRESS_SAVE_CODE: i32 = 60
+            PROGRESS_LOAD_CODE: i32 = 61
+            PROGRESS_RESTORE_CODE: i32 = 62
+            PROGRESS_MALFORMED_CODE: i32 = 63
+            PROGRESS_SHAPE_CODE: i32 = 64
+            PROGRESS_MISSING_CODE: i32 = 65
+            PROGRESS_UNCHANGED_CODE: i32 = 66
+            PROGRESS_CYCLE_CODE: i32 = 67
+            PROGRESS_CYCLES: usize = 3
+            SELF_TEST_ATTEMPTS: i64 = 2
             PHYSICS_LAYER_MASK: u32 = 1
+            FAILURE_Y: f32 = -4.0
+
+        enum Phase:
+            Playing
+            Paused
+            Won
+            Failed
+
+        struct GameState:
+            phase: mutable Phase
+            attempts: mutable i64
+
+        def GameState() -> GameState:
+            GameState{phase: Phase.Playing, attempts: 1}
+
+        def restart(state: mutable GameState&) -> void:
+            state.phase <- Phase.Playing
+            state.attempts <- state.attempts + 1
+
+        # Durable phase codes are explicit so reordering Phase never changes
+        # what an existing checkpoint means.
+        def phase_code(phase: Phase) -> i64:
+            if phase == Phase.Paused:
+                CourseProgress::PHASE_PAUSED
+            elif phase == Phase.Won:
+                CourseProgress::PHASE_WON
+            elif phase == Phase.Failed:
+                CourseProgress::PHASE_FAILED
+            else:
+                CourseProgress::PHASE_PLAYING
+
+        def phase_from_code(code: i64) -> Phase:
+            if code == CourseProgress::PHASE_PAUSED:
+                Phase.Paused
+            elif code == CourseProgress::PHASE_WON:
+                Phase.Won
+            elif code == CourseProgress::PHASE_FAILED:
+                Phase.Failed
+            else:
+                Phase.Playing
+
+        def toggle_pause(state: mutable GameState&) -> void:
+            if state.phase == Phase.Playing:
+                state.phase <- Phase.Paused
+            elif state.phase == Phase.Paused:
+                state.phase <- Phase.Playing
+
+        def update_outcome(state: mutable GameState&, position: Geometry::Vec3) -> void:
+            if state.phase == Phase.Playing:
+                if position.y < Tune::FAILURE_Y:
+                    state.phase <- Phase.Failed
+                elif ElisaMath::fabsf(position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE:
+                    state.phase <- Phase.Won
 
         def bind_key(input: mutable ActionInput::Input&, action: i64,
             key: Application::KeyboardKeyCode) -> bool:
@@ -94,6 +175,10 @@ module CharacterCourse:
             return false if not bind_key(input, Tune::ACTION_JUMP, Application::KeyboardKeyCode.Space)
             return false if not bind_key(input, Tune::ACTION_CROUCH, Application::KeyboardKeyCode.C)
             return false if not bind_key(input, Tune::ACTION_QUIT, Application::KeyboardKeyCode.Escape)
+            return false if not bind_key(input, Tune::ACTION_PAUSE, Application::KeyboardKeyCode.P)
+            return false if not bind_key(input, Tune::ACTION_RESTART, Application::KeyboardKeyCode.R)
+            return false if not bind_key(input, Tune::ACTION_SAVE, Application::KeyboardKeyCode.Q)
+            return false if not bind_key(input, Tune::ACTION_LOAD, Application::KeyboardKeyCode.L)
             true
 
         def box_color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
@@ -177,14 +262,19 @@ module CharacterCourse:
                     scale: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8}},
                 box_color(0.18, 0.9, 0.38))
 
-        def create_character(session: RuntimeServices::Session&) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+        def create_character_at(session: RuntimeServices::Session&,
+            position: Geometry::Vec3, half_height: f32) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             try RuntimeServices::physics_character_create(session,
-                PhysicsRuntime::CharacterDesc(
-                    Geometry::Vec3{x: Tune::START_X, y: Tune::START_Y, z: Tune::START_Z},
+                PhysicsRuntime::CharacterDesc(position,
                     Geometry::quat_identity(), Tune::CHARACTER_RADIUS,
-                    Tune::STANDING_HALF_HEIGHT, Tune::CHARACTER_MASS,
+                    half_height, Tune::CHARACTER_MASS,
                     Tune::MAX_SLOPE_ANGLE, Tune::MAX_STEP_HEIGHT,
                     Tune::GRAVITY_FACTOR, Tune::CHARACTER_LAYER))
+
+        def create_character(session: RuntimeServices::Session&) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try create_character_at(session,
+                Geometry::Vec3{x: Tune::START_X, y: Tune::START_Y, z: Tune::START_Z},
+                Tune::STANDING_HALF_HEIGHT)
 
         def movement_direction(input: ActionInput::Input&) -> Geometry::Vec3:
             direction: mutable Geometry::Vec3 = Geometry::vec3_zero()
@@ -217,44 +307,66 @@ module CharacterCourse:
                     y: half_height * 2.0, z: Tune::CHARACTER_RADIUS * 2.0},
             })
 
-        def simulate_test(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
-            for _ in 0..<Tune::INITIAL_STEP_COUNT |session|:
-                _ = try RuntimeServices::physics_fixed_step(session,
-                    Runtime::fixed_step_seconds())
-            initial: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
-                session, character)
-            max_height: mutable f32 = initial.position.y
-            crossed_step: mutable bool = false
-            for _ in 0..<Tune::SELF_TEST_TICKS |session, character, max_height, crossed_step|:
-                try RuntimeServices::physics_character_move(session, character,
-                    Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}, Tune::WALK_SPEED,
-                    0.0, false)
-                _ = try RuntimeServices::physics_fixed_step(session,
-                    Runtime::fixed_step_seconds())
-                pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
-                    session, character)
-                max_height <- pose.position.y if pose.position.y > max_height
-                crossed_step <- true if pose.position.x > Tune::STEP_CLEAR_X
-            return 30 if not crossed_step
-            return 31 if max_height < initial.position.y + Tune::SELF_TEST_MIN_STEP_RISE
-            final_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
-                session, character)
-            return 32 if final_pose.position.x < initial.position.x + Tune::SELF_TEST_MIN_PROGRESS
-            0
+        def status_text(state: GameState&, crouched: bool) -> cstr:
+            if state.phase == Phase.Paused:
+                "Paused | P resume | R restart | Q save | L load | Esc quit"
+            elif state.phase == Phase.Won:
+                "Summit reached! | R play again | Esc quit"
+            elif state.phase == Phase.Failed:
+                "You fell! | R try again | Esc quit"
+            elif crouched:
+                "Crouched | WASD/Arrows move | Space jump | P pause | R restart"
+            else:
+                "WASD/Arrows move | Space jump | Hold C crouch | P pause | R restart"
+
+        def refresh_status(handle: RenderScene::OverlayTextHandle,
+            state: GameState&, crouched: bool) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::set_overlay_text(handle, status_text(state, crouched))
+
+        def restart_character(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_character_destroy(session, character)
+            try create_character(session)
+
+        def checkpoint_of(state: GameState&, pose: PhysicsRuntime::BodyPose,
+            crouched: bool) -> CourseProgress::Checkpoint:
+            CourseProgress::Checkpoint{phase: phase_code(state.phase),
+                position: pose.position, crouched: crouched,
+                attempts: state.attempts}
+
+        # Creates the restored character before retiring the live one, so a
+        # failed creation leaves the running attempt untouched.
+        def apply_checkpoint(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle,
+            checkpoint: CourseProgress::Checkpoint&) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if checkpoint.crouched else Tune::STANDING_HALF_HEIGHT
+            restored: PhysicsRuntime::CharacterHandle = try create_character_at(
+                session, checkpoint.position, half_height)
+            try RuntimeServices::physics_character_destroy(session, character)
+            restored
+
+        def load_message(status: CourseProgress::LoadStatus) -> cstr:
+            if status == CourseProgress::LoadStatus.Missing:
+                "No checkpoint saved yet | Q save"
+            elif status == CourseProgress::LoadStatus.Unreadable:
+                "Checkpoint file is unreadable; current run kept"
+            else:
+                "Checkpoint rejected; current run kept"
+
+        include "./self_test.inc"
 
         def interactive_loop(session: mutable RuntimeServices::Session&,
-            input: mutable ActionInput::Input, character: PhysicsRuntime::CharacterHandle,
+            input: mutable ActionInput::Input, character: mutable PhysicsRuntime::CharacterHandle,
             avatar: RenderScene::InstanceHandle,
             instruction: RenderScene::OverlayTextHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError]:
             running: mutable bool = true
             crouched: mutable bool = false
-            goal_reached: mutable bool = false
+            state: mutable GameState = GameState()
             jump_queued: mutable bool = false
             previous_elapsed_nanos: mutable u64 = 0
             resize_serial: mutable u64 = 0
             clock: mutable Runtime::StepClock = Runtime::StepClock()
-            while running |session, input, character, avatar, instruction, crouched, goal_reached, jump_queued, previous_elapsed_nanos, resize_serial, clock|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -265,47 +377,92 @@ module CharacterCourse:
                     _ = ActionInputRuntime::begin_frame(input)
                     if ActionInput::action_pressed(input, Tune::ACTION_QUIT):
                         running <- false
-                    else:
-                        desired_crouch: bool = ActionInput::action_down(input, Tune::ACTION_CROUCH)
-                        if desired_crouch != crouched:
-                            half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if desired_crouch else Tune::STANDING_HALF_HEIGHT
-                            changed: bool = try RuntimeServices::physics_character_set_capsule(
-                                session, character, Tune::CHARACTER_RADIUS, half_height)
-                            crouched <- desired_crouch if changed
-                            if changed:
-                                text: cstr = "Crouched | WASD/Arrows move | Space jump | Esc quit" if crouched else "Standing | WASD/Arrows move | Space jump | Hold C | Esc quit"
-                                _ = try RenderScene::set_overlay_text(instruction, text)
-                            else:
-                                _ = try RenderScene::set_overlay_text(instruction,
-                                    "Blocked above: stay crouched | WASD move | Esc quit")
-                        jump_queued <- true if ActionInput::action_pressed(input, Tune::ACTION_JUMP)
-                        elapsed_delta: i64 = ((frame.elapsed_nanos -
-                            previous_elapsed_nanos) / 1000).i64()
+                    elif ActionInput::action_pressed(input, Tune::ACTION_RESTART):
+                        character <- try restart_character(session, character)
+                        restart(&state)
+                        crouched <- false
+                        jump_queued <- false
+                        clock <- Runtime::StepClock()
                         previous_elapsed_nanos <- frame.elapsed_nanos
-                        due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
-                        direction: Geometry::Vec3 = movement_direction(input)
-                        for _ in 0..<due_steps |session, character, direction, jump_queued|:
-                            jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
-                            try RuntimeServices::physics_character_move(session,
-                                character, direction, Tune::WALK_SPEED, jump_speed, false)
-                            jump_queued <- false
-                            _ = try RuntimeServices::physics_fixed_step(session,
-                                Runtime::fixed_step_seconds())
-                        pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
-                            session, character)
+                        pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                         _ = try update_avatar(avatar, pose, crouched)
                         _ = try update_camera(pose)
-                        if not goal_reached and ElisaMath::fabsf(pose.position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(pose.position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE:
-                            _ = try RenderScene::set_overlay_text(instruction,
-                                "Course complete! | Esc quit")
-                            goal_reached <- true
+                        _ = try refresh_status(instruction, state, crouched)
+                    elif ActionInput::action_pressed(input, Tune::ACTION_SAVE):
+                        saved_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+                        checkpoint: CourseProgress::Checkpoint = checkpoint_of(state, saved_pose, crouched)
+                        stored: bool = catch CourseProgress::save(&checkpoint):
+                            ok: true
+                            error failure: false
+                        _ = try RenderScene::set_overlay_text(instruction,
+                            "Checkpoint saved | L load" if stored else "Checkpoint could not be saved")
+                    elif ActionInput::action_pressed(input, Tune::ACTION_LOAD):
+                        loaded: CourseProgress::LoadResult = CourseProgress::load()
+                        if loaded.status == CourseProgress::LoadStatus.Loaded:
+                            character <- try apply_checkpoint(session, character, loaded.checkpoint)
+                            state.phase <- phase_from_code(loaded.checkpoint.phase)
+                            state.attempts <- loaded.checkpoint.attempts
+                            crouched <- loaded.checkpoint.crouched
+                            jump_queued <- false
+                            clock <- Runtime::StepClock()
+                            Runtime::set_paused(&clock, state.phase != Phase.Playing)
+                            previous_elapsed_nanos <- frame.elapsed_nanos
+                            loaded_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+                            _ = try update_avatar(avatar, loaded_pose, crouched)
+                            _ = try update_camera(loaded_pose)
+                            _ = try refresh_status(instruction, state, crouched)
+                        else:
+                            _ = try RenderScene::set_overlay_text(instruction, load_message(loaded.status))
+                    elif ActionInput::action_pressed(input, Tune::ACTION_PAUSE):
+                        toggle_pause(&state)
+                        Runtime::set_paused(&clock, state.phase != Phase.Playing)
+                        jump_queued <- false
+                        previous_elapsed_nanos <- frame.elapsed_nanos
+                        _ = try refresh_status(instruction, state, crouched)
+                    else:
+                        if state.phase == Phase.Playing:
+                            desired_crouch: bool = ActionInput::action_down(input, Tune::ACTION_CROUCH)
+                            if desired_crouch != crouched:
+                                half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if desired_crouch else Tune::STANDING_HALF_HEIGHT
+                                changed: bool = try RuntimeServices::physics_character_set_capsule(
+                                    session, character, Tune::CHARACTER_RADIUS, half_height)
+                                crouched <- desired_crouch if changed
+                                if changed:
+                                    _ = try refresh_status(instruction, state, crouched)
+                                else:
+                                    _ = try RenderScene::set_overlay_text(instruction,
+                                        "Ceiling blocks standing | C crouch | P pause | R restart")
+                            jump_queued <- true if ActionInput::action_pressed(input, Tune::ACTION_JUMP)
+                            elapsed_delta: i64 = ((frame.elapsed_nanos -
+                                previous_elapsed_nanos) / 1000).i64()
+                            previous_elapsed_nanos <- frame.elapsed_nanos
+                            due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
+                            direction: Geometry::Vec3 = movement_direction(input)
+                            for _ in 0..<due_steps |session, character, direction, jump_queued|:
+                                jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
+                                try RuntimeServices::physics_character_move(session,
+                                    character, direction, Tune::WALK_SPEED, jump_speed, false)
+                                jump_queued <- false
+                                _ = try RuntimeServices::physics_fixed_step(session,
+                                    Runtime::fixed_step_seconds())
+                            pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                                session, character)
+                            update_outcome(&state, pose.position)
+                            if state.phase == Phase.Won or state.phase == Phase.Failed:
+                                Runtime::set_paused(&clock, true)
+                                jump_queued <- false
+                                _ = try refresh_status(instruction, state, crouched)
+                            _ = try update_avatar(avatar, pose, crouched)
+                            _ = try update_camera(pose)
+                        else:
+                            previous_elapsed_nanos <- frame.elapsed_nanos
                         if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
                             _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
                             resize_serial <- frame.resize_serial
             0
 
         def run_after_open(session: mutable RuntimeServices::Session&,
-            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError]:
+            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
@@ -313,7 +470,7 @@ module CharacterCourse:
             try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
                 Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
             _ = try create_course(session)
-            character: PhysicsRuntime::CharacterHandle = try create_character(session)
+            character: mutable PhysicsRuntime::CharacterHandle = try create_character(session)
             avatar_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                 session, character)
             avatar: RenderScene::InstanceHandle = try RenderScene::create(
@@ -331,11 +488,28 @@ module CharacterCourse:
             _ = try RuntimeServices::physics_fixed_step(session,
                 Runtime::fixed_step_seconds())
             if self_test:
+                state_status: i32 = state_test()
+                return state_status if state_status != 0
                 _ = try RuntimeServices::pump(session)
-                simulate_test(session, character)
+                movement_status: i32 = try simulate_test(session, character)
+                return movement_status if movement_status != 0
+                character <- try restart_character(session, character)
+                restarted_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                    session, character)
+                return Tune::SELF_TEST_RESTART_POSITION_CODE if ElisaMath::fabsf(restarted_pose.position.x - Tune::START_X) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.y - Tune::START_Y) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.z - Tune::START_Z) > Tune::SELF_TEST_RESTART_TOLERANCE
+                try UserData::initialize("org.elisa.elisa-character-course")
+                progress: ProgressOutcome = try progress_test(session, character)
+                character <- progress.character
+                progress.status
             else:
                 input: mutable ActionInput::Input = ActionInput::Input()
                 return 33 if not bind_controls(&input)
+                # Without a user-data directory saves report failure in-game.
+                _ = catch UserData::initialize("org.elisa.elisa-character-course"):
+                    ok: true
+                    error failure: false
+                initial_state: GameState = GameState()
+                _ = try refresh_status(instruction, initial_state, false)
                 interactive_loop(session, &input, character, avatar, instruction)
 
     public:

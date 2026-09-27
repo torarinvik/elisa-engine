@@ -1,0 +1,112 @@
+# Durable character-course checkpoints. Fields are explicit codes, whole
+# millimetres and counters rather than enum ordinals or native handles, and a
+# load is validated completely before the game touches its live character.
+module CourseProgress:
+    private:
+        const module Limits:
+            KEY: cstr = "course-checkpoint"
+            FIELD_COUNT: usize = 6
+            MILLIMETRES: f64 = 1000.0
+            MAX_ABS_X_MM: i64 = 16000
+            MIN_Y_MM: i64 = -8000
+            MAX_Y_MM: i64 = 16000
+            MAX_ABS_Z_MM: i64 = 8000
+            MAX_ATTEMPTS: i64 = 1000000
+
+        def to_millimetres(value: f32) -> i64:
+            ElisaMath::round(value.f64() * Limits::MILLIMETRES).i64()
+
+        def from_millimetres(value: i64) -> f32:
+            (value.f64() / Limits::MILLIMETRES).f32()
+
+        def within(value: i64, low: i64, high: i64) -> bool:
+            value >= low and value <= high
+
+    public:
+        const PHASE_PLAYING: i64 = 1
+        const PHASE_PAUSED: i64 = 2
+        const PHASE_WON: i64 = 3
+        const PHASE_FAILED: i64 = 4
+
+        struct Checkpoint:
+            phase: i64
+            position: Geometry::Vec3
+            crouched: bool
+            attempts: i64
+
+        enum LoadStatus:
+            Loaded
+            Missing
+            Unreadable
+            Rejected
+
+        struct LoadResult:
+            status: LoadStatus
+            checkpoint: Checkpoint
+
+        def key() -> cstr:
+            Limits::KEY
+
+        # Encodes without judging the values so tests can persist records a
+        # live game could never produce.
+        def encode(checkpoint: Checkpoint&) -> Save::Blob error[Save::SaveError]:
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- checkpoint.phase
+            values[1] <- to_millimetres(checkpoint.position.x)
+            values[2] <- to_millimetres(checkpoint.position.y)
+            values[3] <- to_millimetres(checkpoint.position.z)
+            values[4] <- 1 if checkpoint.crouched else 0
+            values[5] <- checkpoint.attempts
+            try Save::save_write(values, Limits::FIELD_COUNT)
+
+        # Accepts only this version's exact field count with a known phase, a
+        # position inside the course volume, a boolean crouch flag and a
+        # bounded attempt counter.
+        def decode(blob: Save::Blob&) -> LoadResult:
+            rejected: LoadResult = LoadResult{status: LoadStatus.Rejected,
+                checkpoint: Checkpoint{phase: PHASE_PLAYING,
+                    position: Geometry::vec3_zero(), crouched: false, attempts: 0}}
+            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+                value: value
+                error failure: false
+            return rejected if not readable
+            phase: i64 = Save::save_value_or(blob, 0, 0)
+            x: i64 = Save::save_value_or(blob, 1, 0)
+            y: i64 = Save::save_value_or(blob, 2, 0)
+            z: i64 = Save::save_value_or(blob, 3, 0)
+            crouched: i64 = Save::save_value_or(blob, 4, -1)
+            attempts: i64 = Save::save_value_or(blob, 5, -1)
+            return rejected if not within(phase, PHASE_PLAYING, PHASE_FAILED)
+            return rejected if not within(x, -Limits::MAX_ABS_X_MM, Limits::MAX_ABS_X_MM)
+            return rejected if not within(y, Limits::MIN_Y_MM, Limits::MAX_Y_MM)
+            return rejected if not within(z, -Limits::MAX_ABS_Z_MM, Limits::MAX_ABS_Z_MM)
+            return rejected if not within(crouched, 0, 1)
+            return rejected if not within(attempts, 0, Limits::MAX_ATTEMPTS)
+            LoadResult{status: LoadStatus.Loaded, checkpoint: Checkpoint{
+                phase: phase,
+                position: Geometry::Vec3{x: from_millimetres(x),
+                    y: from_millimetres(y), z: from_millimetres(z)},
+                crouched: crouched == 1,
+                attempts: attempts,
+            }}
+
+        # UserData::initialize remains application-owned.
+        def save(checkpoint: Checkpoint&) -> void error[Save::SaveError, UserData::UserDataError]:
+            blob: Save::Blob = try encode(checkpoint)
+            try UserData::write_blob(Limits::KEY, &blob)
+
+        def load() -> LoadResult:
+            blob: mutable Save::Blob = Save::Blob(0)
+            read_status: i32 = catch UserData::read_blob(Limits::KEY, &blob):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                error failure: 2
+            missing: LoadResult = LoadResult{status: LoadStatus.Missing,
+                checkpoint: Checkpoint{phase: PHASE_PLAYING,
+                    position: Geometry::vec3_zero(), crouched: false, attempts: 0}}
+            if read_status == 1:
+                missing
+            elif read_status == 2:
+                LoadResult{status: LoadStatus.Unreadable, checkpoint: missing.checkpoint}
+            else:
+                decode(&blob)

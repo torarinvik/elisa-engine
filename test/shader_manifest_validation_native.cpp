@@ -92,8 +92,17 @@ int main() {
     if (!write_file(manifest, schema_two) ||
         !write_file(root / backend / ("unlisted" + extension), "extra") ||
         elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str())) return 5;
+    if (elisa::shader::manifest_failure(root.string().c_str(), manifest.string().c_str()) !=
+        "unlisted shader " + backend + "/unlisted" + extension) return 11;
     std::filesystem::remove(root / backend / ("unlisted" + extension), error);
     if (error || !write_file(binary, "shader-Binary") ||
         elisa::shader::root_is_valid(root.string().c_str(), manifest.string().c_str())) return 6;
+    if (elisa::shader::manifest_failure(root.string().c_str(), manifest.string().c_str()) !=
+        "size or sha256 mismatch for " + relative_path) return 12;
+    std::filesystem::remove(binary, error);
+    if (error || elisa::shader::manifest_failure(root.string().c_str(), manifest.string().c_str()) !=
+        "missing shader " + relative_path) return 13;
+    if (elisa::shader::manifest_failure(root.string().c_str(), (root / "absent.json").string().c_str())
+        .rfind("manifest is missing", 0) != 0) return 14;
     return 0;
 }

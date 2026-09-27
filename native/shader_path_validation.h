@@ -21,26 +21,34 @@ inline const char* current_backend() {
     return "spirv";
 #endif
 }
-inline bool manifest_is_valid(const std::filesystem::path& root, const char* configured) {
-    if (configured == nullptr || configured[0] == '\0') return true;
+// Returns an empty string when the configured manifest (if any) verifies,
+// otherwise a diagnostic naming the manifest or shader file that failed.
+inline std::string manifest_failure_at(const std::filesystem::path& root, const char* configured) {
+    if (configured == nullptr || configured[0] == '\0') return {};
     std::error_code error;
     const std::filesystem::path path = std::filesystem::path(configured).is_absolute()
         ? std::filesystem::path(configured) : root / configured;
     const std::filesystem::path canonical_root = std::filesystem::weakly_canonical(root, error);
-    if (error) return false;
+    if (error) return "shader root is unreadable: " + root.string();
     const std::filesystem::path canonical_manifest = std::filesystem::weakly_canonical(path, error);
     if (error || canonical_manifest.parent_path() != canonical_root ||
         !std::filesystem::is_regular_file(canonical_manifest, error) || error) {
-        return false;
+        return "manifest is missing or outside the shader root: " + path.string();
     }
     const uintmax_t manifest_size = std::filesystem::file_size(canonical_manifest, error);
-    if (error || manifest_size > MAX_MANIFEST_BYTES) return false;
+    if (error || manifest_size > MAX_MANIFEST_BYTES) return "manifest is unreadable or too large: " + path.string();
     std::ifstream stream(canonical_manifest, std::ios::binary);
-    if (!stream) return false;
+    if (!stream) return "manifest is unreadable: " + path.string();
     std::string content(static_cast<size_t>(manifest_size), '\0');
     if (!content.empty()) stream.read(content.data(), static_cast<std::streamsize>(content.size()));
-    if (!stream || stream.gcount() != static_cast<std::streamsize>(content.size())) return false;
-    return verify_shader_manifest(canonical_root, content, current_backend());
+    if (!stream || stream.gcount() != static_cast<std::streamsize>(content.size())) {
+        return "manifest is unreadable: " + path.string();
+    }
+    return shader_manifest_failure(canonical_root, content, current_backend());
+}
+
+inline bool manifest_is_valid(const std::filesystem::path& root, const char* configured) {
+    return manifest_failure_at(root, configured).empty();
 }
 
 inline bool manifest_content_digest(const char* configured_root, const char* configured_manifest,
@@ -117,6 +125,11 @@ inline bool root_is_valid(const char* configured, const char* manifest = nullptr
 
 inline bool manifest_status_is_invalid(const char* configured, const char* manifest) {
     return root_status(configured, manifest) == -8;
+}
+
+inline std::string manifest_failure(const char* configured, const char* manifest) {
+    if (configured == nullptr || configured[0] == '\0') return "manifest configured without a shader root";
+    return manifest_failure_at(std::filesystem::path(configured), manifest);
 }
 
 } // namespace elisa::shader
