@@ -39,6 +39,8 @@ single-sample color source over an initialized, single-sample color destination
 using Wicked's alpha blend pipeline. `AdjustSaturation` reads a color resource
 and writes a separate, matching single-sample color target through Wicked's
 built-in image shader; its Elisa-authored value is bounded from 0 through 2.
+`ScaleColor` uses the same shader path to multiply RGB intensity from 0 through
+8 into a separate, matching single-sample color target.
 Custom depth-sampling
 shaders and depth-tested geometry remain unsupported. Other targets use RGBA8,
 RGBA16F, Wicked's R11G11B10F main format, or D32 depth, with fixed or
@@ -109,6 +111,12 @@ applies zero saturation to the rendered scene, and uses GPU readback hashing
 to confirm the frame changed before restoring the ordinary scene-color graph.
 The full render-only SDL3/Metal smoke passes against the manifest-pinned Wicked
 checkout on macOS 27 / Apple M5.
+
+`ScaleColor` accepts a bounded intensity multiplier from 0 through 8 through
+its own additive scalar ABI. Its native application fixture rejects an
+out-of-range value at both validation boundaries, scales the scene to zero, and
+checks that the read-back image becomes uniform black before restoring scene
+color. The full render-only smoke passes on the pinned SDL3/Metal backend.
 
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.

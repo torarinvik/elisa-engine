@@ -1,0 +1,72 @@
+include "../src/backend/render_graph.elisa"
+include "../src/runtime/render_graph_runtime.elisa"
+
+module RenderGraphScaleColorTests:
+    private:
+        const module Native:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            SCALE_COLOR: i32 = 7
+            INVALID_COLOR_SCALE: f32 = 8.1
+
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_begin(
+            resource_count: u32, pass_count: u32, output_id: u32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, color_scale: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_abort() -> i32
+
+        def color_resource(id: u32, lifetime: RenderGraph::Lifetime,
+                initialized: bool) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.R11G11B10Float,
+                samples: 1,
+                lifetime: lifetime,
+                initialized: initialized,
+                import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
+            }
+
+    public:
+        def native_rejects_bad_scale() -> bool:
+            begin_status: i32 = elisa_render_scene_v1_render_graph_begin(1, 1, 2)
+            return false if begin_status != Native::OK
+            rejected_status: i32 = elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
+                0, 10, Native::SCALE_COLOR, 1, 2, Native::INVALID_COLOR_SCALE)
+            abort_status: i32 = elisa_render_scene_v1_render_graph_abort()
+            rejected_status == Native::INVALID_ARGUMENT and abort_status == Native::OK
+
+        def configure(scale: f32) -> i32:
+            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+            _ = catch RenderGraph::add_resource(&graph, color_resource(1,
+                    RenderGraph::Lifetime.Imported, true)):
+                ok: 0
+                error failure: return 1
+            _ = catch RenderGraph::add_resource(&graph, color_resource(2,
+                    RenderGraph::Lifetime.Transient, false)):
+                ok: 0
+                error failure: return 2
+            _ = catch RenderGraph::add_pass(&graph, 10):
+                ok: 0
+                error failure: return 3
+            _ = catch RenderGraph::read(&graph, 10, 1):
+                ok: 0
+                error failure: return 4
+            _ = catch RenderGraph::write(&graph, 10, 2):
+                ok: 0
+                error failure: return 5
+            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+                value: value
+                error failure: return 6
+            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+            configuration.output_resource_id <- 2
+            configuration.operation_count <- 1
+            configuration.operations[0] <- RenderGraphRuntime::scale_color_operation(
+                10, 1, 2, scale)
+            RenderGraphRuntime::configure(graph, plan, configuration)

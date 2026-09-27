@@ -11,6 +11,8 @@ module RenderGraphRuntime:
             DEFAULT_BLEND_OPACITY: f32 = 1.0
             MIN_SATURATION: f32 = 0.0
             MAX_SATURATION: f32 = 2.0
+            MIN_COLOR_SCALE: f32 = 0.0
+            MAX_COLOR_SCALE: f32 = 8.0
             DEFAULT_PASS_VALUE: f32 = 1.0
         const INVALID_PLAN: i32 = -100
         const NATIVE_REJECTED: i32 = -101
@@ -30,6 +32,10 @@ module RenderGraphRuntime:
         extern elisa_render_scene_v1_render_graph_set_pass_with_saturation(
             index: u32, id: u32, operation: i32, source_id: u32,
             destination_id: u32, saturation: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
+            index: u32, id: u32, operation: i32, source_id: u32,
+            destination_id: u32, color_scale: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_render_graph_commit() -> i32
         @callconv(c)
@@ -63,13 +69,15 @@ module RenderGraphRuntime:
             return 3 if kind == OperationKind.ResolveColor
             return 4 if kind == OperationKind.VisualizeLinearDepth
             return 5 if kind == OperationKind.BlendColor
-            6
+            return 6 if kind == OperationKind.AdjustSaturation
+            7
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             return false if operation.value != operation.value
             return false if operation.kind == OperationKind.BlendColor and (operation.value < Limits::MIN_BLEND_OPACITY or operation.value > Limits::MAX_BLEND_OPACITY)
             return false if operation.kind == OperationKind.AdjustSaturation and (operation.value < Limits::MIN_SATURATION or operation.value > Limits::MAX_SATURATION)
-            return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.value != Limits::DEFAULT_PASS_VALUE
+            return false if operation.kind == OperationKind.ScaleColor and (operation.value < Limits::MIN_COLOR_SCALE or operation.value > Limits::MAX_COLOR_SCALE)
+            return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.kind != OperationKind.ScaleColor and operation.value != Limits::DEFAULT_PASS_VALUE
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -78,7 +86,7 @@ module RenderGraphRuntime:
                 expected: mutable RenderGraph::ResourceAccess = RenderGraph::ResourceAccess.None
                 if operation.kind == OperationKind.ClearColor or operation.kind == OperationKind.ClearDepth:
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.BlendColor or operation.kind == OperationKind.AdjustSaturation:
+                elif operation.kind == OperationKind.BlendColor or operation.kind == OperationKind.AdjustSaturation or operation.kind == OperationKind.ScaleColor:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     if operation.kind == OperationKind.BlendColor:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
@@ -142,6 +150,7 @@ module RenderGraphRuntime:
             VisualizeLinearDepth
             BlendColor
             AdjustSaturation
+            ScaleColor
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
@@ -165,6 +174,15 @@ module RenderGraphRuntime:
                 source_resource_id: source_resource_id,
                 destination_resource_id: destination_resource_id,
                 value: saturation,
+            }
+        def scale_color_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32, scale: f32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.ScaleColor,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: scale,
             }
         struct Configuration:
             output_resource_id: u32
@@ -225,6 +243,11 @@ module RenderGraphRuntime:
                     return abort_with_status(INVALID_PLAN)
                 if operation.kind == OperationKind.AdjustSaturation:
                     status <- elisa_render_scene_v1_render_graph_set_pass_with_saturation(
+                        index.u32(), operation.pass_id, native_operation(operation.kind),
+                        operation.source_resource_id, operation.destination_resource_id,
+                        operation.value)
+                elif operation.kind == OperationKind.ScaleColor:
+                    status <- elisa_render_scene_v1_render_graph_set_pass_with_color_scale(
                         index.u32(), operation.pass_id, native_operation(operation.kind),
                         operation.source_resource_id, operation.destination_resource_id,
                         operation.value)

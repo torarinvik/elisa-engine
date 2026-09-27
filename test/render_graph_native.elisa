@@ -4,6 +4,7 @@ include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene.elisa"
 include "render_graph_blend_native.elisa"
 include "render_graph_saturation_native.elisa"
+include "render_graph_scale_color_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
@@ -448,6 +449,21 @@ module RenderGraphNativeTests:
         return 245 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
         0
 
+    def exercise_color_scale() -> i32:
+        frame_before_scale: u64 = elisa_render_scene_v1_last_frame_hash()
+        return 247 if frame_before_scale == 0
+        return 248 if RenderGraphScaleColorTests::configure(8.1) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 249 if not RenderGraphScaleColorTests::native_rejects_bad_scale()
+        return 250 if RenderGraphScaleColorTests::configure(0.0) != SUCCESS
+        return 251 if Application::pump() != Application::PumpStatus.Running
+        return 252 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+        frame_black: u64 = elisa_render_scene_v1_last_frame_hash()
+        return 253 if frame_before_scale == frame_black or elisa_render_scene_v1_last_frame_center_differs_from_corner() != 0
+        return 254 if configure_clear_copy_graph(3) != SUCCESS
+        return 255 if Application::pump() != Application::PumpStatus.Running
+        return 256 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+        0
+
     public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
@@ -571,4 +587,6 @@ module RenderGraphNativeTests:
             return 218 if Application::pump() != Application::PumpStatus.Running
             saturation_status: i32 = exercise_saturation()
             return saturation_status if saturation_status != 0
+            scale_status: i32 = exercise_color_scale()
+            return scale_status if scale_status != 0
             0

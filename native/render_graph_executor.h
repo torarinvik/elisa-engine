@@ -3,6 +3,7 @@
 #include "wiGraphics.h"
 #include "wiRenderPath3D.h"
 #include "render_graph_blend.h"
+#include "render_graph_scale_color.h"
 #include "render_graph_saturation.h"
 #include "render_graph_types.h"
 #include "render_graph_visualize.h"
@@ -78,13 +79,13 @@ public:
             (pass.operation != Operation::ClearColor && pass.operation != Operation::CopyColor &&
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
                 pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
-                pass.operation != Operation::AdjustSaturation) ||
+                pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
                 pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
-                pass.operation == Operation::AdjustSaturation) &&
+                pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -96,6 +97,11 @@ public:
         if (!std::isfinite(pass.saturation) || pass.saturation < MIN_SATURATION ||
             pass.saturation > MAX_SATURATION ||
             (pass.operation != Operation::AdjustSaturation && pass.saturation != DEFAULT_SATURATION)) {
+            return INVALID_ARGUMENT;
+        }
+        if (!std::isfinite(pass.color_scale) || pass.color_scale < MIN_COLOR_SCALE ||
+            pass.color_scale > MAX_COLOR_SCALE ||
+            (pass.operation != Operation::ScaleColor && pass.color_scale != DEFAULT_COLOR_SCALE)) {
             return INVALID_ARGUMENT;
         }
         for (uint32_t previous = 0; previous < staging_.pass_count; ++previous) {
@@ -312,6 +318,20 @@ public:
                         return;
                     }
                     if (!adjust_saturation(*source, *destination, pass.saturation, command_list)) {
+                        last_status_ = BACKEND_FAILED;
+                        return;
+                    }
+                } else if (pass.operation == Operation::ScaleColor) {
+                    if (source->GetDesc().format == native_format(Format::Depth32) ||
+                        destination->GetDesc().format == native_format(Format::Depth32) ||
+                        source->GetDesc().format == native_format(Format::R32Float) ||
+                        destination->GetDesc().format == native_format(Format::R32Float) ||
+                        source->GetDesc().format != destination->GetDesc().format ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    if (!scale_color(*source, *destination, pass.color_scale, command_list)) {
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
