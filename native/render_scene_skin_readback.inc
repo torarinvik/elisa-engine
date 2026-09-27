@@ -1,8 +1,13 @@
 // Bounded, allocation-free CPU skin samples from current scene transforms.
 // Do not use armature.boneData: the render update can lag a pose override.
+struct SkinMatrixPalette {
+    XMMATRIX matrices[256];
+    bool ready[256]{};
+};
+
 static int32_t read_skin_vertices_locked(RenderSceneService& state, size_t slot,
     uint32_t placement, const uint32_t* vertices, uint32_t count,
-    ElisaRenderSceneSkinReadback* output) {
+    ElisaRenderSceneSkinReadback* output, SkinMatrixPalette* prepared = nullptr) {
     if (!vertices || !output || count == 0 || count > 64)
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const auto& instance = state.instances[slot];
@@ -36,6 +41,9 @@ static int32_t read_skin_vertices_locked(RenderSceneService& state, size_t slot,
     XMMATRIX root_inverse, armature_inverse;
     if (!invert(root->world, root_inverse) || !invert(armature_world->world, armature_inverse))
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (armature->boneCollection.size() > 256) return ELISA_RENDER_SCENE_CAPACITY;
+    SkinMatrixPalette local;
+    SkinMatrixPalette& palette = prepared ? *prepared : local;
     ElisaRenderSceneSkinReadback result{};
     for (uint32_t sample = 0; sample < count; ++sample) {
         const uint32_t vertex = vertices[sample];
@@ -53,11 +61,14 @@ static int32_t read_skin_vertices_locked(RenderSceneService& state, size_t slot,
                 if (weight == 0) continue;
                 const auto cluster = joints[influence];
                 if (cluster >= armature->boneCollection.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-                const auto* bone = state.scene->transforms.GetComponent(armature->boneCollection[cluster]);
-                if (!bone) return ELISA_RENDER_SCENE_BACKEND_FAILED;
-                const XMMATRIX skin = XMLoadFloat4x4(&armature->inverseBindMatrices[cluster]) *
-                    XMLoadFloat4x4(&bone->world) * armature_inverse;
-                skinned += XMVector3Transform(XMLoadFloat3(&mesh->vertex_positions[vertex]), skin) * weight;
+                if (!palette.ready[cluster]) {
+                    const auto* bone = state.scene->transforms.GetComponent(armature->boneCollection[cluster]);
+                    if (!bone) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+                    palette.matrices[cluster] = XMLoadFloat4x4(&armature->inverseBindMatrices[cluster]) *
+                        XMLoadFloat4x4(&bone->world) * armature_inverse;
+                    palette.ready[cluster] = true;
+                }
+                skinned += XMVector3Transform(XMLoadFloat3(&mesh->vertex_positions[vertex]), palette.matrices[cluster]) * weight;
                 total += weight;
             }
         }

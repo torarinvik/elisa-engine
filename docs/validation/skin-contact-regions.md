@@ -36,3 +36,28 @@ package fingerprints; generated source belongs in game build output.
 These tests compare CPU bridge reductions, not GPU skin output. Cache lifecycle
 rejection probes and performance/palette reuse remain pending before gameplay
 contact integration.
+
+Destroy/recreate tests pass on both fighters, including exact stale/empty errors
+in the complete-foot fixture. The fresh game build and eight selected native
+playback scenarios pass. Warmed native `-O0` profiling over 100 reads per foot
+measures 2.59–3.33 ms per region, about 11.58 ms for four feet. This is too
+expensive to enable by default. These are isolated CPU query timings, not total
+frame time or optimized-build results. Evidence is game
+`build/skin-contact-performance-baseline.json`. Palette preparation/reuse and
+optimized-build profiling are the next performance gates.
+
+A query-local lazy matrix palette is now staged: each influencing cluster's
+skin matrix is computed once and reused across all region batches under the
+same lock. The palette expires after the query, so it cannot retain a previous
+pose or instance transform. Storage is fixed at 256 clusters; larger armatures
+return Capacity before skin sampling. Native full-foot accuracy/lifecycle and
+timing tests are rebuilding; optimization results remain unverified.
+
+The optimized palette build passes full-foot accuracy and lifecycle checks on
+both fighters. Summed warmed CPU cost is 0.106 ms across four feet (100 reads
+per foot), recorded in game `build/skin-contact-palette-O2.json`. This does not
+measure total gameplay frame cost. Actor transform updates now synchronously
+refresh retained local joint transforms and imported mesh placements so reads
+before render update do not combine current root with previous joint worlds.
+Dynamic translation/rotation/nonuniform-scale tests pass on both fighters,
+including immediate model/world invariance and unchanged animation clocks.

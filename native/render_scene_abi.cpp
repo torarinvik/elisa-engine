@@ -1,4 +1,6 @@
 #include "render_scene_abi.h"
+#include <chrono>
+#include <cstdio>
 #include "animation_rotation_interpolation.h"
 #include "adaptive_resolution.h"
 #include "Utility/meshoptimizer/meshoptimizer.h"
@@ -441,6 +443,24 @@ int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(state.instances[slot].entity);
     if (transform == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     apply_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+    // Contact/IK reads can occur before Scene::Update. Refresh the retained
+    // visible pose without resampling animation or consuming root motion.
+    const auto& instance = state.instances[slot];
+    for (size_t joint = 0; joint < instance.joint_entities.size(); ++joint) {
+        if (joint >= instance.skin_joints.size()) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        const auto parent_index = instance.skin_joints[joint].parent_index;
+        if (parent_index >= 0 && size_t(parent_index) >= joint) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        const auto parent_entity = parent_index < 0 ? instance.entity : instance.joint_entities[size_t(parent_index)];
+        const auto* parent = state.scene->transforms.GetComponent(parent_entity);
+        auto* child = state.scene->transforms.GetComponent(instance.joint_entities[joint]);
+        if (!parent || !child) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        child->UpdateTransform_Parented(*parent);
+    }
+    for (const auto child : state.instances[slot].imported_mesh_entities) {
+        auto* child_transform = state.scene->transforms.GetComponent(child);
+        if (!child_transform) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        child_transform->UpdateTransform_Parented(*transform);
+    }
     return ELISA_RENDER_SCENE_OK;
 }
 #include "render_scene_snapshot_internal.inc"

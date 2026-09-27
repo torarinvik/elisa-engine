@@ -46,11 +46,12 @@ extern "C" int32_t elisa_render_scene_v1_read_skin_contact(int64_t handle,
     ElisaRenderSceneSkinContact result{};
     result.clearance = std::numeric_limits<float>::infinity();
     double sum[3]{};
+    SkinMatrixPalette palette;
     for (size_t first = 0; first < target.vertices.size(); first += 64) {
         ElisaRenderSceneSkinReadback sample{};
         const uint32_t count = uint32_t(std::min(size_t(64), target.vertices.size()-first));
         const int32_t status = read_skin_vertices_locked(state, slot, target.placement,
-            target.vertices.data()+first, count, &sample);
+            target.vertices.data()+first, count, &sample, &palette);
         if (status != ELISA_RENDER_SCENE_OK) return status;
         for (uint32_t index = 0; index < count; ++index) {
             const float* p = sample.points + index*6;
@@ -82,5 +83,21 @@ extern "C" uint32_t elisa_render_scene_v1_test_skin_vertex_count(int64_t handle)
     const auto* object = state.scene->objects.GetComponent(state.instances[slot].entity);
     const auto* mesh = object ? state.scene->meshes.GetComponent(object->meshID) : nullptr;
     return mesh ? uint32_t(mesh->vertex_positions.size()) : 0;
+}
+#endif
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+extern "C" int32_t elisa_render_scene_v1_test_skin_contact_cost(
+    int64_t handle, uint32_t region, uint32_t iterations) {
+    if (iterations == 0 || iterations > 1000) return 0;
+    ElisaRenderSceneSkinContact result{};
+    if (elisa_render_scene_v1_read_skin_contact(handle, region, 0, 1, 0, 0, &result) != ELISA_RENDER_SCENE_OK) return 0;
+    const auto start = std::chrono::steady_clock::now();
+    for (uint32_t index = 0; index < iterations; ++index)
+        if (elisa_render_scene_v1_read_skin_contact(handle, region, 0, 1, 0, 0, &result) != ELISA_RENDER_SCENE_OK) return 0;
+    const double microseconds = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now()-start).count();
+    std::printf("SKIN_CONTACT_COST region=%u vertices=%u iterations=%u mean_us=%.3f\n",
+        region, result.vertices, iterations, microseconds/iterations);
+    return 1;
 }
 #endif

@@ -39,6 +39,17 @@ def exercise() -> i32 error[RenderScene::RenderSceneError]:
         expected: Geometry::Vec3 = Geometry::transform_apply_point(placement, first.models[index])
         return 3 if not close(expected, twin.worlds[index])
         return 4 if not close(first.models[index], first.worlds[index])
+    placement.position <- Geometry::Vec3{x: -1.0, y: 0.5, z: 4.0}
+    placement.rotation <- Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+    placement.scale <- Geometry::Vec3{x: 0.8, y: 1.25, z: 1.1}
+    try RenderScene::update_transform(b, placement)
+    moved: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(b, 0, ids, 4)
+    for index in 0..<4:
+        return 25 if not close(first.models[index], moved.models[index])
+        expected: Geometry::Vec3 = Geometry::transform_apply_point(placement, first.models[index])
+        return 26 if not close(expected, moved.worlds[index])
+    moved_clock: f32 = try RenderScene::animation_progress(b)
+    return 27 if moved_clock != clock
     region_ids: mutable u32[RenderSceneSkinContact::MAX_REGION_VERTICES] = zeroed
     region_ids[1] <- 1
     region_ids[2] <- 2
@@ -97,6 +108,17 @@ def exercise() -> i32 error[RenderScene::RenderSceneError]:
     return 7 if not rejected
     return 8 if elisa_render_scene_v1_test_skin_readback_atomic(RenderScene::skin_test_handle(a)) != 1
     try RenderScene::destroy(a)
+    stale_rejected: bool = catch RenderScene::read_skin_contact(a, 0, up, 0.0):
+        value contact: false
+        error failure: true
+    return 15 if not stale_rejected
+    replacement: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", Geometry::transform_identity(), color)
+    empty_region: bool = catch RenderScene::read_skin_contact(replacement, 0, up, 0.0):
+        value contact: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    return 16 if not empty_region
+    try RenderScene::destroy(replacement)
     try RenderScene::destroy(b)
     0
 
