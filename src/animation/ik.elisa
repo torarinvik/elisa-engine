@@ -20,7 +20,7 @@ module Ik:
         def perpendicular_unit(direction: Geometry::Vec3, hint: Geometry::Vec3) -> Geometry::Vec3:
             projected: Geometry::Vec3 = Geometry::vec3_sub(hint, Geometry::vec3_scale(direction, Geometry::vec3_dot(direction, hint)))
             candidate: Geometry::Vec3 = Geometry::vec3_normalize(projected)
-            return candidate if Geometry::vec3_length(candidate) > Tune::EPSILON
+            return candidate if Geometry::vec3_length(projected) > Tune::EPSILON
             fallback: Geometry::Vec3 = Geometry::vec3_normalize(Geometry::vec3_cross(direction, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}))
             return fallback if Geometry::vec3_length(fallback) > Tune::EPSILON
             Geometry::vec3_normalize(Geometry::vec3_cross(direction, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}))
@@ -38,6 +38,39 @@ module Ik:
                 return Geometry::Quat{x: axis.x, y: axis.y, z: axis.z, w: 0.0}
             cross: Geometry::Vec3 = Geometry::vec3_cross(left, right)
             Geometry::quat_normalize(Geometry::Quat{x: cross.x, y: cross.y, z: cross.z, w: Tune::LIMIT + dot})
+
+        # Caller-owned memory: one instance per limb, in the solver's coordinate
+        # space. Reset after teleporting or intentionally changing bend side.
+        struct BendMemory:
+            direction: mutable Geometry::Vec3
+            bend: mutable Geometry::Vec3
+            initialized: mutable bool
+
+        def bend_memory() -> BendMemory:
+            BendMemory{direction: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, bend: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, initialized: false}
+
+        # Parallel-transport the previous bend to the new target direction.
+        # Singular pole hints retain that plane; opposite hints cannot suddenly
+        # reverse the elbow. Invalid input leaves caller memory untouched.
+        def stable_bend(memory: mutable BendMemory&, target_direction: Geometry::Vec3, hint: Geometry::Vec3) -> Geometry::Vec3:
+            return memory.bend if not Geometry::vec3_is_finite(target_direction) or not Geometry::vec3_is_finite(hint)
+            return memory.bend if Geometry::vec3_length(target_direction) <= Tune::EPSILON
+            direction: Geometry::Vec3 = Geometry::vec3_normalize(target_direction)
+            transported: mutable Geometry::Vec3 = perpendicular_unit(direction, hint)
+            if memory.initialized:
+                rotation: Geometry::Quat = direction_rotation(memory.direction, direction)
+                transported <- perpendicular_unit(direction, Geometry::quat_rotate(rotation, memory.bend))
+            projected: Geometry::Vec3 = Geometry::vec3_sub(hint, Geometry::vec3_scale(direction, Geometry::vec3_dot(direction, hint)))
+            bend: mutable Geometry::Vec3 = transported
+            # Relative threshold makes hint scale irrelevant and suppresses
+            # normalization of tiny, noisy projections near a pole singularity.
+            if Geometry::vec3_length(projected) > Geometry::vec3_length(hint) * 0.01 and Geometry::vec3_length(projected) > Tune::EPSILON:
+                candidate: Geometry::Vec3 = Geometry::vec3_normalize(projected)
+                bend <- candidate if not memory.initialized or Geometry::vec3_dot(candidate, transported) >= 0.0 else Geometry::vec3_scale(candidate, -1.0)
+            memory.direction <- direction
+            memory.bend <- bend
+            memory.initialized <- true
+            bend
 
         struct TwoBoneSolution:
             knee_cosine: f32
