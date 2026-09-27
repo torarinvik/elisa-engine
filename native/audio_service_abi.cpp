@@ -176,6 +176,20 @@ extern "C" int32_t elisa_audio_v1_decode_file(
     return ELISA_AUDIO_OK;
 }
 
+extern "C" int32_t elisa_audio_v1_release_clip(uint32_t slot, uint32_t generation) {
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    switch (audio_service().service.release_clip(probe::audio::ClipHandle{slot, generation})) {
+    case probe::audio::ClipReleaseStatus::Released:
+        return ELISA_AUDIO_OK;
+    case probe::audio::ClipReleaseStatus::InvalidHandle:
+        return ELISA_AUDIO_INVALID_HANDLE;
+    case probe::audio::ClipReleaseStatus::InUse:
+        return ELISA_AUDIO_CLIP_IN_USE;
+    }
+    return ELISA_AUDIO_INVALID_HANDLE;
+}
+
 extern "C" int32_t elisa_audio_v1_play(
     uint32_t clip_slot, uint32_t clip_generation, int32_t looped, int32_t bus,
     float gain, uint32_t priority, uint32_t* slot, uint32_t* generation) {

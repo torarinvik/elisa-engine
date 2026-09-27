@@ -3,21 +3,29 @@
 include "./render_scene_animation_submission.elisa"
 include "../animation/assets.elisa"
 
-extend RenderScene:
+module RenderSceneAnimationAssets:
     public:
         # Sample the clip in Elisa, then copy only its model transforms into the
         # render payload. Morph weights remain independently editable.
-        def animation_pose_from_clip(skeleton: AnimationAssets::SkeletonAsset&,
-            clip: AnimationAssets::AnimationClip&, tick: i64) -> AnimationPose error[RenderSceneError]:
+        def pose_from_clip(skeleton: AnimationAssets::SkeletonAsset&,
+            clip: AnimationAssets::AnimationClip&, tick: i64) -> RenderScene::AnimationPose error[RenderScene::RenderSceneError]:
             sampled: Pose::Pose = catch AnimationAssets::sample_clip_pose(skeleton, clip, tick):
                 value: value
                 # Pose payloads are non-empty for every valid skeleton. Use an
                 # empty result as a local error sentinel, then raise after the
                 # catch join (the backend keeps this aggregate branch simple).
                 error failure: Pose::Pose{models: zeroed, count: 0}
-            raise RenderSceneError.InvalidValue if sampled.count == 0
-            raise RenderSceneError.Capacity if sampled.count > RenderSceneAnimationSubmission::MAX_BONES
-            pose: mutable AnimationPose = AnimationPose()
+            raise RenderScene::RenderSceneError.InvalidValue if sampled.count == 0
+            raise RenderScene::RenderSceneError.Capacity if sampled.count > RenderSceneAnimationSubmission::MAX_BONES
+            pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
             for index in 0..<sampled.count |pose, sampled|:
-                try set_bone_transform(&pose, index, sampled.models[index])
+                try RenderScene::set_bone_transform(&pose, index, sampled.models[index])
             pose
+
+extend RenderScene:
+    public:
+        # Keep clip sampling available from the main RenderScene facade while
+        # the asset bridge itself lives under its focused module namespace.
+        def animation_pose_from_clip(skeleton: AnimationAssets::SkeletonAsset&,
+            clip: AnimationAssets::AnimationClip&, tick: i64) -> AnimationPose error[RenderSceneError]:
+            try RenderSceneAnimationAssets::pose_from_clip(skeleton, clip, tick)

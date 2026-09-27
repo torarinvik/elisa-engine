@@ -7,7 +7,7 @@ miniaudio devices, decoders, and mixer state.
 
 The adapter currently supports silent and default playback devices, WAV file
 decoding, bounded generation-checked clip and voice handles, looping playback,
-three gain buses, voice stop, and application-ordered shutdown. The silent
+three gain buses, voice stop, explicit decoded-clip release, and application-ordered shutdown. The silent
 device supports deterministic tests and fallback when no hardware output is
 available. The default device reports an explicit device-unavailable error if
 initialization fails. Audio calls require the initialized application's owner
@@ -19,7 +19,10 @@ count (one or two); Elisa and the C ABI both reject invalid configurations.
 
 The application native smoke creates a short 8 kHz mono WAV, initializes the
 silent device, decodes the clip, plays and stops one voice, and checks that
-application shutdown closes the service. Stale clip/voice generations are
+application shutdown closes the service. Releasing a clip with a live voice
+returns `ClipInUse`; after stopping the voice, release frees the decoded sample
+buffer and invalidates the handle. The native adapter test verifies the freed
+slot can be reused only with a new generation. Stale clip/voice generations are
 preserved across service restarts. The standalone Wicked probe continues to
 run the miniaudio decoder, null-device, and mixer checks through the shared
 implementation translation unit.
@@ -41,9 +44,8 @@ also passed the portable suite, Godot 4.7.2 compatibility probe, both proof
 suites (23 obligations proved, 23 certificates replayed), and validation report.
 The source-length, module-hygiene, and `git diff --check` gates passed.
 
-Spatial source/listener submission, streaming decode, device recovery, and live
-profile advertisement remain open work. The current service does not claim
-spatialization or uninterrupted recovery after device loss.
+Streaming decode and live profile advertisement remain open work. The current
+service does not claim audible continuity after device loss.
 
 ## Elisa-owned optional handle state
 

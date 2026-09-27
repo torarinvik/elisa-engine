@@ -185,6 +185,28 @@ inline bool probe_miniaudio() {
     if (!check(far_silent, "miniaudio service attenuates a distant source")) {
         return false;
     }
+    if (!check(service.release_clip(clip) == audio::ClipReleaseStatus::InUse &&
+        service.clip_live(clip), "miniaudio service keeps clips required by live voices")) {
+        return false;
+    }
+    if (!check(service.stop(near_source) &&
+        service.release_clip(clip) == audio::ClipReleaseStatus::Released &&
+        !service.clip_live(clip) && service.release_clip(clip) == audio::ClipReleaseStatus::InvalidHandle,
+        "miniaudio service releases decoded storage and rejects stale clip handles")) {
+        return false;
+    }
+    const audio::ClipHandle reused_clip = service.decode_clip(wav.data(), wav.size(), rate, 1);
+    const audio::VoiceHandle reused_voice = service.play(reused_clip);
+    if (!check(reused_clip.slot == clip.slot && reused_clip.generation != clip.generation &&
+        reused_voice.slot < audio::MAX_VOICES && !service.clip_live(clip) &&
+        service.clip_live(reused_clip), "miniaudio service reuses released clip slots with a new generation")) {
+        return false;
+    }
+    if (!check(service.stop(reused_voice) &&
+        service.release_clip(reused_clip) == audio::ClipReleaseStatus::Released,
+        "miniaudio service releases a reused decoded clip")) {
+        return false;
+    }
     service.shutdown();
     if (!check(!service.voice_live(second) && !service.voice_live(reopened),
             "miniaudio service invalidates voices on shutdown")) {

@@ -36,6 +36,8 @@ struct VoiceHandle {
     uint32_t generation = 0;
 };
 
+enum class ClipReleaseStatus : uint8_t { Released, InvalidHandle, InUse };
+
 struct ListenerState {
     float position[3] = {};
     float velocity[3] = {};
@@ -98,7 +100,7 @@ public:
         channels_ = 0;
         device_recovery_requested_.store(false, std::memory_order_release);
         for (Clip& clip : clips_) {
-            clip.samples.clear();
+            std::vector<int16_t>().swap(clip.samples);
             clip.rate = 0;
             clip.channels = 0;
             clip.live = false;
@@ -292,6 +294,26 @@ public:
     bool clip_live(ClipHandle handle) const {
         std::lock_guard<std::mutex> guard(mutex_);
         return clip_valid(handle);
+    }
+
+    // A decoded clip owns its sample buffer. Releasing it while a voice is
+    // active would change the sound mid-playback, so callers stop or drain all
+    // voices first. The allocation is freed after leaving the callback lock.
+    ClipReleaseStatus release_clip(ClipHandle handle) {
+        std::vector<int16_t> released_samples;
+        {
+            std::lock_guard<std::mutex> guard(mutex_);
+            if (!clip_valid(handle)) return ClipReleaseStatus::InvalidHandle;
+            for (const Voice& voice : voices_) {
+                if (voice.live && voice.clip == handle.slot) return ClipReleaseStatus::InUse;
+            }
+            Clip& clip = clips_[handle.slot];
+            clip.live = false;
+            clip.rate = 0;
+            clip.channels = 0;
+            released_samples.swap(clip.samples);
+        }
+        return ClipReleaseStatus::Released;
     }
 
     uint32_t active_voices() const {

@@ -63,7 +63,28 @@ def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
         clip, true, AudioRuntime::Bus.Effects, 1.0, 1)
     count: usize = try AudioRuntime::active_voice_count()
     raise AudioRuntime::AudioError.UnknownStatus if count != 1
+    active_release: i32 = catch AudioRuntime::release_clip(clip):
+        ok: 0
+        AudioRuntime::AudioError.ClipInUse: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if active_release != 1
     try AudioRuntime::stop(voice)
+    try AudioRuntime::release_clip(clip)
+    stale_release: i32 = catch AudioRuntime::release_clip(clip):
+        ok: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if stale_release != 1
+    stale_play: i32 = catch AudioRuntime::play(clip, false, AudioRuntime::Bus.Effects, 1.0, 1):
+        value: 0
+        AudioRuntime::AudioError.InvalidHandle: 1
+        error failure: 2
+    raise AudioRuntime::AudioError.UnknownStatus if stale_play != 1
+    reused_clip: AudioRuntime::ClipHandle = try AudioRuntime::decode_file("test/fixtures/audio-smoke.wav")
+    reused_voice: AudioRuntime::VoiceHandle = try AudioRuntime::play(
+        reused_clip, true, AudioRuntime::Bus.Effects, 1.0, 1)
+    try AudioRuntime::stop(reused_voice)
+    try AudioRuntime::release_clip(reused_clip)
     0
 
 def check_startup_requirements(config: Application::Config) -> i32:
