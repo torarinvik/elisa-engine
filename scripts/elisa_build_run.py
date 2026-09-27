@@ -52,7 +52,16 @@ def brew_prefix(formula: str | None = None) -> Path | None:
 def resolve_native_paths(args: argparse.Namespace) -> dict[str, Path]:
     wicked_root = configured_path(args.wicked_root, "WICKED_ROOT")
     if wicked_root is None:
-        wicked_root = (ENGINE_ROOT.parent / "WickedEngine").resolve()
+        manifest_path = ENGINE_ROOT / "native/dependency-manifest.json"
+        try:
+            dependencies = json.loads(manifest_path.read_text(encoding="utf-8"))
+            wicked = next(library for library in dependencies["libraries"]
+                          if library["name"] == "WickedEngine")
+            wicked_root = (ENGINE_ROOT / wicked["path_default"]).resolve()
+        except (OSError, ValueError, KeyError, StopIteration, TypeError) as error:
+            raise BuildConfigurationError(
+                f"Cannot resolve pinned WickedEngine default from {manifest_path}: {error}"
+            ) from error
     wicked_build = configured_path(args.wicked_build, "WICKED_BUILD") or wicked_root / "build-elisa-sdl3"
 
     brew_root = configured_path(args.brew_prefix, "WICKED_BREW_PREFIX", "HOMEBREW_PREFIX")

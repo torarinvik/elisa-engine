@@ -155,3 +155,66 @@ module Pose:
             pose.models[root_index + 1] <- Geometry::Transform{position: knee, rotation: knee_joint.rotation, scale: knee_joint.scale}
             pose.models[root_index + 2] <- Geometry::Transform{position: target, rotation: end_joint.rotation, scale: end_joint.scale}
             true
+
+        # Rotational correction for an explicitly indexed parent-child limb.
+        # Segment lengths come from the current model pose. Unreachable/degenerate
+        # targets return false atomically; the end orientation remains captured.
+        # Descendants follow the closest corrected ancestor, including toes and
+        # auxiliary twist joints. Unrelated branches remain untouched.
+        def pose_correct_limb(pose: mutable Pose&, skeleton: Skeleton&, upper: usize, lower: usize, end: usize, target: Geometry::Vec3, bend_axis: Geometry::Vec3) -> bool error[PoseError]:
+            raise PoseError.ShapeMismatch if pose.count != skeleton.count
+            raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton) or not pose_valid(pose)
+            raise PoseError.JointOutOfBounds if upper >= pose.count or lower >= pose.count or end >= pose.count
+            return false if skeleton.joints[lower].parent != upper.i64() or skeleton.joints[end].parent != lower.i64()
+            return false if not Geometry::vec3_is_finite(target) or not Geometry::vec3_is_finite(bend_axis)
+            valid_transforms: bool = for index in 0..<pose.count |valid: bool = true| -> valid:
+                valid <- false if not Geometry::transform_is_valid(pose.models[index])
+            return false if not valid_transforms
+            old_upper: Geometry::Transform = pose.models[upper]
+            old_lower: Geometry::Transform = pose.models[lower]
+            old_end: Geometry::Transform = pose.models[end]
+            first: Geometry::Vec3 = Geometry::vec3_sub(old_lower.position, old_upper.position)
+            second: Geometry::Vec3 = Geometry::vec3_sub(old_end.position, old_lower.position)
+            a: f32 = Geometry::vec3_length(first)
+            b: f32 = Geometry::vec3_length(second)
+            distance: f32 = Geometry::vec3_length(Geometry::vec3_sub(target, old_upper.position))
+            span: f32 = a - b if a >= b else b - a
+            return false if a <= 0.0001 or b <= 0.0001 or distance <= span + 0.0001 or distance >= a + b - 0.0001
+            knee: Geometry::Vec3 = Ik::two_bone_knee(old_upper.position, target, a, b, bend_axis)
+            upper_delta: Geometry::Quat = Ik::direction_rotation(first, Geometry::vec3_sub(knee, old_upper.position))
+            lower_delta: Geometry::Quat = Ik::direction_rotation(second, Geometry::vec3_sub(target, knee))
+            new_upper: Geometry::Transform = Geometry::Transform{position: old_upper.position, rotation: Geometry::quat_normalize(Geometry::quat_mul(upper_delta, old_upper.rotation)), scale: old_upper.scale}
+            new_lower: Geometry::Transform = Geometry::Transform{position: knee, rotation: Geometry::quat_normalize(Geometry::quat_mul(lower_delta, old_lower.rotation)), scale: old_lower.scale}
+            new_end: Geometry::Transform = Geometry::Transform{position: target, rotation: old_end.rotation, scale: old_end.scale}
+            for index in 0..<pose.count |pose, skeleton, upper, lower, end, old_upper, old_lower, old_end, new_upper, new_lower, new_end|:
+                # The three chain joints are handled after their descendants so
+                # each descendant still reads its original model transform.
+                if index != upper and index != lower and index != end:
+                    ancestor: mutable i64 = skeleton.joints[index].parent
+                    for _ in 0..<skeleton.count |ancestor, skeleton, upper, lower, end|:
+                        if ancestor >= 0 and ancestor != upper.i64() and ancestor != lower.i64() and ancestor != end.i64():
+                            ancestor <- skeleton.joints[ancestor.usize()].parent
+                    if ancestor == upper.i64() or ancestor == lower.i64() or ancestor == end.i64():
+                        before: Geometry::Transform = old_end if ancestor == end.i64() else old_lower if ancestor == lower.i64() else old_upper
+                        after: Geometry::Transform = new_end if ancestor == end.i64() else new_lower if ancestor == lower.i64() else new_upper
+                        child: Geometry::Transform = pose.models[index]
+                        delta: Geometry::Quat = Geometry::quat_normalize(Geometry::quat_mul(after.rotation, Geometry::quat_conjugate(Geometry::quat_normalize(before.rotation))))
+                        relative: Geometry::Vec3 = Geometry::vec3_sub(child.position, before.position)
+                        pose.models[index] <- Geometry::Transform{position: Geometry::vec3_add(after.position, Geometry::quat_rotate(delta, relative)), rotation: Geometry::quat_normalize(Geometry::quat_mul(delta, child.rotation)), scale: child.scale}
+            pose.models[upper] <- new_upper
+            pose.models[lower] <- new_lower
+            pose.models[end] <- new_end
+            true
+
+        # Apply after blending. The caller supplies a skinned sole point in the
+        # same model space as the pose; this helper does not infer a floor from
+        # ankle height or remove intentional positive flight clearance.
+        def pose_correct_floor_limb(pose: mutable Pose&, skeleton: Skeleton&, upper: usize, lower: usize, end: usize, sole_point: Geometry::Vec3, floor_height: f32, bend_axis: Geometry::Vec3) -> bool error[PoseError]:
+            raise PoseError.ShapeMismatch if pose.count != skeleton.count
+            raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton) or not pose_valid(pose)
+            raise PoseError.JointOutOfBounds if upper >= pose.count or lower >= pose.count or end >= pose.count
+            return false if not Geometry::vec3_is_finite(sole_point) or not Geometry::vec3_is_finite(Geometry::Vec3{x: 0.0, y: floor_height, z: 0.0})
+            return true if sole_point.y >= floor_height
+            offset: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: floor_height - sole_point.y, z: 0.0}
+            target: Geometry::Vec3 = Geometry::vec3_add(pose.models[end].position, offset)
+            try pose_correct_limb(pose, skeleton, upper, lower, end, target, bend_axis)

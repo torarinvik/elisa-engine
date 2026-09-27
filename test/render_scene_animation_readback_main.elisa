@@ -1,0 +1,140 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_animation_readback.elisa"
+include "../src/runtime/render_scene_animation_blend.elisa"
+
+extend RenderScene:
+    public:
+        def pose_test_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+
+@callconv(c)
+extern elisa_render_scene_v1_test_animation_joint_position(handle: i64,
+    index: u32, x: f32, y: f32, z: f32) -> i32
+
+def same(a: RenderScene::AnimationSnapshot&, b: RenderScene::AnimationSnapshot&) -> bool:
+    return false if a.pose.count != b.pose.count or a.pose.count == 0
+    matched: bool = for index in 0..<a.pose.count |matched: bool = true| -> matched:
+        x: Geometry::Transform = a.skeleton.joints[index].local
+        y: Geometry::Transform = b.skeleton.joints[index].local
+        matched <- false if a.skeleton.joints[index].parent != b.skeleton.joints[index].parent
+        matched <- false if x.position.x != y.position.x or x.position.y != y.position.y or x.position.z != y.position.z
+        matched <- false if x.rotation.x != y.rotation.x or x.rotation.y != y.rotation.y or x.rotation.z != y.rotation.z or x.rotation.w != y.rotation.w
+        matched <- false if x.scale.x != y.scale.x or x.scale.y != y.scale.y or x.scale.z != y.scale.z
+        matched <- false if not Geometry::transform_is_valid(a.pose.models[index])
+    matched
+
+def play_pair(a: RenderScene::InstanceHandle, b: RenderScene::InstanceHandle,
+    clip: cstr, fade: f32) -> void error[RenderScene::RenderSceneError]:
+    transition: RenderScene::AnimationTransition = RenderScene::AnimationTransition{eased: true, phase_matched: false, continue_same_clip: false}
+    try RenderScene::play_animation_blended(a, clip, false, 1.0, fade, transition)
+    try RenderScene::play_animation_blended(b, clip, false, 1.0, fade, transition)
+
+def advance_pair(a: RenderScene::InstanceHandle, b: RenderScene::InstanceHandle,
+    dt: f32) -> void error[RenderScene::RenderSceneError]:
+    try RenderScene::advance_animation(a, dt)
+    try RenderScene::advance_animation(b, dt)
+
+def exercise() -> i32 error[RenderScene::RenderSceneError]:
+    try RenderScene::initialize(320, 200, 10.0)
+    placement: mutable Geometry::Transform = Geometry::transform_identity()
+    placement.position <- Geometry::Vec3{x: 2.0, y: 1.0, z: -3.0}
+    placement.rotation <- Geometry::Quat{x: 0.0, y: 0.70710678, z: 0.0, w: 0.70710678}
+    placement.scale <- Geometry::Vec3{x: 1.5, y: 1.5, z: 1.5}
+    a: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", Geometry::transform_identity(), RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+    b: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg", placement, RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0})
+    try play_pair(a, b, "idle_guard", 0.0)
+    try advance_pair(a, b, 0.1)
+    first: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    again: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    twin: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(b)
+    return 2 if first.pose.count < 16 or not same(first, again) or not same(first, twin)
+    foot: usize = try RenderScene::animation_joint_index(a, "mixamorig:LeftFoot")
+    return 17 if foot >= first.pose.count
+    missing: bool = catch RenderScene::animation_joint_index(a, "missing-foot"):
+        value index: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    return 18 if not missing
+    before: f32 = try RenderScene::animation_progress(a)
+    after: f32 = try RenderScene::animation_progress(a)
+    return 3 if before != after
+    try play_pair(a, b, "jab", 0.1)
+    try advance_pair(a, b, 0.04)
+    blend: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    blend_twin: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(b)
+    return 4 if not same(blend, blend_twin) or same(first, blend)
+    try play_pair(a, b, "cross", 0.1)
+    try advance_pair(a, b, 0.03)
+    interrupted: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    interrupted_twin: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(b)
+    return 5 if not same(interrupted, interrupted_twin)
+    try play_pair(a, b, "step_forward", 0.0)
+    try RenderScene::set_animation_root_motion(a, RenderScene::AnimationRootMotionMode.Horizontal, "mixamorig:Hips")
+    try RenderScene::set_animation_root_motion(b, RenderScene::AnimationRootMotionMode.Horizontal, "mixamorig:Hips")
+    try advance_pair(a, b, 0.5)
+    twin_delta: Geometry::Vec3 = try RenderScene::consume_animation_root_motion(b)
+    rooted: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    root_twin: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(b)
+    return 6 if not same(rooted, root_twin)
+    delta: Geometry::Vec3 = try RenderScene::consume_animation_root_motion(a)
+    return 10 if delta.x * delta.x + delta.z * delta.z < 0.000001
+    return 7 if delta.x != twin_delta.x or delta.y != twin_delta.y or delta.z != twin_delta.z
+    # Shift the whole displayed model up; relative locals of descendants stay
+    # unchanged. This models an Elisa-authored pelvis/contact correction.
+    corrected: mutable RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    for index in 0..<corrected.pose.count |corrected|:
+        corrected.pose.models[index].position.y <- corrected.pose.models[index].position.y + 0.03
+    try RenderScene::override_animation_pose(a, corrected)
+    applied: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    gap: f32 = applied.pose.models[0].position.y - rooted.pose.models[0].position.y
+    return 13 if gap < 0.0299 or gap > 0.0301
+    visible: bool = for index in 0..<applied.pose.count |visible: bool = true| -> visible:
+        point: Geometry::Vec3 = applied.pose.models[index].position
+        visible <- false if elisa_render_scene_v1_test_animation_joint_position(
+            RenderScene::pose_test_handle(a), index.u32(), point.x, point.y, point.z) != 1
+    return 20 if not visible
+    # A malformed correction is rejected before changing the visible pose.
+    corrected.pose.count <- corrected.pose.count - 1
+    invalid: bool = catch RenderScene::override_animation_pose(a, corrected):
+        ok: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    return 14 if not invalid
+    after_invalid: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    return 15 if not same(applied, after_invalid)
+    # A zero-time advance samples the source again; override does not replace
+    # the captured animation keys or change the clip's clock.
+    try RenderScene::advance_animation(a, 0.0)
+    resampled: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    return 16 if not same(rooted, resampled)
+    # A new fade starts at the corrected visible pose, even when the prior
+    # clip had no unfinished fade. It must not snap back to uncorrected FK.
+    corrected.pose.count <- corrected.skeleton.count
+    try RenderScene::override_animation_pose(a, corrected)
+    try RenderScene::play_animation_blended(a, "cross", false, 1.0, 0.1,
+        RenderScene::AnimationTransition{eased: true, phase_matched: false, continue_same_clip: false})
+    new_fade: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
+    seam: f32 = new_fade.pose.models[0].position.y - applied.pose.models[0].position.y
+    return 19 if seam < -0.0001 or seam > 0.0001
+    try RenderScene::destroy(a)
+    stale: bool = catch RenderScene::read_animation_pose(a):
+        value snapshot: false
+        RenderScene::RenderSceneError.UnknownHandle: true
+        error failure: false
+    return 8 if not stale
+    try RenderScene::destroy(b)
+    0
+
+def main() -> i32:
+    config: Application::Config = Application::Config{title: "Displayed pose readback", width: 320, height: 200, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    result: i32 = catch exercise():
+        value: value
+        error failure: 9
+    scene_closed: bool = catch RenderScene::shutdown():
+        ok: true
+        error failure: false
+    return 12 if not scene_closed
+    closed: bool = Application::shutdown()
+    return 11 if not closed
+    result

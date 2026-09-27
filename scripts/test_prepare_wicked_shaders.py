@@ -38,6 +38,7 @@ class PrepareWickedShadersTests(unittest.TestCase):
             "from pathlib import Path\n"
             "import sys\n"
             "assert sys.argv[1:] == ['metal', 'quiet']\n"
+            "assert (Path(__file__).parent / 'libdxcompiler.dylib').is_file()\n"
             f"if {exit_code}: raise SystemExit({exit_code})\n"
             "root = Path('shaders/metal')\n"
             "root.mkdir(parents=True, exist_ok=True)\n"

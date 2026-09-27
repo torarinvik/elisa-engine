@@ -1,6 +1,7 @@
 // Private implementation fragment: internal animation sampling and pose submission.
 void clear_animation_state(InstanceSlot& instance) {
     instance.displayed_joint_pose.clear();
+    instance.animation_pose_overridden = false;
     instance.interrupted_joint_pose.clear();
     instance.displayed_morph_pose.clear();
     instance.interrupted_morph_pose.clear();
@@ -35,6 +36,12 @@ void clear_animation_state(InstanceSlot& instance) {
 // an unfinished recovery just because the next destination has a short fade.
 float preserve_interrupted_pose(InstanceSlot& instance, float requested_seconds) {
     const float remaining = instance.blend_duration - instance.blend_elapsed;
+    if (requested_seconds > 0.f && instance.animation_pose_overridden) {
+        instance.root_motion_exit_pending = false;
+        instance.interrupted_joint_pose = instance.displayed_joint_pose;
+        instance.interrupted_morph_pose = instance.displayed_morph_pose;
+        return std::max(requested_seconds, remaining);
+    }
     if (instance.root_motion_exit_pending) {
         instance.root_motion_exit_pending = false;
         if (requested_seconds > 0.0f) {
@@ -84,22 +91,7 @@ void interpolate_transform(const float* first, const float* second, float weight
     for (size_t component = 0; component < 3; ++component) {
         output[component] = first[component] + (second[component] - first[component]) * weight;
     }
-    float dot = 0.0f;
-    for (size_t component = 0; component < 4; ++component) dot += first[component + 3] * second[component + 3];
-    const float direction = dot < 0.0f ? -1.0f : 1.0f;
-    float length_squared = 0.0f;
-    for (size_t component = 0; component < 4; ++component) {
-        const float value = first[component + 3] +
-            (second[component + 3] * direction - first[component + 3]) * weight;
-        output[component + 3] = value;
-        length_squared += value * value;
-    }
-    if (length_squared > 1.0e-12f && std::isfinite(length_squared)) {
-        const float inverse_length = 1.0f / std::sqrt(length_squared);
-        for (size_t component = 0; component < 4; ++component) output[component + 3] *= inverse_length;
-    } else {
-        for (size_t component = 0; component < 4; ++component) output[component + 3] = first[component + 3];
-    }
+    elisa::animation::interpolate_rotation(first + 3, second + 3, weight, output + 3);
     for (size_t component = 7; component < 10; ++component) {
         output[component] = first[component] + (second[component] - first[component]) * weight;
     }
@@ -196,9 +188,34 @@ void store_joint_pose(wi::scene::TransformComponent& transform, const float* pos
     transform.SetDirty();
 }
 
+bool apply_displayed_joint_transforms(RenderSceneService& state, size_t slot) {
+    InstanceSlot& instance = state.instances[slot];
+    if (instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10) return false;
+    for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
+        const float* pose = instance.displayed_joint_pose.data() + joint_index * 10;
+        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
+        if (transform == nullptr) return false;
+        if (instance.skin_joints[joint_index].parent_index < 0) {
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
+            if (parent == nullptr) return false;
+            store_joint_pose(*transform, pose);
+            transform->UpdateTransform_Parented(*parent);
+        } else {
+            const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
+            if (parent_index >= joint_index) return false;
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
+            if (parent == nullptr) return false;
+            store_joint_pose(*transform, pose);
+            transform->UpdateTransform_Parented(*parent);
+        }
+    }
+    return true;
+}
+
 bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     InstanceSlot& instance = state.instances[slot];
     if (instance.joint_entities.size() != instance.skin_joints.size()) return false;
+    instance.animation_pose_overridden = false;
     const bool has_joints = !instance.skin_joints.empty();
     float blend = 1.0f;
     if (instance.blend_duration > 0.0f) {
@@ -275,22 +292,9 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
             pose[2] -= local_horizontal.z;
         }
         std::copy_n(pose, 10, instance.displayed_joint_pose.data() + joint_index * 10);
-        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
-        if (transform == nullptr) return false;
-        if (instance.skin_joints[joint_index].parent_index < 0) {
-            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
-            if (parent == nullptr) return false;
-            store_joint_pose(*transform, pose);
-            transform->UpdateTransform_Parented(*parent);
-        } else {
-            const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
-            if (parent_index >= joint_index) return false;
-            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
-            if (parent == nullptr) return false;
-            store_joint_pose(*transform, pose);
-            transform->UpdateTransform_Parented(*parent);
-        }
     }
+    if (!apply_displayed_joint_transforms(state, slot)) return false;
+
     const auto& children = instance.snapshot_placement_entities.empty()
         ? instance.imported_mesh_entities : instance.snapshot_placement_entities;
     const size_t placement_count = children.size() + 1;

@@ -316,6 +316,19 @@ enum {
     ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS = 32u,
     ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS = 16u,
 };
+// Displayed locals are in Elisa asset space after horizontal root extraction.
+// Reading does not advance animation or consume pending root motion.
+typedef struct ElisaRenderSceneAnimationReadback {
+    float locals[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * 10u];
+    int64_t parents[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES];
+    uint32_t count;
+} ElisaRenderSceneAnimationReadback;
+int32_t elisa_render_scene_v1_read_animation_pose(
+    int64_t handle, ElisaRenderSceneAnimationReadback* output);
+int32_t elisa_render_scene_v1_animation_joint_index(
+    int64_t handle, const char* joint_name, uint32_t* index);
+int32_t elisa_render_scene_v1_override_animation_pose(
+    int64_t handle, const ElisaRenderSceneAnimationReadback* input);
 typedef struct ElisaRenderSceneAnimationSubmission {
     float bones[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS];
     float morphs[ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS];

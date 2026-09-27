@@ -33,6 +33,7 @@ struct InstanceSlot {
     float previous_animation_speed = 1.0f;
     // Visible pose retained when a new request interrupts an unfinished fade.
     std::vector<float> displayed_joint_pose;
+    bool animation_pose_overridden = false;
     std::vector<float> interrupted_joint_pose;
     std::vector<float> displayed_morph_pose;
     std::vector<float> interrupted_morph_pose;

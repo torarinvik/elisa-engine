@@ -26,6 +26,19 @@ module Ik:
             Geometry::vec3_normalize(Geometry::vec3_cross(direction, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}))
 
     public:
+        # Shortest rotation between nonzero directions. A deterministic perpendicular
+        # axis handles a 180-degree turn without a zero quaternion.
+        def direction_rotation(start: Geometry::Vec3, finish: Geometry::Vec3) -> Geometry::Quat:
+            left: Geometry::Vec3 = Geometry::vec3_normalize(start)
+            right: Geometry::Vec3 = Geometry::vec3_normalize(finish)
+            return Geometry::quat_identity() if Geometry::vec3_length(left) <= Tune::EPSILON or Geometry::vec3_length(right) <= Tune::EPSILON
+            dot: f32 = Geometry::vec3_dot(left, right)
+            if dot < 0.0 - Tune::LIMIT + Tune::EPSILON:
+                axis: Geometry::Vec3 = perpendicular_unit(left, Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+                return Geometry::Quat{x: axis.x, y: axis.y, z: axis.z, w: 0.0}
+            cross: Geometry::Vec3 = Geometry::vec3_cross(left, right)
+            Geometry::quat_normalize(Geometry::Quat{x: cross.x, y: cross.y, z: cross.z, w: Tune::LIMIT + dot})
+
         struct TwoBoneSolution:
             knee_cosine: f32
             effective_distance: f32

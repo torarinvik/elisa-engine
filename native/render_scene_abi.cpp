@@ -1,4 +1,5 @@
 #include "render_scene_abi.h"
+#include "animation_rotation_interpolation.h"
 #include "adaptive_resolution.h"
 #include "Utility/meshoptimizer/meshoptimizer.h"
 #include "application_abi.h"
@@ -301,6 +302,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
 }
 #include "render_scene_imported_scene_internal.inc"
 #include "render_scene_animation_internal.inc"
+#include "render_scene_animation_readback.inc"
 #include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {

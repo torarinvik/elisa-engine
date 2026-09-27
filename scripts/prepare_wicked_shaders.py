@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -84,14 +85,16 @@ def prepare(project: Path, wicked_root: Path, wicked_build: Path | None,
         print(f"Project Metal shader path must be a real directory: {backend_root}", file=sys.stderr)
         return 2
 
-    # Wicked resolves the compiler libraries relative to its current working
-    # directory and writes all listed permutations under ./shaders/metal.
+    # Wicked resolves DXC beside its executable and the Metal converter from
+    # its working directory. Stage both layouts without changing the checkout.
     # Give it an isolated workspace and publish only successful binaries.
     with tempfile.TemporaryDirectory(prefix="elisa-wicked-shaders-") as temporary:
         workspace = Path(temporary)
         for library in runtime_libraries:
             (workspace / library.name).symlink_to(library)
-        command = [str(compiler), "metal", "quiet"]
+        staged_compiler = workspace / "offlineshadercompiler"
+        shutil.copy2(compiler, staged_compiler)
+        command = [str(staged_compiler), "metal", "quiet"]
         print("Preparing Wicked Metal shader permutations...", flush=True)
         try:
             result = subprocess.run(command, cwd=workspace, check=False)
