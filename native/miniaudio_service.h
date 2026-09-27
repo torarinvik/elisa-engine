@@ -2,8 +2,10 @@
 
 // One-owner miniaudio playback service. Clip decoding happens before a clip is
 // published; the device callback only mixes fixed voice slots and allocates
-// nothing. Gameplay owns when to play or stop a voice.
+// nothing. Gameplay owns when to play or stop a voice. Long sources stream
+// through fixed rings (miniaudio_stream.h) refilled by the owner thread.
 #include "miniaudio.h"
+#include "miniaudio_stream.h"
 
 #include <algorithm>
 #include <array>
@@ -63,6 +65,23 @@ public:
         if (!initialized_) return false;
         const uint32_t rate = sample_rate_;
         const uint32_t channels = channels_;
+        close_device_for_reopen();
+        return initialize_null(rate, channels);
+    }
+
+    // Recovery that tries the system default output again before falling
+    // back to the null device. Streams keep their decoders and rings across
+    // the reopen; one-shot voices end. Returns 2 (default), 1 (null) or 0.
+    int reopen_preferring_default() {
+        if (!initialized_) return 0;
+        const uint32_t rate = sample_rate_;
+        const uint32_t channels = channels_;
+        close_device_for_reopen();
+        if (initialize_default(rate, channels)) return 2;
+        return initialize_null(rate, channels) ? 1 : 0;
+    }
+
+    void close_device_for_reopen() {
         accept_device_notifications_.store(false, std::memory_order_release);
         ma_device_uninit(&device_);
         ma_context_uninit(&context_);
@@ -72,7 +91,6 @@ public:
             for (Voice& voice : voices_) voice.live = false;
         }
         device_recovery_requested_.store(false, std::memory_order_release);
-        return initialize_null(rate, channels);
     }
 
     bool take_device_recovery_request() {
@@ -94,8 +112,10 @@ public:
             ma_device_uninit(&device_);
             ma_context_uninit(&context_);
         }
+        streams_.shutdown(mutex_);
         std::lock_guard<std::mutex> guard(mutex_);
         initialized_ = false;
+        bus_paused_.fill(false);
         sample_rate_ = 0;
         channels_ = 0;
         device_recovery_requested_.store(false, std::memory_order_release);
@@ -187,6 +207,34 @@ public:
         if (!bus_valid(bus)) return 0.0f;
         std::lock_guard<std::mutex> guard(mutex_);
         return bus_gains_[bus_index(bus)];
+    }
+
+    // A paused bus keeps its voices and streams in place without mixing them.
+    bool set_bus_paused(Bus bus, bool paused) {
+        if (!bus_valid(bus)) return false;
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!initialized_) return false;
+        bus_paused_[bus_index(bus)] = paused;
+        return true;
+    }
+
+    StreamHandle open_stream(const char* path, bool looped, Bus bus, float gain,
+        StreamOpenStatus& result) {
+        result = StreamOpenStatus::DecodeFailed;
+        if (!initialized_ || path == nullptr || path[0] == '\0' || !bus_valid(bus) ||
+            !std::isfinite(gain) || gain < 0.0f || gain > 4.0f) return {};
+        return streams_.open(path, looped, static_cast<uint8_t>(bus_index(bus)), gain,
+            sample_rate_, channels_, mutex_, result);
+    }
+
+    bool stop_stream(StreamHandle handle) { return streams_.stop(handle, mutex_); }
+    bool pump_streams() { return !initialized_ || streams_.pump(channels_); }
+    StreamStatus stream_status(StreamHandle handle) const { return streams_.status(handle); }
+    uint32_t active_streams() const { return streams_.live_count(); }
+    uint64_t contended_callbacks() const { return contended_callbacks_.load(std::memory_order_relaxed); }
+
+    bool set_stream_gain(StreamHandle handle, float gain) {
+        return std::isfinite(gain) && gain >= 0.0f && gain <= 4.0f && streams_.set_gain(handle, gain, mutex_);
     }
 
     bool set_voice_budget(Bus bus, uint32_t budget) {
@@ -325,11 +373,11 @@ public:
 
     void mix_for_test(int16_t* output, uint32_t frames) {
         if (output == nullptr) return;
-        mix(output, frames);
+        std::unique_lock<std::mutex> guard(mutex_); // blocks, unlike the callback
+        mix_locked(guard, output, frames, channels_);
     }
 
-    // Stops the device thread so only mix_for_test advances voices; exact
-    // sample comparisons race the running callback otherwise.
+    // Stops the device thread so exact sample comparisons do not race it.
     bool stop_device_for_test() {
         return initialized_ && ma_device_stop(&device_) == MA_SUCCESS;
     }
@@ -352,6 +400,8 @@ private:
             ma_context_uninit(&context_);
             return false;
         }
+        // Before the device starts, so the callback never sees a resize.
+        streams_.allocate(sample_rate, channels);
         {
             std::lock_guard<std::mutex> guard(mutex_);
             sample_rate_ = sample_rate;
@@ -454,15 +504,23 @@ private:
             voices_[handle.slot].generation == handle.generation;
     }
 
-    void mix(int16_t* output, uint32_t frames) {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!initialized_ || channels_ == 0) {
-            std::fill(output, output + frames, 0);
+    // The callback never waits: if the owner holds the mutex it emits one
+    // silent buffer and counts the contention instead of blocking.
+    void mix(int16_t* output, uint32_t frames, uint32_t device_channels) {
+        std::unique_lock<std::mutex> guard(mutex_, std::try_to_lock);
+        mix_locked(guard, output, frames, device_channels);
+    }
+    void mix_locked(std::unique_lock<std::mutex>& guard, int16_t* output, uint32_t frames, uint32_t device_channels) {
+        if (!guard.owns_lock() || !initialized_ || channels_ == 0) {
+            std::fill(output, output + frames * std::max<uint32_t>(device_channels, 1), 0);
+            if (!guard.owns_lock()) contended_callbacks_.fetch_add(1, std::memory_order_relaxed);
             return;
         }
         std::fill(output, output + frames * channels_, 0);
+        streams_.mix(output, frames, channels_, bus_gains_, bus_paused_);
         for (Voice& voice : voices_) {
             if (!voice.live || voice.clip >= MAX_CLIPS || !clips_[voice.clip].live) continue;
+            if (bus_paused_[voice.bus]) continue;
             Clip& clip = clips_[voice.clip];
             float spatial_gain = 1.0f;
             if (voice.spatialized) {
@@ -507,7 +565,7 @@ private:
 
     static void data_callback(ma_device* device, void* output, const void*, ma_uint32 frames) {
         auto* service = static_cast<Service*>(device->pUserData);
-        if (service != nullptr) service->mix(static_cast<int16_t*>(output), frames);
+        if (service != nullptr) service->mix(static_cast<int16_t*>(output), frames, device->playback.channels);
     }
 
     static void notification_callback(const ma_device_notification* notification) {
@@ -534,6 +592,9 @@ private:
     ListenerState listener_{};
     std::array<float, BUS_COUNT> bus_gains_{{1.0f, 1.0f, 1.0f}};
     std::array<uint32_t, BUS_COUNT> bus_budgets_{{MAX_VOICES, MAX_VOICES, MAX_VOICES}};
+    std::array<bool, BUS_COUNT> bus_paused_{};
+    StreamTable streams_;
+    std::atomic<uint64_t> contended_callbacks_{0};
 };
 
 } // namespace probe::audio

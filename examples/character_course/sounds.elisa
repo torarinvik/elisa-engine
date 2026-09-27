@@ -1,0 +1,216 @@
+# Course sound ownership: streamed music, a looped ambience voice and
+# event-triggered effects. AudioEvents decides whether an event plays and
+# into which slot; this module owns the native clips, voices and stream and
+# releases them all on `stop`. Without an audio route every call is a no-op.
+module CourseSounds:
+    public:
+        const EVENT_JUMP: u32 = 1
+        const EVENT_LAND: u32 = 2
+        const EVENT_WIN: u32 = 3
+        const EVENT_FALL: u32 = 4
+        const EVENT_SAVE: u32 = 5
+
+        # `start` results. Inactive means the session has no audio route.
+        const STARTED: i32 = 0
+        const INACTIVE: i32 = 1
+        const DEFINITION_FAILED: i32 = 2
+        const CLIP_FAILED: i32 = 3
+        const MUSIC_FAILED: i32 = 4
+        const AMBIENCE_FAILED: i32 = 5
+
+        # `fire` results: the AudioEvents outcome, or a failure.
+        const PLAYED: i32 = 0
+        const REPLACED: i32 = 1
+        const DUPLICATE: i32 = 2
+        const COOLING: i32 = 3
+        const SILENT: i32 = 4
+        const FIRE_FAILED: i32 = 5
+
+        affine struct Sounds:
+            private:
+                live: mutable bool
+                jump_a: mutable AudioRuntime::ClipHandle
+                jump_b: mutable AudioRuntime::ClipHandle
+                land: mutable AudioRuntime::ClipHandle
+                win: mutable AudioRuntime::ClipHandle
+                fall: mutable AudioRuntime::ClipHandle
+                save: mutable AudioRuntime::ClipHandle
+                wind: mutable AudioRuntime::ClipHandle
+                ambience: mutable AudioRuntime::VoiceHandle
+                music: mutable AudioRuntime::StreamHandle
+                voices: mutable AudioRuntime::VoiceHandles::Pool
+                board: mutable AudioEvents::Board
+
+        def Sounds() -> Sounds:
+            Sounds{
+                live: false,
+                jump_a: AudioRuntime::empty_clip(),
+                jump_b: AudioRuntime::empty_clip(),
+                land: AudioRuntime::empty_clip(),
+                win: AudioRuntime::empty_clip(),
+                fall: AudioRuntime::empty_clip(),
+                save: AudioRuntime::empty_clip(),
+                wind: AudioRuntime::empty_clip(),
+                ambience: AudioRuntime::empty_voice(),
+                music: AudioRuntime::empty_stream(),
+                voices: AudioRuntime::VoiceHandles::Pool(),
+                board: AudioEvents::Board(),
+            }
+
+        def live(sounds: Sounds&) -> bool:
+            sounds.live
+
+        # Paths are relative to the working directory: the project folder
+        # when run from source, Contents/Resources inside the packaged app.
+        def start(sounds: mutable Sounds&, session: RuntimeServices::Session&) -> i32:
+            return INACTIVE if not RuntimeServices::audio_active(session)
+            return DEFINITION_FAILED if not define_events(sounds)
+            sounds.live <- true
+            loaded: bool = catch load_clips(sounds):
+                ok: true
+                error failure: false
+            return CLIP_FAILED if not loaded
+            sounds.music <- catch AudioRuntime::open_stream("sounds/music.wav", true, AudioRuntime::Bus.Music, 0.5):
+                value: value
+                error failure: AudioRuntime::empty_stream()
+            return MUSIC_FAILED if AudioRuntime::stream_is_empty(sounds.music)
+            sounds.ambience <- catch AudioRuntime::play(sounds.wind, true, AudioRuntime::Bus.Effects, 0.4, 1):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+            AMBIENCE_FAILED if AudioRuntime::voice_is_empty(sounds.ambience) else STARTED
+
+        # At most one sound per event per `tick`; the caller passes a counter
+        # that only moves forward within one scene.
+        def fire(sounds: mutable Sounds&, event: u32, tick: u64) -> i32:
+            return SILENT if not sounds.live
+            trigger: AudioEvents::Trigger = catch AudioEvents::trigger(&sounds.board, event, tick):
+                value: value
+                error failure: AudioEvents::Trigger{outcome: AudioEvents::Outcome.Play, slot: AudioEvents::MAX_INSTANCES, variant: 0}
+            return DUPLICATE if trigger.outcome == AudioEvents::Outcome.Duplicate
+            return COOLING if trigger.outcome == AudioEvents::Outcome.Cooling
+            return FIRE_FAILED if trigger.slot >= AudioEvents::MAX_INSTANCES
+            stop_slot(sounds, trigger.slot)
+            # Saving happens from the pause menu too, so its chime uses the Ui bus.
+            bus: AudioRuntime::Bus = AudioRuntime::Bus.Ui if event == CourseSounds::EVENT_SAVE else AudioRuntime::Bus.Effects
+            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(event_clip(sounds, event, trigger.variant), false, bus, 0.8, 2):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+            return FIRE_FAILED if AudioRuntime::voice_is_empty(voice)
+            return FIRE_FAILED if not AudioRuntime::VoiceHandles::store(&sounds.voices, trigger.slot, voice)
+            REPLACED if trigger.outcome == AudioEvents::Outcome.Replace else PLAYED
+
+        # Game pause holds effects and ambience in place; music and Ui keep playing.
+        def set_paused(sounds: Sounds&, paused: bool) -> bool:
+            return true if not sounds.live
+            catch AudioRuntime::set_bus_paused(AudioRuntime::Bus.Effects, paused):
+                ok: true
+                error failure: false
+
+        # Restart or load: silence every event sound and forget the old
+        # timeline so its ticks cannot suppress or double the new ones.
+        def reset_scene(sounds: mutable Sounds&) -> void:
+            for slot in 0..<AudioEvents::MAX_INSTANCES |sounds|:
+                stop_slot(sounds, slot)
+            AudioEvents::reset(&sounds.board)
+
+        def event_voices(sounds: Sounds&) -> usize:
+            AudioEvents::live_count(&sounds.board)
+
+        def music_status(sounds: Sounds&) -> AudioRuntime::StreamStatus:
+            empty: AudioRuntime::StreamStatus = AudioRuntime::StreamStatus{state: AudioRuntime::StreamState.Finished, frames_played: 0, underrun_frames: 0}
+            return empty if not sounds.live
+            catch AudioRuntime::stream_status(sounds.music):
+                value: value
+                error failure: empty
+
+        # Stop every voice and the stream, then release the clips, so a later
+        # `start` reuses the freed slots. Returns false if a release failed.
+        def stop(sounds: mutable Sounds&) -> bool:
+            return true if not sounds.live
+            reset_scene(sounds)
+            _ = catch AudioRuntime::stop(sounds.ambience):
+                ok: true
+                error failure: false
+            _ = catch AudioRuntime::stop_stream(sounds.music):
+                ok: true
+                error failure: false
+            sounds.ambience <- AudioRuntime::empty_voice()
+            sounds.music <- AudioRuntime::empty_stream()
+            sounds.live <- false
+            _ = catch AudioRuntime::set_bus_paused(AudioRuntime::Bus.Effects, false):
+                ok: true
+                error failure: false
+            released: mutable bool = release(sounds.jump_a)
+            released <- release(sounds.jump_b) and released
+            released <- release(sounds.land) and released
+            released <- release(sounds.win) and released
+            released <- release(sounds.fall) and released
+            released <- release(sounds.save) and released
+            released <- release(sounds.wind) and released
+            sounds.jump_a <- AudioRuntime::empty_clip()
+            sounds.jump_b <- AudioRuntime::empty_clip()
+            sounds.land <- AudioRuntime::empty_clip()
+            sounds.win <- AudioRuntime::empty_clip()
+            sounds.fall <- AudioRuntime::empty_clip()
+            sounds.save <- AudioRuntime::empty_clip()
+            sounds.wind <- AudioRuntime::empty_clip()
+            sounds.board <- AudioEvents::Board()
+            released
+
+    private:
+        def definition(id: u32, group: u32, limit: u32, variants: u32, cooldown: u64) -> AudioEvents::Definition:
+            AudioEvents::Definition{id: id, group: group, group_limit: limit, variants: variants, cooldown_ticks: cooldown}
+
+        def define_events(sounds: mutable Sounds&) -> bool:
+            sounds.board <- AudioEvents::Board()
+            catch define_all(&sounds.board):
+                ok: true
+                error failure: false
+
+        # Jump and land each keep one voice; win, fall and save share a
+        # stinger group so a new result cuts off the previous one.
+        def define_all(board: mutable AudioEvents::Board&) -> void error[AudioEvents::SoundEventError]:
+            try AudioEvents::define(board, definition(CourseSounds::EVENT_JUMP, 0, 1, 2, 0))
+            try AudioEvents::define(board, definition(CourseSounds::EVENT_LAND, 1, 1, 1, 6))
+            try AudioEvents::define(board, definition(CourseSounds::EVENT_WIN, 2, 1, 1, 0))
+            try AudioEvents::define(board, definition(CourseSounds::EVENT_FALL, 2, 1, 1, 0))
+            try AudioEvents::define(board, definition(CourseSounds::EVENT_SAVE, 2, 1, 1, 0))
+
+        def load_clips(sounds: mutable Sounds&) -> void error[AudioRuntime::AudioError]:
+            sounds.jump_a <- try AudioRuntime::decode_file("sounds/jump_a.wav")
+            sounds.jump_b <- try AudioRuntime::decode_file("sounds/jump_b.wav")
+            sounds.land <- try AudioRuntime::decode_file("sounds/land.wav")
+            sounds.win <- try AudioRuntime::decode_file("sounds/win.wav")
+            sounds.fall <- try AudioRuntime::decode_file("sounds/fall.wav")
+            sounds.save <- try AudioRuntime::decode_file("sounds/save.wav")
+            sounds.wind <- try AudioRuntime::decode_file("sounds/ambience.wav")
+
+        # A clip that never loaded (start failed part-way) needs no release.
+        def release(clip: AudioRuntime::ClipHandle) -> bool:
+            return true if AudioRuntime::clip_is_empty(clip)
+            catch AudioRuntime::release_clip(clip):
+                ok: true
+                error failure: false
+
+        def event_clip(sounds: Sounds&, event: u32, variant: u32) -> AudioRuntime::ClipHandle:
+            if event == CourseSounds::EVENT_JUMP:
+                sounds.jump_b if variant == 1 else sounds.jump_a
+            elif event == CourseSounds::EVENT_LAND:
+                sounds.land
+            elif event == CourseSounds::EVENT_WIN:
+                sounds.win
+            elif event == CourseSounds::EVENT_FALL:
+                sounds.fall
+            else:
+                sounds.save
+
+        # A one-shot voice may already have ended; its stale handle is fine.
+        def stop_slot(sounds: mutable Sounds&, slot: usize) -> void:
+            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::VoiceHandles::get(&sounds.voices, slot):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+            if not AudioRuntime::voice_is_empty(voice):
+                _ = catch AudioRuntime::stop(voice):
+                    ok: true
+                    error failure: false
+            AudioRuntime::VoiceHandles::clear(&sounds.voices, slot)

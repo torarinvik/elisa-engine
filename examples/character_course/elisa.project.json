@@ -9,7 +9,7 @@
     "hidden": false
   },
   "package": {
-    "resources": [],
+    "resources": ["sounds"],
     "notices": [
       "third_party/notices/FAudio.txt",
       "third_party/notices/GameNetworkingSockets.txt",

@@ -220,3 +220,65 @@
                 Application::gamepad_button_code(Application::GamepadButtonCode.South), 1.0))
             return ControlsCodes::GAMEPAD_MAPPING if inside_deadzone or not stick_moves or not ActionInput::action_down(&input, CourseControls::ACTION_JUMP)
             0
+
+        const module SoundCodes:
+            START: i32 = 90
+            ONCE_PER_TICK: i32 = 91
+            GROUPS: i32 = 92
+            PAUSE: i32 = 93
+            MUSIC_ADVANCES: i32 = 94
+            UNDERRUN: i32 = 95
+            SCENE_RESET: i32 = 96
+            RELEASE: i32 = 97
+            REUSE: i32 = 98
+            # Longer than the 500 ms stream ring, so music must be refilled.
+            STREAM_NANOS: u64 = 1500000000
+            MAX_PUMPS: usize = 1000000
+
+        def audio_idle(session: RuntimeServices::Session&) -> bool:
+            voices: usize = catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: 99
+            streams: usize = catch AudioRuntime::active_stream_count():
+                value: value
+                error failure: 99
+            voices == 0 and streams == 0
+
+        # Events fire once per tick and respect their groups; pausing holds
+        # effects while music streams through ordinary frame pumping without
+        # underruns; a scene reset silences events and forgets history; stop
+        # releases every clip, voice and stream so a second start reuses them.
+        def sound_test(session: mutable RuntimeServices::Session&) -> i32:
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return SoundCodes::START if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+            return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
+            return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::DUPLICATE
+            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::REPLACED
+            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 2) != CourseSounds::PLAYED
+            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 5) != CourseSounds::COOLING
+            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_WIN, 5) != CourseSounds::PLAYED
+            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_FALL, 6) != CourseSounds::REPLACED
+            return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, true)
+            before: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
+            started_at: u64 = Application::uptime_nanos()
+            elapsed: u64 =
+                for _ in 0..<SoundCodes::MAX_PUMPS |waited: u64 = 0, session| -> waited:
+                    pumped: bool = catch RuntimeServices::pump(session):
+                        value: true
+                        error failure: false
+                    waited <- Application::uptime_nanos() - started_at
+                    break SoundCodes::STREAM_NANOS * 2 if not pumped
+                    break waited if waited >= SoundCodes::STREAM_NANOS
+            return SoundCodes::PAUSE if elapsed > SoundCodes::STREAM_NANOS * 2 - 1 or elapsed < SoundCodes::STREAM_NANOS
+            after: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
+            return SoundCodes::MUSIC_ADVANCES if after.state != AudioRuntime::StreamState.Playing or after.frames_played <= before.frames_played
+            return SoundCodes::UNDERRUN if after.underrun_frames != 0
+            return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, false)
+            CourseSounds::reset_scene(&sounds)
+            return SoundCodes::SCENE_RESET if CourseSounds::event_voices(&sounds) != 0
+            return SoundCodes::SCENE_RESET if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
+            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+            return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+            return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, 1) != CourseSounds::PLAYED
+            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+            0

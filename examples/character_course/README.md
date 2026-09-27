@@ -39,9 +39,23 @@ validates the entire record, creates the restored character, and only then
 retires the running one. A missing, unreadable or out-of-range record leaves the
 current run untouched and says so in the status line.
 
+The course plays looped music (streamed from disk), a looped wind ambience and
+sounds for jumping, landing, winning, falling and saving (`sounds.elisa`). Each
+sound fires at most once per simulation step, landing waits six steps before it
+can repeat, and a new result sound cuts off the previous one. Pausing holds the
+effects and ambience while the music continues; restart and load silence the
+old scene's sounds. Without an output device the game runs on miniaudio's
+silent route, and if the sounds cannot be loaded it plays silently.
+
+The WAV files in `sounds/` were synthesized for this project by
+`make_sounds.py` from sine tones and seeded noise; no third-party audio is
+included. `python3 make_sounds.py --check` fails if a committed file no longer
+matches the script.
+
 Build and run the hidden check without waiting for input. It covers state
 transitions, step traversal, restart, save/restart/load (including rejected
-records), and control rebinding and persistence:
+records), control rebinding and persistence, and sound events, streaming and
+cleanup:
 
 ```sh
 python3 scripts/elisa_build_run.py build \

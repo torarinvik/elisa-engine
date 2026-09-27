@@ -248,6 +248,113 @@ extern "C" int32_t elisa_audio_v1_active_voice_count(void) {
     return static_cast<int32_t>(audio_service().service.active_voices());
 }
 
+extern "C" int32_t elisa_audio_v1_set_voice_budget(int32_t bus, uint32_t budget) {
+    if (bus < ELISA_AUDIO_BUS_MUSIC || bus > ELISA_AUDIO_BUS_UI || budget > probe::audio::MAX_VOICES) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.set_voice_budget(static_cast<probe::audio::Bus>(bus), budget)
+        ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_STATE;
+}
+
+extern "C" int32_t elisa_audio_v1_set_bus_paused(int32_t bus, int32_t paused) {
+    if (bus < ELISA_AUDIO_BUS_MUSIC || bus > ELISA_AUDIO_BUS_UI || (paused != 0 && paused != 1)) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.set_bus_paused(static_cast<probe::audio::Bus>(bus), paused != 0)
+        ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_STATE;
+}
+
+extern "C" int32_t elisa_audio_v1_open_stream(const char* path, int32_t looped, int32_t bus,
+    float gain, uint32_t* slot, uint32_t* generation) {
+    if (path == nullptr || slot == nullptr || generation == nullptr || (looped != 0 && looped != 1) ||
+        bus < ELISA_AUDIO_BUS_MUSIC || bus > ELISA_AUDIO_BUS_UI ||
+        !std::isfinite(gain) || gain < 0.0f || gain > 4.0f) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const size_t path_length = std::strlen(path);
+    if (path_length == 0 || path_length > 4096) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    probe::audio::StreamOpenStatus opened = probe::audio::StreamOpenStatus::DecodeFailed;
+    const probe::audio::StreamHandle handle = audio_service().service.open_stream(
+        path, looped != 0, static_cast<probe::audio::Bus>(bus), gain, opened);
+    if (opened == probe::audio::StreamOpenStatus::Capacity) return ELISA_AUDIO_CAPACITY;
+    if (opened != probe::audio::StreamOpenStatus::Opened) return ELISA_AUDIO_DECODE_FAILED;
+    *slot = handle.slot;
+    *generation = handle.generation;
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_stop_stream(uint32_t slot, uint32_t generation) {
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.stop_stream(probe::audio::StreamHandle{slot, generation})
+        ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
+}
+
+extern "C" int32_t elisa_audio_v1_pump_streams(void) {
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.pump_streams() ? ELISA_AUDIO_OK : ELISA_AUDIO_DECODE_FAILED;
+}
+
+extern "C" int32_t elisa_audio_v1_stream_status(uint32_t slot, uint32_t generation, int32_t* state,
+    uint64_t* frames_played, uint64_t* underrun_frames) {
+    if (state == nullptr || frames_played == nullptr || underrun_frames == nullptr) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    const probe::audio::StreamStatus stream =
+        audio_service().service.stream_status(probe::audio::StreamHandle{slot, generation});
+    if (stream.state == probe::audio::StreamState::Invalid) return ELISA_AUDIO_INVALID_HANDLE;
+    *state = stream.state == probe::audio::StreamState::Finished
+        ? ELISA_AUDIO_STREAM_FINISHED : ELISA_AUDIO_STREAM_PLAYING;
+    *frames_played = stream.frames_played;
+    *underrun_frames = stream.underrun_frames;
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_set_stream_gain(uint32_t slot, uint32_t generation, float gain) {
+    if (!std::isfinite(gain) || gain < 0.0f || gain > 4.0f) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return audio_service().service.set_stream_gain(probe::audio::StreamHandle{slot, generation}, gain)
+        ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
+}
+
+extern "C" int32_t elisa_audio_v1_active_stream_count(void) {
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    return static_cast<int32_t>(audio_service().service.active_streams());
+}
+
+extern "C" int32_t elisa_audio_v1_contended_callbacks(uint64_t* count) {
+    if (count == nullptr) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    *count = audio_service().service.contended_callbacks();
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_recover_device(int32_t prefer_default) {
+    if (prefer_default != 0 && prefer_default != 1) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    AudioService& state = audio_service();
+    const bool try_default = prefer_default == 1 && !default_device_forced_unavailable();
+    const int route = try_default ? state.service.reopen_preferring_default()
+        : (state.service.reopen_null() ? 1 : 0);
+    if (route == 2) return ELISA_AUDIO_PROVIDER_DEFAULT;
+    if (route == 1) return ELISA_AUDIO_PROVIDER_SILENT;
+    state.initialized = false;
+    return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+}
+
 extern "C" int32_t elisa_audio_v1_shutdown(void) {
     const int32_t owner_status = require_application_owner();
     if (owner_status != ELISA_AUDIO_OK) return owner_status;

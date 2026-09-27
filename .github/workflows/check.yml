@@ -43,6 +43,8 @@ jobs:
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
       - name: CI stage recorder self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
+      - name: Course sounds match their generator
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" course-sounds -- python examples/character_course/make_sounds.py --check
       - name: Cook assets and verify the KTX containers
         run: |
           python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" cook -- python scripts/cook_assets.py "$PWD"

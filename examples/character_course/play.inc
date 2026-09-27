@@ -85,12 +85,19 @@
             legend: Legend = try create_legend(&keymap)
             menu_open: mutable bool = false
             menu: mutable CourseControls::Menu = CourseControls::Menu(keymap)
+            # Sound is optional: a failed start releases what it loaded and
+            # the course plays silently. `sound_tick` counts fixed steps.
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            if CourseSounds::start(&sounds, session) != CourseSounds::STARTED:
+                _ = CourseSounds::stop(&sounds)
+            sound_tick: mutable u64 = 0
+            grounded: mutable bool = true
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -127,6 +134,7 @@
                         if focus_lost and state.phase == Phase.Playing:
                             toggle_pause(&state)
                             Runtime::set_paused(&clock, true)
+                            _ = CourseSounds::set_paused(&sounds, true)
                             jump_queued <- false
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             _ = try RenderScene::set_overlay_text(instruction,
@@ -141,6 +149,9 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_RESTART):
                             character <- try restart_character(session, character)
                             restart(&state)
+                            CourseSounds::reset_scene(&sounds)
+                            _ = CourseSounds::set_paused(&sounds, false)
+                            grounded <- true
                             crouched <- false
                             jump_queued <- false
                             clock <- Runtime::StepClock()
@@ -155,6 +166,8 @@
                             stored: bool = catch CourseProgress::save(&checkpoint):
                                 ok: true
                                 error failure: false
+                            if stored:
+                                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
                             _ = try RenderScene::set_overlay_text(instruction,
                                 "Checkpoint saved | L load" if stored else "Checkpoint could not be saved")
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_LOAD):
@@ -167,6 +180,9 @@
                                 jump_queued <- false
                                 clock <- Runtime::StepClock()
                                 Runtime::set_paused(&clock, state.phase != Phase.Playing)
+                                CourseSounds::reset_scene(&sounds)
+                                _ = CourseSounds::set_paused(&sounds, state.phase == Phase.Paused)
+                                grounded <- false
                                 previous_elapsed_nanos <- frame.elapsed_nanos
                                 loaded_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                                 _ = try update_avatar(avatar, loaded_pose, crouched)
@@ -177,6 +193,7 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_PAUSE):
                             toggle_pause(&state)
                             Runtime::set_paused(&clock, state.phase != Phase.Playing)
+                            _ = CourseSounds::set_paused(&sounds, state.phase == Phase.Paused)
                             jump_queued <- false
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             _ = try refresh_status(instruction, state, crouched)
@@ -193,13 +210,17 @@
                                     _ = try RenderScene::set_overlay_text(instruction,
                                         "Ceiling blocks standing | keep crouching | P pause")
                             jump_queued <- true if ActionInput::action_pressed(input, CourseControls::ACTION_JUMP)
+                            jump_sounds: bool = jump_queued and grounded
                             elapsed_delta: i64 = ((frame.elapsed_nanos -
                                 previous_elapsed_nanos) / 1000).i64()
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
                             direction: Geometry::Vec3 = movement_direction(input)
-                            for _ in 0..<due_steps |session, character, direction, jump_queued|:
+                            for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds|:
+                                sound_tick <- sound_tick + 1
                                 jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
+                                if jump_queued and jump_sounds:
+                                    _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, sound_tick)
                                 try RuntimeServices::physics_character_move(session,
                                     character, direction, Tune::WALK_SPEED, jump_speed, false)
                                 jump_queued <- false
@@ -208,7 +229,13 @@
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
                             update_outcome(&state, pose.position)
+                            ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
+                            now_grounded: bool = ground.state == PhysicsRuntime::CharacterGroundState.OnGround
+                            if now_grounded and not grounded:
+                                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, sound_tick)
+                            grounded <- now_grounded
                             if state.phase == Phase.Won or state.phase == Phase.Failed:
+                                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_WIN if state.phase == Phase.Won else CourseSounds::EVENT_FALL, sound_tick)
                                 Runtime::set_paused(&clock, true)
                                 jump_queued <- false
                                 _ = try refresh_status(instruction, state, crouched)
@@ -220,4 +247,5 @@
                     if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
                         _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
                         resize_serial <- frame.resize_serial
+            _ = CourseSounds::stop(&sounds)
             0

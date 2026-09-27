@@ -1,6 +1,7 @@
 # Playable Jolt character course built entirely from public Elisa runtime APIs.
 include "./progress.elisa"
 include "./controls.elisa"
+include "./sounds.elisa"
 
 module CharacterCourse:
     private:
@@ -93,6 +94,8 @@ module CharacterCourse:
             LEGEND_Y: f32 = 52.0
             LEGEND_ROW_HEIGHT: f32 = 24.0
             LEGEND_FONT_SIZE: i32 = 18
+            AUDIO_SAMPLE_RATE_HZ: u32 = 48000
+            AUDIO_CHANNELS: u32 = 2
 
         enum Phase:
             Playing
@@ -338,7 +341,9 @@ module CharacterCourse:
                 progress: ProgressOutcome = try progress_test(session, character)
                 character <- progress.character
                 return progress.status if progress.status != 0
-                try controls_test()
+                controls_status: i32 = try controls_test()
+                return controls_status if controls_status != 0
+                sound_test(session)
             else:
                 # Without a user-data directory saves report failure in-game.
                 _ = catch UserData::initialize("org.elisa.elisa-character-course"):
@@ -356,14 +361,17 @@ module CharacterCourse:
             requirements.services[1] <- Capabilities::BackendFeature.Rendering
             requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
             requirements.services[3] <- Capabilities::BackendFeature.Physics
-            requirements.service_count <- 4
+            requirements.services[4] <- Capabilities::BackendFeature.Audio
+            requirements.service_count <- 5
             requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
             requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+            # No output device still plays: the silent route keeps sound state honest.
+            requirements.service_fallbacks.audio <- Capabilities::BackendFallbackProvider.MiniaudioDefault
             requirements.allow_service_fallbacks <- true
             report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
             opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
-                config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
-                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+                config, &requirements, Tune::AUDIO_SAMPLE_RATE_HZ,
+                Tune::AUDIO_CHANNELS, &report)
             if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
                 _ = RuntimeServices::shutdown(&session)
                 return 1
