@@ -61,3 +61,18 @@ refresh retained local joint transforms and imported mesh placements so reads
 before render update do not combine current root with previous joint worlds.
 Dynamic translation/rotation/nonuniform-scale tests pass on both fighters,
 including immediate model/world invariance and unchanged animation clocks.
+
+## Joint-influence setup
+
+`set_skin_contact_joints` registers a region from up to 64 unique skeleton joint
+indices and a combined weight threshold in [0,1). Joint indices are resolved
+by `animation_joint_index`; skin palette cluster indices are mapped internally.
+Every vertex above the threshold is selected, including second influence sets.
+Setup is transactional, validates geometry/weights and rejects empty or oversized
+regions. It allocates only at setup and uses the same bounded per-frame reader.
+The full-foot fixture independently compares both selected regions against
+fingerprinted exhaustive vertex lists through four blend/interruption phases.
+Both fighters pass exact selected counts and minimum/centroid agreement within
+0.02 mm across horizontal/tilted planes and interrupted blends. Duplicate-joint
+replacement rejects and retains the previous cache. This API is not yet used
+by gameplay. Evidence: game `build/skin-contact-joint-selection.json`.

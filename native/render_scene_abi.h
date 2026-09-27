@@ -346,6 +346,8 @@ typedef struct ElisaRenderSceneSkinContact {
 } ElisaRenderSceneSkinContact;
 int32_t elisa_render_scene_v1_set_skin_contact_region(int64_t handle,
     uint32_t region, uint32_t placement, const uint32_t* vertices, uint32_t count);
+int32_t elisa_render_scene_v1_set_skin_contact_joints(int64_t handle,
+    uint32_t region, uint32_t placement, const uint32_t* joints, uint32_t count, float threshold);
 int32_t elisa_render_scene_v1_read_skin_contact(int64_t handle, uint32_t region,
     float nx, float ny, float nz, float offset, ElisaRenderSceneSkinContact* output);
 typedef struct ElisaRenderSceneAnimationSubmission {

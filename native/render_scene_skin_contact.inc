@@ -28,6 +28,91 @@ extern "C" int32_t elisa_render_scene_v1_set_skin_contact_region(int64_t handle,
     return ELISA_RENDER_SCENE_OK;
 }
 
+// Setup from skeleton joint indices, independent of mesh vertex ordering.
+extern "C" int32_t elisa_render_scene_v1_set_skin_contact_joints(int64_t handle,
+    uint32_t region, uint32_t placement, const uint32_t* joints, uint32_t count, float threshold) {
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    std::fprintf(stderr, "CONTACT_SETUP input handle=%lld region=%u placement=%u count=%u threshold=%f\n", (long long)handle, region, placement, count, threshold);
+#endif
+    if (!joints || region >= 8 || count == 0 || count > 64 ||
+        !std::isfinite(threshold) || threshold < 0 || threshold >= 1)
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    auto& instance = state.instances[slot];
+    if (placement > instance.imported_mesh_entities.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const auto entity = placement == 0 ? instance.entity : instance.imported_mesh_entities[placement-1];
+    const auto* object = state.scene->objects.GetComponent(entity);
+    const auto* mesh = object ? state.scene->meshes.GetComponent(object->meshID) : nullptr;
+    const auto* armature = mesh ? state.scene->armatures.GetComponent(mesh->armatureID) : nullptr;
+    if (!mesh || !armature || mesh->vertex_boneindices.size() != mesh->vertex_positions.size() ||
+        mesh->vertex_boneweights.size() != mesh->vertex_positions.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (armature->boneCollection.size() > 256) return ELISA_RENDER_SCENE_CAPACITY;
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+    std::fprintf(stderr, "CONTACT_SETUP region=%u joints=%u,%u threshold=%f bones=%zu vertices=%zu\n", region,
+        joints[0], count > 1 ? joints[1] : joints[0], threshold, armature->boneCollection.size(), mesh->vertex_positions.size());
+#endif
+    bool selected[256]{};
+    for (uint32_t index = 0; index < count; ++index) {
+        if (joints[index] >= instance.joint_entities.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        for (uint32_t prior = 0; prior < index; ++prior)
+            if (joints[prior] == joints[index]) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        const auto joint = instance.joint_entities[joints[index]];
+        bool found = false;
+        for (size_t cluster = 0; cluster < armature->boneCollection.size(); ++cluster)
+            if (armature->boneCollection[cluster] == joint) { selected[cluster] = true; found = true; }
+        if (!found) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    const bool second = !mesh->vertex_boneindices2.empty();
+    if (second && (mesh->vertex_boneindices2.size() != mesh->vertex_positions.size() ||
+        mesh->vertex_boneweights2.size() != mesh->vertex_positions.size())) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    try {
+        std::vector<uint32_t> staged;
+        staged.reserve(4096);
+        for (size_t vertex = 0; vertex < mesh->vertex_positions.size(); ++vertex) {
+            float combined = 0, total = 0;
+            for (uint32_t group = 0; group < (second ? 2u : 1u); ++group) {
+                const auto& indices = group == 0 ? mesh->vertex_boneindices[vertex] : mesh->vertex_boneindices2[vertex];
+                const auto& weights = group == 0 ? mesh->vertex_boneweights[vertex] : mesh->vertex_boneweights2[vertex];
+                const uint32_t clusters[] = {indices.x, indices.y, indices.z, indices.w};
+                const float values[] = {weights.x, weights.y, weights.z, weights.w};
+                for (uint32_t influence = 0; influence < 4; ++influence) {
+                    const float weight = values[influence];
+                    if (!std::isfinite(weight) || weight < 0) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+                    if (weight == 0) continue;
+                    if (clusters[influence] >= armature->boneCollection.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+                    total += weight;
+                    if (selected[clusters[influence]]) combined += weight;
+                }
+            }
+            if (std::abs(total-1.f) > .002f) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            if (combined > threshold) {
+                if (staged.size() == 4096) return ELISA_RENDER_SCENE_CAPACITY;
+                staged.push_back(uint32_t(vertex));
+            }
+        }
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+        std::fprintf(stderr, "CONTACT_SETUP selected=%zu\n", staged.size());
+#endif
+        if (staged.empty()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        SkinMatrixPalette palette;
+        for (size_t first = 0; first < staged.size(); first += 64) {
+            ElisaRenderSceneSkinReadback sample{};
+            const int32_t status = read_skin_vertices_locked(state, slot, placement,
+                staged.data()+first, uint32_t(std::min(size_t(64), staged.size()-first)), &sample, &palette);
+            if (status != ELISA_RENDER_SCENE_OK) return status;
+        }
+        auto& target = instance.skin_contact_regions[region];
+        target.vertices.swap(staged);
+        target.placement = placement;
+    } catch (...) { return ELISA_RENDER_SCENE_BACKEND_FAILED; }
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_read_skin_contact(int64_t handle,
     uint32_t region, float nx, float ny, float nz, float offset,
     ElisaRenderSceneSkinContact* output) {
