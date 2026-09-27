@@ -73,6 +73,8 @@ module RenderGraphRuntime:
             2
         def native_bool(value: bool) -> i32:
             1 if value else 0
+        def is_color_format(format: RenderGraph::Format) -> bool:
+            format == RenderGraph::Format.Rgba8 or format == RenderGraph::Format.Rgba16Float or format == RenderGraph::Format.R11G11B10Float
         def native_operation(kind: OperationKind) -> i32:
             return 0 if kind == OperationKind.ClearColor
             return 1 if kind == OperationKind.CopyColor
@@ -82,7 +84,8 @@ module RenderGraphRuntime:
             return 5 if kind == OperationKind.BlendColor
             return 6 if kind == OperationKind.AdjustSaturation
             return 7 if kind == OperationKind.ScaleColor
-            8
+            return 8 if kind == OperationKind.TintColor
+            9
         def operation_matches_graph(graph: RenderGraph::Graph&,
                 plan: RenderGraph::Plan&, operation: PassOperation) -> bool:
             return false if operation.value != operation.value
@@ -93,6 +96,25 @@ module RenderGraphRuntime:
             return false if operation.kind == OperationKind.TintColor and (operation.tint_red < Limits::MIN_TINT_CHANNEL or operation.tint_red > Limits::MAX_TINT_CHANNEL or operation.tint_green < Limits::MIN_TINT_CHANNEL or operation.tint_green > Limits::MAX_TINT_CHANNEL or operation.tint_blue < Limits::MIN_TINT_CHANNEL or operation.tint_blue > Limits::MAX_TINT_CHANNEL or operation.tint_alpha < Limits::MIN_TINT_ALPHA or operation.tint_alpha > Limits::MAX_TINT_ALPHA)
             return false if operation.kind != OperationKind.BlendColor and operation.kind != OperationKind.AdjustSaturation and operation.kind != OperationKind.ScaleColor and operation.value != Limits::DEFAULT_PASS_VALUE
             return false if operation.kind != OperationKind.TintColor and (operation.tint_red != Limits::DEFAULT_TINT_CHANNEL or operation.tint_green != Limits::DEFAULT_TINT_CHANNEL or operation.tint_blue != Limits::DEFAULT_TINT_CHANNEL or operation.tint_alpha != Limits::DEFAULT_TINT_ALPHA)
+            if operation.kind == OperationKind.Fxaa:
+                source: mutable RenderGraph::ResourceDescriptor = zeroed
+                destination: mutable RenderGraph::ResourceDescriptor = zeroed
+                source_found: mutable bool = false
+                destination_found: mutable bool = false
+                for index in 0..<plan.resource_count:
+                    descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
+                    return false if not RenderGraph::resource_descriptor_at(graph, index, &descriptor)
+                    if descriptor.id == operation.source_resource_id:
+                        source <- descriptor
+                        source_found <- true
+                    if descriptor.id == operation.destination_resource_id:
+                        destination <- descriptor
+                        destination_found <- true
+                return false if not source_found or not destination_found
+                return false if not is_color_format(source.format)
+                return false if destination.format != RenderGraph::Format.Rgba8 and destination.format != RenderGraph::Format.Rgba16Float
+                return false if source.samples != 1 or destination.samples != 1
+                return false if source.size_mode != destination.size_mode or source.width != destination.width or source.height != destination.height
             for index in 0..<plan.resource_count:
                 descriptor: mutable RenderGraph::ResourceDescriptor = zeroed
                 return false if not RenderGraph::resource_descriptor_at(graph,
@@ -107,7 +129,7 @@ module RenderGraphRuntime:
                         expected <- RenderGraph::ResourceAccess.ReadWrite if descriptor.id == operation.destination_resource_id
                     else:
                         expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
-                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth:
+                elif operation.kind == OperationKind.CopyColor or operation.kind == OperationKind.ResolveColor or operation.kind == OperationKind.VisualizeLinearDepth or operation.kind == OperationKind.Fxaa:
                     expected <- RenderGraph::ResourceAccess.Read if descriptor.id == operation.source_resource_id
                     expected <- RenderGraph::ResourceAccess.Write if descriptor.id == operation.destination_resource_id
                 else:
@@ -167,6 +189,7 @@ module RenderGraphRuntime:
             AdjustSaturation
             ScaleColor
             TintColor
+            Fxaa
         struct PassOperation:
             pass_id: u32
             kind: OperationKind
@@ -229,6 +252,19 @@ module RenderGraphRuntime:
                 tint_green: green,
                 tint_blue: blue,
                 tint_alpha: alpha,
+            }
+        def fxaa_operation(pass_id: u32, source_resource_id: u32,
+                destination_resource_id: u32) -> PassOperation:
+            PassOperation{
+                pass_id: pass_id,
+                kind: OperationKind.Fxaa,
+                source_resource_id: source_resource_id,
+                destination_resource_id: destination_resource_id,
+                value: Limits::DEFAULT_PASS_VALUE,
+                tint_red: Limits::DEFAULT_TINT_CHANNEL,
+                tint_green: Limits::DEFAULT_TINT_CHANNEL,
+                tint_blue: Limits::DEFAULT_TINT_CHANNEL,
+                tint_alpha: Limits::DEFAULT_TINT_ALPHA,
             }
         struct Configuration:
             output_resource_id: u32

@@ -6,6 +6,7 @@ include "render_graph_blend_native.elisa"
 include "render_graph_saturation_native.elisa"
 include "render_graph_scale_color_native.elisa"
 include "render_graph_tint_native.elisa"
+include "render_graph_fxaa_native.elisa"
 
 module RenderGraphNativeTests:
     const SUCCESS: i32 = RenderGraphRuntime::CONFIGURE_OK
@@ -529,6 +530,20 @@ module RenderGraphNativeTests:
         return 267 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
         0
 
+    def exercise_fxaa() -> i32:
+        frame_before_fxaa: u64 = elisa_render_scene_v1_last_frame_hash()
+        return 268 if frame_before_fxaa == 0
+        return 269 if RenderGraphFxaaTests::configure(RenderGraph::Format.R11G11B10Float) != RenderGraphRuntime::CONFIGURE_INVALID_PLAN
+        return 270 if not RenderGraphFxaaTests::native_rejects_unsupported_output()
+        return 271 if RenderGraphFxaaTests::configure(RenderGraph::Format.Rgba16Float) != SUCCESS
+        return 272 if Application::pump() != Application::PumpStatus.Running
+        return 273 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+        return 274 if frame_before_fxaa == elisa_render_scene_v1_last_frame_hash()
+        return 275 if configure_clear_copy_graph(3) != SUCCESS
+        return 276 if Application::pump() != Application::PumpStatus.Running
+        return 277 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+        0
+
     public:
         def exercise() -> i32:
             return 1 if configure_clear_copy_graph(3) != SUCCESS
@@ -656,4 +671,6 @@ module RenderGraphNativeTests:
             return scale_status if scale_status != 0
             tint_status: i32 = exercise_tint_color()
             return tint_status if tint_status != 0
+            fxaa_status: i32 = exercise_fxaa()
+            return fxaa_status if fxaa_status != 0
             0

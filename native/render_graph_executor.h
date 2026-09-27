@@ -81,14 +81,14 @@ public:
                 pass.operation != Operation::ClearDepth && pass.operation != Operation::ResolveColor &&
                 pass.operation != Operation::VisualizeLinearDepth && pass.operation != Operation::BlendColor &&
                 pass.operation != Operation::AdjustSaturation && pass.operation != Operation::ScaleColor &&
-                pass.operation != Operation::TintColor) ||
+                pass.operation != Operation::TintColor && pass.operation != Operation::Fxaa) ||
             pass.destination_id == 0 ||
             ((pass.operation == Operation::ClearColor || pass.operation == Operation::ClearDepth) &&
                 pass.source_id != 0) ||
             ((pass.operation == Operation::CopyColor || pass.operation == Operation::ResolveColor ||
                 pass.operation == Operation::VisualizeLinearDepth || pass.operation == Operation::BlendColor ||
                 pass.operation == Operation::AdjustSaturation || pass.operation == Operation::ScaleColor ||
-                pass.operation == Operation::TintColor) &&
+                pass.operation == Operation::TintColor || pass.operation == Operation::Fxaa) &&
                 pass.source_id == 0)) {
             return INVALID_ARGUMENT;
         }
@@ -362,6 +362,19 @@ public:
                         last_status_ = BACKEND_FAILED;
                         return;
                     }
+                } else if (pass.operation == Operation::Fxaa) {
+                    if ((source->GetDesc().format != native_format(Format::Rgba8) &&
+                            source->GetDesc().format != native_format(Format::Rgba16Float) &&
+                            source->GetDesc().format != native_format(Format::R11G11B10Float)) ||
+                        (destination->GetDesc().format != native_format(Format::Rgba8) &&
+                            destination->GetDesc().format != native_format(Format::Rgba16Float)) ||
+                        source->GetDesc().sample_count != 1 || destination->GetDesc().sample_count != 1 ||
+                        (static_cast<uint8_t>(destination->GetDesc().bind_flags) &
+                            static_cast<uint8_t>(wi::graphics::BindFlag::UNORDERED_ACCESS)) == 0) {
+                        last_status_ = INVALID_ARGUMENT;
+                        return;
+                    }
+                    wi::renderer::Postprocess_FXAA(*source, *destination, command_list);
                 } else if (source->GetDesc().format == native_format(Format::Depth32) ||
                     destination->GetDesc().format == native_format(Format::Depth32) ||
                     source->GetDesc().format != destination->GetDesc().format) {
@@ -484,6 +497,9 @@ private:
             desc.bind_flags = depth
                 ? wi::graphics::BindFlag::DEPTH_STENCIL | wi::graphics::BindFlag::SHADER_RESOURCE
                 : wi::graphics::BindFlag::RENDER_TARGET | wi::graphics::BindFlag::SHADER_RESOURCE;
+            if (!depth && target_requires_uav(resource.target)) {
+                desc.bind_flags |= wi::graphics::BindFlag::UNORDERED_ACCESS;
+            }
             desc.width = resource.size_mode == SizeMode::PrimaryInternal ? width : resource.width;
             desc.height = resource.size_mode == SizeMode::PrimaryInternal ? height : resource.height;
             desc.sample_count = resource.samples;
@@ -515,6 +531,16 @@ private:
         if (resource.import_source == ImportSource::SceneColor) return path.GetLastPostprocessRT();
         if (resource.import_source == ImportSource::LinearDepth) return &path.depthBuffer_Copy;
         return nullptr;
+    }
+
+    bool target_requires_uav(uint32_t target) const {
+        for (uint32_t index = 0; index < active_.pass_count; ++index) {
+            const Pass& pass = active_.passes[index];
+            if (pass.operation != Operation::Fxaa) continue;
+            const uint32_t destination = resource_index(active_, pass.destination_id);
+            if (destination != NO_TARGET && active_.resources[destination].target == target) return true;
+        }
+        return false;
     }
 
     wi::graphics::Texture* texture_for(uint32_t id, const wi::RenderPath3D& path) {

@@ -128,6 +128,15 @@ render-only fixture tints all RGB channels to zero, verifies a changed uniform
 black GPU readback, then restores scene color. The pinned SDL3/Metal smoke
 passes on macOS 27 / Apple M5.
 
+`Fxaa` uses Wicked's existing `wi::renderer::Postprocess_FXAA` compute pass.
+It reads a single-sample color resource and writes a single-sample RGBA8 or
+RGBA16F resource with unordered-access support; the executor adds that bind
+flag only to target slots written by FXAA. Both planner and native graph reject
+R11G11B10 UAV output. The render-only fixture verifies native rejection,
+executes FXAA from imported scene color into RGBA16F, checks the GPU frame hash
+changes, and restores the usual scene output. The full pinned SDL3/Metal smoke
+passes on macOS 27 / Apple M5.
+
 The 2026-09-27 SDL3/Metal render-only application run reached and passed the
 full graph fixture after correcting the preceding quality-history expectation.
 The graph checks run in the ordinary Elisa application entry, not a standalone

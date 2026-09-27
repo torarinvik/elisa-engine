@@ -96,6 +96,16 @@ inline bool configuration_valid(const Configuration& config) {
             initialized[destination] = true;
             continue;
         }
+        if (pass.operation == Operation::Fxaa) {
+            const bool source_color = source_desc.format == Format::Rgba8 ||
+                source_desc.format == Format::Rgba16Float || source_desc.format == Format::R11G11B10Float;
+            const bool destination_uav_color = destination_desc.format == Format::Rgba8 ||
+                destination_desc.format == Format::Rgba16Float;
+            if (!source_color || !destination_uav_color || source_desc.samples != 1 ||
+                destination_desc.samples != 1) return false;
+            initialized[destination] = true;
+            continue;
+        }
         if (source_desc.format == Format::Depth32 || destination_desc.format == Format::Depth32 ||
             source_desc.format != destination_desc.format) return false;
         if (pass.operation == Operation::CopyColor &&
