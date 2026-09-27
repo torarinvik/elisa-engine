@@ -6,14 +6,19 @@ enum Status { INVALID_ARGUMENT, MISS, NOT_SELECTABLE, HIT }
 
 const EPOCH_KEY: StringName = &"elisa_gameplay_epoch"
 const ENTITY_KEY: StringName = &"elisa_gameplay_id"
+const VISUAL_KEY: StringName = &"elisa_selection_visual"
 const MAX_COLLISION_MASK: int = 0xffffffff
 const MAX_PICK_DISTANCE := 10000.0
 
-static func bind_identity(body: CollisionObject3D, gameplay_epoch: int, gameplay_id: int) -> bool:
+static func bind_identity(body: CollisionObject3D, gameplay_epoch: int, gameplay_id: int,
+		visual: GeometryInstance3D = null) -> bool:
 	if body == null or gameplay_epoch <= 0 or gameplay_id <= 0:
+		return false
+	if visual != null and not is_instance_valid(visual):
 		return false
 	body.set_meta(EPOCH_KEY, gameplay_epoch)
 	body.set_meta(ENTITY_KEY, gameplay_id)
+	body.set_meta(VISUAL_KEY, visual)
 	return true
 
 static func pick(camera: Camera3D, viewport_point: Vector2, collision_mask: int) -> Dictionary:
@@ -57,6 +62,7 @@ static func pick(camera: Camera3D, viewport_point: Vector2, collision_mask: int)
 		"gameplay_id": entity_id,
 		"distance": origin.distance_to(hit["position"]),
 		"collider": body,
+		"visual": body.get_meta(VISUAL_KEY, null) as GeometryInstance3D,
 	}
 
 static func _empty_result(status: Status) -> Dictionary:

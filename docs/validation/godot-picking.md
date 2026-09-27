@@ -24,6 +24,22 @@ Godot contract gate with:
 godot --headless --path backends/godot --script res://probe.gd -- "$PWD/backends/scene_manifest.txt"
 ```
 
-The existing Godot backend probe passed on Godot 4.7.2 with the picking checks
-enabled. This covers camera rays and checked identity on Godot; visible
-selection outlines remain implemented and visually verified only on Wicked.
+`backends/godot/editor_selection.gd` applies an inverted-hull shader through the
+selected mesh's material overlay. It tracks the selected mesh with a weak
+reference, restores the prior overlay when a miss clears selection, and
+preserves any newer overlay applied by another system. The
+headless contract also verifies overlay application, identity retention, and
+restoration of an existing overlay.
+
+The non-headless visual smoke compares a normal cube with the same cube carrying
+the editor outline and requires at least 64 changed pixels. On Godot 4.7.2 using
+the Compatibility renderer over Metal, it changed 128 pixels at 320x200. Run it
+with:
+
+```sh
+GODOT_BIN=/opt/homebrew/bin/godot /opt/homebrew/bin/python3.14 scripts/godot_outline_visual_smoke.py
+```
+
+This verifies the Godot camera ray, identity and outline path. Editor camera
+input routing on Godot and visual validation on additional render backends
+remain open.
