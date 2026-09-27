@@ -1,0 +1,11 @@
+{
+  "name": "elisa-environmental-effects",
+  "main": "main.elisa",
+  "output": "build/elisa-environmental-effects",
+  "application": {
+    "title": "Elisa Environmental Effects",
+    "width": 960,
+    "height": 600,
+    "hidden": false
+  }
+}

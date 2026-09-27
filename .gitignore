@@ -1,6 +1,7 @@
 /dependencies.md
 /dependencies
 /build/
+/examples/*/build/
 /backends/godot-embed/bin/
 /backends/godot-embed/.godot/
 /backends/godot/bin/

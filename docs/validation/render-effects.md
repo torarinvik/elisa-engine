@@ -66,5 +66,27 @@ python3 scripts/render_scene_native_smoke.py
 ```
 
 Native fixed-slot pooling, timed expiry, replace/reject retrigger policies, and
-owner cleanup are covered. The remaining R09 work is a rendered combat or
-environmental example and checking heap-memory baselines across restarts.
+owner cleanup are covered.
+
+`examples/environmental_effects` is an authored SDL3/Wicked environment vignette
+that routes two typed Spawn events through `WorldEvents`, a validated effect
+catalog, and `WorldEffects`. The owner is a normal Elisa World entity; the
+native emitter follows and ticks with it, and the decal remains until owner
+cleanup. A few Elisa-authored ember and scorch meshes make the event's visual
+response stable to compare across device pipelines while the native components
+exercise their production lifecycle. The hidden render smoke waits for the
+scene pipelines, captures a baseline, dispatches the event, captures the impact,
+and verifies a visible image difference before cleanup:
+
+```text
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
+WICKED_ROOT=../amazing-labyrinth-wickedengine \
+WICKED_BUILD=../amazing-labyrinth-wickedengine/build-elisa-sdl3 \
+python3 scripts/environmental_effects_smoke.py
+```
+
+On macOS 27.0 / Apple M5 the latest run changed 8,084 pixels in the 2,304,000-
+pixel capture. The separate native event smoke still checks emitter/decal
+component counts before and after a RenderScene restart. Heap-memory baselines
+across restarts remain open for R09.

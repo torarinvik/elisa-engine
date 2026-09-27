@@ -1,0 +1,243 @@
+# An event-driven impact vignette. Gameplay owns the event, profile catalog,
+# entity attachment and expiry; RenderScene only receives checked descriptors.
+include "../../src/runtime/application.elisa"
+include "../../src/runtime/application_capture.elisa"
+include "../../src/runtime/render_scene.elisa"
+include "../../src/runtime/render_scene_effects.elisa"
+include "../../src/runtime/world_effects.elisa"
+include "../../src/math/geometry.elisa"
+include "../../src/backend/lighting.elisa"
+
+module EnvironmentalEffects:
+    private:
+        const module Layout:
+            WIDTH: i32 = 960
+            HEIGHT: i32 = 600
+            LISTENER_ID: i64 = 41
+            SPARK_PROFILE: i64 = 1
+            SCORCH_PROFILE: i64 = 2
+            FRAME_SECONDS: f32 = 0.016666668
+
+        def color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
+            RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
+
+        def transform(position: Geometry::Vec3, scale: Geometry::Vec3) -> Geometry::Transform:
+            Geometry::Transform{position: position, rotation: Geometry::quat_identity(), scale: scale}
+
+        def set_camera() -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 5.5, y: 4.0, z: 7.0},
+                Geometry::Vec3{x: 0.0, y: 0.8, z: 0.0},
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+            try RenderScene::set_camera_perspective(0.85, 0.1, 100.0)
+            try RenderScene::set_environment(Lighting::Environment{
+                sun_color: Geometry::Vec3{x: 1.0, y: 0.78, z: 0.55},
+                sun_direction: Geometry::Vec3{x: -0.4, y: -1.0, z: -0.3},
+                ambient: Geometry::Vec3{x: 0.22, y: 0.25, z: 0.34},
+                sky_exposure: 0.8,
+                fog_color: Geometry::Vec3{x: 0.08, y: 0.1, z: 0.15},
+                fog_start: 30.0,
+                fog_density: 0.0,
+                fog_enabled: false,
+            })
+
+        def add_box(position: Geometry::Vec3, scale: Geometry::Vec3,
+            tint: RenderScene::Color) -> void error[RenderScene::RenderSceneError]:
+            instance: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Box, transform(position, scale), tint)
+            try RenderScene::set_lit_material(instance, 0.78, 0.0)
+
+        def create_scene() -> void error[RenderScene::RenderSceneError]:
+            try set_camera()
+            try RenderScene::set_bloom(true, 0.75)
+            try add_box(Geometry::Vec3{x: 0.0, y: -0.24, z: 0.0},
+                Geometry::Vec3{x: 8.0, y: 0.2, z: 8.0}, color(0.19, 0.23, 0.3))
+            try add_box(Geometry::Vec3{x: 0.0, y: 0.45, z: 0.0},
+                Geometry::Vec3{x: 1.15, y: 0.68, z: 1.15}, color(0.28, 0.35, 0.43))
+            try add_box(Geometry::Vec3{x: -2.2, y: 0.5, z: -1.0},
+                Geometry::Vec3{x: 0.45, y: 0.72, z: 0.45}, color(0.23, 0.3, 0.38))
+            try add_box(Geometry::Vec3{x: 2.1, y: 0.35, z: -1.5},
+                Geometry::Vec3{x: 0.7, y: 0.55, z: 0.7}, color(0.23, 0.3, 0.38))
+            crystal: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Sphere,
+                transform(Geometry::Vec3{x: 0.0, y: 1.35, z: 0.0},
+                    Geometry::Vec3{x: 0.34, y: 0.55, z: 0.34}), color(1.0, 0.31, 0.08))
+            try RenderScene::set_emissive(crystal, RenderScene::Emission{
+                color: Geometry::Vec3{x: 1.0, y: 0.12, z: 0.025}, strength: 4.0})
+
+        def add_spark(position: Geometry::Vec3, strength: f32) -> void error[
+            RenderScene::RenderSceneError]:
+            spark: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Sphere,
+                transform(position, Geometry::Vec3{x: 0.075, y: 0.11, z: 0.075}),
+                color(1.0, 0.28, 0.055))
+            try RenderScene::set_emissive(spark, RenderScene::Emission{
+                color: Geometry::Vec3{x: 1.0, y: 0.12, z: 0.025}, strength: strength})
+
+        def create_impact_visuals() -> void error[RenderScene::RenderSceneError]:
+            mark: RenderScene::InstanceHandle = try RenderScene::create(
+                RenderScene::Primitive.Sphere,
+                transform(Geometry::Vec3{x: 0.0, y: 1.16, z: 0.0},
+                    Geometry::Vec3{x: 0.78, y: 0.035, z: 0.78}),
+                color(0.11, 0.028, 0.009))
+            try RenderScene::set_lit_material(mark, 0.95, 0.0)
+            try add_spark(Geometry::Vec3{x: 0.48, y: 1.47, z: 0.1}, 2.6)
+            try add_spark(Geometry::Vec3{x: -0.42, y: 1.57, z: -0.15}, 3.2)
+            try add_spark(Geometry::Vec3{x: 0.12, y: 1.76, z: -0.38}, 2.2)
+
+        def register_profiles(catalog: mutable WorldEffectAssets::Catalog&) -> void error[
+            WorldEffectAssets::CatalogError]:
+            emitter: RenderScene::Emitter = RenderScene::Emitter(
+                Geometry::vec3_zero(), 128, 14.0, 2.4, 0.065,
+                Geometry::Vec3{x: 0.0, y: 1.1, z: 0.0})
+            try WorldEffectAssets::register(catalog,
+                WorldEffectAssets::emitter_definition(Layout::SPARK_PROFILE, emitter,
+                    1.0, 5.0, WorldEffectAssets::RetriggerPolicy.Replace))
+            scorch: RenderScene::Decal = RenderScene::Decal(
+                Geometry::Vec3{x: 0.0, y: 0.02, z: 0.0},
+                Geometry::Quat{x: 0.70710677, y: 0.0, z: 0.0, w: 0.70710677},
+                RenderScene::Color{red: 0.12, green: 0.035, blue: 0.012, alpha: 0.9},
+                2.8, 1.5)
+            try WorldEffectAssets::register(catalog,
+                WorldEffectAssets::decal_definition(Layout::SCORCH_PROFILE, scorch,
+                    1.0, 0.0, WorldEffectAssets::RetriggerPolicy.Replace))
+
+        def dispatch_impact(world: World::World&, owner: World::EntityRef,
+            effects: mutable WorldEffects::Effects&, queue: mutable WorldEvents::Queue&,
+            catalog: WorldEffectAssets::Catalog&) -> bool:
+            begun: bool = catch WorldEvents::begin_frame(queue):
+                ok: true
+                error failure: false
+            return false if not begun
+            advanced: bool = catch WorldEvents::advance_phase(queue, WorldEvents::Phase.Simulation):
+                ok: true
+                error failure: false
+            return false if not advanced
+            spark_emitted: bool = catch WorldEvents::emit_world(queue, world, WorldEvents::Event{
+                phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.Spawn,
+                listener_id: Layout::LISTENER_ID,
+                entity: owner,
+                position: Geometry::vec3_zero(),
+                payload: Layout::SPARK_PROFILE,
+                delivered: false,
+            }):
+                ok: true
+                error failure: false
+            return false if not spark_emitted
+            scorch_emitted: bool = catch WorldEvents::emit_world(queue, world, WorldEvents::Event{
+                phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.Spawn,
+                listener_id: Layout::LISTENER_ID,
+                entity: owner,
+                position: Geometry::vec3_zero(),
+                payload: Layout::SCORCH_PROFILE,
+                delivered: false,
+            }):
+                ok: true
+                error failure: false
+            return false if not scorch_emitted
+            dispatched: usize = catch WorldEvents::dispatch(queue, WorldEvents::Phase.Simulation):
+                value: value
+                error failure: return false
+            report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
+                effects, queue, WorldEvents::Phase.Simulation, catalog, dispatched):
+                value: value
+                error failure: return false
+            _ = WorldEvents::end_frame(queue)
+            report.spawned == 2
+
+        def pump_frames(count: usize, world: World::World&,
+            effects: mutable WorldEffects::Effects&) -> bool:
+            for _ in 0..<count |world, effects|:
+                status: Application::PumpStatus = Application::pump()
+                return false if status != Application::PumpStatus.Running
+                _ = catch WorldEffects::update(world, effects, Layout::FRAME_SECONDS):
+                    value: value
+                    error failure: return false
+            true
+
+        def update_effects(world: World::World&,
+            effects: mutable WorldEffects::Effects&) -> bool:
+            catch WorldEffects::update(world, effects, Layout::FRAME_SECONDS):
+                value: true
+                error failure: false
+
+        def cleanup(world: mutable World::World&, owner: World::EntityRef,
+            effects: mutable WorldEffects::Effects&) -> bool:
+            clear_status: bool = catch WorldEffects::clear(effects):
+                ok: true
+                error failure: false
+            return false if not clear_status
+            despawn_status: bool = catch World::world_despawn(world, owner):
+                ok: true
+                error failure: false
+            despawn_status
+
+        def run_initialized(smoke: bool) -> i32 error[
+            RenderScene::RenderSceneError, World::WorldError,
+            WorldEffectAssets::CatalogError, WorldEvents::EventError]:
+            try create_scene()
+            if smoke:
+                try RenderScene::wait_for_pipelines(60000)
+            world: mutable World::World = try World::World()
+            owner: World::EntityRef = try World::world_spawn(&world,
+                World::StaticObject.Structure)
+            owner_pose: Geometry::Transform = transform(
+                Geometry::Vec3{x: 0.0, y: 1.15, z: 0.0}, Geometry::vec3_one())
+            try World::world_set_transform(&world, owner, owner_pose)
+            effects: mutable WorldEffects::Effects = WorldEffects::Effects()
+            queue: mutable WorldEvents::Queue = WorldEvents::Queue()
+            catalog: mutable WorldEffectAssets::Catalog = WorldEffectAssets::Catalog()
+            try register_profiles(&catalog)
+            try WorldEvents::subscribe(&queue, Layout::LISTENER_ID,
+                WorldEvents::Phase.Simulation)
+
+            if smoke:
+                return 10 if not pump_frames(4, &world, &effects)
+                baseline: cstr = Application::environment_value(
+                    "ELISA_EFFECTS_BASELINE_CAPTURE")
+                return 11 if baseline == "" or not Application::save_screenshot(baseline)
+            if not dispatch_impact(&world, owner, &effects, &queue, catalog):
+                return 12
+            try create_impact_visuals()
+            if smoke:
+                return 13 if not pump_frames(12, &world, &effects)
+                impact: cstr = Application::environment_value(
+                    "ELISA_EFFECTS_IMPACT_CAPTURE")
+                return 14 if impact == "" or not Application::save_screenshot(impact)
+                return 15 if not cleanup(&world, owner, &effects)
+                return 0
+
+            running: mutable bool = true
+            while running |world, effects|:
+                status: Application::PumpStatus = Application::pump()
+                running <- false if status == Application::PumpStatus.ExitRequested
+                if status == Application::PumpStatus.Running:
+                    running <- false if not update_effects(world, effects)
+                elif status != Application::PumpStatus.Suspended and status != Application::PumpStatus.ExitRequested:
+                    running <- false
+            _ = cleanup(&world, owner, &effects)
+            0
+
+    public:
+        def run() -> i32:
+            smoke: bool = Application::environment_value("ELISA_EFFECTS_SAMPLE_SMOKE") != ""
+            config: mutable Application::Config = Application::default_config()
+            config.hidden <- true if smoke
+            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+            scene_status: i32 = catch RenderScene::initialize(Layout::WIDTH, Layout::HEIGHT, 10.0):
+                ok: 0
+                error failure: 2
+            if scene_status != 0:
+                _ = Application::shutdown()
+                return scene_status
+            result: i32 = catch run_initialized(smoke):
+                value: value
+                error failure: 18
+            scene_closed: bool = catch RenderScene::shutdown():
+                ok: true
+                error failure: false
+            return 19 if not scene_closed
+            return 17 if not Application::shutdown()
+            result
