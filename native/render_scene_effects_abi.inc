@@ -1,9 +1,24 @@
 namespace {
-constexpr unsigned EFFECT_SLOT_BITS = 5;
+// Slot zero is reserved as an invalid encoding, so the bit field must hold
+// every slot number from 1 through MAX_EFFECTS.
+constexpr unsigned effect_slot_bits_for_capacity(uint32_t capacity) {
+    unsigned bits = 0;
+    uint64_t encoded_slot_count = 1;
+    while (encoded_slot_count <= capacity) {
+        ++bits;
+        encoded_slot_count <<= 1;
+    }
+    return bits;
+}
+
+constexpr unsigned EFFECT_SLOT_BITS =
+    effect_slot_bits_for_capacity(probe::EffectBridge::MAX_EFFECTS);
 constexpr unsigned EFFECT_KIND_BIT = EFFECT_SLOT_BITS;
-constexpr unsigned EFFECT_GENERATION_SHIFT = EFFECT_SLOT_BITS + 1;
+constexpr unsigned EFFECT_GENERATION_SHIFT = EFFECT_KIND_BIT + 1;
 constexpr uint64_t EFFECT_SLOT_MASK = (uint64_t(1) << EFFECT_SLOT_BITS) - 1;
 constexpr uint64_t EFFECT_KIND_MASK = uint64_t(1) << EFFECT_KIND_BIT;
+static_assert(EFFECT_SLOT_MASK >= probe::EffectBridge::MAX_EFFECTS,
+    "effect handle slot bits must encode every one-based slot");
 
 int64_t encode_effect_handle(const probe::EffectHandle& handle) {
     if (handle.owner == 0 || handle.slot >= probe::EffectBridge::MAX_EFFECTS || handle.generation == 0) {
