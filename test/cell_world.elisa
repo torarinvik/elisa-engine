@@ -1,24 +1,43 @@
 include "../src/world/cell_world.elisa"
 
 def main() -> i32:
+    definition: mutable Prefab::Definition = Prefab::Definition()
+    identity: Geometry::Transform = Geometry::transform_identity()
+    node: Prefab::Node = Prefab::Node{
+        authoring_id: 100,
+        parent_id: Prefab::ROOT,
+        local: identity,
+        has_visual: false,
+        visual: zeroed,
+    }
+    return 1 if not Prefab::definition_add(&definition, node) or not Prefab::definition_valid(&definition)
     world: mutable World::World = catch World::World():
         value: value
-        error failure: return 1
+        error failure: return 2
     runtime: mutable CellWorld::Runtime = CellWorld::Runtime(2, 1)
     first: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 1, y: 1}
     second: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 2, y: 2}
-    return 2 if not CellWorld::activate(&runtime, &world, first, 10)
-    return 3 if CellWorld::active_count(&runtime) != 1 or CellWorld::resident_count(&runtime) != 1
-    return 4 if not CellWorld::activate(&runtime, &world, first, 11)
-    return 5 if not CellWorld::activate(&runtime, &world, second, 12)
-    return 6 if CellWorld::active_count(&runtime) != 2 or World::world_live_count(&world) != 2
+    return 3 if not CellWorld::activate_prefab(&runtime, &world, first, 10, &definition, 7, 1)
+    return 4 if not CellWorld::activate_prefab(&runtime, &world, first, 10, &definition, 7, 1)
+    return 5 if CellWorld::activate(&runtime, &world, first, 10)
+    return 6 if CellWorld::activate_prefab(&runtime, &world, first, 11, &definition, 7, 1)
+    return 7 if CellWorld::active_count(&runtime) != 1 or CellWorld::resident_count(&runtime) != 1 or World::world_live_count(&world) != 2
+    prefab_reference: World::EntityRef = CellWorld::cell_prefab_reference(&runtime, first, 100)
+    return 8 if not World::world_is_live(&world, prefab_reference)
+    return 9 if CellWorld::cell_prefab_reference(&runtime, first, 999).id >= 0
+    return 10 if not CellWorld::activate(&runtime, &world, second, 12)
+    return 11 if CellWorld::active_count(&runtime) != 2 or World::world_live_count(&world) != 3
     third: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 5, y: 5}
-    return 7 if CellWorld::activate(&runtime, &world, third, 13)
-    return 8 if CellWorld::cell_reference(&runtime, first).id <= 0
-    return 9 if CellWorld::trim(&runtime, &world, 0, 0, 0) != 2
-    return 10 if CellWorld::active_count(&runtime) != 0 or CellWorld::resident_count(&runtime) != 0 or World::world_live_count(&world) != 0
-    return 11 if not CellWorld::activate(&runtime, &world, first, 14)
-    return 12 if not CellWorld::deactivate(&runtime, &world, first)
-    return 13 if CellWorld::active_count(&runtime) != 0 or not CellWorld::valid(&runtime, &world)
-    return 14 if not CellWorld::destroy(&runtime, &world)
+    return 12 if CellWorld::activate_prefab(&runtime, &world, third, 13, &definition, 7, 3)
+    return 13 if World::world_live_count(&world) != 3 or CellWorld::active_count(&runtime) != 2 or not CellWorld::valid(&runtime, &world)
+    return 14 if not CellWorld::deactivate(&runtime, &world, first)
+    return 15 if World::world_is_live(&world, prefab_reference) or World::world_live_count(&world) != 1
+    return 16 if not CellWorld::activate_prefab(&runtime, &world, first, 14, &definition, 7, 2)
+    return 17 if not CellWorld::valid(&runtime, &world) or World::world_live_count(&world) != 3
+    return 18 if CellWorld::trim(&runtime, &world, 0, 0, 0) != 2
+    return 19 if CellWorld::active_count(&runtime) != 0 or CellWorld::resident_count(&runtime) != 0 or World::world_live_count(&world) != 0
+    return 20 if not CellWorld::activate(&runtime, &world, first, 15)
+    return 21 if not CellWorld::deactivate(&runtime, &world, first)
+    return 22 if CellWorld::active_count(&runtime) != 0 or not CellWorld::valid(&runtime, &world)
+    return 23 if not CellWorld::destroy(&runtime, &world)
     0

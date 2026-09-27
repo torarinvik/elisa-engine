@@ -23,8 +23,21 @@ module PrefabWorld:
                 bindings: mutable Binding[PrefabWorld::MAX_NODES]
                 binding_count: mutable usize
 
+        # Fixed allocation-free capacity for owners that pool prefab instances.
+        const MAX_INSTANCE_POOL_INSTANCES: usize = 64
+
+        affine struct InstancePool:
+            private:
+                instances: mutable Instance[PrefabWorld::MAX_INSTANCE_POOL_INSTANCES]
+
         def Instance() -> Instance:
             Instance{prefab_id: 0, instance_id: 0, bindings: zeroed, binding_count: 0}
+
+        def InstancePool() -> InstancePool:
+            instances: mutable Instance[PrefabWorld::MAX_INSTANCE_POOL_INSTANCES] = zeroed
+            for index in 0..<PrefabWorld::MAX_INSTANCE_POOL_INSTANCES |instances|:
+                instances[index] <- Instance()
+            InstancePool{instances: instances}
 
         const MAX_GROUP_INSTANCES: usize = 8
 
@@ -258,3 +271,24 @@ module PrefabWorld:
                     return false if not destroy(group.instances[index], world)
                 group.count <- 0
                 true
+
+            def pool_spawn_at(pool: mutable InstancePool&, index: usize,
+                world: mutable World::World&, definition: Prefab::Definition&,
+                prefab_id: i64, instance_id: i64) -> bool:
+                return false if index >= PrefabWorld::MAX_INSTANCE_POOL_INSTANCES
+                spawn(pool.instances[index], world, definition, prefab_id, instance_id)
+
+            def pool_valid_at(pool: InstancePool&, index: usize,
+                world: World::World&) -> bool:
+                return false if index >= PrefabWorld::MAX_INSTANCE_POOL_INSTANCES
+                valid(pool.instances[index], world)
+
+            def pool_reference(pool: InstancePool&, index: usize,
+                authoring_id: i64) -> World::EntityRef:
+                return invalid_reference() if index >= PrefabWorld::MAX_INSTANCE_POOL_INSTANCES
+                instance_reference(pool.instances[index], authoring_id)
+
+            def pool_destroy_at(pool: mutable InstancePool&, index: usize,
+                world: mutable World::World&) -> bool:
+                return false if index >= PrefabWorld::MAX_INSTANCE_POOL_INSTANCES
+                destroy(pool.instances[index], world)
