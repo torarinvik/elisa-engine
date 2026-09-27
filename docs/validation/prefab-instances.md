@@ -27,6 +27,13 @@ the base visual and overridden visual references survive by authoring ID.
 definitions and parent cycles, spawns nested instances in topological order,
 and destroys them in reverse order.
 
+`WorldRendering::sync_prefab_instance` turns the private visual bindings of a
+live prefab instance into checked world-render bindings. The caller reserves a
+range of render IDs; stable authoring slots map deterministically into that
+range. Sync updates changed visual IDs, removes visuals that were cleared,
+preserves per-render tint, and rejects collisions before changing the binding
+table. World extraction then puts those IDs in the ordinary render snapshot.
+
 `scripts/scene_file.py` is the durable scene-file boundary. It canonicalizes a
 version-1 JSON document through the fsynced save journal, migrates the version-0
 shape, validates bounded definitions/links/overrides and parent topology, checks
@@ -56,5 +63,6 @@ test/prefab_scene.elisa && build/prefab-scene-test
 The primary-world epoch/rebinding and stable visual-reference regressions passed
 on 2026-09-27. Native world epochs, backend handles, and GPU resources remain
 outside the scene file; a load still requires the Elisa prefab modules to spawn
-fresh runtime bindings. Wiring restored visual IDs through the runtime asset
-catalogue into renderer resource recreation remains W04 follow-up work.
+fresh runtime bindings. Prefab visual bindings now reach the render snapshot;
+registering or recreating referenced mesh/material resources from the asset
+catalogue remains W04 follow-up work.

@@ -54,7 +54,7 @@ module PrefabWorld:
                 for index in 0..<instance.binding_count |instance|:
                     _ = WorldCommands::world_despawn(&commands, instance.bindings[index].reference)
                 _ = WorldCommands::commit_world(&commands, world)
-                clear(instance)
+                PrefabWorld::clear(instance)
 
             def definition_world_pose(definition: Prefab::Definition&, index: usize) -> Geometry::Transform:
                 return Geometry::transform_identity() if index >= definition.node_count

@@ -3,6 +3,7 @@
 include "../backend/render_snapshot.elisa"
 include "../world/world.elisa"
 include "../world/hierarchy.elisa"
+include "../world/prefab_world.elisa"
 include "../math/geometry.elisa"
 include "../assets/descriptor.elisa"
 
@@ -31,6 +32,7 @@ module WorldRendering:
 
         const module Sentinel:
             INVALID_SLOT: usize = WorldRendering::MAX_BINDINGS
+            MAX_RENDER_ID: i64 = 9223372036854775807
 
         def same_entity(left: World::EntityRef, right: World::EntityRef) -> bool:
             left.world_epoch == right.world_epoch and left.id == right.id
@@ -53,6 +55,22 @@ module WorldRendering:
             for read in 0..<bindings.count |world, bindings, write|:
                 row: BindingRow = bindings.rows[read]
                 if World::world_is_live(world, row.gameplay):
+                    bindings.rows[write] <- row
+                    write <- write + 1
+            for index in write..<bindings.count |bindings|:
+                bindings.rows[index] <- zeroed
+            bindings.count <- write
+
+        def remove_absent_prefab_rows(bindings: mutable Bindings&, instance: PrefabWorld::Instance&,
+            first_id: i64, past_last_id: i64) -> void:
+            write: mutable usize = 0
+            for read in 0..<bindings.count |bindings, write, first_id, past_last_id, instance|:
+                row: BindingRow = bindings.rows[read]
+                keep: mutable bool = true
+                if row.render_id >= first_id and row.render_id < past_last_id:
+                    prefab_slot: usize = (row.render_id - first_id).usize()
+                    keep <- PrefabWorld::instance_has_visual_at(instance, prefab_slot)
+                if keep:
                     bindings.rows[write] <- row
                     write <- write + 1
             for index in write..<bindings.count |bindings|:
@@ -98,6 +116,50 @@ module WorldRendering:
                 tint: RenderSnapshot::tint_neutral(),
             }
             bindings.count <- bindings.count + 1
+
+        # Rebuild one prefab's presentation rows inside a caller-reserved
+        # render-ID range. Every authoring slot owns one ID, including slots
+        # without visuals, so changing visibility does not renumber later rows.
+        def sync_prefab_instance(bindings: mutable Bindings&, world: World::World&,
+            instance: PrefabWorld::Instance&, render_id_base: i64) -> void error[WorldRenderingError]:
+            raise WorldRenderingError.InvalidBindings if not bindings_valid(bindings)
+            raise WorldRenderingError.InvalidReference if not PrefabWorld::valid(instance, world)
+            raise WorldRenderingError.InvalidRenderId if render_id_base <= 0 or render_id_base > Sentinel::MAX_RENDER_ID - PrefabWorld::MAX_NODES.i64()
+            render_id_end: i64 = render_id_base + PrefabWorld::MAX_NODES.i64()
+            stale_count: mutable usize = 0
+            for index in 0..<bindings.count:
+                row: BindingRow = bindings.rows[index]
+                if row.render_id >= render_id_base and row.render_id < render_id_end:
+                    prefab_slot: usize = (row.render_id - render_id_base).usize()
+                    raise WorldRenderingError.DuplicateRenderId if prefab_slot >= PrefabWorld::instance_binding_count(instance)
+                    authoring_id: i64 = PrefabWorld::instance_authoring_id_at(instance, prefab_slot)
+                    expected: World::EntityRef = PrefabWorld::instance_reference(instance, authoring_id)
+                    raise WorldRenderingError.DuplicateRenderId if not same_entity(row.gameplay, expected)
+                    stale_count <- stale_count + 1 if not PrefabWorld::instance_has_visual_at(instance, prefab_slot)
+            visible_count: mutable usize = 0
+            for index in 0..<PrefabWorld::instance_binding_count(instance) |visible_count|:
+                if PrefabWorld::instance_has_visual_at(instance, index):
+                    authoring_id: i64 = PrefabWorld::instance_authoring_id_at(instance, index)
+                    reference: World::EntityRef = PrefabWorld::instance_reference(instance, authoring_id)
+                    visual: Assets::VisualAsset = PrefabWorld::instance_visual_at(instance, index)
+                    render_id: i64 = render_id_base + index.i64()
+                    raise WorldRenderingError.InvalidReference if not World::world_is_live(world, reference)
+                    raise WorldRenderingError.InvalidBindings if not Assets::visual_asset_valid(visual)
+                    for row_index in 0..<bindings.count:
+                        existing: BindingRow = bindings.rows[row_index]
+                        raise WorldRenderingError.DuplicateRenderId if existing.render_id == render_id and not same_entity(existing.gameplay, reference)
+                    existing_slot: usize = binding_slot(bindings, reference, render_id)
+                    visible_count <- visible_count + 1 if existing_slot == Sentinel::INVALID_SLOT
+            final_count: usize = bindings.count - stale_count + visible_count
+            raise WorldRenderingError.Capacity if final_count > WorldRendering::MAX_BINDINGS
+            remove_absent_prefab_rows(bindings, instance, render_id_base, render_id_end)
+            identity: Geometry::Transform = Geometry::transform_identity()
+            for index in 0..<PrefabWorld::instance_binding_count(instance):
+                if PrefabWorld::instance_has_visual_at(instance, index):
+                    authoring_id: i64 = PrefabWorld::instance_authoring_id_at(instance, index)
+                    reference: World::EntityRef = PrefabWorld::instance_reference(instance, authoring_id)
+                    visual: Assets::VisualAsset = PrefabWorld::instance_visual_at(instance, index)
+                    try bind(bindings, world, reference, render_id_base + index.i64(), visual, identity)
 
         # Presentation-only override for one render ID. It never changes the
         # shared material, so other instances of the same asset are unaffected.
