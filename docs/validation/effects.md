@@ -11,4 +11,6 @@ Evidence: the SDL3/Wicked gate creates, updates, ticks, and destroys one emitter
 and one decal, rejects a foreign handle, and verifies component-count baselines.
 Authored profile selection from dispatched world events is covered in
 [`render-effects.md`](render-effects.md); rendered combat effects, transient
-pooling/retrigger policy, and restart baselines remain open R09 work.
+pooling/retrigger policy, and heap-memory restart baselines remain open R09
+work. The focused native smoke checks Wicked emitter/decal component counts
+after owner cleanup and after a RenderScene shutdown/reinitialize cycle.

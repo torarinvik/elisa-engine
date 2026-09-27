@@ -16,9 +16,23 @@ def main() -> i32:
         error failure: 1
     return 2 if initialized != 0
     event_status: i32 = WorldEffectEventNativeTests::exercise()
+    baseline_before_shutdown: bool = RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
     scene_shutdown: i32 = catch RenderScene::shutdown():
         ok: 0
         error failure: 3
     application_shutdown: bool = Application::shutdown()
-    return 4 if scene_shutdown != 0 or not application_shutdown
-    event_status
+    return 4 if scene_shutdown != 0 or not application_shutdown or not baseline_before_shutdown
+    return event_status if event_status != 0
+
+    restarted_application: Application::InitializeStatus = Application::initialize(config)
+    return 5 if restarted_application != Application::InitializeStatus.Ready
+    restarted_scene: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 6
+    return 7 if restarted_scene != 0 or not RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
+    restarted_scene_shutdown: i32 = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 8
+    restarted_application_shutdown: bool = Application::shutdown()
+    return 9 if restarted_scene_shutdown != 0 or not restarted_application_shutdown
+    0

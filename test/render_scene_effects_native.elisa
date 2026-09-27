@@ -30,7 +30,13 @@ module RenderSceneEffectsNativeTests:
         extern elisa_render_scene_v1_test_effect_position(handle: i64,
             px: f32, py: f32, pz: f32) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_test_effect_component_count(kind: i32) -> i32
+
     public:
+        def native_effect_baseline_is_empty() -> bool:
+            elisa_render_scene_v1_test_effect_component_count(0) == 0 and elisa_render_scene_v1_test_effect_component_count(1) == 0
+
         def exercise() -> i32:
             position: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 3.0, z: -1.0}
             velocity: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 4.0, z: 1.0}
@@ -85,6 +91,7 @@ module RenderSceneEffectsNativeTests:
                 ok: 0
                 error failure: 1
             return 11 if destroyed_emitter != 0
+            return 27 if not native_effect_baseline_is_empty()
 
             world: World::World = catch World::World():
                 value: value
@@ -335,4 +342,5 @@ module WorldEffectEventNativeTests:
                 value: value
                 error failure: return 18
             return 19 if cleanup.detached_despawned != 2 or WorldEffects::binding_count(&effects) != 0
+            return 53 if not RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
             0

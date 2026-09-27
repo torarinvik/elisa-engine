@@ -43,7 +43,8 @@ and despawn cleanup to the existing bounded service.
 The focused event smoke verifies emitter and decal profiles, duplicate IDs,
 phase dispatch and per-owner position capture, the real Wicked emitter and
 decal fields, duplicate processing rejection, and cleanup after both owners
-despawn. Run it with the SDL3/Metal toolchain:
+despawn. It checks native component counts after cleanup and after a full
+RenderScene shutdown/reinitialize cycle. Run it with the SDL3/Metal toolchain:
 
 ```text
 ELISA_RENDER_SCENE_NATIVE_ONLY=1 \
@@ -56,5 +57,5 @@ python3 scripts/render_scene_native_smoke.py
 ```
 
 The remaining R09 work is a rendered combat or environmental example, transient
-effect pooling/retrigger policy, and restart checks that return native counts
-and memory to baseline.
+effect pooling/retrigger policy, and checking heap-memory baselines across
+restarts.

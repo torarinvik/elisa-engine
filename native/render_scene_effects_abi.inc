@@ -180,4 +180,13 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_position(
     return transform->translation_local.x == px && transform->translation_local.y == py &&
         transform->translation_local.z == pz ? 1 : 0;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_effect_component_count(int32_t kind) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || state.scene == nullptr) return -1;
+    if (kind == 0) return static_cast<int32_t>(state.scene->emitters.GetCount());
+    if (kind == 1) return static_cast<int32_t>(state.scene->decals.GetCount());
+    return -1;
+}
 #endif
