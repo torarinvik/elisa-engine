@@ -1,6 +1,7 @@
 extends SceneTree
 
 const CookedMesh = preload("res://cooked_mesh.gd")
+const EditorPickingProbe = preload("res://editor_picking_probe.gd")
 
 # This probe models the small command contract emitted by the headless recorder
 # and applies it to real Godot scene resources. The Elisa world remains the
@@ -44,6 +45,11 @@ func _run_probe() -> void:
     scene_root.add_child(camera)
     camera.look_at(object_position, Vector3.UP)
     camera.current = true
+    var picking_error: String = await EditorPickingProbe.run(scene_root, expected_epoch, expected_entity)
+    if not picking_error.is_empty():
+        _fail(picking_error)
+        return
+    print("Godot camera ray and gameplay identity picking tests passed.")
 
     var live := {}
     var updates := 0
