@@ -24,6 +24,15 @@ clearing queued events. `src/world/phase_commands.elisa` acquires that structura
 primary-world commit, and the phase section of `test/world_commands.elisa`
 covers the phase boundary, conflict, and release rules.
 
+Each access frame receives a private process-wide identity on its first start,
+and each token keeps that owner identity. Releasing a live token against another
+frame returns `WrongFrame` without changing either frame's access state. The
+regression starts two frames, tries to release one frame's read token against a
+write-locked second frame, then verifies that the original token remains live
+and the second frame still rejects another writer. The identity counter is
+currently owner-thread-only; W07 must provide atomic identity issuance before
+frames can start concurrently.
+
 Focused validation on macOS 27.0 / Apple M5:
 
 ```
@@ -33,5 +42,18 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 ./build/world-command-primary-test
 ```
 
-The command exited successfully. Compiler phase-borrow lifetime diagnostics and
-event scheduling integration remain W03 follow-up work.
+The focused command exited successfully. The full shared gate also passed on
+2026-09-27 with the current Stage1 compiler and its runtime object:
+
+```sh
+WICKED_ROOT="$PWD/../amazing-labyrinth-wickedengine" \
+WICKED_BUILD="$PWD/../amazing-labyrinth-wickedengine/build-elisa-sdl3" \
+ELISA_COMPILER_BIN="$PWD/../Elisa-compiler/bin/elisac-stage1" \
+ELISA_RUNTIME_OBJ="$PWD/../Elisa-compiler/build/runtime/elisacore_runtime.o" \
+GODOT_BIN=/opt/homebrew/bin/godot \
+PYTHON_BIN=/opt/homebrew/bin/python3.14 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+/Users/torarinvikbjarko/.local/bin/elisascript scripts/check.elisascript
+```
+
+Compiler phase-borrow lifetime diagnostics remain W03 follow-up work.

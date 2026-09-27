@@ -25,8 +25,24 @@ module WorldAccess:
             ReadConflict
             WriteConflict
             StructuralConflict
+            WrongFrame
             UnknownToken
+            IdentityExhausted
 
+    private:
+        const module Limits:
+            FRAME_IDENTITY_MAX: i64 = 9223372036854775807
+
+        # Frames begin on the scheduler's owner thread. W07's parallel executor
+        # must route identity issuance through its shared atomic identity service.
+        global mutable next_frame_identity: i64 = 0
+
+        def issue_frame_identity() -> i64 error[AccessError]:
+            raise AccessError.IdentityExhausted if next_frame_identity >= Limits::FRAME_IDENTITY_MAX
+            next_frame_identity <- next_frame_identity + 1
+            next_frame_identity
+
+    public:
         affine struct Frame:
             private:
                 phase: mutable Phase
@@ -34,15 +50,17 @@ module WorldAccess:
                 readers: mutable usize
                 writer: mutable bool
                 structural: mutable bool
+                identity: mutable i64
 
         affine struct Token:
             private:
                 phase: Phase
                 kind: AccessKind
                 live: mutable bool
+                owner_identity: i64
 
         def Frame() -> Frame:
-            Frame{phase: Phase.Input, active: false, readers: 0, writer: false, structural: false}
+            Frame{phase: Phase.Input, active: false, readers: 0, writer: false, structural: false, identity: 0}
 
         def phase_value(phase: Phase) -> usize:
             return 0 if phase == Phase.Input
@@ -57,6 +75,8 @@ module WorldAccess:
 
         def begin_frame(frame: mutable Frame&) -> void error[AccessError]:
             raise AccessError.AlreadyActive if frame.active
+            if frame.identity == 0:
+                frame.identity <- try issue_frame_identity()
             frame.phase <- Phase.Input
             frame.active <- true
             frame.readers <- 0
@@ -76,11 +96,12 @@ module WorldAccess:
                 raise AccessError.WrongPhase if phase == Phase.Input or phase == Phase.Render
                 raise AccessError.StructuralConflict if frame.writer or frame.structural or frame.readers != 0
                 frame.structural <- true
-            Token{phase: phase, kind: kind, live: true}
+            Token{phase: phase, kind: kind, live: true, owner_identity: frame.identity}
 
         def release(frame: mutable Frame&, token: mutable Token&) -> void error[AccessError]:
             raise AccessError.InactiveFrame if not frame.active
             raise AccessError.UnknownToken if not token.live
+            raise AccessError.WrongFrame if token.owner_identity != frame.identity
             raise AccessError.PhaseRegression if token.phase != frame.phase
             if token.kind == AccessKind.Read:
                 frame.readers <- frame.readers - 1
