@@ -1,0 +1,65 @@
+# Cached skin-region measurements; contact and IK policy stays in Elisa.
+include "./render_scene_skin_readback.elisa"
+
+module RenderSceneSkinContact:
+    public:
+        const MAX_REGION_VERTICES: usize = 4096
+        const MAX_REGIONS: u32 = 8
+
+extend RenderScene:
+    private:
+        struct NativeContactIndices:
+            vertices: mutable u32[RenderSceneSkinContact::MAX_REGION_VERTICES]
+
+        struct NativeSkinContact:
+            model_point: mutable f32[3]
+            world_point: mutable f32[3]
+            world_center: mutable f32[3]
+            clearance: mutable f32
+            vertices: mutable u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_set_skin_contact_region(handle: i64,
+            region: u32, placement: u32, vertices: NativeContactIndices&, count: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_read_skin_contact(handle: i64,
+            region: u32, nx: f32, ny: f32, nz: f32, offset: f32,
+            output: mutable NativeSkinContact&) -> i32
+
+    public:
+        struct SkinContact:
+            model_point: Geometry::Vec3
+            world_point: Geometry::Vec3
+            world_center: Geometry::Vec3
+            clearance: f32
+            vertices: usize
+
+        # Setup-only replacement. Invalid input retains the previous region.
+        # Regions belong to this instance and are cleared when it is destroyed.
+        def set_skin_contact_region(handle: InstanceHandle, region: u32,
+            placement: u32, vertices: u32[RenderSceneSkinContact::MAX_REGION_VERTICES]&, count: usize) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if count == 0 or region >= RenderSceneSkinContact::MAX_REGIONS
+            raise RenderSceneError.Capacity if count > RenderSceneSkinContact::MAX_REGION_VERTICES
+            native: mutable NativeContactIndices = zeroed
+            for index in 0..<count |native|:
+                native.vertices[index] <- vertices[index]
+            try check_status(elisa_render_scene_v1_set_skin_contact_region(handle.native_value,
+                region, placement, native, count.u32()))
+
+        # Signed minimum against dot(unit world normal, point) + offset.
+        # Read after sampling/pose override. Model/world points name the same
+        # lowest vertex. The centroid is the whole selected region, not a sole
+        # support patch; planting and flight are separate caller policy.
+        def read_skin_contact(handle: InstanceHandle, region: u32,
+            normal: Geometry::Vec3, offset: f32) -> SkinContact error[RenderSceneError]:
+            native: mutable NativeSkinContact = zeroed
+            try check_status(elisa_render_scene_v1_read_skin_contact(handle.native_value,
+                region, normal.x, normal.y, normal.z, offset, &native))
+            SkinContact{
+                model_point: Geometry::Vec3{x: native.model_point[0], y: native.model_point[1], z: native.model_point[2]},
+                world_point: Geometry::Vec3{x: native.world_point[0], y: native.world_point[1], z: native.world_point[2]},
+                world_center: Geometry::Vec3{x: native.world_center[0], y: native.world_center[1], z: native.world_center[2]},
+                clearance: native.clearance,
+                vertices: native.vertices.usize(),
+            }

@@ -28,6 +28,7 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.imported_camera_entities.clear(); instance.imported_light_handles.clear();
     instance.joint_entities.clear();
     instance.skin_joints.clear();
+    for (auto& region : instance.skin_contact_regions) region.vertices.clear();
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};

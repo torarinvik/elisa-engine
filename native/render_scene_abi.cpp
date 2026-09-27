@@ -304,6 +304,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
 #include "render_scene_animation_internal.inc"
 #include "render_scene_animation_readback.inc"
 #include "render_scene_skin_readback.inc"
+#include "render_scene_skin_contact.inc"
 #include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
@@ -483,6 +484,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.imported_camera_entities.clear();
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();
+    for (auto& region : instance.skin_contact_regions) region.vertices.clear();
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};

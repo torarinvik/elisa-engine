@@ -1,4 +1,10 @@
+struct SkinContactRegion {
+    uint32_t placement = 0;
+    std::vector<uint32_t> vertices;
+};
+
 struct InstanceSlot {
+    SkinContactRegion skin_contact_regions[8];
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
     int64_t gameplay_epoch = 0;

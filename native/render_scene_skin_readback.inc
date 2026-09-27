@@ -1,16 +1,10 @@
 // Bounded, allocation-free CPU skin samples from current scene transforms.
 // Do not use armature.boneData: the render update can lag a pose override.
-extern "C" int32_t elisa_render_scene_v1_read_skinned_vertices(
-    int64_t handle, uint32_t placement, const uint32_t* vertices, uint32_t count,
+static int32_t read_skin_vertices_locked(RenderSceneService& state, size_t slot,
+    uint32_t placement, const uint32_t* vertices, uint32_t count,
     ElisaRenderSceneSkinReadback* output) {
     if (!vertices || !output || count == 0 || count > 64)
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    size_t slot = MAX_INSTANCES;
-    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     const auto& instance = state.instances[slot];
     if (placement > instance.imported_mesh_entities.size()) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const auto entity = placement == 0 ? instance.entity : instance.imported_mesh_entities[placement-1];
@@ -84,6 +78,20 @@ extern "C" int32_t elisa_render_scene_v1_read_skinned_vertices(
     result.count = count;
     *output = result; // Every failure leaves caller output unchanged.
     return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_read_skinned_vertices(
+    int64_t handle, uint32_t placement, const uint32_t* vertices, uint32_t count,
+    ElisaRenderSceneSkinReadback* output) {
+    if (!vertices || !output || count == 0 || count > 64)
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    return read_skin_vertices_locked(state, slot, placement, vertices, count, output);
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)

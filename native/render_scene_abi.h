@@ -337,6 +337,17 @@ typedef struct ElisaRenderSceneSkinReadback {
 int32_t elisa_render_scene_v1_read_skinned_vertices(
     int64_t handle, uint32_t placement, const uint32_t* vertices, uint32_t count,
     ElisaRenderSceneSkinReadback* output);
+typedef struct ElisaRenderSceneSkinContact {
+    float model_point[3];
+    float world_point[3];
+    float world_center[3];
+    float clearance;
+    uint32_t vertices;
+} ElisaRenderSceneSkinContact;
+int32_t elisa_render_scene_v1_set_skin_contact_region(int64_t handle,
+    uint32_t region, uint32_t placement, const uint32_t* vertices, uint32_t count);
+int32_t elisa_render_scene_v1_read_skin_contact(int64_t handle, uint32_t region,
+    float nx, float ny, float nz, float offset, ElisaRenderSceneSkinContact* output);
 typedef struct ElisaRenderSceneAnimationSubmission {
     float bones[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS];
     float morphs[ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS];

@@ -1,5 +1,6 @@
 include "../src/runtime/application.elisa"
 include "../src/runtime/render_scene_skin_readback.elisa"
+include "../src/runtime/render_scene_skin_contact.elisa"
 include "../src/runtime/render_scene_animation_readback.elisa"
 
 extend RenderScene:
@@ -38,6 +39,37 @@ def exercise() -> i32 error[RenderScene::RenderSceneError]:
         expected: Geometry::Vec3 = Geometry::transform_apply_point(placement, first.models[index])
         return 3 if not close(expected, twin.worlds[index])
         return 4 if not close(first.models[index], first.worlds[index])
+    region_ids: mutable u32[RenderSceneSkinContact::MAX_REGION_VERTICES] = zeroed
+    region_ids[1] <- 1
+    region_ids[2] <- 2
+    region_ids[3] <- 3
+    try RenderScene::set_skin_contact_region(a, 0, 0, region_ids, 4)
+    up: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}
+    contact: RenderScene::SkinContact = try RenderScene::read_skin_contact(a, 0, up, 0.0)
+    minimum: mutable f32 = first.worlds[0].y
+    center: mutable Geometry::Vec3 = Geometry::vec3_zero()
+    for index in 0..<4 |minimum, center|:
+        minimum <- first.worlds[index].y if first.worlds[index].y < minimum
+        center <- Geometry::vec3_add(center, Geometry::vec3_scale(first.worlds[index], 0.25))
+    return 9 if contact.vertices != 4 or not close(contact.world_center, center)
+    return 10 if contact.clearance < minimum - 0.0002 or contact.clearance > minimum + 0.0002
+    for index in 0..<130 |region_ids|:
+        region_ids[index] <- index.u32()
+    try RenderScene::set_skin_contact_region(a, 1, 0, region_ids, 130)
+    large: RenderScene::SkinContact = try RenderScene::read_skin_contact(a, 1, up, 0.0)
+    large_min: mutable f32 = first.worlds[0].y
+    large_center: mutable Geometry::Vec3 = Geometry::vec3_zero()
+    for batch in 0..<3 |large_min, large_center|:
+        batch_ids: mutable u32[RenderSceneSkinReadback::MAX_VERTICES] = zeroed
+        count: usize = 64 if batch < 2 else 2
+        for index in 0..<count |batch_ids|:
+            batch_ids[index] <- (batch * 64 + index).u32()
+        samples: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(a, 0, batch_ids, count)
+        for index in 0..<count |large_min, large_center|:
+            large_min <- samples.worlds[index].y if samples.worlds[index].y < large_min
+            large_center <- Geometry::vec3_add(large_center, Geometry::vec3_scale(samples.worlds[index], 1.0 / 130.0))
+    return 13 if large.vertices != 130 or not close(large.world_center, large_center)
+    return 14 if large.clearance < large_min - 0.0002 or large.clearance > large_min + 0.0002
     snapshot: mutable RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(a)
     delta: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.015, z: 0.0}
     for index in 0..<snapshot.pose.count |snapshot|:
@@ -46,6 +78,15 @@ def exercise() -> i32 error[RenderScene::RenderSceneError]:
     corrected: RenderScene::SkinnedVertices = try RenderScene::read_skinned_vertices(a, 0, ids, 4)
     for index in 0..<4:
         return 5 if not close(corrected.models[index], Geometry::vec3_add(first.models[index], delta))
+    lifted: RenderScene::SkinContact = try RenderScene::read_skin_contact(a, 0, up, 0.0)
+    return 11 if lifted.clearance < contact.clearance + 0.0148 or lifted.clearance > contact.clearance + 0.0152
+    region_ids[0] <- 4294967295
+    region_rejected: bool = catch RenderScene::set_skin_contact_region(a, 0, 0, region_ids, 4):
+        ok: false
+        RenderScene::RenderSceneError.InvalidValue: true
+        error failure: false
+    retained: RenderScene::SkinContact = try RenderScene::read_skin_contact(a, 0, up, 0.0)
+    return 12 if not region_rejected or retained.clearance != lifted.clearance
     after: f32 = try RenderScene::animation_progress(a)
     return 6 if clock != after
     ids[0] <- 4294967295
