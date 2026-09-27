@@ -21,5 +21,7 @@ SDL3/Metal cadence capture runs one real Jolt body for one simulated second at
 30 and 120 presentation frames. It checks equal committed ticks and poses,
 verifies that render pumps do not step the body, and compares the final Wicked
 backbuffer captures. See [`physics-render-cadence.md`](physics-render-cadence.md).
-Intermediate-frame equivalence and the full clock-to-hierarchy path remain P04
+The full session-clock-to-hierarchy path now reaches a live Wicked render and
+pick, and a separate native client compares equal-time 30 Hz and 120 Hz public
+session runs against real Jolt poses. Per-frame image equivalence remains P04
 work.

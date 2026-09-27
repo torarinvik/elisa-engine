@@ -83,6 +83,26 @@ This now validates the same public bundle used by ordinary engine projects,
 along with the session clock, Jolt commit, hierarchy extraction, live rendering,
 and picking in one run.
 
+`test/world_physics_session_cadence_native_main.elisa` separately drives a
+dynamic Jolt body through `RuntimeServices` at 30 Hz and 120 Hz presentation
+rates. Both schedules supply exactly 1,000,020 microseconds, yielding the same
+60 fixed ticks; every returned frame is checked against elapsed session time.
+The test closes and reopens the same public session between schedules, confirms
+the synchronized world transform matches the live Jolt body pose, and compares
+the final positions within 0.0001 units with sign-equivalent rotations and
+unchanged scale. The SDL3/Metal native client passed against the merged pinned
+Wicked/Jolt backend on macOS 27.
+Run only this client with:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" \
+WICKED_ROOT="../amazing-labyrinth-wickedengine" \
+WICKED_BUILD="../amazing-labyrinth-wickedengine/build-elisa-sdl3" \
+ELISA_NATIVE_SMOKE_ONLY=world-physics-cadence-smoke \
+/opt/homebrew/bin/python3.14 scripts/application_native_smoke.py
+```
+
 The portable interpolation test also covers quaternion sign equivalence and
 shortest-path blending across the ±180° boundary. Physics poses may use either
 sign for the same quaternion, so the interpolation endpoint is sign-corrected

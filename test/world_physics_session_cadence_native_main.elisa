@@ -1,0 +1,158 @@
+# Compares real Jolt poses driven by RuntimeServices at 30 Hz and 120 Hz.
+module WorldPhysicsSessionCadenceNative:
+    private:
+        const module Tune:
+            WIDTH: i32 = 320
+            HEIGHT: i32 = 200
+            THIRTY_HZ_FRAMES: usize = 30
+            ONE_TWENTY_HZ_FRAMES: usize = 120
+            THIRTY_HZ_ELAPSED: i64 = 33334
+            ONE_TWENTY_HZ_ELAPSED: i64 = 8333
+            EXPECTED_FIXED_TICKS: usize = 60
+            START_HEIGHT: f32 = 8.0
+            HALF_EXTENT: f32 = 0.5
+            POSE_TOLERANCE: f32 = 0.0001
+            ROTATION_DOT_MINIMUM: f32 = 0.999
+
+        def transforms_match(left: Geometry::Transform,
+            right: Geometry::Transform) -> bool:
+            rotation_dot: f32 = (left.rotation.x * right.rotation.x +
+                left.rotation.y * right.rotation.y +
+                left.rotation.z * right.rotation.z +
+                left.rotation.w * right.rotation.w)
+            return false if ElisaMath::fabsf(left.position.x - right.position.x) > Tune::POSE_TOLERANCE
+            return false if ElisaMath::fabsf(left.position.y - right.position.y) > Tune::POSE_TOLERANCE
+            return false if ElisaMath::fabsf(left.position.z - right.position.z) > Tune::POSE_TOLERANCE
+            return false if ElisaMath::fabsf(rotation_dot) < Tune::ROTATION_DOT_MINIMUM
+            return false if left.scale.x != right.scale.x
+            return false if left.scale.y != right.scale.y
+            return false if left.scale.z != right.scale.z
+            true
+
+        def requirements() -> BackendRequirements::BackendStartupRequirements:
+            value: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            value.services[0] <- Capabilities::BackendFeature.Rendering
+            value.services[1] <- Capabilities::BackendFeature.NativeWindow
+            value.services[2] <- Capabilities::BackendFeature.Physics
+            value.service_count <- 3
+            value.service_fallbacks <- Capabilities::BackendFallbackProviders{
+                input: Capabilities::BackendFallbackProvider.None,
+                rendering: Capabilities::BackendFallbackProvider.None,
+                physics: Capabilities::BackendFallbackProvider.JoltPhysics,
+                audio: Capabilities::BackendFallbackProvider.None,
+                native_window: Capabilities::BackendFallbackProvider.None,
+                async_upload: Capabilities::BackendFallbackProvider.None,
+                callbacks: Capabilities::BackendFallbackProvider.None,
+                asset_loading: Capabilities::BackendFallbackProvider.None,
+            }
+            value.allow_service_fallbacks <- true
+            value
+
+        def open_session(session: mutable RuntimeServices::Session&,
+            config: Application::Config,
+            startup: BackendRequirements::BackendStartupRequirements&,
+            report: mutable BackendRequirements::BackendRequirementsReport&) -> bool:
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
+                config, startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, report)
+            (opened == RuntimeServices::OpenStatus.Ready or
+                opened == RuntimeServices::OpenStatus.FallbackRequired)
+
+        def simulate(session: mutable RuntimeServices::Session&,
+            high_refresh: bool, result_pose: mutable Geometry::Transform&) -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 1
+            actor: World::EntityRef = catch World::world_spawn(&world,
+                World::Actor.Player):
+                value: value
+                error failure: return 2
+            initial: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: 0.0, y: Tune::START_HEIGHT, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }
+            set_pose: i32 = catch World::world_set_transform(&world, actor, initial):
+                ok: 0
+                error failure: 1
+            return 3 if set_pose != 0
+
+            bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            bound: i32 = catch WorldPhysics::bind(session, &world, &bindings,
+                actor, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: Tune::HALF_EXTENT, y: Tune::HALF_EXTENT,
+                    z: Tune::HALF_EXTENT}, 1.0):
+                ok: 0
+                error failure: 1
+            return 4 if bound != 0
+
+            frame_count: usize = Tune::ONE_TWENTY_HZ_FRAMES if high_refresh else Tune::THIRTY_HZ_FRAMES
+            total_elapsed: mutable i64 = 0
+            total_steps: mutable usize = 0
+            last_frame: mutable RuntimeServices::SimulationFrame = zeroed
+            for index in 0..<frame_count |session, world, bindings, total_elapsed, total_steps, last_frame|:
+                elapsed: mutable i64 = Tune::THIRTY_HZ_ELAPSED if not high_refresh else Tune::ONE_TWENTY_HZ_ELAPSED
+                if high_refresh and index % 2 == 0:
+                    elapsed <- elapsed + 1
+                total_elapsed <- total_elapsed + elapsed
+                last_frame <- catch WorldPhysics::advance_and_sync(session,
+                    &world, bindings, elapsed):
+                    value: value
+                    error failure: return 5
+                total_steps <- total_steps + last_frame.steps
+                expected_ticks: i64 = total_elapsed / Runtime::fixed_step_micros()
+                return 6 if last_frame.tick_count != expected_ticks
+
+            expected_elapsed: i64 = Runtime::fixed_step_micros() * Tune::EXPECTED_FIXED_TICKS.i64()
+            return 7 if (total_elapsed != expected_elapsed or
+                total_steps != Tune::EXPECTED_FIXED_TICKS or
+                last_frame.tick_count != Tune::EXPECTED_FIXED_TICKS.i64())
+            pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(
+                session, bindings, actor):
+                value: value
+                error failure: return 8
+            world_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 9 if not World::world_try_transform(world, actor, &world_pose)
+            body_transform: Geometry::Transform = Geometry::Transform{
+                position: pose.position,
+                rotation: pose.rotation,
+                scale: world_pose.scale,
+            }
+            return 10 if not transforms_match(world_pose, body_transform)
+            result_pose <- world_pose
+            released: i32 = catch WorldPhysics::unbind(session, &bindings, actor):
+                ok: 0
+                error failure: 1
+            return 11 if released != 0 or WorldPhysics::binding_count(bindings) != 0
+            0
+
+    public:
+        def run() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Session Physics Cadence Smoke",
+                width: Tune::WIDTH,
+                height: Tune::HEIGHT,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = requirements()
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            return 20 if not open_session(&session, config, &startup, &report)
+            thirty_hz_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            thirty_hz_status: i32 = simulate(&session, false, &thirty_hz_pose)
+            thirty_hz_closed: bool = RuntimeServices::shutdown(&session)
+            return thirty_hz_status if thirty_hz_status != 0
+            return 21 if not thirty_hz_closed
+
+            return 22 if not open_session(&session, config, &startup, &report)
+            one_twenty_hz_pose: mutable Geometry::Transform = Geometry::transform_identity()
+            one_twenty_hz_status: i32 = simulate(&session, true, &one_twenty_hz_pose)
+            one_twenty_hz_closed: bool = RuntimeServices::shutdown(&session)
+            return one_twenty_hz_status if one_twenty_hz_status != 0
+            return 23 if not one_twenty_hz_closed
+            return 24 if not transforms_match(thirty_hz_pose, one_twenty_hz_pose)
+            0
+
+def main() -> i32:
+    WorldPhysicsSessionCadenceNative::run()

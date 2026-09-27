@@ -26,8 +26,10 @@ the complete public session path from a kinematic hierarchy target through a
 Jolt fixed tick and interpolated snapshot into a live Wicked render and pick.
 The same native session client verifies pause freezes a bound Jolt body,
 teleports bypass interpolation after the Jolt commit, and a 100-tick elapsed
-hitch is limited to four physics steps. Per-frame pixel equivalence and
-30/120-Hz session-clock comparison remain broader P04 gates.
+hitch is limited to four physics steps. `test/world_physics_session_cadence_native_main.elisa`
+also drives a Jolt body through public `RuntimeServices` at 30 Hz and 120 Hz,
+checks each frame's fixed-tick count, and verifies equal final poses. Per-frame
+pixel equivalence remains the open P04 gate.
 
 `Runtime::StepClock` can also be paused independently of the application host. While paused,
 advancing ignores wall time and leaves the tick and interpolation remainder untouched. Resume
