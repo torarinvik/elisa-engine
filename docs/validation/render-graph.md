@@ -80,17 +80,20 @@ status, unchanged execution count, retained fallback, and recovery on the next
 frame. A third graph clears a transient D32 target and a four-sample color
 target, resolves the color target, and confirms the resolved output stays
 black. A later pass deliberately shares its planner slot, so this also checks
-that the selected resolve output remains live through composition. The native test also
-injects SDL3 minimized/restored events through the
-application queue: minimize returns the host's suspended status without
+that the selected resolve output remains live through composition. The native
+test calls SDL3's real minimize and restore operations, synchronizes the
+window, and processes the resulting state through the normal application pump.
+It confirms that minimize returns the host's suspended status without
 advancing the frame or graph, keeps the last rendered output, and restore runs
-the graph again. For deferred retirement, the smoke configures two 1024×1024
+the graph again. The host also reconciles SDL's minimized flag after event
+polling, covering window managers that change the flag before delivering an
+event. For deferred retirement, the smoke configures two 1024×1024
 RGBA16F targets, replaces them, and samples Metal device allocation before and
 after Wicked's buffer-count retirement window plus a GPU wait. Replacement
 raises allocation while the old targets await retirement; after the window,
 allocation falls by at least 8 MiB. This measurement is specific to the tested
-macOS Metal path. A user-driven OS minimize or device-loss cycle and broader
-rendered graph references remain open R15 work. The final graph fixture imports
+macOS Metal path. Device-loss recovery and broader rendered graph references
+remain open R15 work. The final graph fixture imports
 both primary scene color and linear depth, visualizes depth into a transient
 color target, and then restores scene color as the composed output. A test-only
 GPU readback confirms the depth visualization is spatially nonuniform.

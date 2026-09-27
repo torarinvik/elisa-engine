@@ -93,7 +93,7 @@ int32_t elisa_application_v1_backend_profile(
 int32_t elisa_application_v1_fallback_provider_available(int32_t provider);
 int32_t elisa_application_v1_pump(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE) || defined(ELISA_APPLICATION_TEST_PROBE)
-// Test-only SDL window lifecycle injection used by native SDL3 smoke tests.
+// Test-only real SDL window lifecycle requests used by native SDL3 smoke tests.
 int32_t elisa_application_v1_test_set_minimized(int32_t minimized);
 int32_t elisa_application_v1_test_set_window_size(int32_t width, int32_t height);
 int32_t elisa_application_v1_test_push_pointer_event(

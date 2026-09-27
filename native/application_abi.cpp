@@ -455,6 +455,17 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         service.pending_events |= ELISA_APPLICATION_EVENT_CLOSE_REQUESTED;
         return ELISA_APPLICATION_EXIT_REQUESTED;
     }
+    if (service.host.refresh_minimized_state()) {
+        if (service.host.window_state().minimized) {
+            service.pending_events |= ELISA_APPLICATION_EVENT_MINIMIZED;
+            queue_input_event(service, ELISA_APPLICATION_INPUT_FOCUS_LOST,
+                probe::INPUT_DEVICE_GLOBAL, 0, 0.0f, false, true);
+            queue_pointer_event(service, ELISA_APPLICATION_POINTER_FOCUS_LOST,
+                0, 0.0f, 0.0f, 0.0f, 0.0f, 0, false);
+        } else {
+            service.pending_events |= ELISA_APPLICATION_EVENT_RESTORED;
+        }
+    }
     if (service.host.simulation_suspended()) return ELISA_APPLICATION_SUSPENDED;
     if (!service.host.run_frame()) return ELISA_APPLICATION_FRAME_FAILED;
     note_application_capture_submission(service);

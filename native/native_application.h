@@ -335,6 +335,17 @@ public:
         return window_state_;
     }
 
+    // Some window managers update SDL's minimized flag before or without
+    // delivering a window event. Reconcile the level after draining events so
+    // a minimized render surface always suspends simulation and rendering.
+    bool refresh_minimized_state() {
+        if (window_ == nullptr) return false;
+        const bool previous = window_state_.minimized;
+        window_state_.minimized =
+            (SDL_GetWindowFlags(window_) & SDL_WINDOW_MINIMIZED) != 0;
+        return previous != window_state_.minimized;
+    }
+
     bool simulation_suspended() const {
         return window_state_.suspended();
     }
