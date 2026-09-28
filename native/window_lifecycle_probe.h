@@ -35,6 +35,8 @@ inline bool lifecycle_lua_application_globals_cleared() {
 }
 
 inline bool probe_window_lifecycle(NativeApplication& host) {
+    if (!check(host.telemetry().wicked_audio_isolated,
+            "Wicked FAudio is isolated on SDL's dummy audio driver")) return false;
     const auto swapchain_matches_window = [&host](const char* label) {
         if (!host.run_frame()) return check(false, label);
         const wi::graphics::Texture backbuffer =
