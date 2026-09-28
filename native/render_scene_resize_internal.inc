@@ -134,3 +134,13 @@ extern "C" int32_t elisa_render_scene_v1_clear_primary_viewport(void) {
     sync_active_camera_projection(state);
     return ELISA_RENDER_SCENE_OK;
 }
+
+extern "C" int32_t elisa_render_scene_v1_set_primary_camera_visibility_mask(uint32_t layer_mask) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.path == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    state.path->setlayerMask(layer_mask);
+    return ELISA_RENDER_SCENE_OK;
+}

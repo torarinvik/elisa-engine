@@ -323,6 +323,24 @@ shared-mesh operations that accept `InstanceHandle` live inside the core
 `VisibilityPolicy` keeps draw distance, LOD bias, layer mask and renderability
 together for `RenderScene::set_visibility`.
 
+## Per-camera visibility masks
+
+`RenderScene::set_primary_camera_visibility_mask(mask)` filters the main
+render path, while `set_camera_visibility_mask(handle, mask)` filters an owned
+camera's viewport pipeline. The default mask includes every layer. Instance
+visibility masks continue to be authored through `VisibilityPolicy`; a draw is
+eligible when its instance mask intersects the active camera mask. Owned camera
+masks are retained before a viewport exists and reapplied whenever the viewport
+pipeline is initialized again, so applications can resize or recreate a
+split-screen view without losing its layer selection. This lets a game share
+static mesh resources while showing player-specific walls, actors, or markers
+in each camera.
+
+`test/render_scene_camera_native.elisa` checks that primary and owned camera
+masks reach Wicked's render paths, that an owned mask works before its viewport
+is created, and that both masks survive framebuffer resize and viewport
+reinitialization.
+
 `test/render_scene_mesh_instance_native.elisa` (case group 250) checks with the
 test-only `elisa_render_scene_v1_test_mesh_count` and
 `elisa_render_scene_v1_test_instances_share_mesh` probes that a clone adds no

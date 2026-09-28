@@ -391,6 +391,26 @@ extern "C" int32_t elisa_render_scene_v1_test_primary_viewport_matches(
     return matches ? 1 : 0;
 }
 
+extern "C" int32_t elisa_render_scene_v1_test_primary_camera_visibility_mask_matches(
+    uint32_t expected_mask) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state) || state.path == nullptr) return 0;
+    return state.path->getLayerMask() == expected_mask ? 1 : 0;
+}
+
+extern "C" int32_t elisa_render_scene_v1_test_camera_visibility_mask_matches(
+    int64_t handle, uint32_t expected_mask) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t slot = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot)) return 0;
+    const RenderCameraSlot& camera = state.cameras[slot];
+    return camera.visibility_mask == expected_mask &&
+        (camera.pipeline == nullptr || camera.pipeline->getLayerMask() == expected_mask) ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_instances_share_mesh(int64_t first, int64_t second) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

@@ -14,6 +14,7 @@ struct RenderCameraSlot {
     int32_t viewport_x = 0, viewport_y = 0;
     int32_t viewport_width = 0, viewport_height = 0;
     int32_t camera_width = 0, camera_height = 0;
+    uint32_t visibility_mask = ~uint32_t(0);
     float update_interval = 0.0f;
     float update_elapsed = 0.0f;
     bool render_pending = false;

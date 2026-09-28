@@ -12,6 +12,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_clear_primary_viewport() -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_primary_camera_visibility_mask(layer_mask: u32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_clear_camera_render_target() -> i32
@@ -32,6 +34,9 @@
         @callconv(c)
         extern elisa_render_scene_v1_update_camera(handle: i64, projection: i32,
             width: i32, height: i32, projection_value: f32, near_clip: f32, far_clip: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_camera_visibility_mask(handle: i64,
+            layer_mask: u32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_handle_look_at(handle: i64,
             eye_x: f32, eye_y: f32, eye_z: f32,

@@ -65,6 +65,7 @@ int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
 int32_t elisa_render_scene_v1_set_primary_viewport(
     int32_t x, int32_t y, int32_t width, int32_t height);
 int32_t elisa_render_scene_v1_clear_primary_viewport(void);
+int32_t elisa_render_scene_v1_set_primary_camera_visibility_mask(uint32_t layer_mask);
 int32_t elisa_render_scene_v1_set_camera_render_target(
     int32_t width, int32_t height, float update_interval);
 int32_t elisa_render_scene_v1_clear_camera_render_target(void);
@@ -85,6 +86,7 @@ int64_t elisa_render_scene_v1_create_camera(
 int32_t elisa_render_scene_v1_update_camera(
     int64_t handle, int32_t projection, int32_t width, int32_t height,
     float projection_value, float near_clip, float far_clip);
+int32_t elisa_render_scene_v1_set_camera_visibility_mask(int64_t handle, uint32_t layer_mask);
 int32_t elisa_render_scene_v1_set_camera_handle_look_at(
     int64_t handle, float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,
