@@ -5,7 +5,31 @@ using World
 using EntityId
 using WorldPersistence
 
+# Allocator cursors the public API cannot reach, for the identity-error mapping.
+module EntityId::WorldEdge:
+    def allocator_at(last_issued: i64) -> EntityIdAllocator:
+        EntityIdAllocator{last_issued: last_issued}
+
 module World::Tests:
+    # An exhausted allocator raises IdentityExhausted and a corrupt cursor raises
+    # IdentityInvalid; each must reach its own typed catch arm in world_spawn.
+    def identity_error_test() -> i32:
+        exhausted: mutable World = world_at(EntityId::WorldEdge::allocator_at(ENTITY_ID_MAX), 1)
+        exhausted_code: i32 = catch world_spawn(&exhausted, Actor.Player):
+            value: 0
+            WorldError.IdentityExhausted: 2
+            WorldError.IdentityInvalid: 3
+            error failure: 9
+        return 70 if exhausted_code != 2
+        corrupt: mutable World = world_at(EntityId::WorldEdge::allocator_at(-1), 1)
+        corrupt_code: i32 = catch world_spawn(&corrupt, Actor.Player):
+            value: 0
+            WorldError.IdentityExhausted: 2
+            WorldError.IdentityInvalid: 3
+            error failure: 9
+        return 71 if corrupt_code != 3
+        0
+
     def world_error_code(failure: WorldError) -> i64:
         match failure:
             WorldError.EpochExhausted:
@@ -26,9 +50,12 @@ module World::Tests:
                 8
 
     def invalid_world() -> World:
+        world_at(EntityIdAllocator(), -1)
+
+    def world_at(allocator: EntityIdAllocator, epoch: i64) -> World:
         World{
-            allocator: EntityIdAllocator(),
-            epoch: -1,
+            allocator: allocator,
+            epoch: epoch,
             registry: zeroed,
             registry_count: 0,
             live_count: 0,
@@ -527,6 +554,8 @@ module World::Tests:
         return 50 + rollback if rollback != 0
         block_tuple: i32 = block_tuple_test()
         return block_tuple if block_tuple != 0
+        identity: i32 = identity_error_test()
+        return identity if identity != 0
         corruption_test()
 
 def main() -> i32:

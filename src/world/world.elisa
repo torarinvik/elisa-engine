@@ -340,8 +340,8 @@ module World:
             allocation_status: i32 =
                 catch EntityId::entity_id_allocate(&world.allocator):
                     value: 0
-                    error EntityId::EntityIdError.InvalidId: 1
-                    error EntityId::EntityIdError.MaxId: 2
+                    EntityId::EntityIdError.InvalidId: 1
+                    EntityId::EntityIdError.MaxId: 2
             raise WorldError.IdentityInvalid if allocation_status == 1
             raise WorldError.IdentityExhausted if allocation_status == 2
             id: i64 = EntityId::entity_id_last_issued(&world.allocator)
