@@ -226,6 +226,31 @@ module WorldEffectEventNativeTests:
         extern elisa_render_scene_v1_test_effect_position(handle: i64,
             px: f32, py: f32, pz: f32) -> i32
 
+        struct EventSpawnOutcome:
+            code: i32
+            report: WorldEffects::EventSpawnReport
+
+        # Each spawn failure maps to its own code. Returning from a typed arm
+        # beside `value: value` makes the stage1 backend decline the caller.
+        def spawn_events(effects: mutable WorldEffects::Effects&, queue: WorldEvents::Queue&,
+            catalog: WorldEffectAssets::Catalog&, dispatched: usize) -> EventSpawnOutcome:
+            none: WorldEffects::EventSpawnReport = WorldEffects::EventSpawnReport{scanned: 0, spawned: 0}
+            catch WorldEffects::spawn_dispatched_events(effects, queue, WorldEvents::Phase.Simulation, catalog, dispatched):
+                value: EventSpawnOutcome{code: 0, report: value}
+                WorldEffects::WorldEffectsError.EntityAlreadyAttached: EventSpawnOutcome{code: 123, report: none}
+                WorldEffects::WorldEffectsError.Capacity: EventSpawnOutcome{code: 124, report: none}
+                WorldEffects::WorldEffectsError.BindingTableCorrupt: EventSpawnOutcome{code: 125, report: none}
+                WorldEvents::EventError.InactiveFrame: EventSpawnOutcome{code: 126, report: none}
+                WorldEvents::EventError.InvalidPhase: EventSpawnOutcome{code: 127, report: none}
+                WorldEvents::EventError.InvalidIndex: EventSpawnOutcome{code: 128, report: none}
+                WorldEffectAssets::CatalogError.NotFound: EventSpawnOutcome{code: 129, report: none}
+                RenderScene::RenderSceneError.InvalidValue: EventSpawnOutcome{code: 141, report: none}
+                RenderScene::RenderSceneError.NotInitialized: EventSpawnOutcome{code: 142, report: none}
+                RenderScene::RenderSceneError.Capacity: EventSpawnOutcome{code: 143, report: none}
+                RenderScene::RenderSceneError.UnknownHandle: EventSpawnOutcome{code: 144, report: none}
+                RenderScene::RenderSceneError.BackendFailure: EventSpawnOutcome{code: 145, report: none}
+                error failure: EventSpawnOutcome{code: 120, report: none}
+
     public:
         def exercise() -> i32:
             identity_rotation: Geometry::Quat = Geometry::quat_identity()
@@ -389,22 +414,9 @@ module WorldEffectEventNativeTests:
                 error failure: return 30
             return 31 if resolved_profile.id != PROFILE_ID or resolved_profile.kind != WorldEffectAssets::DefinitionKind.Emitter or resolved_profile.time_scale != 0.75
             return 38 if resolved_profile.emitter.max_particles != PROFILE_PARTICLES or resolved_profile.emitter.count != PROFILE_COUNT or resolved_profile.emitter.lifetime != PROFILE_LIFETIME or resolved_profile.emitter.size != PROFILE_SIZE or resolved_profile.emitter.velocity.x != velocity.x or resolved_profile.emitter.velocity.y != velocity.y or resolved_profile.emitter.velocity.z != velocity.z
-            event_report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
-                &effects, &queue, WorldEvents::Phase.Simulation, &catalog, dispatched):
-                value: value
-                error WorldEffects::WorldEffectsError.EntityAlreadyAttached: return 123
-                error WorldEffects::WorldEffectsError.Capacity: return 124
-                error WorldEffects::WorldEffectsError.BindingTableCorrupt: return 125
-                error WorldEvents::EventError.InactiveFrame: return 126
-                error WorldEvents::EventError.InvalidPhase: return 127
-                error WorldEvents::EventError.InvalidIndex: return 128
-                error WorldEffectAssets::CatalogError.NotFound: return 129
-                error RenderScene::RenderSceneError.InvalidValue: return 141
-                error RenderScene::RenderSceneError.NotInitialized: return 142
-                error RenderScene::RenderSceneError.Capacity: return 143
-                error RenderScene::RenderSceneError.UnknownHandle: return 144
-                error RenderScene::RenderSceneError.BackendFailure: return 145
-                error failure: return 120
+            spawn_outcome: EventSpawnOutcome = spawn_events(&effects, &queue, &catalog, dispatched)
+            return spawn_outcome.code if spawn_outcome.code != 0
+            event_report: WorldEffects::EventSpawnReport = spawn_outcome.report
             return 13 if dispatched != 5 or event_report.scanned != 5 or event_report.spawned != 4 or WorldEffects::binding_count(&effects) != 3
             emitter: RenderScene::EmitterHandle = catch WorldEffects::emitter_handle(&effects, entity):
                 value: value

@@ -19,6 +19,7 @@
 
 #include <array>
 #include <cstdio>
+#include <cstring>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -59,6 +60,9 @@ public:
         uint64_t swapchain_recreation_failures = 0;
         size_t peak_active_callbacks = 0;
         size_t peak_shutdown_functions = 0;
+        // Wicked's FAudio opened SDL audio on the dummy driver, leaving real
+        // output to the miniaudio service alone.
+        bool wicked_audio_isolated = false;
     };
 
     class CallbackLease {
@@ -128,6 +132,10 @@ public:
             return false;
         }
         sdl_initialized_ = true;
+        // miniaudio owns the real output device. Wicked's FAudio initializes
+        // SDL audio on its own, so pin it to SDL's silent dummy driver before
+        // Wicked starts; this prevents a second device and duplicate output.
+        SDL_SetHintWithPriority(SDL_HINT_AUDIO_DRIVER, "dummy", SDL_HINT_OVERRIDE);
         if (consume_startup_fault(StartupFault::AfterSDL)) {
             shutdown();
             return false;
@@ -174,6 +182,9 @@ public:
             shutdown();
             return false;
         }
+        const char* audio_driver = SDL_GetCurrentAudioDriver();
+        telemetry_.wicked_audio_isolated = SDL_WasInit(SDL_INIT_AUDIO) != 0 &&
+            audio_driver != nullptr && std::strcmp(audio_driver, "dummy") == 0;
         initialized_ = true;
         startup_in_progress_ = false;
         ++telemetry_.successful_initializations;
