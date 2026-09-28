@@ -1,0 +1,271 @@
+# Durable course beacons: three prefab instances in their own World whose lamp
+# overrides are the saved state. A load decodes, checks every asset against
+# the shelf and spawns into a fresh World before the live one is retired, so
+# a failed load leaves the running beacons untouched.
+include "../../src/world/prefab_scene_codec.elisa"
+include "../../src/world/events.elisa"
+
+module CourseBeacons:
+    private:
+        const module Shelf:
+            ID: u64 = 7301
+            POST_MESH: u64 = 1
+            LAMP_MESH: u64 = 2
+            POST_MATERIAL: u64 = 3
+            LAMP_UNLIT: u64 = 4
+            LAMP_LIT: u64 = 5
+
+        const module Layout:
+            PREFAB: i64 = 1
+            ROOT_NODE: i64 = 1
+            POST_NODE: i64 = 2
+            LAMP_NODE: i64 = 3
+            SCENE_ID: i64 = 40
+            FIRST_LINK: i64 = 11
+            FIRST_INSTANCE: i64 = 101
+            POST_Y: f32 = 0.6
+            POST_HALF_WIDTH: f32 = 0.08
+            LAMP_Y: f32 = 1.35
+            LIT_LAMP_Y: f32 = 1.55
+            LAMP_SIZE: f32 = 0.35
+            LIGHT_RADIUS: f32 = 2.2
+            LISTENER: i64 = 1
+
+        def asset(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Shelf::ID, low: low}
+
+        def unit_bounds() -> Geometry::Bounds3:
+            Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}
+
+        def visual(mesh: u64, material: u64) -> Assets::VisualAsset:
+            Assets::VisualAsset{mesh: asset(mesh), material: asset(material), local_bounds: unit_bounds()}
+
+        def at(x: f32, y: f32, z: f32, scale: f32) -> Geometry::Transform:
+            Geometry::Transform{position: Geometry::Vec3{x: x, y: y, z: z},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: scale, y: scale, z: scale}}
+
+        def post_local() -> Geometry::Transform:
+            Geometry::Transform{position: Geometry::Vec3{x: 0.0, y: Layout::POST_Y, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: Layout::POST_HALF_WIDTH, y: Layout::POST_Y, z: Layout::POST_HALF_WIDTH}}
+
+        def link_id(index: usize) -> i64:
+            Layout::FIRST_LINK + index.i64()
+
+        def on_shelf(id: Assets::AssetId) -> bool:
+            id.high == Shelf::ID and id.low >= Shelf::POST_MESH and id.low <= Shelf::LAMP_LIT
+
+        def mesh_known(id: Assets::AssetId) -> bool:
+            on_shelf(id) and (id.low == Shelf::POST_MESH or id.low == Shelf::LAMP_MESH)
+
+        def material_known(id: Assets::AssetId) -> bool:
+            on_shelf(id) and id.low >= Shelf::POST_MATERIAL
+
+        def primitive_of(id: Assets::AssetId) -> RenderScene::Primitive:
+            RenderScene::Primitive.Sphere if id.low == Shelf::LAMP_MESH else RenderScene::Primitive.Box
+
+        def color_of(id: Assets::AssetId) -> RenderScene::Color:
+            if id.low == Shelf::LAMP_LIT:
+                RenderScene::Color{red: 1.0, green: 0.82, blue: 0.25, alpha: 1.0}
+            elif id.low == Shelf::LAMP_UNLIT:
+                RenderScene::Color{red: 0.3, green: 0.34, blue: 0.42, alpha: 1.0}
+            else:
+                RenderScene::Color{red: 0.55, green: 0.5, blue: 0.44, alpha: 1.0}
+
+        def build_scene() -> PrefabScene::Scene:
+            definition: mutable Prefab::Definition = Prefab::Definition()
+            _ = Prefab::definition_add(&definition, Prefab::Node{authoring_id: Layout::ROOT_NODE,
+                parent_id: Prefab::ROOT, local: Geometry::transform_identity(),
+                has_visual: false, visual: zeroed})
+            _ = Prefab::definition_add(&definition, Prefab::Node{authoring_id: Layout::POST_NODE,
+                parent_id: Layout::ROOT_NODE, local: post_local(),
+                has_visual: true, visual: visual(Shelf::POST_MESH, Shelf::POST_MATERIAL)})
+            _ = Prefab::definition_add(&definition, Prefab::Node{authoring_id: Layout::LAMP_NODE,
+                parent_id: Layout::ROOT_NODE, local: at(0.0, Layout::LAMP_Y, 0.0, Layout::LAMP_SIZE),
+                has_visual: true, visual: visual(Shelf::LAMP_MESH, Shelf::LAMP_UNLIT)})
+            scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+            _ = PrefabScene::add_definition(&scene, Layout::PREFAB, definition)
+            for index in 0..<COUNT |scene|:
+                _ = PrefabScene::add_link(&scene, PrefabScene::Link{link_id: link_id(index),
+                    prefab_id: Layout::PREFAB, instance_id: Layout::FIRST_INSTANCE + index.i64(),
+                    root_authoring_id: Layout::ROOT_NODE, parent_link_id: PrefabScene::ROOT,
+                    parent_authoring_id: 0, local: at(anchor(index).x, 0.0, anchor(index).z, 1.0)})
+            scene
+
+        def snapshot_on_shelf(snapshot: PrefabScene::SceneSnapshot&) -> bool:
+            for index in 0..<snapshot.link_count |known: bool = true| -> known:
+                overrides: PrefabPersistence::Snapshot = snapshot.links[index].overrides
+                for record in 0..<overrides.count |known|:
+                    entry: PrefabPersistence::OverrideRecord = overrides.records[record]
+                    known <- false if entry.has_visual and not (mesh_known(entry.visual.mesh) and material_known(entry.visual.material))
+
+        def node_pose(beacons: Beacons&, index: usize, node: i64) -> Geometry::Transform:
+            reference: World::EntityRef = PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), node)
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            _ = World::world_try_transform(beacons.world, reference, &pose)
+            pose
+
+        def create_renders(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
+            for index in 0..<COUNT |beacons|:
+                for part in 0..<2 |beacons, index|:
+                    node: i64 = Layout::POST_NODE if part == 0 else Layout::LAMP_NODE
+                    shown: Assets::VisualAsset = PrefabScene::instance_visual(beacons.instance, beacons.scene, link_id(index), node)
+                    handle: RenderScene::InstanceHandle = try RenderScene::create(primitive_of(shown.mesh),
+                        node_pose(beacons, index, node), color_of(shown.material))
+                    try RenderScene::batch_append(&beacons.renders, handle)
+
+        def release_renders(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
+            renders: RenderScene::InstanceBatch = beacons.renders
+            for index in 0..<RenderScene::batch_count(renders):
+                handle: RenderScene::InstanceHandle = try RenderScene::batch_get(renders, index)
+                try RenderScene::destroy(handle)
+            beacons.renders <- RenderScene::InstanceBatch()
+
+        def read_status(beacons: Beacons&) -> i32:
+            catch PrefabSceneCodec::read_user_data_for_scene(KEY, beacons.scene, Layout::SCENE_ID):
+                value: 0
+                PrefabSceneCodec::SnapshotCodecError.NotFound: LOAD_MISSING
+                PrefabSceneCodec::SnapshotCodecError.WrongVersion: LOAD_WRONG_VERSION
+                PrefabSceneCodec::SnapshotCodecError.Corrupt: LOAD_CORRUPT
+                PrefabSceneCodec::SnapshotCodecError.InvalidSnapshot: LOAD_REJECTED
+                error failure: LOAD_FAILED
+
+        def read_saved(beacons: Beacons&) -> PrefabScene::SceneSnapshot:
+            catch PrefabSceneCodec::read_user_data_for_scene(KEY, beacons.scene, Layout::SCENE_ID):
+                value: value
+                error failure: PrefabScene::SceneSnapshot()
+
+        # Spawns into a fresh World first; the live beacons are only retired
+        # once the replacement exists.
+        def replace(beacons: mutable Beacons&, snapshot: PrefabScene::SceneSnapshot&, restored: bool) -> i32 error[RenderScene::RenderSceneError]:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return LOAD_FAILED
+            instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+            spawned: bool = PrefabScene::spawn_restored(&instance, &world, beacons.scene, Layout::SCENE_ID, snapshot) if restored else PrefabScene::spawn(&instance, &world, beacons.scene, Layout::SCENE_ID)
+            return LOAD_REJECTED if not spawned
+            try release_renders(beacons)
+            _ = PrefabScene::destroy(&beacons.instance, &beacons.world)
+            beacons.world <- move world
+            beacons.instance <- move instance
+            beacons.ready <- true
+            try create_renders(beacons)
+            0
+
+    public:
+        const COUNT: usize = 3
+        const KEY: cstr = "course-beacons"
+        const LOAD_MISSING: i32 = 1
+        const LOAD_WRONG_VERSION: i32 = 2
+        const LOAD_CORRUPT: i32 = 3
+        const LOAD_REJECTED: i32 = 4
+        const LOAD_UNKNOWN_ASSET: i32 = 5
+        const LOAD_FAILED: i32 = 6
+
+        affine struct Beacons:
+            scene: mutable PrefabScene::Scene
+            world: mutable World::World
+            instance: mutable PrefabScene::Instance
+            renders: mutable RenderScene::InstanceBatch
+            announced: mutable usize
+            ready: mutable bool
+
+        def anchor(index: usize) -> Geometry::Vec3:
+            if index == 0:
+                Geometry::Vec3{x: -10.0, y: 0.0, z: 1.8}
+            elif index == 1:
+                Geometry::Vec3{x: -3.6, y: 0.0, z: -1.9}
+            else:
+                Geometry::Vec3{x: 9.6, y: 0.0, z: 3.2}
+
+        # Publishes one lamp's AudioCue through a Simulation-phase queue. A
+        # reference from a retired World raises InvalidEntity.
+        def announce(world: World::World&, lamp: World::EntityRef, index: usize) -> usize error[WorldEvents::EventError]:
+            queue: mutable WorldEvents::Queue = WorldEvents::Queue()
+            try WorldEvents::subscribe(&queue, Layout::LISTENER, WorldEvents::Phase.Simulation)
+            try WorldEvents::begin_frame(&queue)
+            try WorldEvents::advance_phase(&queue, WorldEvents::Phase.Simulation)
+            try WorldEvents::emit_world(&queue, world, WorldEvents::Event{phase: WorldEvents::Phase.Simulation,
+                kind: WorldEvents::EventKind.AudioCue, listener_id: Layout::LISTENER, entity: lamp,
+                position: Geometry::vec3_zero(), payload: index.i64(), delivered: false})
+            delivered: usize = try WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation)
+            _ = WorldEvents::end_frame(&queue)
+            delivered
+
+        def create() -> Beacons error[World::WorldError, RenderScene::RenderSceneError]:
+            world: World::World = try World::World()
+            beacons: mutable Beacons = Beacons{scene: build_scene(), world: world, instance: PrefabScene::Instance(),
+                renders: RenderScene::InstanceBatch(), announced: 0, ready: false}
+            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+            _ = try replace(&beacons, &empty, false)
+            return move beacons
+
+        def lamp_reference(beacons: Beacons&, index: usize) -> World::EntityRef:
+            PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), Layout::LAMP_NODE)
+
+        def lamp_height(beacons: Beacons&, index: usize) -> f32:
+            node_pose(beacons, index, Layout::LAMP_NODE).position.y
+
+        def lit(beacons: Beacons&, index: usize) -> bool:
+            shown: Assets::VisualAsset = PrefabScene::instance_visual(beacons.instance, beacons.scene, link_id(index), Layout::LAMP_NODE)
+            shown.material.low == Shelf::LAMP_LIT and shown.material.high == Shelf::ID
+
+        def lit_count(beacons: Beacons&) -> usize:
+            for index in 0..<COUNT |count: usize = 0| -> count:
+                count <- count + 1 if lit(beacons, index)
+
+        def live_entities(beacons: Beacons&) -> usize:
+            World::world_live_count(beacons.world)
+
+        # Lights every unlit beacon within reach of `position`; returns how
+        # many were lit by this call.
+        def update(beacons: mutable Beacons&, position: Geometry::Vec3) -> usize error[RenderScene::RenderSceneError]:
+            for index in 0..<COUNT |newly: usize = 0, beacons| -> newly:
+                offset: Geometry::Vec3 = Geometry::Vec3{x: position.x - anchor(index).x, y: 0.0, z: position.z - anchor(index).z}
+                near: bool = Geometry::vec3_length(offset) <= Layout::LIGHT_RADIUS
+                if near and beacons.ready and not lit(beacons, index):
+                    raised: Geometry::Transform = at(0.0, Layout::LIT_LAMP_Y, 0.0, Layout::LAMP_SIZE)
+                    shown: Assets::VisualAsset = visual(Shelf::LAMP_MESH, Shelf::LAMP_LIT)
+                    moved: bool = PrefabScene::override_local(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, raised)
+                    changed: bool = PrefabScene::override_visual(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, true, shown)
+                    if moved and changed:
+                        handle: RenderScene::InstanceHandle = try RenderScene::batch_get(beacons.renders, index * 2 + 1)
+                        try RenderScene::set_color(handle, color_of(shown.material))
+                        try RenderScene::update_transform(handle, node_pose(beacons, index, Layout::LAMP_NODE))
+                        delivered: usize = catch announce(beacons.world, lamp_reference(beacons, index), index):
+                            value: value
+                            error failure: 0
+                        beacons.announced <- beacons.announced + delivered
+                        newly <- newly + 1
+
+        def capture(beacons: Beacons&) -> PrefabScene::SceneSnapshot:
+            PrefabScene::capture(beacons.instance, beacons.world, beacons.scene)
+
+        def save(beacons: Beacons&) -> bool:
+            snapshot: PrefabScene::SceneSnapshot = capture(beacons)
+            return false if snapshot.link_count != COUNT
+            catch PrefabSceneCodec::write_user_data(KEY, &snapshot):
+                ok: true
+                error failure: false
+
+        # Returns 0 when the saved beacons replaced the live ones, else a
+        # LOAD_* code with the live beacons unchanged.
+        def load(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+            status: i32 = read_status(beacons)
+            return status if status != 0
+            snapshot: PrefabScene::SceneSnapshot = read_saved(beacons)
+            return LOAD_FAILED if snapshot.link_count != COUNT
+            return LOAD_UNKNOWN_ASSET if not snapshot_on_shelf(&snapshot)
+            try replace(beacons, &snapshot, true)
+
+        # Back to all lamps unlit in a fresh World.
+        def reset(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+            try replace(beacons, &empty, false)
+
+        def release(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
+            try release_renders(beacons)
+            _ = PrefabScene::destroy(&beacons.instance, &beacons.world)
+            beacons.ready <- false

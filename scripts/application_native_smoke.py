@@ -168,6 +168,9 @@ def main() -> int:
             ("physics-constraints-smoke", ROOT / "test/physics_constraints_native.elisa"),
             ("physics-interactables-smoke", ROOT / "examples/physics_interactables/self_test_main.elisa"),
             ("character-course-smoke", ROOT / "examples/character_course/self_test_main.elisa"),
+            # A second process reloads the saves the course self-test leaves in
+            # the shared user-data directory, so it must run right after it.
+            ("character-course-relaunch-smoke", ROOT / "examples/character_course/relaunch_main.elisa"),
             ("physics-collision-layers-smoke", ROOT / "test/physics_collision_layers_native.elisa"),
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),
@@ -183,6 +186,9 @@ def main() -> int:
                 print("Unknown native smoke project: " + ", ".join(unknown_names), file=sys.stderr)
                 return 2
             projects = [project_row for project_row in projects if project_row[0] in only_names]
+            if "character-course-relaunch-smoke" in only_names and "character-course-smoke" not in only_names:
+                print("character-course-relaunch-smoke needs character-course-smoke first", file=sys.stderr)
+                return 2
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
         frame_capture_dirs = {
