@@ -53,6 +53,11 @@ int32_t elisa_audio_v1_probe_provider(int32_t provider);
 int32_t elisa_audio_v1_take_device_recovery_request(void);
 int32_t elisa_audio_v1_recover_with_silent_device(void);
 int32_t elisa_audio_v1_decode_file(const char* path, uint32_t* slot, uint32_t* generation);
+// Reads a small authored audio asset (a sound-event table) into caller
+// storage. It needs no audio service; a missing or unreadable file is
+// DECODE_FAILED and a file longer than `capacity` is CAPACITY.
+int32_t elisa_audio_v1_read_asset(const char* path, uint8_t* bytes, uint32_t capacity,
+    uint32_t* length);
 int32_t elisa_audio_v1_release_clip(uint32_t slot, uint32_t generation);
 int32_t elisa_audio_v1_play(uint32_t clip_slot, uint32_t clip_generation, int32_t looped,
     int32_t bus, float gain, uint32_t priority, uint32_t* slot, uint32_t* generation);

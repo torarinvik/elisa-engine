@@ -79,7 +79,7 @@
         def injected_test(session: mutable RuntimeServices::Session&,
             character: PhysicsRuntime::CharacterHandle, width: i32, height: i32) -> i32:
             return 176 if not resize_rejected(0, height) or not resize_rejected(width, -1) or resize_rejected(width, height)
-            return 177 if not injected_sound(session, CourseSounds::INJECT_CLIP, CourseSounds::CLIP_FAILED)
+            return 177 if not injected_sound(session, CourseSounds::INJECT_CLIP, CourseSounds::CLIP_FAILED) or not injected_sound(session, CourseSounds::INJECT_EVENTS, CourseSounds::DEFINITION_FAILED)
             return 178 if not injected_sound(session, CourseSounds::INJECT_MUSIC, CourseSounds::MUSIC_FAILED) or not sound_cycle(session, 0)
             destroyed: bool = catch RuntimeServices::physics_character_destroy(session, character):
                 ok: true

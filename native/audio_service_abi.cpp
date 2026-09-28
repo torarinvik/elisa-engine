@@ -5,6 +5,7 @@
 #include "miniaudio_service.h"
 
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -173,6 +174,25 @@ extern "C" int32_t elisa_audio_v1_decode_file(
     if (handle.slot >= probe::audio::MAX_CLIPS) return ELISA_AUDIO_DECODE_FAILED;
     *slot = handle.slot;
     *generation = handle.generation;
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_read_asset(
+    const char* path, uint8_t* bytes, uint32_t capacity, uint32_t* length) {
+    if (path == nullptr || bytes == nullptr || length == nullptr || capacity == 0) {
+        return ELISA_AUDIO_INVALID_ARGUMENT;
+    }
+    const size_t path_length = std::strlen(path);
+    if (path_length == 0 || path_length > 4096) return ELISA_AUDIO_INVALID_ARGUMENT;
+    std::FILE* file = std::fopen(path, "rb");
+    if (file == nullptr) return ELISA_AUDIO_DECODE_FAILED;
+    const size_t read = std::fread(bytes, 1, capacity, file);
+    const bool failed = std::ferror(file) != 0;
+    const bool longer = !failed && read == capacity && std::fgetc(file) != EOF;
+    std::fclose(file);
+    if (failed) return ELISA_AUDIO_DECODE_FAILED;
+    if (longer) return ELISA_AUDIO_CAPACITY;
+    *length = static_cast<uint32_t>(read);
     return ELISA_AUDIO_OK;
 }
 

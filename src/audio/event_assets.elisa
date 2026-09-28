@@ -1,0 +1,72 @@
+# Authored sound-event assets. An asset is bounded text, one record per line:
+#
+#   # comment
+#   seed 20260928
+#   event <id> <group> <limit> <variants> <cooldown> [weight ...]
+#
+# Fields are unsigned decimal numbers separated by spaces or tabs, and `#`
+# starts a comment anywhere. Up to four weights follow the cooldown; weights
+# left out are zero. `define_from` checks the whole asset against a scratch
+# board before it writes anything to the caller's board, so a malformed asset
+# never leaves a partial event set behind.
+include "./events.elisa"
+include "./event_asset_text.elisa"
+
+extend SoundEventAssets:
+    public:
+        def define_from(board: mutable AudioEvents::Board&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+            raise SoundAssetError.Oversize if source.length > MAX_BYTES
+            scratch: mutable AudioEvents::Board = AudioEvents::Board()
+            try define_lines(&scratch, source)
+            try define_lines(board, source)
+
+        # The 1-based line of the first record `define_from` rejects, or 0.
+        def failing_line(source: Source&) -> usize:
+            return 1 if source.length > MAX_BYTES
+            scratch: mutable AudioEvents::Board = AudioEvents::Board()
+            for line in 0..<MAX_BYTES |start: usize = 0, failed: usize = 0, scratch| -> failed:
+                if failed == 0 and start < source.length:
+                    stop: usize = line_end(source, start)
+                    rejected: bool = catch define_line(&scratch, source, start, stop):
+                        ok: false
+                        error failure: true
+                    failed <- line + 1 if rejected
+                    start <- stop + 1
+
+    private:
+        def define_lines(board: mutable AudioEvents::Board&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+            requires source.length <= MAX_BYTES
+            for line in 0..<MAX_BYTES |start: usize = 0, board|:
+                if start < source.length:
+                    stop: usize = line_end(source, start)
+                    try define_line(board, source, start, stop)
+                    start <- stop + 1
+
+        # One line: an empty or comment line defines nothing.
+        def define_line(board: mutable AudioEvents::Board&, source: Source&, start: usize, stop: usize) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            word_start: usize = skip_spaces(source, start, stop)
+            return if word_start == stop or source.bytes[word_start] == HASH
+            word_stop: usize = token_end(source, word_start, stop)
+            seed: bool = is_seed(source, word_start, word_stop)
+            raise SoundAssetError.UnknownRecord if not seed and not is_event(source, word_start, word_stop)
+            record: Fields = try read_fields(source, word_stop, stop)
+            fields: u64[SoundEventAssets::MAX_FIELDS] = record.values
+            count: usize = record.count
+            if seed:
+                raise SoundAssetError.FieldCount if count != 1
+                AudioEvents::set_seed(board, fields[0])
+            else:
+                raise SoundAssetError.FieldCount if count < 5
+                for index in 0..<MAX_FIELDS |fields|:
+                    raise SoundAssetError.NumberTooLarge if index != 4 and fields[index] > MAX_U32
+                id: u32 = fields[0].u32()
+                try AudioEvents::define(board, AudioEvents::Definition{
+                    id: id,
+                    group: fields[1].u32(),
+                    group_limit: fields[2].u32(),
+                    variants: fields[3].u32(),
+                    cooldown_ticks: fields[4],
+                })
+                if count > 5:
+                    try AudioEvents::set_weights(board, id, fields[5].u32(), fields[6].u32(), fields[7].u32(), fields[8].u32())

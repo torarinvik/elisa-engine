@@ -1,0 +1,14 @@
+# Character course sound events, read by SoundEventAssets at start.
+# event <id> <group> <limit> <variants> <cooldown ticks> [weights]
+# Ids match the CourseSounds::EVENT_* constants.
+
+# Weighted jump variants replay the same pick on a replayed tick.
+seed 20260928
+
+# Jump and land each keep one voice; jump prefers variant 0 three to one.
+event 1 0 1 2 0  3 1   # jump
+event 2 1 1 1 6        # land
+# Win, fall and save share a stinger group, so a new result cuts off the last.
+event 3 2 1 1 0        # win
+event 4 2 1 1 0        # fall
+event 5 2 1 1 0        # save

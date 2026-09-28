@@ -1,0 +1,128 @@
+# The text side of authored sound-event assets: a bounded byte source and the
+# record reader. It knows nothing about the event board, so its proof,
+# proof/sound_event_assets.elisa, covers the whole reader. `event_assets.elisa`
+# defines the records on a board.
+module SoundEventAssets:
+    public:
+        const MAX_BYTES: usize = 4096
+        const MAX_FIELDS: usize = 9
+
+        error SoundAssetError:
+            Oversize
+            Syntax
+            UnknownRecord
+            FieldCount
+            NumberTooLarge
+
+        struct Source:
+            bytes: mutable u8[SoundEventAssets::MAX_BYTES]
+            length: mutable usize
+
+        def Source() -> Source:
+            Source{bytes: zeroed, length: 0}
+
+        # Appends one byte; false once the source is full.
+        def append(source: mutable Source&, byte: u8) -> bool:
+            at: usize = source.length
+            return false if at >= MAX_BYTES
+            source.bytes[at] <- byte
+            source.length <- at + 1
+            true
+
+    private:
+        const NEWLINE: u8 = 10
+        const HASH: u8 = 35
+        const ZERO: u8 = 48
+        const NINE: u8 = 57
+        # Numbers saturate here, far above any field's range.
+        const CAP: u64 = 1000000000000000000
+        const MAX_U32: u64 = 4294967295
+
+        struct Fields:
+            values: u64[SoundEventAssets::MAX_FIELDS]
+            count: usize
+
+        # Reads the numbers after the record word. A `#` ends the line. The
+        # values fill a local array: writes through an array reference in a
+        # captured loop are lost by the current compiler.
+        def read_fields(source: Source&, start: usize, stop: usize) -> Fields error[SoundAssetError]:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            ensure result.count <= MAX_FIELDS
+            fields: mutable u64[SoundEventAssets::MAX_FIELDS] = zeroed
+            cursor: mutable usize = start
+            count: mutable usize = 0
+            for slot in 0..<MAX_FIELDS + 1 |cursor, count, fields|:
+                invariant count <= MAX_FIELDS
+                invariant cursor <= stop
+                begin: usize = skip_spaces(source, cursor, stop)
+                if begin < stop and source.bytes[begin] != HASH:
+                    raise SoundAssetError.FieldCount if count >= MAX_FIELDS
+                    end: usize = token_end(source, begin, stop)
+                    value: u64 = try number(source, begin, end)
+                    fields[count] <- value
+                    count <- count + 1
+                    cursor <- end
+                else:
+                    cursor <- stop
+            rest: usize = skip_spaces(source, cursor, stop)
+            raise SoundAssetError.FieldCount if rest < stop and source.bytes[rest] != HASH
+            Fields{values: fields, count: count}
+
+        def number(source: Source&, start: usize, stop: usize) -> u64 error[SoundAssetError]:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            ensure result < CAP
+            raise SoundAssetError.Syntax if start == stop or not digits(source, start, stop)
+            value: u64 =
+                for index in start..<stop |value: u64 = 0| -> value:
+                    invariant value <= CAP
+                    byte: u64 = source.bytes[index].u64()
+                    digit: u64 = byte - 48 if byte >= 48 and byte <= 57 else 0
+                    value <- CAP if value >= CAP / 10 else value * 10 + digit
+            raise SoundAssetError.NumberTooLarge if value >= CAP
+            value
+
+        def digits(source: Source&, start: usize, stop: usize) -> bool:
+            requires stop <= source.length and source.length <= MAX_BYTES
+            for index in start..<stop |all: bool = true| -> all:
+                all <- all and is_digit(source.bytes[index])
+
+        def is_digit(byte: u8) -> bool:
+            byte >= ZERO and byte <= NINE
+
+        def is_space(byte: u8) -> bool:
+            byte == 32 or byte == 9 or byte == 13
+
+        def line_end(source: Source&, start: usize) -> usize:
+            requires start <= source.length and source.length <= MAX_BYTES
+            ensure start <= result and result <= source.length
+            newline_in(source, start, source.length)
+
+        def newline_in(source: Source&, start: usize, stop: usize) -> usize:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            ensure start <= result and result <= stop
+            for index in start..<stop |found: usize = stop| -> found:
+                invariant start <= found and found <= stop
+                found <- index if found == stop and source.bytes[index] == NEWLINE
+
+        def skip_spaces(source: Source&, start: usize, stop: usize) -> usize:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            ensure start <= result and result <= stop
+            for index in start..<stop |found: usize = stop| -> found:
+                invariant start <= found and found <= stop
+                found <- index if found == stop and not is_space(source.bytes[index])
+
+        def token_end(source: Source&, start: usize, stop: usize) -> usize:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            ensure start <= result and result <= stop
+            for index in start..<stop |found: usize = stop| -> found:
+                invariant start <= found and found <= stop
+                found <- index if found == stop and (is_space(source.bytes[index]) or source.bytes[index] == HASH)
+
+        # "seed" and "event" in ASCII.
+        def is_seed(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 4 and source.bytes[start] == 115 and source.bytes[start + 1] == 101 and source.bytes[start + 2] == 101 and source.bytes[start + 3] == 100
+
+        def is_event(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 5 and source.bytes[start] == 101 and source.bytes[start + 1] == 118 and source.bytes[start + 2] == 101 and source.bytes[start + 3] == 110 and source.bytes[start + 4] == 116
