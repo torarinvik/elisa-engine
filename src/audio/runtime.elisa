@@ -16,6 +16,7 @@ module AudioRuntime:
             Capacity
             InvalidHandle
             ClipInUse
+            StreamEnded
             UnknownStatus
 
         struct ClipHandle:
@@ -94,6 +95,7 @@ module AudioRuntime:
             CAPACITY: i32 = -6
             INVALID_HANDLE: i32 = -7
             CLIP_IN_USE: i32 = -8
+            STREAM_ENDED: i32 = -9
             BUS_MUSIC: i32 = 0
             BUS_SFX: i32 = 1
             BUS_UI: i32 = 2
@@ -163,6 +165,12 @@ module AudioRuntime:
         extern elisa_audio_v1_set_stream_gain(slot: u32, generation: u32, gain: f32) -> i32
 
         @callconv(c)
+        extern elisa_audio_v1_seek_stream(slot: u32, generation: u32, frame: u64) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_stream_position(slot: u32, generation: u32, position: mutable u64&) -> i32
+
+        @callconv(c)
         extern elisa_audio_v1_active_stream_count() -> i32
 
         @callconv(c)
@@ -180,6 +188,7 @@ module AudioRuntime:
             raise AudioError.Capacity if status == Status::CAPACITY
             raise AudioError.InvalidHandle if status == Status::INVALID_HANDLE
             raise AudioError.ClipInUse if status == Status::CLIP_IN_USE
+            raise AudioError.StreamEnded if status == Status::STREAM_ENDED
             raise AudioError.UnknownStatus if status != Status::OK
 
         def bus_code(bus: Bus) -> i32:
@@ -325,6 +334,18 @@ module AudioRuntime:
 
         def set_stream_gain(stream: StreamHandle, gain: f32) -> void error[AudioError]:
             try check_status(elisa_audio_v1_set_stream_gain(stream.slot, stream.generation, gain))
+
+        # Play on from source `frame`, dropping buffered audio. A frame past the
+        # end is InvalidArgument; a one-shot stream that already ended is
+        # StreamEnded, and must be stopped and opened again.
+        def seek_stream(stream: StreamHandle, frame: u64) -> void error[AudioError]:
+            try check_status(elisa_audio_v1_seek_stream(stream.slot, stream.generation, frame))
+
+        # The source frame the device plays next; looped streams wrap.
+        def stream_position(stream: StreamHandle) -> u64 error[AudioError]:
+            position: mutable u64 = 0
+            try check_status(elisa_audio_v1_stream_position(stream.slot, stream.generation, &position))
+            position
 
         def active_stream_count() -> usize error[AudioError]:
             count: i32 = elisa_audio_v1_active_stream_count()

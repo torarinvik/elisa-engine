@@ -18,6 +18,7 @@ enum {
     ELISA_AUDIO_CAPACITY = -6,
     ELISA_AUDIO_INVALID_HANDLE = -7,
     ELISA_AUDIO_CLIP_IN_USE = -8,
+    ELISA_AUDIO_STREAM_ENDED = -9,
     ELISA_AUDIO_RECOVERY_NOT_REQUESTED = 0,
     ELISA_AUDIO_RECOVERY_REQUESTED = 1,
 };
@@ -74,6 +75,11 @@ int32_t elisa_audio_v1_stream_status(uint32_t slot, uint32_t generation, int32_t
     uint64_t* frames_played, uint64_t* underrun_frames);
 int32_t elisa_audio_v1_set_stream_gain(uint32_t slot, uint32_t generation, float gain);
 int32_t elisa_audio_v1_active_stream_count(void);
+// Seek to a source frame; buffered audio is dropped. A one-shot stream that
+// reached its end returns STREAM_ENDED, and a frame past the end
+// INVALID_ARGUMENT. `position` is the source frame the next callback plays.
+int32_t elisa_audio_v1_seek_stream(uint32_t slot, uint32_t generation, uint64_t frame);
+int32_t elisa_audio_v1_stream_position(uint32_t slot, uint32_t generation, uint64_t* position);
 // Callbacks that emitted silence instead of waiting for the owner's lock.
 int32_t elisa_audio_v1_contended_callbacks(uint64_t* count);
 // Reopen after device loss. With prefer_default, try the system default

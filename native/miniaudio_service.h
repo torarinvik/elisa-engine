@@ -232,7 +232,7 @@ public:
     StreamStatus stream_status(StreamHandle handle) const { return streams_.status(handle); }
     uint32_t active_streams() const { return streams_.live_count(); }
     uint64_t contended_callbacks() const { return contended_callbacks_.load(std::memory_order_relaxed); }
-
+    StreamSeekStatus seek_stream(StreamHandle handle, uint64_t frame) { return initialized_ ? streams_.seek(handle, frame, channels_, mutex_) : StreamSeekStatus::Invalid; }
     bool set_stream_gain(StreamHandle handle, float gain) {
         return std::isfinite(gain) && gain >= 0.0f && gain <= 4.0f && streams_.set_gain(handle, gain, mutex_);
     }

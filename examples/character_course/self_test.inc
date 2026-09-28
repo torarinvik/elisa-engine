@@ -232,9 +232,21 @@
             SCENE_RESET: i32 = 96
             RELEASE: i32 = 97
             REUSE: i32 = 98
+            MUSIC_REWIND: i32 = 193
+            # 0.25 s at 48 kHz: more than one device period, well under 1.5 s.
+            REWOUND_FRAMES: u64 = 12000
+            PAST_END: u64 = 18446744073709551615
             # Longer than the 500 ms stream ring, so music must be refilled.
             STREAM_NANOS: u64 = 1500000000
             MAX_PUMPS: usize = 1000000
+
+        # 0 seeked, 1 out of range, 2 stale handle, 3 any other error.
+        def seek_outcome(stream: AudioRuntime::StreamHandle, frame: u64) -> i32:
+            catch AudioRuntime::seek_stream(stream, frame):
+                ok: 0
+                AudioRuntime::AudioError.InvalidArgument: 1
+                AudioRuntime::AudioError.InvalidHandle: 2
+                error failure: 3
 
         def audio_idle(session: RuntimeServices::Session&) -> bool:
             voices: usize = catch RuntimeServices::audio_active_voice_count(session):
@@ -274,11 +286,17 @@
             after: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
             return SoundCodes::MUSIC_ADVANCES if after.state != AudioRuntime::StreamState.Playing or after.frames_played <= before.frames_played
             return SoundCodes::UNDERRUN if after.underrun_frames != 0
+            played_to: u64 = CourseSounds::music_position(&sounds)
+            return SoundCodes::MUSIC_REWIND if played_to < SoundCodes::REWOUND_FRAMES or not CourseSounds::rewind_music(&sounds)
+            return SoundCodes::MUSIC_REWIND if CourseSounds::music_position(&sounds) >= SoundCodes::REWOUND_FRAMES
+            return SoundCodes::MUSIC_REWIND if seek_outcome(CourseSounds::music_stream(&sounds), SoundCodes::PAST_END) != 1
+            music: AudioRuntime::StreamHandle = CourseSounds::music_stream(&sounds)
             return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, false)
             CourseSounds::reset_scene(&sounds)
             return SoundCodes::SCENE_RESET if CourseSounds::event_voices(&sounds) != 0
             return SoundCodes::SCENE_RESET if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+            return SoundCodes::MUSIC_REWIND if seek_outcome(music, 0) != 2
             return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, 1) != CourseSounds::PLAYED
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)

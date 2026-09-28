@@ -119,6 +119,7 @@ void deterministic_checks(const std::string& path) {
     check(status.state == audio::StreamState::Finished && status.frames_played == SOURCE_FRAMES &&
         status.underrun_frames == 1000, "a drained one-shot stream is Finished without new underruns");
 
+    check(service.seek_stream(music, 0) == audio::StreamSeekStatus::Ended, "an ended one-shot cannot seek");
     check(service.stop_stream(music) && !service.stop_stream(music), "stop invalidates the handle");
     check(service.stream_status(music).state == audio::StreamState::Invalid, "stale handle has no status");
     const audio::StreamHandle looped = service.open_stream(path.c_str(), true, audio::Bus::Music, 1.0f, opened);
@@ -135,6 +136,20 @@ void deterministic_checks(const std::string& path) {
         wrapped = mixes_source(service, cursor, 1000);
     }
     check(wrapped && service.stream_status(looped).underrun_frames == 0, "a looped stream wraps seamlessly");
+    // Seeking drops the buffered frames and plays on from the target.
+    check(service.seek_stream(looped, 12345) == audio::StreamSeekStatus::Seeked &&
+        service.stream_status(looped).position == 12345, "seek reports its target position");
+    cursor = 12345;
+    check(mixes_source(service, cursor, 1000) && service.stream_status(looped).position == 13345,
+        "a seek plays on from the target frame");
+    check(service.seek_stream(looped, SOURCE_FRAMES - 500) == audio::StreamSeekStatus::Seeked, "seek near the end");
+    cursor = SOURCE_FRAMES - 500;
+    service.pump_streams();
+    check(mixes_source(service, cursor, 1000) && service.stream_status(looped).position == 500,
+        "a looped seek wraps across the end");
+    check(service.seek_stream(looped, SOURCE_FRAMES) == audio::StreamSeekStatus::OutOfRange &&
+        service.seek_stream(music, 0) == audio::StreamSeekStatus::Invalid, "bad seeks are rejected");
+    check(service.stream_status(looped).underrun_frames == 0, "seeking causes no underrun");
     check(service.set_stream_gain(looped, 0.0f) && all_silent(service, 100), "stream gain applies");
     service.shutdown();
     check(service.active_streams() == 0 && service.stream_status(looped).state == audio::StreamState::Invalid,
@@ -170,6 +185,11 @@ void concurrent_checks(const std::string& path) {
     const audio::StreamStatus recovered = service.stream_status(music);
     check(recovered.state == audio::StreamState::Playing && recovered.frames_played > paused_at &&
         recovered.underrun_frames == 0, "a stream keeps playing across device recovery");
+    check(service.seek_stream(music, 100) == audio::StreamSeekStatus::Seeked, "seek while the device runs");
+    pump_for(100);
+    const audio::StreamStatus sought = service.stream_status(music);
+    check(sought.position > 100 && sought.position < 100 + RATE && sought.underrun_frames == 0,
+        "a stream plays on from a seek on a running device");
     std::fprintf(stdout, "stream harness: frames=%llu underruns=%llu contended=%llu\n",
         static_cast<unsigned long long>(recovered.frames_played),
         static_cast<unsigned long long>(recovered.underrun_frames),

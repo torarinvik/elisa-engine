@@ -189,6 +189,23 @@ module CourseSounds:
                 value: value
                 error failure: empty
 
+        # Restart rewinds the music to its first frame. Returns false if the
+        # stream refused the seek.
+        def rewind_music(sounds: Sounds&) -> bool:
+            return true if not sounds.live
+            catch AudioRuntime::seek_stream(sounds.music, 0):
+                ok: true
+                error failure: false
+
+        def music_stream(sounds: Sounds&) -> AudioRuntime::StreamHandle:
+            sounds.music
+
+        def music_position(sounds: Sounds&) -> u64:
+            return 0 if not sounds.live
+            catch AudioRuntime::stream_position(sounds.music):
+                value: value
+                error failure: 0
+
         # Stop every voice and the stream, then release the clips, so a later
         # `start` reuses the freed slots. Returns false if a release failed.
         def stop(sounds: mutable Sounds&) -> bool:

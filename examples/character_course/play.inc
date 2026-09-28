@@ -320,6 +320,7 @@
                             character <- try restart_character(session, character)
                             restart(&state)
                             CourseSounds::reset_scene(&sounds)
+                            _ = CourseSounds::rewind_music(&sounds)
                             _ = CourseSounds::set_paused(&sounds, false)
                             _ = try CourseBeacons::reset(&beacons)
                             grounded <- true
