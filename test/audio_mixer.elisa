@@ -1,0 +1,72 @@
+include "../src/audio/mixer.elisa"
+
+def near(left: f32, right: f32) -> bool:
+    difference: f32 = left - right
+    difference < 0.0001 and difference > -0.0001
+
+def same(left: AudioMixer::Snapshot, right: AudioMixer::Snapshot) -> bool:
+    near(left.music, right.music) and near(left.effects, right.effects) and near(left.ui, right.ui)
+
+def reads(mix: AudioMixer::Mix, tick: u64, expected: AudioMixer::Snapshot) -> bool:
+    now: AudioMixer::Snapshot = AudioMixer::current(mix, tick)
+    same(now, expected)
+
+def same_target(mix: AudioMixer::Mix, expected: AudioMixer::Snapshot) -> bool:
+    goal: AudioMixer::Snapshot = AudioMixer::target(mix)
+    same(goal, expected)
+
+def mix_status(initial: AudioMixer::Snapshot) -> i32:
+    catch AudioMixer::Mix(initial):
+        value: 0
+        AudioMixer::MixerError.InvalidSnapshot: 1
+        error failure: 2
+
+def transition_status(mix: AudioMixer::Mix, target: AudioMixer::Snapshot, ramp: u64) -> i32:
+    catch AudioMixer::transition(mix, target, 0, ramp):
+        value: 0
+        AudioMixer::MixerError.InvalidSnapshot: 1
+        AudioMixer::MixerError.InvalidRamp: 2
+        error failure: 3
+
+# Failures fall back to values the checks below would reject.
+def begin(initial: AudioMixer::Snapshot) -> AudioMixer::Mix:
+    catch AudioMixer::Mix(initial):
+        value: value
+        error failure: AudioMixer::Mix{from: initial, goal: AudioMixer::snapshot(0.5, 0.5, 0.5), start_tick: 0, ramp_ticks: 1}
+
+def retarget(mix: AudioMixer::Mix, target: AudioMixer::Snapshot, tick: u64, ramp: u64) -> AudioMixer::Mix:
+    catch AudioMixer::transition(mix, target, tick, ramp):
+        value: value
+        error failure: mix
+
+def main() -> i32:
+    play: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
+    paused: AudioMixer::Snapshot = AudioMixer::snapshot(0.2, 0.0, 1.0)
+    zero: f32 = 0.0
+    loud: AudioMixer::Snapshot = AudioMixer::snapshot(1.5, 1.0, 1.0)
+    negative: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, -0.1, 1.0)
+    nan: f32 = zero / zero
+    not_a_number: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, nan)
+    too_loud: AudioMixer::Snapshot = AudioMixer::snapshot(2.0, 0.0, 0.0)
+    half: AudioMixer::Snapshot = AudioMixer::snapshot(0.6, 0.5, 1.0)
+    three_quarters: AudioMixer::Snapshot = AudioMixer::snapshot(0.8, 0.75, 1.0)
+    return 1 if mix_status(play) != 0
+    return 2 if mix_status(loud) != 1 or mix_status(negative) != 1 or mix_status(not_a_number) != 1
+    mix: AudioMixer::Mix = begin(play)
+    return 3 if not reads(mix, 50, play) or not AudioMixer::settled(mix, 0)
+    too_long: u64 = AudioMixer::MAX_RAMP_TICKS + 1
+    return 4 if transition_status(mix, too_loud, 10) != 1 or transition_status(mix, paused, too_long) != 2
+    # Ten-tick fade to the paused snapshot from tick 100.
+    fading: AudioMixer::Mix = retarget(mix, paused, 100, 10)
+    return 5 if not reads(fading, 90, play) or not reads(fading, 100, play)
+    return 6 if not reads(fading, 105, half) or AudioMixer::settled(fading, 109)
+    return 7 if not reads(fading, 110, paused) or not reads(fading, 500, paused) or not AudioMixer::settled(fading, 110)
+    # Interrupting at tick 105 fades back from the half-way gains, not from
+    # either endpoint.
+    back: AudioMixer::Mix = retarget(fading, play, 105, 4)
+    return 8 if not reads(back, 105, half)
+    return 9 if not reads(back, 107, three_quarters) or not reads(back, 109, play)
+    # A zero-tick transition is immediate.
+    cut: AudioMixer::Mix = retarget(back, paused, 200, 0)
+    return 10 if not reads(cut, 200, paused) or not same_target(cut, paused)
+    0

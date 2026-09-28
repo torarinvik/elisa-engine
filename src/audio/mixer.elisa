@@ -1,0 +1,65 @@
+# Mixer snapshots: named per-bus gain targets and a tick-driven linear ramp
+# between them. This is pure policy; the caller applies `current` to
+# AudioRuntime::set_bus_gain on the owner thread. A transition that starts
+# mid-ramp begins from the gains heard at that tick, so interrupting a fade
+# never jumps.
+module AudioMixer:
+    public:
+        const MAX_RAMP_TICKS: u64 = 3600
+
+        error MixerError:
+            InvalidSnapshot
+            InvalidRamp
+
+        struct Snapshot:
+            music: f32
+            effects: f32
+            ui: f32
+
+        struct Mix:
+            from: Snapshot
+            goal: Snapshot
+            start_tick: u64
+            ramp_ticks: u64
+
+        def snapshot(music: f32, effects: f32, ui: f32) -> Snapshot:
+            Snapshot{music: music, effects: effects, ui: ui}
+
+        # Gains are finite and within [0, 1]; NaN fails both comparisons.
+        def valid(value: Snapshot&) -> bool:
+            unit(value.music) and unit(value.effects) and unit(value.ui)
+
+        def Mix(initial: Snapshot) -> Mix error[MixerError]:
+            raise MixerError.InvalidSnapshot if not valid(&initial)
+            Mix{from: initial, goal: initial, start_tick: 0, ramp_ticks: 0}
+
+        def transition(mix: Mix, target: Snapshot, tick: u64, ramp_ticks: u64) -> Mix error[MixerError]:
+            raise MixerError.InvalidSnapshot if not valid(&target)
+            raise MixerError.InvalidRamp if ramp_ticks > MAX_RAMP_TICKS
+            heard: Snapshot = current(mix, tick)
+            Mix{from: heard, goal: target, start_tick: tick, ramp_ticks: ramp_ticks}
+
+        # A tick before the transition started reads as its start.
+        def current(mix: Mix, tick: u64) -> Snapshot:
+            if mix.ramp_ticks == 0 or tick >= mix.start_tick + mix.ramp_ticks:
+                mix.goal
+            elif tick <= mix.start_tick:
+                mix.from
+            else:
+                t: f32 = (tick - mix.start_tick).f32() / mix.ramp_ticks.f32()
+                Snapshot{music: lerp(mix.from.music, mix.goal.music, t),
+                    effects: lerp(mix.from.effects, mix.goal.effects, t),
+                    ui: lerp(mix.from.ui, mix.goal.ui, t)}
+
+        def settled(mix: Mix, tick: u64) -> bool:
+            mix.ramp_ticks == 0 or tick >= mix.start_tick + mix.ramp_ticks
+
+        def target(mix: Mix) -> Snapshot:
+            mix.goal
+
+    private:
+        def unit(gain: f32) -> bool:
+            gain >= 0.0 and gain <= 1.0
+
+        def lerp(start: f32, end: f32, t: f32) -> f32:
+            start + (end - start) * t

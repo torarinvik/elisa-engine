@@ -259,6 +259,8 @@
                     return 40
                 if running and pump == Application::PumpStatus.Running:
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                    mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
+                    _ = CourseSounds::mix(&sounds, mood, frame.elapsed_nanos / 1000000)
                     if menu_open:
                         # Keys first; pointer presses when no key acted.
                         step: mutable CourseControls::MenuStep = CourseControls::drain_menu(menu)

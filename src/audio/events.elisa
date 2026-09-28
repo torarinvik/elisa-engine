@@ -7,6 +7,7 @@ module AudioEvents:
         const MAX_DEFINITIONS: usize = 16
         const MAX_INSTANCES: usize = 32
         const MAX_GROUPS: u32 = 8
+        const MAX_VARIANTS: u32 = 4
 
         # Not `EventError`: stage1 declines functions that use WorldEvents::EventError
         # when another module declares an error with the same bare name.
@@ -18,7 +19,10 @@ module AudioEvents:
             UnknownInstance
 
         # `group_limit` live instances may share `group`; a further trigger
-        # replaces the group's oldest instance. Variants rotate in order.
+        # replaces the group's oldest instance. Variants rotate in order unless
+        # `set_weights` gave the event weights; then a seeded roll over the
+        # seed, event id and tick picks one, so a replayed tick picks the same
+        # variant.
         # An event fires at most once per simulation tick and then waits
         # `cooldown_ticks` more ticks.
         struct Definition:
@@ -48,6 +52,9 @@ module AudioEvents:
                 fired: mutable bool[AudioEvents::MAX_DEFINITIONS]
                 last_tick: mutable u64[AudioEvents::MAX_DEFINITIONS]
                 next_variant: mutable u32[AudioEvents::MAX_DEFINITIONS]
+                weighted: mutable bool[AudioEvents::MAX_DEFINITIONS]
+                weights: mutable u32[64]
+                seed: mutable u64
                 instance_live: mutable bool[AudioEvents::MAX_INSTANCES]
                 instance_event: mutable usize[AudioEvents::MAX_INSTANCES]
                 instance_started: mutable u64[AudioEvents::MAX_INSTANCES]
@@ -60,6 +67,9 @@ module AudioEvents:
                 fired: zeroed,
                 last_tick: zeroed,
                 next_variant: zeroed,
+                weighted: zeroed,
+                weights: zeroed,
+                seed: 0,
                 instance_live: zeroed,
                 instance_event: zeroed,
                 instance_started: zeroed,
@@ -67,7 +77,7 @@ module AudioEvents:
             }
 
         def define(board: mutable Board&, definition: Definition) -> void error[SoundEventError]:
-            raise SoundEventError.InvalidDefinition if definition.group >= MAX_GROUPS or definition.group_limit == 0 or definition.variants == 0
+            raise SoundEventError.InvalidDefinition if definition.group >= MAX_GROUPS or definition.group_limit == 0 or definition.variants == 0 or definition.variants > MAX_VARIANTS
             raise SoundEventError.DuplicateEvent if event_index(board, definition.id) < board.definition_count
             raise SoundEventError.Capacity if board.definition_count >= MAX_DEFINITIONS
             board.definitions[board.definition_count] <- definition
@@ -85,8 +95,10 @@ module AudioEvents:
             replace: bool = group_live(board, definition.group) >= definition.group_limit.usize()
             slot: usize = oldest_in_group(board, definition.group) if replace else free_slot(board)
             raise SoundEventError.Capacity if slot >= MAX_INSTANCES
-            variant: u32 = board.next_variant[index]
-            board.next_variant[index] <- (variant + 1) % definition.variants
+            rotated: u32 = board.next_variant[index]
+            board.next_variant[index] <- (rotated + 1) % definition.variants
+            weighted: bool = board.weighted[index]
+            variant: u32 = pick(board, index, tick) if weighted else rotated
             board.fired[index] <- true
             board.last_tick[index] <- tick
             board.instance_live[slot] <- true
@@ -94,6 +106,25 @@ module AudioEvents:
             board.instance_started[slot] <- board.sequence
             board.sequence <- board.sequence + 1
             Trigger{outcome: Outcome.Replace if replace else Outcome.Play, slot: slot, variant: variant}
+
+        # Weights for variants 0..3; weights past the event's variant count
+        # must be zero and at least one weight must be positive.
+        def set_weights(board: mutable Board&, id: u32, first: u32, second: u32, third: u32, fourth: u32) -> void error[SoundEventError]:
+            index: usize = event_index(board, id)
+            raise SoundEventError.UnknownEvent if index >= board.definition_count
+            variants: u32 = board.definitions[index].variants
+            unused: bool = (variants < 2 and second != 0) or (variants < 3 and third != 0) or (variants < 4 and fourth != 0)
+            raise SoundEventError.InvalidDefinition if unused or first + second + third + fourth == 0
+            base: usize = index * MAX_VARIANTS.usize()
+            board.weights[base] <- first
+            board.weights[base + 1] <- second
+            board.weights[base + 2] <- third
+            board.weights[base + 3] <- fourth
+            board.weighted[index] <- true
+
+        # A new seed changes every later weighted pick; `reset` keeps it.
+        def set_seed(board: mutable Board&, seed: u64) -> void:
+            board.seed <- seed
 
         # The caller stopped the voice in `slot`, or saw it end.
         def finish(board: mutable Board&, slot: usize) -> void error[SoundEventError]:
@@ -121,6 +152,33 @@ module AudioEvents:
                 board.fired[index] <- false
 
     private:
+        const MODULUS: u64 = 2147483647
+        const MULTIPLIER: u64 = 48271
+
+        # Park-Miller steps over the seed, id and tick, each reduced first so
+        # no product overflows.
+        def roll(seed: u64, id: u32, tick: u64) -> u64:
+            mixed: u64 = (seed % MODULUS + id.u64() * MULTIPLIER % MODULUS + tick % MODULUS) % (MODULUS - 1) + 1
+            once: u64 = mixed * MULTIPLIER % MODULUS
+            twice: u64 = once * MULTIPLIER % MODULUS
+            twice * MULTIPLIER % MODULUS
+
+        def pick(board: Board&, index: usize, tick: u64) -> u32:
+            base: usize = index * MAX_VARIANTS.usize()
+            total: u64 = (board.weights[base] + board.weights[base + 1] + board.weights[base + 2] + board.weights[base + 3]).u64()
+            target: u64 = roll(board.seed, board.definitions[index].id, tick) % total
+            first: u64 = board.weights[base].u64()
+            second: u64 = first + board.weights[base + 1].u64()
+            third: u64 = second + board.weights[base + 2].u64()
+            if target < first:
+                0
+            elif target < second:
+                1
+            elif target < third:
+                2
+            else:
+                3
+
         def event_index(board: Board&, id: u32) -> usize:
             for index in 0..<board.definition_count |found: usize = MAX_DEFINITIONS| -> found:
                 found <- index if found == MAX_DEFINITIONS and board.definitions[index].id == id
