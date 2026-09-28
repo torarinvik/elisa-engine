@@ -42,7 +42,7 @@
                 "Beacon lit (1/3)"
 
         def menu_hint() -> cstr:
-            "Menu: Up/Down select | press a key or Left/Right | Tab done"
+            "Menu: Up/Down or click a row | press a key, Left/Right or click | Tab done"
 
         def legend_header(menu_open: bool) -> cstr:
             "Rebinding (Esc/Tab closes)" if menu_open else "Controls | Tab while paused to rebind"
@@ -58,6 +58,42 @@
 
         def legend_row_y(settings: CourseAccess::Settings&, row: i64) -> f32:
             Tune::HUD_Y + CourseAccess::scaled(settings, Tune::LEGEND_Y - Tune::HUD_Y + (row + 1).f32() * Tune::LEGEND_ROW_HEIGHT)
+
+        # The legend row under a pointer in logical window units, or -1. A row
+        # spans both columns and one scaled row height below its top edge.
+        def legend_hit(settings: CourseAccess::Settings&, x: f32, y: f32) -> i64:
+            right: f32 = Tune::LEGEND_X + legend_key_offset(settings) + CourseAccess::scaled(settings, Tune::LEGEND_KEY_WIDTH)
+            return -1 if x < Tune::LEGEND_X or x >= right
+            height: f32 = CourseAccess::scaled(settings, Tune::LEGEND_ROW_HEIGHT)
+            scale: CourseAccess::Settings = settings
+            hit: mutable i64 = -1
+            for row in 0..<CourseControls::MENU_ROWS |hit, scale, height, y|:
+                top: f32 = legend_row_y(&scale, row)
+                hit <- row if y >= top and y < top + height
+            hit
+
+        # Presses hit-test the legend and the wheel moves the selection.
+        def menu_pointer_event(menu: CourseControls::Menu, settings: CourseAccess::Settings&,
+            event: Application::PointerEvent) -> CourseControls::MenuStep:
+            if event.kind == Application::PointerEventKind.Button and event.pressed:
+                CourseControls::menu_pointer(menu, legend_hit(settings, event.x, event.y), event.button)
+            elif event.kind == Application::PointerEventKind.Wheel:
+                CourseControls::menu_wheel(menu, event.delta_y)
+            else:
+                CourseControls::step(menu, CourseControls::MenuResult.Ignored)
+
+        # Like `drain_menu`: stops at Adjusted so each change is applied first.
+        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&) -> CourseControls::MenuStep:
+            current: mutable CourseControls::MenuStep = CourseControls::step(menu, CourseControls::MenuResult.Ignored)
+            open: mutable bool = true
+            scale: CourseAccess::Settings = settings
+            event: mutable Application::PointerEvent = zeroed
+            while open and Application::next_pointer_event(&event) |current, open, scale, event|:
+                next: CourseControls::MenuStep = menu_pointer_event(current.menu, &scale, event)
+                if next.result != CourseControls::MenuResult.Ignored:
+                    current <- next
+                open <- false if next.result == CourseControls::MenuResult.Adjusted
+            current
 
         # The panel is created first so the text draws over it. Handles are
         # gathered in locals; element writes into a struct field inside a
@@ -224,7 +260,10 @@
                 if running and pump == Application::PumpStatus.Running:
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     if menu_open:
-                        step: CourseControls::MenuStep = CourseControls::drain_menu(menu)
+                        # Keys first; pointer presses when no key acted.
+                        step: mutable CourseControls::MenuStep = CourseControls::drain_menu(menu)
+                        if step.result == CourseControls::MenuResult.Ignored:
+                            step <- drain_menu_pointer(menu, settings)
                         menu <- step.menu
                         previous_elapsed_nanos <- frame.elapsed_nanos
                         if step.result == CourseControls::MenuResult.Closed:
@@ -257,6 +296,7 @@
                             _ = try refresh_legend(legend, menu.keymap, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
+                        _ = CourseControls::discard_pointer()
                         focus_lost: bool = CourseControls::drain_gameplay(input)
                         if focus_lost and state.phase == Phase.Playing:
                             toggle_pause(&state)
