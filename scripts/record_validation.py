@@ -101,6 +101,16 @@ def verified_proof(path: Path) -> dict:
     return {"sha256": sha256_file(path), "obligations": count, "replayed": replay["replayed"]}
 
 
+def verified_proofs(engine: Path) -> dict:
+    """Every proof/NAME.elisa must have a fully proved report at
+    build/NAME-proof.json, with underscores in NAME written as dashes
+    (proof/entity_id.elisa -> build/entity-id-proof.json)."""
+    sources = sorted((engine / "proof").glob("*.elisa"))
+    if not sources:
+        raise ValueError(f"no implementation-linked proofs in {engine / 'proof'}")
+    return {source.stem: verified_proof(engine / f"build/{source.stem.replace('_', '-')}-proof.json") for source in sources}
+
+
 def scene_manifest_matches_bridge(root: Path) -> dict:
     # The only machine-checked link between the static host fixture and the
     # Elisa canonical scene: these constants must equal
@@ -479,10 +489,7 @@ def main(arguments: list[str]) -> int:
     engine = Path(root).resolve(strict=True)
     report_path = engine / "build/validation.json"
     try:
-        proofs = {
-            "entity_id": verified_proof(engine / "build/entity-id-proof.json"),
-            "world": verified_proof(engine / "build/world-proof.json"),
-        }
+        proofs = verified_proofs(engine)
         package_format = native_package_test(engine)
         cooked = cook_asset(engine)
         release = release_package(engine, compiler)

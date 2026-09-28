@@ -37,7 +37,7 @@ module PrefabWorld:
             instances: mutable Instance[PrefabWorld::MAX_INSTANCE_POOL_INSTANCES] = zeroed
             for index in 0..<PrefabWorld::MAX_INSTANCE_POOL_INSTANCES |instances|:
                 instances[index] <- Instance()
-            InstancePool{instances: instances}
+            InstancePool{instances: move instances}
 
         const MAX_GROUP_INSTANCES: usize = 8
 

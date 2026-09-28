@@ -394,7 +394,7 @@ module PhysicsRuntime:
             tick
 
         def service_poll_contacts(state: ServiceState&,
-            buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
+            buffer: mutable ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not state.live
             count: mutable u32 = 0
             native_dropped: mutable u32 = 0
@@ -494,7 +494,7 @@ module PhysicsRuntime:
             tick
 
         def poll_contacts(world: World&,
-            buffer: ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
+            buffer: mutable ContactBuffer&, dropped: mutable u32&) -> usize error[PhysicsError]:
             raise PhysicsError.ApplicationUnavailable if not world.live
             count: mutable u32 = 0
             native_dropped: mutable u32 = 0
