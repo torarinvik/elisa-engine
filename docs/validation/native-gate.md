@@ -45,7 +45,7 @@ and accept explicit roots when the checkout is elsewhere. A representative setup
 export DEVELOPER_DIR=/Library/Developer/CommandLineTools
 export PYTHON_BIN=/opt/homebrew/bin/python3.14
 export ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh"
-export ELISA_PROOF_BIN="../elisa-proof/build/elisa-proof"
+export ELISA_PROOF_BIN="../elisa-engine-proof/build/elisa-proof"
 export WICKED_ROOT="$PWD/../amazing-labyrinth-wickedengine"
 export WICKED_BUILD="$WICKED_ROOT/build-elisa-sdl3"
 elisascript scripts/check.elisascript

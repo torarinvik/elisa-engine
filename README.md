@@ -415,11 +415,14 @@ PATH="$HOME/.elisac:$PATH" elisascript scripts/check.elisascript
 ```
 
 For other installations, set `ELISA_COMPILER_BIN` and `ELISA_PROOF_BIN` to executable
-paths. By default the prover is read from the sibling `elisa-proof/build/elisa-proof`.
+paths. By default the prover is read from the sibling
+`elisa-engine-proof/build/elisa-proof`, the engine's worktree of `elisa-proof`.
 The script passes tool arguments directly without a shell and returns nonzero on
-compilation, runtime test, proof, or provenance-report failure. It saves the proof
-reports in `build/entity-id-proof.json` and `build/world-proof.json`, then writes
-`build/validation.json` only after both JSON results report a proved state, zero
+compilation, runtime test, proof, or provenance-report failure. It checks every
+implementation-linked proof in `proof/` and saves each report as
+`build/NAME-proof.json`, with the file name's underscores as dashes, so
+`proof/entity_id.elisa` reports to `build/entity-id-proof.json`. It then writes
+`build/validation.json` only after every JSON result reports a proved state, zero
 diagnostics, complete certificate replay, and independent kernel replay. That
 validation record includes SHA-256 identities for the engine source manifest,
 compiler entry/product, prover, and ElisaScript launcher. It does not rebuild
