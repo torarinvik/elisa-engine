@@ -460,6 +460,59 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
+    provenance_source = executable.with_name(executable.name + ".provenance.json")
+    if provenance_source.is_file():
+        provenance_destination = resources / "build-provenance.json"
+        if provenance_destination.exists():
+            raise PackageError("a packaged resource conflicts with build-provenance.json")
+        try:
+            provenance = json.loads(provenance_source.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise PackageError(f"could not read build provenance {provenance_source}: {error}") from error
+        if not isinstance(provenance, dict):
+            raise PackageError(f"build provenance must contain an object: {provenance_source}")
+        provenance["project_root"] = "<project>"
+        try:
+            provenance["main_source"] = Path(str(provenance.get("main_source", ""))).resolve().relative_to(project.resolve()).as_posix()
+        except (OSError, ValueError):
+            provenance["main_source"] = Path(str(provenance.get("main_source", ""))).name
+        repositories = provenance.get("repositories")
+        if isinstance(repositories, dict):
+            for label, identity in repositories.items():
+                if isinstance(identity, dict):
+                    identity["root"] = f"<{label}>"
+        tools = provenance.get("tools")
+        if isinstance(tools, dict):
+            for tool in tools.values():
+                if isinstance(tool, dict):
+                    for field in ("requested", "resolved"):
+                        value = tool.get(field)
+                        if isinstance(value, str):
+                            tool[field] = Path(value).name
+                    if isinstance(tool.get("path"), str):
+                        tool["path"] = Path(str(tool["path"])).name
+        native = provenance.get("native_link_artifacts")
+        if isinstance(native, list):
+            for item in native:
+                if isinstance(item, dict) and isinstance(item.get("path"), str):
+                    item["path"] = Path(str(item["path"])).name
+        options = provenance.get("options")
+        if isinstance(options, dict):
+            for field in ("wicked_build", "compiler_request", "native_compiler_request"):
+                if isinstance(options.get(field), str):
+                    options[field] = Path(str(options[field])).name
+        binary = provenance.get("binary")
+        if isinstance(binary, dict):
+            binary["path"] = "build executable"
+        packaged_binary = resources / binary_name
+        provenance["packaged_binary"] = {
+            "path": binary_name,
+            "sha256": hashlib.sha256(packaged_binary.read_bytes()).hexdigest(),
+            "size_bytes": packaged_binary.stat().st_size,
+        }
+        provenance_destination.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
+
     for relative in notices:
         destination = resources / "Notices" / relative
         if destination.exists():

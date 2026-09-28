@@ -80,6 +80,38 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual(info["CFBundleExecutable"], "Game")
         self.assertEqual(info["CFBundleShortVersionString"], "1.2.3")
 
+    def test_build_provenance_is_embedded_and_local_paths_are_scrubbed(self) -> None:
+        executable = self.project / "build/game"
+        executable.write_bytes(b"built payload")
+        source_provenance = {
+            "project_root": str(self.project),
+            "main_source": str(self.project / "src/main.elisa"),
+            "repositories": {"game": {"root": str(self.project), "commit": "abc"}},
+            "tools": {"elisa_compiler": {"resolved": "/opt/private/bin/elisac"}},
+            "native_link_artifacts": [{"path": "/private/build/libWickedEngine.a", "sha256": "def"}],
+            "options": {
+                "wicked_build": "/private/build/wicked",
+                "compiler_request": "/opt/private/bin/elisac",
+            },
+            "binary": {"path": str(executable), "sha256": "source-hash"},
+        }
+        sidecar = executable.with_name(executable.name + ".provenance.json")
+        sidecar.write_text(json.dumps(source_provenance), encoding="utf-8")
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        resource_root = app / "Contents/Resources"
+        record_path = resource_root / "build-provenance.json"
+        self.assertTrue(record_path.is_file())
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["repositories"]["game"]["commit"], "abc")
+        self.assertEqual(record["repositories"]["game"]["root"], "<game>")
+        self.assertEqual(record["tools"]["elisa_compiler"]["resolved"], "elisac")
+        self.assertEqual(record["native_link_artifacts"][0]["path"], "libWickedEngine.a")
+        self.assertEqual(record["binary"]["path"], "build executable")
+        self.assertEqual(record["options"]["compiler_request"], "elisac")
+        self.assertEqual(record["packaged_binary"]["sha256"],
+            hashlib.sha256((resource_root / "Game.bin").read_bytes()).hexdigest())
+        self.assertNotIn(str(self.project), record_path.read_text(encoding="utf-8"))
+
     def test_empty_resource_declaration_stages_no_project_files(self) -> None:
         shutil.rmtree(self.project / "assets")
         shutil.rmtree(self.project / "build" / "cooked")

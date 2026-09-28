@@ -16,6 +16,7 @@ from pathlib import Path
 
 import asset_cooks
 from asset_cooks import BuildConfigurationError
+from build_provenance import write_build_provenance
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -472,6 +473,41 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staged_output, output)
+    library_dir = paths["libraries"]
+    utility_dir = library_dir / "Utility"
+    brew_link_inputs = [
+        next((paths["brew_library"] / f"lib{name}.{suffix}"
+            for suffix in ("dylib", "a")
+            if (paths["brew_library"] / f"lib{name}.{suffix}").is_file()),
+            paths["brew_library"] / f"lib{name}.dylib")
+        for name in ("freetype", "harfbuzz", "zstd")]
+    native_artifacts = [
+        library_dir / "libWickedEngine.a", library_dir / "libJolt.a",
+        utility_dir / "libUtility.a", utility_dir / "FAudio/libFAudio.a",
+        library_dir / "LUA/libLUA.a", paths["recast"] / "build/Recast/libRecast.a",
+        paths["recast"] / "build/Detour/libDetour.a",
+        paths["sdl_library"] / "libSDL3.dylib",
+        *brew_link_inputs,
+        runtime_object,
+    ]
+    try:
+        provenance = write_build_provenance(output=output, project=project,
+            main_source=main_source, engine_root=ENGINE_ROOT,
+            wicked_root=paths["wicked_root"], compiler=compiler, cxx=cxx,
+            runtime_object=runtime_object, native_artifacts=native_artifacts,
+            options={
+                "action": args.action,
+                "native_optimize": args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
+                "public_runtime": not args.no_public_runtime,
+                "native_test_probes": args.native_test_probes,
+                "force_cook_assets": args.force_cook_assets,
+                "wicked_build": str(paths["wicked_build"]),
+                "compiler_request": compiler,
+                "native_compiler_request": cxx,
+            })
+        print(f"Build provenance: {provenance}", flush=True)
+    except (OSError, ValueError) as error:
+        print(f"Could not write build provenance: {error}", file=sys.stderr, flush=True)
     print(f"Application build complete: {output}", flush=True)
     return 0, output, paths["wicked_source"] / "shaders"
 

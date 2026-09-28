@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -168,6 +169,13 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertTrue(abi_check.called)
             self.assertTrue(output.is_file())
+            provenance_path = output.with_name(output.name + ".provenance.json")
+            self.assertTrue(provenance_path.is_file())
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            self.assertEqual(provenance["binary"]["sha256"],
+                hashlib.sha256(output.read_bytes()).hexdigest())
+            self.assertEqual(provenance["main_source_sha256"],
+                hashlib.sha256(main_source.read_bytes()).hexdigest())
             run_info = json.loads((log_dir / "ran.json").read_text())
             self.assertEqual(run_info["cwd"], str(project.resolve()))
             self.assertEqual(run_info["settings"], {
@@ -259,6 +267,7 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertFalse((log_dir / "compiler.json").exists())
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse(output.exists())
+            self.assertFalse(output.with_name(output.name + ".provenance.json").exists())
 
     def test_native_link_optimizes_only_on_request(self) -> None:
         runner = __import__("elisa_build_run")
@@ -802,6 +811,7 @@ class BuildRunCliTests(unittest.TestCase):
                 ])
             self.assertEqual(status, 17)
             self.assertEqual(output.read_text(), "stale")
+            self.assertFalse(output.with_name(output.name + ".provenance.json").exists())
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse((log_dir / "ran.json").exists())
             self.assertFalse((project / "build/walk.pkg").exists(),
