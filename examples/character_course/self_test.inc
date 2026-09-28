@@ -190,10 +190,11 @@
             menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
             menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
             wrapped_selected: i64 = menu.selected
+            menu <- CourseControls::Menu{keymap: menu.keymap, selected: CourseControls::SLOT_CROUCH}
             assigned: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.J))
             blocked: CourseControls::MenuStep = CourseControls::menu_key(assigned.menu, key_code(Application::KeyboardKeyCode.P))
             closed: CourseControls::MenuStep = CourseControls::menu_key(blocked.menu, key_code(Application::KeyboardKeyCode.Escape))
-            return ControlsCodes::MENU if down_selected != CourseControls::SLOT_BACKWARD or wrapped_selected != CourseControls::SLOT_CROUCH or assigned.result != CourseControls::MenuResult.Assigned or assigned.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J) or blocked.result != CourseControls::MenuResult.Reserved or closed.result != CourseControls::MenuResult.Closed or closed.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J)
+            return ControlsCodes::MENU if down_selected != CourseControls::SLOT_BACKWARD or wrapped_selected != CourseControls::MENU_ROWS - 1 or assigned.result != CourseControls::MenuResult.Assigned or assigned.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J) or blocked.result != CourseControls::MenuResult.Reserved or closed.result != CourseControls::MenuResult.Closed or closed.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J)
             remapped: CourseControls::Keymap = CourseControls::assign(defaults,
                 CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.J)).keymap
             input: mutable ActionInput::Input = ActionInput::Input()

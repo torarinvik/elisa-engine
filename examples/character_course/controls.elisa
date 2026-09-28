@@ -164,6 +164,8 @@ module CourseControls:
         const SLOT_JUMP: i64 = 4
         const SLOT_CROUCH: i64 = 5
         const SLOT_COUNT: i64 = 6
+        # Three CourseAccess settings rows follow the six key slots.
+        const MENU_ROWS: i64 = 9
 
         struct Keymap:
             forward: i64
@@ -199,15 +201,18 @@ module CourseControls:
             Moved
             Assigned
             Reserved
+            Adjusted
             Closed
 
         struct Menu:
             keymap: Keymap
             selected: i64
 
+        # `delta` is -1 or +1 when a settings row is Adjusted, otherwise 0.
         struct MenuStep:
             menu: Menu
             result: MenuResult
+            delta: i64
 
         def defaults() -> Keymap:
             Keymap{
@@ -368,60 +373,76 @@ module CourseControls:
         def Menu(keymap: Keymap) -> Menu:
             Menu{keymap: keymap, selected: SLOT_FORWARD}
 
-        # One pressed key in the rebind menu: arrows select a slot, Tab or
-        # Escape closes, and any other key is offered to the selected slot.
+        def step(menu: Menu, result: MenuResult) -> MenuStep:
+            MenuStep{menu: menu, result: result, delta: 0}
+
+        def moved(menu: Menu, selected: i64) -> MenuStep:
+            step(Menu{keymap: menu.keymap, selected: selected}, MenuResult.Moved)
+
+        # One pressed key in the rebind menu: arrows select a row, Tab or
+        # Escape closes, Left/Right adjust a settings row, and any other key
+        # is offered to the selected slot.
         def menu_key(menu: Menu, code: i64) -> MenuStep:
+            setting: bool = menu.selected >= SLOT_COUNT
             if code == key(Application::KeyboardKeyCode.ArrowUp):
-                MenuStep{menu: Menu{keymap: menu.keymap,
-                    selected: SLOT_COUNT - 1 if menu.selected == 0 else menu.selected - 1},
-                    result: MenuResult.Moved}
+                moved(menu, MENU_ROWS - 1 if menu.selected == 0 else menu.selected - 1)
             elif code == key(Application::KeyboardKeyCode.ArrowDown):
-                MenuStep{menu: Menu{keymap: menu.keymap,
-                    selected: 0 if menu.selected == SLOT_COUNT - 1 else menu.selected + 1},
-                    result: MenuResult.Moved}
+                moved(menu, 0 if menu.selected == MENU_ROWS - 1 else menu.selected + 1)
             elif code == key(Application::KeyboardKeyCode.Tab) or code == key(Application::KeyboardKeyCode.Escape):
-                MenuStep{menu: menu, result: MenuResult.Closed}
+                step(menu, MenuResult.Closed)
+            elif code == key(Application::KeyboardKeyCode.ArrowLeft) or code == key(Application::KeyboardKeyCode.ArrowRight):
+                if setting:
+                    MenuStep{menu: menu, result: MenuResult.Adjusted,
+                        delta: 1 if code == key(Application::KeyboardKeyCode.ArrowRight) else -1}
+                else:
+                    step(menu, MenuResult.Ignored)
+            elif setting:
+                step(menu, MenuResult.Ignored)
             else:
                 outcome: AssignOutcome = assign(menu.keymap, menu.selected, code)
                 if outcome.result == AssignResult.Reserved or outcome.result == AssignResult.InvalidSlot:
-                    MenuStep{menu: menu, result: MenuResult.Reserved}
+                    step(menu, MenuResult.Reserved)
                 else:
-                    MenuStep{menu: Menu{keymap: outcome.keymap, selected: menu.selected},
-                        result: MenuResult.Assigned}
+                    step(Menu{keymap: outcome.keymap, selected: menu.selected}, MenuResult.Assigned)
 
-        # Controllers navigate the same menu; they cannot assign keyboard keys.
+        # Controllers navigate and adjust the same menu; they cannot assign
+        # keyboard keys.
         def menu_button(menu: Menu, code: i64) -> MenuStep:
             if code == pad(Application::GamepadButtonCode.DpadUp):
                 menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
             elif code == pad(Application::GamepadButtonCode.DpadDown):
                 menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
+            elif code == pad(Application::GamepadButtonCode.DpadLeft):
+                menu_key(menu, key(Application::KeyboardKeyCode.ArrowLeft))
+            elif code == pad(Application::GamepadButtonCode.DpadRight):
+                menu_key(menu, key(Application::KeyboardKeyCode.ArrowRight))
             elif code == pad(Application::GamepadButtonCode.East) or code == pad(Application::GamepadButtonCode.Back) or code == pad(Application::GamepadButtonCode.Start):
-                MenuStep{menu: menu, result: MenuResult.Closed}
+                step(menu, MenuResult.Closed)
             else:
-                MenuStep{menu: menu, result: MenuResult.Ignored}
+                step(menu, MenuResult.Ignored)
 
         def menu_event(menu: Menu, event: Application::InputEvent) -> MenuStep:
             if not event.pressed or event.released:
-                MenuStep{menu: menu, result: MenuResult.Ignored}
+                step(menu, MenuResult.Ignored)
             elif event.kind == Application::InputEventKind.Key:
                 menu_key(menu, event.code)
             elif event.kind == Application::InputEventKind.GamepadButton:
                 menu_button(menu, event.code)
             else:
-                MenuStep{menu: menu, result: MenuResult.Ignored}
+                step(menu, MenuResult.Ignored)
 
-        # Drains the frame's events into the menu and stops at Closed, leaving
-        # later events for the gameplay input rebuilt after the menu.
+        # Drains the frame's events into the menu and stops at Closed or
+        # Adjusted, so the caller applies each setting change before the next.
         def drain_menu(menu: Menu) -> MenuStep:
-            step: mutable MenuStep = MenuStep{menu: menu, result: MenuResult.Ignored}
+            current: mutable MenuStep = step(menu, MenuResult.Ignored)
             open: mutable bool = true
             event: mutable Application::InputEvent = zeroed
-            while open and Application::next_input_event(&event) |step, open, event|:
-                next: MenuStep = menu_event(step.menu, event)
+            while open and Application::next_input_event(&event) |current, open, event|:
+                next: MenuStep = menu_event(current.menu, event)
                 if next.result != MenuResult.Ignored:
-                    step <- next
-                open <- false if next.result == MenuResult.Closed
-            step
+                    current <- next
+                open <- false if next.result == MenuResult.Closed or next.result == MenuResult.Adjusted
+            current
 
         # Drains the frame's events into gameplay input and reports focus loss
         # so the game can pause; focus loss also clears every held action.

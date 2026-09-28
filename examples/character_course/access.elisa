@@ -1,0 +1,181 @@
+# Saved accessibility settings for the character course: text size, a
+# high-contrast HUD and sound captions. The rebind menu edits them as three
+# rows after the six key slots; a load that fails any check keeps defaults.
+module CourseAccess:
+    private:
+        const module Limits:
+            KEY: cstr = "course-access"
+            VERSION: i64 = 1
+            FIELD_COUNT: usize = 4
+            MIN_SCALE: i64 = 100
+            MAX_SCALE: i64 = 150
+            SCALE_STEP: i64 = 25
+            CAPTION_NANOS: u64 = 2500000000
+
+        def rejected_load(status: LoadStatus) -> LoadResult:
+            LoadResult{status: status, settings: defaults()}
+
+        def flag(value: bool) -> i64:
+            1 if value else 0
+
+        def color(red: f32, green: f32, blue: f32, alpha: f32) -> RenderScene::Color:
+            RenderScene::Color{red: red, green: green, blue: blue, alpha: alpha}
+
+    public:
+        const ROW_TEXT_SIZE: i64 = 0
+        const ROW_CONTRAST: i64 = 1
+        const ROW_CAPTIONS: i64 = 2
+        const ROW_COUNT: i64 = 3
+
+        struct Settings:
+            text_scale: i64
+            high_contrast: bool
+            captions: bool
+
+        enum LoadStatus:
+            Loaded
+            Missing
+            Unreadable
+            Rejected
+
+        struct LoadResult:
+            status: LoadStatus
+            settings: Settings
+
+        # The caption line shows the newest sound event until `until_nanos`.
+        struct Captions:
+            event: u32
+            until_nanos: u64
+
+        def defaults() -> Settings:
+            Settings{text_scale: Limits::MIN_SCALE, high_contrast: false, captions: false}
+
+        def storage_key() -> cstr:
+            Limits::KEY
+
+        def valid(settings: Settings&) -> bool:
+            in_range: bool = settings.text_scale >= Limits::MIN_SCALE and settings.text_scale <= Limits::MAX_SCALE
+            in_range and (settings.text_scale - Limits::MIN_SCALE) % Limits::SCALE_STEP == 0
+
+        # `delta` is -1 or +1 from Left/Right; text size clamps, flags toggle.
+        def adjust(settings: Settings, row: i64, delta: i64) -> Settings:
+            if row == ROW_TEXT_SIZE:
+                next: i64 = settings.text_scale + delta * Limits::SCALE_STEP
+                clamped: i64 = Limits::MIN_SCALE if next < Limits::MIN_SCALE else (Limits::MAX_SCALE if next > Limits::MAX_SCALE else next)
+                Settings{text_scale: clamped, high_contrast: settings.high_contrast, captions: settings.captions}
+            elif row == ROW_CONTRAST:
+                Settings{text_scale: settings.text_scale, high_contrast: not settings.high_contrast, captions: settings.captions}
+            elif row == ROW_CAPTIONS:
+                Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: not settings.captions}
+            else:
+                settings
+
+        def row_name(row: i64) -> cstr:
+            if row == ROW_TEXT_SIZE:
+                "Text size"
+            elif row == ROW_CONTRAST:
+                "High contrast"
+            else:
+                "Captions"
+
+        def row_value(settings: Settings&, row: i64) -> cstr:
+            if row == ROW_TEXT_SIZE:
+                if settings.text_scale >= Limits::MAX_SCALE:
+                    "< 150% >"
+                elif settings.text_scale > Limits::MIN_SCALE:
+                    "< 125% >"
+                else:
+                    "< 100% >"
+            elif row == ROW_CONTRAST:
+                "< On >" if settings.high_contrast else "< Off >"
+            else:
+                "< On >" if settings.captions else "< Off >"
+
+        def font_size(settings: Settings&, base: i32) -> i32:
+            (base.i64() * settings.text_scale / 100).i32()
+
+        def scaled(settings: Settings&, length: f32) -> f32:
+            length * settings.text_scale.f32() / 100.0
+
+        def header_color(settings: Settings&) -> RenderScene::Color:
+            color(1.0, 1.0, 1.0, 1.0) if settings.high_contrast else color(0.78, 0.84, 0.9, 1.0)
+
+        def text_color(settings: Settings&) -> RenderScene::Color:
+            color(1.0, 1.0, 1.0, 1.0)
+
+        def highlight_color(settings: Settings&) -> RenderScene::Color:
+            color(1.0, 1.0, 0.0, 1.0) if settings.high_contrast else color(1.0, 0.85, 0.2, 1.0)
+
+        def caption_color(settings: Settings&) -> RenderScene::Color:
+            color(1.0, 1.0, 0.0, 1.0) if settings.high_contrast else color(0.9, 0.95, 1.0, 1.0)
+
+        # An opaque backing behind the HUD in high contrast; hidden otherwise.
+        def panel_color(settings: Settings&) -> RenderScene::Color:
+            color(0.0, 0.0, 0.0, 0.88)
+
+        def caption_text(event: u32) -> cstr:
+            if event == CourseSounds::EVENT_JUMP:
+                "[Sound: jump]"
+            elif event == CourseSounds::EVENT_LAND:
+                "[Sound: landing thud]"
+            elif event == CourseSounds::EVENT_WIN:
+                "[Sound: victory fanfare]"
+            elif event == CourseSounds::EVENT_FALL:
+                "[Sound: falling]"
+            else:
+                "[Sound: chime]"
+
+        def Captions() -> Captions:
+            Captions{event: 0, until_nanos: 0}
+
+        # Captions follow the game's sound events whether or not an audio
+        # device is present; with captions off nothing is shown.
+        def caption(captions: Captions, settings: Settings&, event: u32, now_nanos: u64) -> Captions:
+            if settings.captions:
+                Captions{event: event, until_nanos: now_nanos + Limits::CAPTION_NANOS}
+            else:
+                captions
+
+        def caption_visible(captions: Captions&, settings: Settings&, now_nanos: u64) -> bool:
+            settings.captions and captions.event != 0 and now_nanos < captions.until_nanos
+
+        def encode(settings: Settings&) -> Save::Blob error[Save::SaveError]:
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- Limits::VERSION
+            values[1] <- settings.text_scale
+            values[2] <- flag(settings.high_contrast)
+            values[3] <- flag(settings.captions)
+            try Save::save_write(values, Limits::FIELD_COUNT)
+
+        # Only this version's exact shape with a listed scale and 0/1 flags.
+        def decode(blob: Save::Blob&) -> LoadResult:
+            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+                value: value
+                error failure: false
+            return rejected_load(LoadStatus.Rejected) if not readable
+            return rejected_load(LoadStatus.Rejected) if Save::save_value_or(blob, 0, 0) != Limits::VERSION
+            contrast: i64 = Save::save_value_or(blob, 2, -1)
+            captions: i64 = Save::save_value_or(blob, 3, -1)
+            return rejected_load(LoadStatus.Rejected) if contrast < 0 or contrast > 1 or captions < 0 or captions > 1
+            settings: Settings = Settings{text_scale: Save::save_value_or(blob, 1, 0),
+                high_contrast: contrast == 1, captions: captions == 1}
+            return rejected_load(LoadStatus.Rejected) if not valid(&settings)
+            LoadResult{status: LoadStatus.Loaded, settings: settings}
+
+        # UserData::initialize remains application-owned.
+        def save(settings: Settings&) -> void error[Save::SaveError, UserData::UserDataError]:
+            blob: Save::Blob = try encode(settings)
+            try UserData::write_blob(Limits::KEY, &blob)
+
+        def load() -> LoadResult:
+            blob: mutable Save::Blob = Save::Blob(0)
+            read_status: i32 = catch UserData::read_blob(Limits::KEY, &blob):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                error failure: 2
+            if read_status == 1:
+                rejected_load(LoadStatus.Missing)
+            elif read_status == 2:
+                rejected_load(LoadStatus.Unreadable)
+            else:
+                decode(&blob)
