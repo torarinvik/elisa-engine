@@ -18,6 +18,12 @@ module CourseSounds:
         const MUSIC_FAILED: i32 = 4
         const AMBIENCE_FAILED: i32 = 5
 
+        # `start_injected` swaps one path for a missing file so the lifecycle
+        # stress test reaches the real clip and stream failure paths.
+        const INJECT_NONE: i32 = 0
+        const INJECT_CLIP: i32 = 1
+        const INJECT_MUSIC: i32 = 2
+
         # `fire` results: the AudioEvents outcome, or a failure.
         const PLAYED: i32 = 0
         const REPLACED: i32 = 1
@@ -25,6 +31,17 @@ module CourseSounds:
         const COOLING: i32 = 3
         const SILENT: i32 = 4
         const FIRE_FAILED: i32 = 5
+
+        # Mix moods: pause ducks the music, the controls menu ducks it
+        # further. `mix` ramps between them over RAMP_MS on a millisecond
+        # clock that keeps running while the game is paused.
+        const MOOD_PLAY: i32 = 0
+        const MOOD_PAUSED: i32 = 1
+        const MOOD_MENU: i32 = 2
+        const RAMP_MS: u64 = 250
+        # Jump variant A plays three times as often as B; the fixed seed keeps
+        # a replayed tick on the same variant.
+        const JUMP_SEED: u64 = 20260928
 
         affine struct Sounds:
             private:
@@ -40,6 +57,9 @@ module CourseSounds:
                 music: mutable AudioRuntime::StreamHandle
                 voices: mutable AudioRuntime::VoiceHandles::Pool
                 board: mutable AudioEvents::Board
+                mix: mutable AudioMixer::Mix
+                mood: mutable i32
+                last_variant: mutable u32
 
         def Sounds() -> Sounds:
             Sounds{
@@ -55,6 +75,9 @@ module CourseSounds:
                 music: AudioRuntime::empty_stream(),
                 voices: AudioRuntime::VoiceHandles::Pool(),
                 board: AudioEvents::Board(),
+                mix: settled_mix(),
+                mood: MOOD_PLAY,
+                last_variant: 0,
             }
 
         def live(sounds: Sounds&) -> bool:
@@ -63,14 +86,19 @@ module CourseSounds:
         # Paths are relative to the working directory: the project folder
         # when run from source, Contents/Resources inside the packaged app.
         def start(sounds: mutable Sounds&, session: RuntimeServices::Session&) -> i32:
+            start_injected(sounds, session, INJECT_NONE)
+
+        def start_injected(sounds: mutable Sounds&, session: RuntimeServices::Session&, inject: i32) -> i32:
             return INACTIVE if not RuntimeServices::audio_active(session)
             return DEFINITION_FAILED if not define_events(sounds)
             sounds.live <- true
-            loaded: bool = catch load_clips(sounds):
+            wind_path: cstr = "sounds/missing.wav" if inject == INJECT_CLIP else "sounds/ambience.wav"
+            music_path: cstr = "sounds/missing.wav" if inject == INJECT_MUSIC else "sounds/music.wav"
+            loaded: bool = catch load_clips(sounds, wind_path):
                 ok: true
                 error failure: false
             return CLIP_FAILED if not loaded
-            sounds.music <- catch AudioRuntime::open_stream("sounds/music.wav", true, AudioRuntime::Bus.Music, 0.5):
+            sounds.music <- catch AudioRuntime::open_stream(music_path, true, AudioRuntime::Bus.Music, 0.5):
                 value: value
                 error failure: AudioRuntime::empty_stream()
             return MUSIC_FAILED if AudioRuntime::stream_is_empty(sounds.music)
@@ -97,7 +125,45 @@ module CourseSounds:
                 error failure: AudioRuntime::empty_voice()
             return FIRE_FAILED if AudioRuntime::voice_is_empty(voice)
             return FIRE_FAILED if not AudioRuntime::VoiceHandles::store(&sounds.voices, trigger.slot, voice)
+            sounds.last_variant <- trigger.variant
             REPLACED if trigger.outcome == AudioEvents::Outcome.Replace else PLAYED
+
+        # The variant of the last event that started a voice.
+        def last_variant(sounds: Sounds&) -> u32:
+            sounds.last_variant
+
+        def mood_for(menu_open: bool, paused: bool) -> i32:
+            if menu_open:
+                MOOD_MENU
+            elif paused:
+                MOOD_PAUSED
+            else:
+                MOOD_PLAY
+
+        def mood_snapshot(mood: i32) -> AudioMixer::Snapshot:
+            if mood == MOOD_MENU:
+                AudioMixer::snapshot(0.2, 0.3, 1.0)
+            elif mood == MOOD_PAUSED:
+                AudioMixer::snapshot(0.45, 0.3, 1.0)
+            else:
+                AudioMixer::snapshot(1.0, 1.0, 1.0)
+
+        # Called every frame. A new mood starts a ramp from the gains heard
+        # now; an unchanged mood keeps the running ramp. The heard gains go to
+        # the buses when audio is live. Returns false if a bus rejected them.
+        def mix(sounds: mutable Sounds&, mood: i32, now_ms: u64) -> bool:
+            if mood != sounds.mood:
+                goal: AudioMixer::Snapshot = mood_snapshot(mood)
+                sounds.mix <- catch AudioMixer::transition(sounds.mix, goal, now_ms, RAMP_MS):
+                    value: value
+                    error failure: sounds.mix
+                sounds.mood <- mood
+            return true if not sounds.live
+            heard: AudioMixer::Snapshot = AudioMixer::current(sounds.mix, now_ms)
+            apply_gains(heard)
+
+        def heard(sounds: Sounds&, now_ms: u64) -> AudioMixer::Snapshot:
+            AudioMixer::current(sounds.mix, now_ms)
 
         # Game pause holds effects and ambience in place; music and Ui keep playing.
         def set_paused(sounds: Sounds&, paused: bool) -> bool:
@@ -155,9 +221,26 @@ module CourseSounds:
             sounds.save <- AudioRuntime::empty_clip()
             sounds.wind <- AudioRuntime::empty_clip()
             sounds.board <- AudioEvents::Board()
-            released
+            sounds.mix <- settled_mix()
+            sounds.mood <- MOOD_PLAY
+            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            apply_gains(full) and released
 
     private:
+        def settled_mix() -> AudioMixer::Mix:
+            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}
+
+        def apply_gains(gains: AudioMixer::Snapshot) -> bool:
+            catch set_gains(gains):
+                ok: true
+                error failure: false
+
+        def set_gains(gains: AudioMixer::Snapshot) -> void error[AudioRuntime::AudioError]:
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Music, gains.music)
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, gains.effects)
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Ui, gains.ui)
+
         def definition(id: u32, group: u32, limit: u32, variants: u32, cooldown: u64) -> AudioEvents::Definition:
             AudioEvents::Definition{id: id, group: group, group_limit: limit, variants: variants, cooldown_ticks: cooldown}
 
@@ -175,15 +258,17 @@ module CourseSounds:
             try AudioEvents::define(board, definition(CourseSounds::EVENT_WIN, 2, 1, 1, 0))
             try AudioEvents::define(board, definition(CourseSounds::EVENT_FALL, 2, 1, 1, 0))
             try AudioEvents::define(board, definition(CourseSounds::EVENT_SAVE, 2, 1, 1, 0))
+            try AudioEvents::set_weights(board, CourseSounds::EVENT_JUMP, 3, 1, 0, 0)
+            AudioEvents::set_seed(board, CourseSounds::JUMP_SEED)
 
-        def load_clips(sounds: mutable Sounds&) -> void error[AudioRuntime::AudioError]:
+        def load_clips(sounds: mutable Sounds&, wind_path: cstr) -> void error[AudioRuntime::AudioError]:
             sounds.jump_a <- try AudioRuntime::decode_file("sounds/jump_a.wav")
             sounds.jump_b <- try AudioRuntime::decode_file("sounds/jump_b.wav")
             sounds.land <- try AudioRuntime::decode_file("sounds/land.wav")
             sounds.win <- try AudioRuntime::decode_file("sounds/win.wav")
             sounds.fall <- try AudioRuntime::decode_file("sounds/fall.wav")
             sounds.save <- try AudioRuntime::decode_file("sounds/save.wav")
-            sounds.wind <- try AudioRuntime::decode_file("sounds/ambience.wav")
+            sounds.wind <- try AudioRuntime::decode_file(wind_path)
 
         # A clip that never loaded (start failed part-way) needs no release.
         def release(clip: AudioRuntime::ClipHandle) -> bool:

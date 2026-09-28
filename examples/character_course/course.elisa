@@ -326,6 +326,8 @@ module CharacterCourse:
 
         include "./access_test.inc"
         include "./pointer_test.inc"
+        include "./audio_mix_test.inc"
+        include "./stress_test.inc"
 
         include "./play.inc"
 
@@ -399,6 +401,11 @@ module CharacterCourse:
                 return access_status if access_status != 0
                 pointer_status: i32 = pointer_test()
                 return pointer_status if pointer_status != 0
+                mix_status: i32 = audio_mix_test(session)
+                return mix_status if mix_status != 0
+                stressed: ProgressOutcome = try stress_test(session, character)
+                character <- stressed.character
+                return stressed.status if stressed.status != 0
                 try NavMesh::unload(guide.mesh)
                 return 119 if NavMesh::live_count() != 0
                 0
