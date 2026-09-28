@@ -237,6 +237,7 @@
             sound_tick: mutable u64 = 0
             guide_agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
             rigs: Rigs = optional_rigs()
+            walker: mutable Walker = optional_walker(session, &guide)
             grounded: mutable bool = true
             # Beacons light as the player passes; Q/L save and load their
             # prefab overrides alongside the checkpoint.
@@ -251,7 +252,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, beacons, settings, captions, caption_shown|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -430,6 +431,8 @@
                             _ = try update_avatar(avatar, pose, crouched)
                             _ = try update_camera(pose)
                             _ = try show_guide(session, guide)
+                            guide_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, guide.character)
+                            _ = try update_walker(&walker, guide_pose, NavAgent::state(&guide_agent) == NavAgent::State.Moving)
                             _ = try advance_rigs(rigs, elapsed_delta.f32() / 1000000.0)
                         else:
                             previous_elapsed_nanos <- frame.elapsed_nanos
@@ -441,5 +444,6 @@
             _ = CourseSounds::stop(&sounds)
             try CourseBeacons::release(&beacons)
             try release_legend(&legend)
+            try release_walker(&walker)
             try NavMesh::unload(guide.mesh)
             0

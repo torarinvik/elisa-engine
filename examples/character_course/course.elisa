@@ -315,12 +315,14 @@ module CharacterCourse:
             restored
 
         include "./guide.inc"
+        include "./walker.inc"
 
         include "./self_test.inc"
 
         include "./guide_test.inc"
 
         include "./links_test.inc"
+        include "./walker_test.inc"
 
         include "./beacons_test.inc"
 
@@ -393,6 +395,8 @@ module CharacterCourse:
                 return guide_status if guide_status != 0
                 links_status: i32 = try links_test(session, &guide)
                 return links_status if links_status != 0
+                walker_status: i32 = try walker_test(session, &guide)
+                return walker_status if walker_status != 0
                 rig_status: i32 = try rig_test()
                 return rig_status if rig_status != 0
                 beacon_status: i32 = try beacons_test()
