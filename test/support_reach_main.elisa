@@ -1,0 +1,47 @@
+include "../src/animation/support_reach.elisa"
+
+def exercise() -> i32 error[SupportReach::ReachError]:
+    requests: mutable SupportReach::Requests = SupportReach::requests()
+    requests.count <- 1
+    requests.supports[0] <- SupportReach::Support{origin: Geometry::Vec3{x: 0.0,y: 1.1,z: 0.0},target: Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0},minimum_distance: 0.2,maximum_distance: 1.0}
+    axis: Geometry::Vec3 = Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0}
+    result: mutable SupportReach::Result = try SupportReach::solve(requests,axis,-0.2,0.2,0.0,0.000001)
+    return 1 if not result.feasible or result.offset < -0.10001 or result.offset > -0.09999 or result.maximum_distance_error > 0.000001
+    # Two supports require one common body translation.
+    requests.count <- 2
+    requests.supports[1] <- SupportReach::Support{origin: Geometry::Vec3{x: 0.0,y: 0.9,z: 0.0},target: Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0},minimum_distance: 0.85,maximum_distance: 1.0}
+    result <- try SupportReach::solve(requests,axis,-0.2,0.2,0.0,0.000001)
+    return 2 if result.feasible or result.offset != 0.0 or result.maximum_distance_error < 0.09999
+    # Inner reach exclusion splits feasible translations; deterministic tie.
+    requests.count <- 1
+    requests.supports[0].origin <- Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0}
+    requests.supports[0].minimum_distance <- 0.3
+    result <- try SupportReach::solve(requests,axis,-0.5,0.5,0.0,0.000001)
+    return 3 if not result.feasible or result.offset < -0.30001 or result.offset > -0.29999
+    result <- try SupportReach::solve(requests,axis,-0.5,0.5,0.4,0.000001)
+    return 4 if not result.feasible or result.offset != 0.4
+    # Transverse distance cannot be repaired by translating along the axis.
+    requests.supports[0].origin <- Geometry::Vec3{x: 1.1,y: 0.0,z: 0.0}
+    result <- try SupportReach::solve(requests,axis,-0.5,0.5,0.0,0.000001)
+    return 5 if result.feasible or result.maximum_distance_error < 0.09999
+    # Four supports and an arbitrary axis exercise the full capacity.
+    requests.count <- 4
+    for slot in 0..<4 |requests|:
+        requests.supports[slot] <- SupportReach::Support{origin: Geometry::Vec3{x: 1.1,y: slot.f32(),z: 0.0},target: Geometry::Vec3{x: 0.0,y: slot.f32(),z: 0.0},minimum_distance: 0.2,maximum_distance: 1.0}
+    result <- try SupportReach::solve(requests,Geometry::Vec3{x: 1.0,y: 0.0,z: 0.0},-0.2,0.2,0.0,0.000001)
+    return 6 if not result.feasible or result.offset < -0.10001 or result.offset > -0.09999
+    code: i32 = catch SupportReach::solve(requests,Geometry::Vec3{x: 0.0,y: 2.0,z: 0.0},-0.2,0.2,0.0,0.000001):
+        value: 0
+        SupportReach::ReachError.InvalidInput: 1
+    return 7 if code != 1
+    requests.supports[3].minimum_distance <- 2.0
+    invalid: i32 = catch SupportReach::solve(requests,axis,-0.2,0.2,0.0,0.000001):
+        value: 0
+        SupportReach::ReachError.InvalidInput: 1
+    return 8 if invalid != 1
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 30
