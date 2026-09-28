@@ -29,6 +29,14 @@
             else:
                 "Checkpoint rejected; current run kept"
 
+        def beacon_message(lit: usize) -> cstr:
+            if lit >= CourseBeacons::COUNT:
+                "All beacons lit (3/3) | Q saves them"
+            elif lit == 2:
+                "Beacon lit (2/3)"
+            else:
+                "Beacon lit (1/3)"
+
         def menu_hint() -> cstr:
             "Rebind: Up/Down select | press a key | Tab done"
 
@@ -95,12 +103,17 @@
             guide_agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
             rigs: Rigs = optional_rigs()
             grounded: mutable bool = true
+            # Beacons light as the player passes; Q/L save and load their
+            # prefab overrides alongside the checkpoint.
+            beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
+                value: value
+                error failure: return 34
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, beacons|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -154,6 +167,7 @@
                             restart(&state)
                             CourseSounds::reset_scene(&sounds)
                             _ = CourseSounds::set_paused(&sounds, false)
+                            _ = try CourseBeacons::reset(&beacons)
                             grounded <- true
                             crouched <- false
                             jump_queued <- false
@@ -166,9 +180,10 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_SAVE):
                             saved_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                             checkpoint: CourseProgress::Checkpoint = checkpoint_of(state, saved_pose, crouched)
-                            stored: bool = catch CourseProgress::save(&checkpoint):
+                            checkpoint_stored: bool = catch CourseProgress::save(&checkpoint):
                                 ok: true
                                 error failure: false
+                            stored: bool = checkpoint_stored and CourseBeacons::save(beacons)
                             if stored:
                                 _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
                             _ = try RenderScene::set_overlay_text(instruction,
@@ -177,6 +192,7 @@
                             loaded: CourseProgress::LoadResult = CourseProgress::load()
                             if loaded.status == CourseProgress::LoadStatus.Loaded:
                                 character <- try apply_checkpoint(session, character, loaded.checkpoint)
+                                beacons_loaded: i32 = try CourseBeacons::load(&beacons)
                                 state.phase <- phase_from_code(loaded.checkpoint.phase)
                                 state.attempts <- loaded.checkpoint.attempts
                                 crouched <- loaded.checkpoint.crouched
@@ -191,6 +207,9 @@
                                 _ = try update_avatar(avatar, loaded_pose, crouched)
                                 _ = try update_camera(loaded_pose)
                                 _ = try refresh_status(instruction, state, crouched)
+                                if beacons_loaded != 0:
+                                    _ = try RenderScene::set_overlay_text(instruction,
+                                        "Checkpoint loaded; saved beacons unreadable, current kept")
                             else:
                                 _ = try RenderScene::set_overlay_text(instruction, load_message(loaded.status))
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_PAUSE):
@@ -233,6 +252,11 @@
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
                             update_outcome(&state, pose.position)
+                            newly_lit: usize = try CourseBeacons::update(&beacons, pose.position)
+                            if newly_lit > 0:
+                                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
+                                _ = try RenderScene::set_overlay_text(instruction,
+                                    beacon_message(CourseBeacons::lit_count(beacons)))
                             ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
                             now_grounded: bool = ground.state == PhysicsRuntime::CharacterGroundState.OnGround
                             if now_grounded and not grounded:
@@ -254,5 +278,6 @@
                         _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
                         resize_serial <- frame.resize_serial
             _ = CourseSounds::stop(&sounds)
+            try CourseBeacons::release(&beacons)
             try NavMesh::unload(guide.mesh)
             0

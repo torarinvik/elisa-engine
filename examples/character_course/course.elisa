@@ -2,6 +2,7 @@
 include "./progress.elisa"
 include "./controls.elisa"
 include "./sounds.elisa"
+include "./beacons.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
 
@@ -316,10 +317,14 @@ module CharacterCourse:
 
         include "./links_test.inc"
 
+        include "./beacons_test.inc"
+
         include "./play.inc"
 
+        # Mode 0 plays, 1 runs the self-test, 2 checks the self-test's saves
+        # from a second process.
         def run_after_open(session: mutable RuntimeServices::Session&,
-            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
+            mode: i32) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
@@ -347,7 +352,14 @@ module CharacterCourse:
                 18.0, 18.0, 20, box_color(1.0, 1.0, 1.0))
             _ = try RuntimeServices::physics_fixed_step(session,
                 Runtime::fixed_step_seconds())
-            if self_test:
+            if mode == 2:
+                try UserData::initialize("org.elisa.elisa-character-course")
+                relaunched: ProgressOutcome = try relaunch_test(session, character)
+                character <- relaunched.character
+                return relaunched.status if relaunched.status != 0
+                try NavMesh::unload(guide.mesh)
+                0
+            elif mode == 1:
                 state_status: i32 = state_test()
                 return state_status if state_status != 0
                 _ = try RuntimeServices::pump(session)
@@ -371,6 +383,8 @@ module CharacterCourse:
                 return links_status if links_status != 0
                 rig_status: i32 = try rig_test()
                 return rig_status if rig_status != 0
+                beacon_status: i32 = try beacons_test()
+                return beacon_status if beacon_status != 0
                 try NavMesh::unload(guide.mesh)
                 return 119 if NavMesh::live_count() != 0
                 0
@@ -383,8 +397,14 @@ module CharacterCourse:
 
     public:
         def run(self_test: bool) -> i32:
+            run_mode(1 if self_test else 0)
+
+        def run_relaunch() -> i32:
+            run_mode(2)
+
+        def run_mode(mode: i32) -> i32:
             config: mutable Application::Config = Application::default_config()
-            config.hidden <- true if self_test
+            config.hidden <- true if mode != 0
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
             requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
             requirements.services[0] <- Capabilities::BackendFeature.Input
@@ -408,7 +428,7 @@ module CharacterCourse:
             if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
                 _ = RuntimeServices::shutdown(&session)
                 return 2
-            result: i32 = catch run_after_open(&session, self_test):
+            result: i32 = catch run_after_open(&session, mode):
                 value: value
                 error failure: 3
             render_closed: mutable bool = true
