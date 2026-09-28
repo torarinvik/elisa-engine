@@ -42,6 +42,11 @@ module CourseSounds:
         # Jump variant A plays three times as often as B; the fixed seed keeps
         # a replayed tick on the same variant.
         const JUMP_SEED: u64 = 20260928
+        # The ambience keeps a virtual clock: when an event voice steals its
+        # native voice, `update` brings it back at the frame it would have
+        # reached. RATE matches the course's 48 kHz audio device.
+        const RATE: u64 = 48000
+        const AMBIENCE_PRIORITY: u32 = 1
 
         affine struct Sounds:
             private:
@@ -54,6 +59,9 @@ module CourseSounds:
                 save: mutable AudioRuntime::ClipHandle
                 wind: mutable AudioRuntime::ClipHandle
                 ambience: mutable AudioRuntime::VoiceHandle
+                ambience_sound: mutable usize
+                ambience_frames: mutable u64
+                sounds_virtual: mutable AudioVirtual::Pool
                 music: mutable AudioRuntime::StreamHandle
                 voices: mutable AudioRuntime::VoiceHandles::Pool
                 board: mutable AudioEvents::Board
@@ -72,6 +80,9 @@ module CourseSounds:
                 save: AudioRuntime::empty_clip(),
                 wind: AudioRuntime::empty_clip(),
                 ambience: AudioRuntime::empty_voice(),
+                ambience_sound: AudioVirtual::MAX_SOUNDS,
+                ambience_frames: 0,
+                sounds_virtual: AudioVirtual::Pool(),
                 music: AudioRuntime::empty_stream(),
                 voices: AudioRuntime::VoiceHandles::Pool(),
                 board: AudioEvents::Board(),
@@ -102,10 +113,44 @@ module CourseSounds:
                 value: value
                 error failure: AudioRuntime::empty_stream()
             return MUSIC_FAILED if AudioRuntime::stream_is_empty(sounds.music)
-            sounds.ambience <- catch AudioRuntime::play(sounds.wind, true, AudioRuntime::Bus.Effects, 0.4, 1):
+            sounds.ambience_frames <- catch AudioRuntime::clip_frames(sounds.wind):
                 value: value
-                error failure: AudioRuntime::empty_voice()
-            AMBIENCE_FAILED if AudioRuntime::voice_is_empty(sounds.ambience) else STARTED
+                error failure: 0
+            sounds.ambience_sound <- catch AudioVirtual::add(&sounds.sounds_virtual, AMBIENCE_PRIORITY, true, sounds.ambience_frames, now_ms()):
+                value: value
+                error failure: AudioVirtual::MAX_SOUNDS
+            return AMBIENCE_FAILED if sounds.ambience_sound >= AudioVirtual::MAX_SOUNDS
+            AMBIENCE_FAILED if not realize_ambience(sounds, now_ms()) else STARTED
+
+        # Once per frame: a stolen ambience goes virtual and returns at its
+        # clock's frame once the Effects budget has room. True while the
+        # ambience has a native voice.
+        def update(sounds: mutable Sounds&) -> bool:
+            return false if not sounds.live
+            audible: bool = catch AudioRuntime::voice_frame(sounds.ambience):
+                value: true
+                error failure: false
+            return true if audible
+            _ = catch AudioVirtual::virtualized(&sounds.sounds_virtual, sounds.ambience_sound):
+                ok: true
+                error failure: false
+            realize_ambience(sounds, now_ms())
+
+        def ambience_virtual(sounds: Sounds&) -> bool:
+            not AudioVirtual::is_real(&sounds.sounds_virtual, sounds.ambience_sound)
+
+        # How far, in frames around the loop, the native ambience is from
+        # where its virtual clock says it should be.
+        def ambience_drift(sounds: Sounds&) -> u64:
+            return RATE if not sounds.live or sounds.ambience_frames == 0
+            expected: u64 = AudioVirtual::position(&sounds.sounds_virtual, sounds.ambience_sound, now_ms(), RATE)
+            frame: u64 = catch AudioRuntime::voice_frame(sounds.ambience):
+                value: value
+                error failure: expected + RATE
+            length: u64 = sounds.ambience_frames
+            ahead: u64 = (frame + length - expected % length) % length
+            behind: u64 = length - ahead
+            ahead if ahead < behind else behind
 
         # At most one sound per event per `tick`; the caller passes a counter
         # that only moves forward within one scene.
@@ -189,6 +234,23 @@ module CourseSounds:
                 value: value
                 error failure: empty
 
+        # Restart rewinds the music to its first frame. Returns false if the
+        # stream refused the seek.
+        def rewind_music(sounds: Sounds&) -> bool:
+            return true if not sounds.live
+            catch AudioRuntime::seek_stream(sounds.music, 0):
+                ok: true
+                error failure: false
+
+        def music_stream(sounds: Sounds&) -> AudioRuntime::StreamHandle:
+            sounds.music
+
+        def music_position(sounds: Sounds&) -> u64:
+            return 0 if not sounds.live
+            catch AudioRuntime::stream_position(sounds.music):
+                value: value
+                error failure: 0
+
         # Stop every voice and the stream, then release the clips, so a later
         # `start` reuses the freed slots. Returns false if a release failed.
         def stop(sounds: mutable Sounds&) -> bool:
@@ -201,6 +263,10 @@ module CourseSounds:
                 ok: true
                 error failure: false
             sounds.ambience <- AudioRuntime::empty_voice()
+            _ = catch AudioVirtual::remove(&sounds.sounds_virtual, sounds.ambience_sound):
+                ok: true
+                error failure: false
+            sounds.ambience_sound <- AudioVirtual::MAX_SOUNDS
             sounds.music <- AudioRuntime::empty_stream()
             sounds.live <- false
             _ = catch AudioRuntime::set_bus_paused(AudioRuntime::Bus.Effects, false):
@@ -269,6 +335,24 @@ module CourseSounds:
             sounds.fall <- try AudioRuntime::decode_file("sounds/fall.wav")
             sounds.save <- try AudioRuntime::decode_file("sounds/save.wav")
             sounds.wind <- try AudioRuntime::decode_file(wind_path)
+
+        def now_ms() -> u64:
+            Application::uptime_nanos() / 1000000
+
+        def realize_ambience(sounds: mutable Sounds&, now: u64) -> bool:
+            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(sounds.wind, true, AudioRuntime::Bus.Effects, 0.4, AMBIENCE_PRIORITY):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+            return false if AudioRuntime::voice_is_empty(voice)
+            sounds.ambience <- voice
+            frame: u64 = AudioVirtual::position(&sounds.sounds_virtual, sounds.ambience_sound, now, RATE)
+            seeked: bool = catch AudioRuntime::seek_voice(voice, frame):
+                ok: true
+                error failure: false
+            marked: bool = catch AudioVirtual::realized(&sounds.sounds_virtual, sounds.ambience_sound):
+                ok: true
+                error failure: false
+            seeked and marked
 
         # A clip that never loaded (start failed part-way) needs no release.
         def release(clip: AudioRuntime::ClipHandle) -> bool:

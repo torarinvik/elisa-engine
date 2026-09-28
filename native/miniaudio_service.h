@@ -232,7 +232,7 @@ public:
     StreamStatus stream_status(StreamHandle handle) const { return streams_.status(handle); }
     uint32_t active_streams() const { return streams_.live_count(); }
     uint64_t contended_callbacks() const { return contended_callbacks_.load(std::memory_order_relaxed); }
-
+    StreamSeekStatus seek_stream(StreamHandle handle, uint64_t frame) { return initialized_ ? streams_.seek(handle, frame, channels_, mutex_) : StreamSeekStatus::Invalid; }
     bool set_stream_gain(StreamHandle handle, float gain) {
         return std::isfinite(gain) && gain >= 0.0f && gain <= 4.0f && streams_.set_gain(handle, gain, mutex_);
     }
@@ -245,63 +245,33 @@ public:
         return true;
     }
 
-    void set_listener(ListenerState state) {
-        std::lock_guard<std::mutex> guard(mutex_);
-        listener_ = state;
-    }
+    void set_listener(ListenerState state) { std::lock_guard<std::mutex> guard(mutex_); listener_ = state; }
+    ListenerState listener() const { std::lock_guard<std::mutex> guard(mutex_); return listener_; }
 
-    ListenerState listener() const {
-        std::lock_guard<std::mutex> guard(mutex_);
-        return listener_;
-    }
-
-    bool stop(VoiceHandle handle) {
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (handle.slot >= MAX_VOICES || !voices_[handle.slot].live ||
-            voices_[handle.slot].generation != handle.generation) return false;
-        voices_[handle.slot].live = false;
-        return true;
-    }
+    bool stop(VoiceHandle handle) { return with_voice(handle, [](Voice& voice) { voice.live = false; }); }
 
     bool set_voice_position(VoiceHandle handle, float x, float y, float z) {
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return false;
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!voice_live_unlocked(handle)) return false;
-        Voice& voice = voices_[handle.slot];
-        voice.position[0] = x;
-        voice.position[1] = y;
-        voice.position[2] = z;
-        voice.spatialized = true;
-        return true;
+        return with_voice(handle, [&](Voice& voice) {
+            voice.position[0] = x; voice.position[1] = y; voice.position[2] = z; voice.spatialized = true;
+        });
     }
 
     bool set_voice_range(VoiceHandle handle, float minimum, float maximum) {
         if (!std::isfinite(minimum) || !std::isfinite(maximum)) return false;
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!voice_live_unlocked(handle) || minimum < 0.0f || maximum <= minimum) return false;
-        Voice& voice = voices_[handle.slot];
-        voice.minimum_distance = minimum;
-        voice.maximum_distance = maximum;
-        return true;
+        if (minimum < 0.0f || maximum <= minimum) return false;
+        return with_voice(handle, [&](Voice& voice) { voice.minimum_distance = minimum; voice.maximum_distance = maximum; });
     }
 
     bool set_voice_velocity(VoiceHandle handle, float x, float y, float z) {
         if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) return false;
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!voice_live_unlocked(handle)) return false;
-        Voice& voice = voices_[handle.slot];
-        voice.velocity[0] = x;
-        voice.velocity[1] = y;
-        voice.velocity[2] = z;
-        return true;
+        return with_voice(handle, [&](Voice& voice) { voice.velocity[0] = x; voice.velocity[1] = y; voice.velocity[2] = z; });
     }
 
     bool set_voice_occlusion(VoiceHandle handle, float occlusion) {
         if (!std::isfinite(occlusion)) return false;
-        std::lock_guard<std::mutex> guard(mutex_);
-        if (!voice_live_unlocked(handle) || occlusion < 0.0f || occlusion > 1.0f) return false;
-        voices_[handle.slot].occlusion = occlusion;
-        return true;
+        if (occlusion < 0.0f || occlusion > 1.0f) return false;
+        return with_voice(handle, [&](Voice& voice) { voice.occlusion = occlusion; });
     }
 
     // Apply a spatial mix computed by Elisa policy: gain in [0, 1] scales the
@@ -309,12 +279,36 @@ public:
     bool set_voice_spatial_mix(VoiceHandle handle, float gain, float pitch_ratio) {
         if (!std::isfinite(gain) || !std::isfinite(pitch_ratio) || gain < 0.0f || gain > 1.0f ||
             pitch_ratio < MIN_PITCH_RATIO || pitch_ratio > MAX_PITCH_RATIO) return false;
+        return with_voice(handle, [&](Voice& voice) {
+            voice.mix_gain = gain;
+            voice.step_q16 = static_cast<uint32_t>(std::lround(pitch_ratio * PITCH_ONE_Q16));
+        });
+    }
+
+    // Owner thread: move a live voice to `frame` of its clip, for a sound
+    // realized from virtual. A frame past the clip end is refused.
+    bool seek_voice(VoiceHandle handle, uint64_t frame) {
         std::lock_guard<std::mutex> guard(mutex_);
         if (!voice_live_unlocked(handle)) return false;
         Voice& voice = voices_[handle.slot];
-        voice.mix_gain = gain;
-        voice.step_q16 = static_cast<uint32_t>(std::lround(pitch_ratio * PITCH_ONE_Q16));
+        const Clip& clip = clips_[voice.clip];
+        if (clip.channels == 0 || frame >= clip.samples.size() / clip.channels) return false;
+        voice.cursor = static_cast<size_t>(frame);
+        voice.fraction_q16 = 0;
         return true;
+    }
+
+    // The clip frame a live voice plays next, or UINT64_MAX once it is gone.
+    uint64_t voice_frame(VoiceHandle handle) const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        return voice_live_unlocked(handle) ? voices_[handle.slot].cursor : UINT64_MAX;
+    }
+
+    // Frames in a live clip at the service rate, or 0 for a stale handle.
+    uint64_t clip_frames(ClipHandle handle) const {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!clip_valid(handle) || clips_[handle.slot].channels == 0) return 0;
+        return clips_[handle.slot].samples.size() / clips_[handle.slot].channels;
     }
 
     float voice_doppler_ratio(VoiceHandle handle) const {
@@ -334,15 +328,8 @@ public:
         return std::clamp(343.0f / denominator, 0.5f, 2.0f);
     }
 
-    bool voice_live(VoiceHandle handle) const {
-        std::lock_guard<std::mutex> guard(mutex_);
-        return voice_live_unlocked(handle);
-    }
-
-    bool clip_live(ClipHandle handle) const {
-        std::lock_guard<std::mutex> guard(mutex_);
-        return clip_valid(handle);
-    }
+    bool voice_live(VoiceHandle handle) const { std::lock_guard<std::mutex> guard(mutex_); return voice_live_unlocked(handle); }
+    bool clip_live(ClipHandle handle) const { std::lock_guard<std::mutex> guard(mutex_); return clip_valid(handle); }
 
     // A decoded clip owns its sample buffer. Releasing it while a voice is
     // active would change the sound mid-playback, so callers stop or drain all
@@ -497,6 +484,13 @@ private:
     bool clip_valid(ClipHandle handle) const {
         return handle.slot < MAX_CLIPS && clips_[handle.slot].live &&
             clips_[handle.slot].generation == handle.generation;
+    }
+
+    template <typename Update> bool with_voice(VoiceHandle handle, Update update) {
+        std::lock_guard<std::mutex> guard(mutex_);
+        if (!voice_live_unlocked(handle)) return false;
+        update(voices_[handle.slot]);
+        return true;
     }
 
     bool voice_live_unlocked(VoiceHandle handle) const {

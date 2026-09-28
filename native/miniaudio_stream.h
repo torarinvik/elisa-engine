@@ -30,6 +30,8 @@ enum class StreamState : uint8_t { Invalid = 0, Playing = 1, Finished = 2 };
 struct StreamStatus {
     StreamState state = StreamState::Invalid;
     uint64_t frames_played = 0;
+    // Source frame the next callback plays (see Stream::position).
+    uint64_t position = 0;
     uint64_t underrun_frames = 0;
     uint32_t underrun_events = 0;
 };
@@ -44,6 +46,11 @@ struct Stream {
     bool looped = false;
     bool reserved = false;
     uint32_t generation = 0;
+    // Source length (0 when the decoder cannot tell) and the source frame
+    // that ring frame `seek_consumed` holds, for reporting the position.
+    uint64_t length_frames = 0;
+    uint64_t seek_frame = 0;
+    uint64_t seek_consumed = 0;
     // Written by the owner before `live` is published, read by the callback.
     std::vector<int16_t> ring;
     uint32_t capacity_frames = 0;
@@ -145,10 +152,18 @@ struct Stream {
         underrun_events.fetch_add(1, std::memory_order_relaxed);
     }
 
+    // The source frame the next callback plays; looped sources wrap.
+    uint64_t position() const {
+        const uint64_t frame = seek_frame + (consumed.load(std::memory_order_acquire) - seek_consumed);
+        if (length_frames == 0) return frame;
+        return looped ? frame % length_frames : std::min(frame, length_frames);
+    }
+
     StreamStatus status() const {
         StreamStatus result;
         result.state = drained.load(std::memory_order_acquire) ? StreamState::Finished : StreamState::Playing;
         result.frames_played = consumed.load(std::memory_order_acquire);
+        result.position = position();
         result.underrun_frames = underrun_frames.load(std::memory_order_relaxed);
         result.underrun_events = underrun_events.load(std::memory_order_relaxed);
         return result;
@@ -156,6 +171,7 @@ struct Stream {
 };
 
 enum class StreamOpenStatus : uint8_t { Opened, Capacity, DecodeFailed };
+enum class StreamSeekStatus : uint8_t { Seeked, Invalid, Ended, OutOfRange, DecodeFailed };
 
 // Fixed stream slots with generation-checked handles. Owner-thread methods
 // take the service mutex only to publish or retire a slot; decoding happens
@@ -180,6 +196,10 @@ public:
         if (ma_decoder_init_file(path, &config, &stream.decoder) != MA_SUCCESS) return {};
         stream.decoder_open = true;
         stream.looped = looped;
+        ma_uint64 length = 0;
+        stream.length_frames = ma_decoder_get_length_in_pcm_frames(&stream.decoder, &length) == MA_SUCCESS ? length : 0;
+        stream.seek_frame = 0;
+        stream.seek_consumed = 0;
         stream.reset_counters();
         if (!stream.refill(channels) || stream.written.load(std::memory_order_relaxed) == 0) {
             stream.close_decoder();
@@ -209,6 +229,35 @@ public:
         stream.close_decoder();
         stream.reserved = false;
         return true;
+    }
+
+    // Owner thread. The slot leaves the mix while the decoder seeks, and the
+    // buffered frames are dropped, so the next callback plays from `frame`.
+    // A one-shot source that already reached its end has closed its decoder
+    // and is Ended; stop it and open it again instead.
+    StreamSeekStatus seek(StreamHandle handle, uint64_t frame, uint32_t channels, std::mutex& mutex) {
+        if (!valid(handle)) return StreamSeekStatus::Invalid;
+        Stream& stream = streams_[handle.slot];
+        if (!stream.decoder_open) return StreamSeekStatus::Ended;
+        if (stream.length_frames > 0 && frame >= stream.length_frames) return StreamSeekStatus::OutOfRange;
+        {
+            std::lock_guard<std::mutex> guard(mutex);
+            stream.live = false;
+        }
+        const uint64_t consumed = stream.consumed.load(std::memory_order_relaxed);
+        stream.written.store(consumed, std::memory_order_release);
+        stream.seek_frame = frame;
+        stream.seek_consumed = consumed;
+        bool healthy = ma_decoder_seek_to_pcm_frame(&stream.decoder, frame) == MA_SUCCESS;
+        if (!healthy) {
+            stream.close_decoder();
+            stream.source_done.store(true, std::memory_order_release);
+        } else {
+            healthy = stream.refill(channels);
+        }
+        std::lock_guard<std::mutex> guard(mutex);
+        stream.live = true;
+        return healthy ? StreamSeekStatus::Seeked : StreamSeekStatus::DecodeFailed;
     }
 
     bool set_gain(StreamHandle handle, float gain, std::mutex& mutex) {

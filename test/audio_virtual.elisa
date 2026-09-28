@@ -1,0 +1,81 @@
+include "../src/audio/virtual.elisa"
+
+const RATE: u64 = 48000
+
+def add_status(pool: mutable AudioVirtual::Pool&, priority: u32, looped: bool, frames: u64, now_ms: u64) -> usize:
+    catch AudioVirtual::add(pool, priority, looped, frames, now_ms):
+        value: value
+        error failure: AudioVirtual::MAX_SOUNDS + 1
+
+def add_error(pool: mutable AudioVirtual::Pool&, frames: u64) -> i32:
+    catch AudioVirtual::add(pool, 0, false, frames, 0):
+        value: 0
+        AudioVirtual::VirtualSoundError.InvalidSound: 1
+        AudioVirtual::VirtualSoundError.Capacity: 2
+        error failure: 3
+
+def realize_status(pool: mutable AudioVirtual::Pool&, slot: usize) -> i32:
+    catch AudioVirtual::realized(pool, slot):
+        ok: 0
+        AudioVirtual::VirtualSoundError.UnknownSound: 1
+        error failure: 2
+
+def virtualize_status(pool: mutable AudioVirtual::Pool&, slot: usize) -> i32:
+    catch AudioVirtual::virtualized(pool, slot):
+        ok: 0
+        AudioVirtual::VirtualSoundError.UnknownSound: 1
+        error failure: 2
+
+def remove_status(pool: mutable AudioVirtual::Pool&, slot: usize) -> i32:
+    catch AudioVirtual::remove(pool, slot):
+        ok: 0
+        AudioVirtual::VirtualSoundError.UnknownSound: 1
+        error failure: 2
+
+def main() -> i32:
+    pool: mutable AudioVirtual::Pool = AudioVirtual::Pool()
+    # A 1 s loop at priority 1, a 0.5 s one-shot at priority 1 and a 2 s
+    # loop at priority 3, all starting virtual.
+    ambience: usize = add_status(&pool, 1, true, 48000, 1000)
+    shot: usize = add_status(&pool, 1, false, 24000, 1100)
+    engine: usize = add_status(&pool, 3, true, 96000, 1200)
+    return 1 if ambience != 0 or shot != 1 or engine != 2
+    return 2 if AudioVirtual::virtual_count(&pool) != 3 or AudioVirtual::real_count(&pool) != 0
+    return 3 if add_error(&pool, 0) != 1
+
+    # Priority first, then the oldest among equals.
+    return 10 if AudioVirtual::next_virtual(&pool, 1200, RATE) != engine
+    return 11 if realize_status(&pool, engine) != 0 or not AudioVirtual::is_real(&pool, engine)
+    return 12 if AudioVirtual::next_virtual(&pool, 1200, RATE) != ambience
+    return 13 if AudioVirtual::virtual_count(&pool) != 2 or AudioVirtual::real_count(&pool) != 1
+
+    # The clock runs while virtual: 2.25 s after it began the loop is at
+    # 0.25 s, and the one-shot started 1.1 s after 1000 has ended by 1600.
+    return 20 if AudioVirtual::position(&pool, ambience, 3250, RATE) != 12000
+    return 21 if AudioVirtual::elapsed_frames(&pool, ambience, 3250, RATE) != 108000
+    return 22 if AudioVirtual::position(&pool, shot, 1350, RATE) != 12000 or AudioVirtual::ended(&pool, shot, 1599, RATE)
+    return 23 if not AudioVirtual::ended(&pool, shot, 1600, RATE) or AudioVirtual::ended(&pool, ambience, 90000, RATE)
+    return 24 if AudioVirtual::position(&pool, shot, 9000, RATE) != 23999
+    return 25 if AudioVirtual::position(&pool, ambience, 500, RATE) != 0
+
+    # An ended one-shot is never realized, even before the older loop.
+    return 30 if remove_status(&pool, ambience) != 0
+    return 31 if AudioVirtual::next_virtual(&pool, 1300, RATE) != shot
+    return 32 if AudioVirtual::next_virtual(&pool, 1600, RATE) != AudioVirtual::MAX_SOUNDS
+
+    # Stealing: the engine loses its voice and resumes on its own clock.
+    return 40 if virtualize_status(&pool, engine) != 0 or AudioVirtual::is_real(&pool, engine)
+    return 41 if AudioVirtual::next_virtual(&pool, 5200, RATE) != engine
+    return 42 if AudioVirtual::position(&pool, engine, 5200, RATE) != 0 or AudioVirtual::position(&pool, engine, 5700, RATE) != 24000
+
+    # Unknown slots are refused and removed slots are reused.
+    return 50 if realize_status(&pool, ambience) != 1 or virtualize_status(&pool, 99) != 1 or remove_status(&pool, ambience) != 1
+    return 51 if add_status(&pool, 0, true, 10, 0) != ambience
+
+    # Bounded: 32 sounds, then Capacity.
+    full: mutable AudioVirtual::Pool = AudioVirtual::Pool()
+    added: usize =
+        for index in 0..<40 |count: usize = 0, full| -> count:
+            count <- count + 1 if add_status(&full, 0, true, 10, 0) < AudioVirtual::MAX_SOUNDS
+    return 60 if added != AudioVirtual::MAX_SOUNDS or add_error(&full, 10) != 2
+    0
