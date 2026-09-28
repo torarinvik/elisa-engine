@@ -6,10 +6,12 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import json
 import math
 import os
 from pathlib import Path, PurePosixPath
 import re
+import shlex
 import struct
 import subprocess
 import sys
@@ -23,6 +25,12 @@ from fbx_surface_texture import decode_png_rgba
 from fbx_surface_texture_self_test import validate_surface_texture_decoder
 from fbx_test_fixtures import write_two_material_mesh, write_two_mesh_scene
 from png_image import encode_png
+from cook_cache import atomic_write_json, compiler_identity, content_fingerprint, local_source_closure, sha256_file
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover - Windows cooker use has no POSIX advisory locks.
+    fcntl = None
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,7 +76,7 @@ def validate_asset_key(value: str) -> str:
 
 
 
-def build_cooker(build_dir: Path) -> Path:
+def build_cooker() -> Path:
     dependency = ROOT / "dependencies/ufbx"
     meshoptimizer = ROOT / "dependencies/meshoptimizer"
     mikktspace = ROOT / "dependencies/mikktspace"
@@ -87,21 +95,68 @@ def build_cooker(build_dir: Path) -> Path:
     indexgenerator = meshoptimizer / "indexgenerator.cpp"
     if not all(path.is_file() for path in (meshoptimizer / "meshoptimizer.h", simplifier, vcache, analyzer, vfetch, indexgenerator)):
         raise ValueError("missing pinned meshoptimizer stages; run python3 scripts/fetch_dependencies.py")
-    cc = os.environ.get("CC", "cc")
-    cxx = os.environ.get("CXX", "c++")
-    object_file = build_dir / "ufbx.o"
-    mikktspace_object_file = build_dir / "mikktspace.o"
-    executable = build_dir / "fbx-asset-cooker"
-    run([cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
-    run([cc, "-std=c99", "-O2", "-I", str(mikktspace), "-c", str(mikktspace_source),
-        "-o", str(mikktspace_object_file)])
-    run([cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer),
-        "-I", str(mikktspace), "-I", str(ROOT / "native"),
-        str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(vcache), str(analyzer),
-        str(vfetch), str(indexgenerator),
-        str(meshoptimizer / "allocator.cpp"), str(object_file), str(mikktspace_object_file),
-        "-o", str(executable)])
-    return executable
+    cc = shlex.split(os.environ.get("CC", "cc"))
+    cxx = shlex.split(os.environ.get("CXX", "c++"))
+    translation_units = [source, mikktspace_source, ROOT / "native/fbx_asset_cooker.cpp",
+        simplifier, vcache, analyzer, vfetch, indexgenerator, meshoptimizer / "allocator.cpp"]
+    include_dirs = [dependency, meshoptimizer, mikktspace, ROOT / "native"]
+    source_files = local_source_closure(translation_units, include_dirs)
+    identity = {
+        "format": 1,
+        "cc": compiler_identity(shlex.join(cc)),
+        "cxx": compiler_identity(shlex.join(cxx)),
+        "c_commands": ["-std=c99", "-O2", "-I", str(dependency)],
+        "cxx_commands": ["-std=c++17", "-O2", *("-I " + str(path) for path in include_dirs)],
+        "sources": [{"path": str(path.relative_to(ROOT)), "sha256": sha256_file(path)}
+            for path in source_files],
+    }
+    fingerprint = content_fingerprint(identity)
+    cache_root = ROOT / "build/asset-cooker-cache"
+    cache_root.mkdir(parents=True, exist_ok=True)
+    executable = cache_root / ("fbx-asset-cooker-" + fingerprint + (".exe" if os.name == "nt" else ""))
+    record = executable.with_name(executable.name + ".json")
+    lock_path = executable.with_name(executable.name + ".lock")
+    with lock_path.open("a+b") as lock:
+        if fcntl is not None:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        try:
+            reason = "no recorded binary"
+            if executable.is_file() and record.is_file():
+                try:
+                    cached = json.loads(record.read_text(encoding="utf-8"))
+                    if (cached.get("fingerprint") == fingerprint and
+                            cached.get("binary_sha256") == sha256_file(executable) and
+                            (os.name == "nt" or os.access(executable, os.X_OK))):
+                        print(f"FBX native cooker cache hit: {fingerprint[:12]}", flush=True)
+                        return executable
+                    reason = "cached binary failed integrity check"
+                except (OSError, UnicodeError, json.JSONDecodeError, AttributeError):
+                    reason = "cached record is missing or invalid"
+            elif executable.exists() or record.exists():
+                reason = "cached binary or record is missing"
+            print(f"FBX native cooker cache miss ({reason}); compiling {fingerprint[:12]}", flush=True)
+            with tempfile.TemporaryDirectory(prefix="elisa-fbx-cooker-build-", dir=cache_root) as temporary:
+                stage = Path(temporary)
+                object_file = stage / "ufbx.o"
+                mikktspace_object_file = stage / "mikktspace.o"
+                staged_executable = stage / executable.name
+                run([*cc, "-std=c99", "-O2", "-I", str(dependency), "-c", str(source), "-o", str(object_file)])
+                run([*cc, "-std=c99", "-O2", "-I", str(mikktspace), "-c", str(mikktspace_source),
+                    "-o", str(mikktspace_object_file)])
+                run([*cxx, "-std=c++17", "-O2", "-I", str(dependency), "-I", str(meshoptimizer),
+                    "-I", str(mikktspace), "-I", str(ROOT / "native"),
+                    str(ROOT / "native/fbx_asset_cooker.cpp"), str(simplifier), str(vcache), str(analyzer),
+                    str(vfetch), str(indexgenerator), str(meshoptimizer / "allocator.cpp"),
+                    str(object_file), str(mikktspace_object_file), "-o", str(staged_executable)])
+                if not staged_executable.is_file() or staged_executable.stat().st_size == 0:
+                    raise RuntimeError("C++ compiler did not produce the FBX asset cooker")
+                os.replace(staged_executable, executable)
+            atomic_write_json(record, {"fingerprint": fingerprint,
+                "binary_sha256": sha256_file(executable)})
+            return executable
+        finally:
+            if fcntl is not None:
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
 
 
 def write_grid_fixture(path: Path, cells_per_side: int, two_materials: bool = False) -> None:
@@ -244,7 +299,7 @@ def main(arguments: list[str]) -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="elisa-fbx-cooker-") as temporary:
             directory = Path(temporary)
-            cooker = build_cooker(directory)
+            cooker = build_cooker()
             if options.self_test:
                 validate_surface_texture_decoder()
                 tangent_test = subprocess.run([sys.executable,

@@ -9,11 +9,26 @@ mismatches the importer, so the runner itself stays small.
 
 from __future__ import annotations
 
+import ast
+import importlib.metadata
+import json
+import os
 from pathlib import Path, PurePosixPath
+import platform
+import shlex
 import sys
+import time
+import uuid
 from typing import Callable
+from urllib.parse import unquote, urlsplit
+
+from cook_cache import (atomic_write_json, compiler_identity, content_fingerprint,
+    local_source_closure, sha256_file)
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
+CACHE_FORMAT_VERSION = 1
+GLB_JSON_CHUNK = 0x4E4F534A
+_VERSION_CACHE: dict[str, dict[str, str]] = {}
 
 
 class BuildConfigurationError(Exception):
@@ -239,15 +254,337 @@ def asset_cook_order(project: Path, outputs: list[Path], dependencies: list[list
     return order
 
 
-def cook_declared_assets(project: Path, config: dict[str, object], run: Callable[..., int]) -> int:
+def _declared_outputs(project: Path, declaration: dict[str, object], index: int) -> list[Path]:
+    outputs = [declared_project_path(project, declaration.get("output"),
+        f"asset_cooks[{index}].output", must_exist=False)]
+    texture_output = declaration.get("texture_output")
+    if texture_output is not None:
+        outputs.append(declared_project_path(project, texture_output,
+            f"asset_cooks[{index}].texture_output", must_exist=False))
+    return outputs
+
+
+def _read_gltf_document(source: Path, importer: str) -> dict[str, object] | None:
+    try:
+        if importer == "gltf":
+            value = json.loads(source.read_text(encoding="utf-8"))
+        else:
+            with source.open("rb") as stream:
+                header = stream.read(12)
+                if len(header) != 12 or header[:4] != b"glTF":
+                    return None
+                file_size = source.stat().st_size
+                offset = 12
+                value = None
+                while offset + 8 <= file_size:
+                    chunk_header = stream.read(8)
+                    if len(chunk_header) != 8:
+                        return None
+                    length = int.from_bytes(chunk_header[:4], "little")
+                    chunk_type = int.from_bytes(chunk_header[4:], "little")
+                    offset += 8
+                    if length > file_size - offset:
+                        return None
+                    if chunk_type == GLB_JSON_CHUNK:
+                        payload = stream.read(length)
+                        value = json.loads(payload.rstrip(b"\0 \t\r\n").decode("utf-8"))
+                        break
+                    stream.seek(length, os.SEEK_CUR)
+                    offset += length
+        return value if isinstance(value, dict) else None
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
+        # The cooker will give the detailed malformed-source error. The source
+        # bytes still participate in the fingerprint, so malformed edits miss.
+        return None
+
+
+def _referenced_project_files(project: Path, source: Path, importer: str) -> list[Path]:
+    if importer not in ("gltf", "glb"):
+        return []
+    document = _read_gltf_document(source, importer)
+    if document is None:
+        return []
+    found: set[Path] = set()
+    for section in ("buffers", "images"):
+        resources = document.get(section, [])
+        if not isinstance(resources, list):
+            continue
+        for resource in resources:
+            if not isinstance(resource, dict):
+                continue
+            uri = resource.get("uri")
+            if not isinstance(uri, str) or uri.startswith("data:"):
+                continue
+            parsed = urlsplit(uri)
+            if parsed.scheme or parsed.netloc or parsed.query or parsed.fragment or not parsed.path:
+                raise BuildConfigurationError(
+                    f"{source.relative_to(project)} contains a non-local {section} URI")
+            path = (source.parent / unquote(parsed.path)).resolve()
+            if not path.is_relative_to(project):
+                raise BuildConfigurationError(
+                    f"{source.relative_to(project)} references a file outside the project")
+            if not path.is_file():
+                raise BuildConfigurationError(
+                    f"{source.relative_to(project)} references a missing file: {path.relative_to(project)}")
+            found.add(path)
+    return sorted(found)
+
+
+def _cook_inputs(project: Path, declaration: dict[str, object], index: int,
+    dependencies: list[Path]) -> list[Path]:
+    importer = declaration.get("importer", "fbx")
+    inputs: set[Path] = set(dependencies)
+    source_value = declaration.get("source")
+    if isinstance(source_value, str):
+        source = declared_project_path(project, source_value,
+            f"asset_cooks[{index}].source", must_exist=True)
+        inputs.add(source)
+        inputs.update(_referenced_project_files(project, source, str(importer)))
+    animation_source = declaration.get("animation_source")
+    if animation_source is not None:
+        inputs.add(declared_project_path(project, animation_source,
+            f"asset_cooks[{index}].animation_source", must_exist=True))
+    textures = declaration.get("textures", {})
+    if isinstance(textures, dict):
+        for section, value in textures.items():
+            inputs.add(declared_project_path(project, value,
+                f"asset_cooks[{index}].textures.{section}", must_exist=True))
+    return sorted(inputs)
+
+
+def _python_tool_closure(cooker: Path, importer: str) -> list[Path]:
+    scripts = ENGINE_ROOT / "scripts"
+    pending = [cooker]
+    if importer == "glb":
+        # These are launched as subprocesses, so AST imports in the outer
+        # cooker cannot discover them.
+        pending.extend((scripts / "cook_glb_asset_blender.py", scripts / "cook_fbx_asset.py"))
+    visited: set[Path] = set()
+    while pending:
+        source = pending.pop().resolve()
+        if source in visited:
+            continue
+        if not source.is_file() or not source.is_relative_to(scripts.resolve()):
+            raise BuildConfigurationError(f"asset cooker script is missing or outside scripts/: {source}")
+        visited.add(source)
+        try:
+            tree = ast.parse(source.read_text(encoding="utf-8"), filename=str(source))
+        except (OSError, UnicodeError, SyntaxError) as error:
+            raise BuildConfigurationError(f"cannot identify asset cooker {source.name}: {error}") from error
+        for node in ast.walk(tree):
+            module_names: list[str] = []
+            if isinstance(node, ast.Import):
+                module_names.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                module_names.append(node.module)
+            for name in module_names:
+                module = name.lstrip(".")
+                if not module:
+                    continue
+                candidate = scripts.joinpath(*module.split(".")).with_suffix(".py")
+                if candidate.is_file() and candidate not in visited:
+                    pending.append(candidate)
+    return sorted(visited)
+
+
+def _external_tool_identity(importer: str, declaration: dict[str, object]) -> dict[str, object]:
+    identity: dict[str, object] = {
+        "python": str(Path(sys.executable).resolve()),
+        "python_version": sys.version,
+        "platform": platform.platform(),
+    }
+    needs_pillow = importer == "image" or (
+        importer == "glb" and declaration.get("texture_max_size") is not None)
+    if needs_pillow:
+        try:
+            identity["pillow"] = importlib.metadata.version("Pillow")
+        except importlib.metadata.PackageNotFoundError:
+            identity["pillow"] = "not-installed"
+    if importer in ("fbx", "glb"):
+        for variable, default in (("CC", "cc"), ("CXX", "c++")):
+            command = os.environ.get(variable, default)
+            if command not in _VERSION_CACHE:
+                _VERSION_CACHE[command] = compiler_identity(command)
+            identity[variable] = _VERSION_CACHE[command]
+    if importer == "glb":
+        from cook_glb_asset import blender_executable
+        command = shlex.quote(str(Path(blender_executable()).resolve()))
+        if command not in _VERSION_CACHE:
+            _VERSION_CACHE[command] = compiler_identity(command)
+        identity["blender"] = _VERSION_CACHE[command]
+    return identity
+
+
+def _cook_fingerprint(project: Path, declaration: dict[str, object], index: int,
+    cook: tuple[Path, str, list[str], list[Path]]) -> str:
+    output, _, command, dependencies = cook
+    importer = str(declaration.get("importer", "fbx"))
+    cooker = Path(command[1]).resolve()
+    tool_files = _python_tool_closure(cooker, importer)
+    if importer in ("fbx", "glb"):
+        dependency = ENGINE_ROOT / "dependencies/ufbx"
+        meshoptimizer = ENGINE_ROOT / "dependencies/meshoptimizer"
+        mikktspace = ENGINE_ROOT / "dependencies/mikktspace"
+        tool_files.extend(local_source_closure(
+            [dependency / "ufbx.c", mikktspace / "mikktspace.c",
+                ENGINE_ROOT / "native/fbx_asset_cooker.cpp",
+                meshoptimizer / "simplifier.cpp", meshoptimizer / "vcacheoptimizer.cpp",
+                meshoptimizer / "indexanalyzer.cpp", meshoptimizer / "vfetchoptimizer.cpp",
+                meshoptimizer / "indexgenerator.cpp", meshoptimizer / "allocator.cpp"],
+            [dependency, meshoptimizer, mikktspace, ENGINE_ROOT / "native"]))
+    tool_files.extend((Path(__file__).resolve(), ENGINE_ROOT / "scripts/cook_cache.py"))
+    tool_files = sorted(set(tool_files))
+    tools = [{"path": path.relative_to(ENGINE_ROOT).as_posix(), "sha256": sha256_file(path)}
+        for path in tool_files]
+    source_inputs = [{"path": path.relative_to(project).as_posix(), "sha256": sha256_file(path)}
+        for path in _cook_inputs(project, declaration, index, dependencies)]
+    identity = {
+        "cache_format": CACHE_FORMAT_VERSION,
+        "declaration": declaration,
+        "outputs": [path.relative_to(project).as_posix()
+            for path in _declared_outputs(project, declaration, index)],
+        "inputs": source_inputs,
+        "tools": tools,
+        "toolchain": _external_tool_identity(importer, declaration),
+    }
+    return content_fingerprint(identity)
+
+
+def _read_cache(path: Path) -> dict[str, object]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        print(f"Asset cook cache miss: ignoring unreadable cache {path}", flush=True)
+        return {}
+    if not isinstance(value, dict) or value.get("format") != CACHE_FORMAT_VERSION:
+        print("Asset cook cache miss: cache format changed", flush=True)
+        return {}
+    entries = value.get("entries", {})
+    return entries if isinstance(entries, dict) else {}
+
+
+def _cache_hit(project: Path, entry: object, fingerprint: str,
+    expected_outputs: list[Path]) -> tuple[bool, str]:
+    if not isinstance(entry, dict):
+        return False, "no previous cook record"
+    if entry.get("fingerprint") != fingerprint:
+        return False, "source, options, dependency or tool identity changed"
+    outputs = entry.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        return False, "output record is missing"
+    recorded_paths = [record.get("path") if isinstance(record, dict) else None for record in outputs]
+    expected_paths = [path.relative_to(project).as_posix() for path in expected_outputs]
+    if recorded_paths != expected_paths:
+        return False, "output record does not match declared outputs"
+    for record in outputs:
+        if not isinstance(record, dict):
+            return False, "output record is invalid"
+        relative = record.get("path")
+        expected_hash = record.get("sha256")
+        if not isinstance(relative, str) or not isinstance(expected_hash, str):
+            return False, "output record is invalid"
+        path = (project / relative).resolve()
+        if not path.is_relative_to(project) or not path.is_file():
+            return False, f"generated output is missing: {relative}"
+        try:
+            if sha256_file(path) != expected_hash:
+                return False, f"generated output changed: {relative}"
+        except OSError:
+            return False, f"generated output cannot be read: {relative}"
+    return True, ""
+
+
+def _staged_outputs(outputs: list[Path]) -> dict[Path, Path]:
+    staged: dict[Path, Path] = {}
+    for output in outputs:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        staged[output] = output.with_name(
+            f".{output.stem}.elisa-cook-{uuid.uuid4().hex}{output.suffix}")
+    return staged
+
+
+def cook_declared_assets(project: Path, config: dict[str, object], run: Callable[..., int],
+    *, force: bool = False) -> int:
+    project = project.expanduser().resolve()
     declarations = config.get("asset_cooks", [])
     if not isinstance(declarations, list) or len(declarations) > 64:
         raise BuildConfigurationError("project 'asset_cooks' must be an array of at most 64 entries")
+    if not declarations:
+        return 0
     cooks = [asset_cook_command(project, declaration, index) for index, declaration in enumerate(declarations)]
+    all_outputs = [path for index, declaration in enumerate(declarations)
+        for path in _declared_outputs(project, declaration, index)]
+    if len(set(all_outputs)) != len(all_outputs):
+        raise BuildConfigurationError("asset cooks must not publish to the same output path")
+    source_inputs: set[Path] = set()
+    for index, declaration in enumerate(declarations):
+        assert isinstance(declaration, dict)
+        for field in ("source", "animation_source"):
+            value = declaration.get(field)
+            if value is not None:
+                source_inputs.add(declared_project_path(project, value,
+                    f"asset_cooks[{index}].{field}", must_exist=True))
+        textures = declaration.get("textures", {})
+        if isinstance(textures, dict):
+            for section, value in textures.items():
+                source_inputs.add(declared_project_path(project, value,
+                    f"asset_cooks[{index}].textures.{section}", must_exist=True))
+    if set(all_outputs) & source_inputs:
+        raise BuildConfigurationError("an asset cook output cannot overwrite a declared source or texture")
+    cache_path = project / "build/.elisa-asset-cook-cache.json"
+    entries = _read_cache(cache_path)
+    cook_seconds = 0.0
+    cache_hits = 0
+    cache_misses = 0
     for index in asset_cook_order(project, [cook[0] for cook in cooks], [cook[3] for cook in cooks]):
-        _, label, command, _ = cooks[index]
-        print(f"Cooking project asset: {label}", flush=True)
-        status = run(command, cwd=project)
+        output, label, command, _ = cooks[index]
+        declaration = declarations[index]
+        assert isinstance(declaration, dict)
+        entry_key = output.relative_to(project).as_posix()
+        fingerprint = _cook_fingerprint(project, declaration, index, cooks[index])
+        outputs = _declared_outputs(project, declaration, index)
+        hit, reason = _cache_hit(project, entries.get(entry_key), fingerprint, outputs)
+        if hit and not force:
+            cache_hits += 1
+            print(f"Asset cook cache hit: {label}", flush=True)
+            continue
+        cache_misses += 1
+        if force:
+            reason = "forced recook"
+        print(f"Asset cook cache miss ({reason}): {label}", flush=True)
+        staged = _staged_outputs(outputs)
+        replacements = {str(final): str(temporary) for final, temporary in staged.items()}
+        staged_command = [replacements.get(argument, argument) for argument in command]
+        started = time.perf_counter()
+        try:
+            status = run(staged_command, cwd=project)
+        except BaseException:
+            for temporary in staged.values():
+                temporary.unlink(missing_ok=True)
+            raise
+        cook_seconds += time.perf_counter() - started
         if status != 0:
+            for temporary in staged.values():
+                temporary.unlink(missing_ok=True)
             return status
+        output_records = []
+        for final, temporary in staged.items():
+            if not temporary.is_file() or temporary.stat().st_size == 0:
+                for path in staged.values():
+                    path.unlink(missing_ok=True)
+                raise BuildConfigurationError(f"asset cooker did not produce a valid output: {final}")
+        try:
+            for final, temporary in staged.items():
+                os.replace(temporary, final)
+                output_records.append({"path": final.relative_to(project).as_posix(),
+                    "sha256": sha256_file(final)})
+        finally:
+            for temporary in staged.values():
+                temporary.unlink(missing_ok=True)
+        entries[entry_key] = {"fingerprint": fingerprint, "outputs": output_records}
+        atomic_write_json(cache_path, {"format": CACHE_FORMAT_VERSION, "entries": entries})
+    print(f"Asset cooks: {cache_hits} cache hit(s), {cache_misses} cook(s), "
+        f"{cook_seconds:.2f}s cooker time", flush=True)
     return 0

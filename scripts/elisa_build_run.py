@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import asset_cooks
@@ -236,6 +237,8 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
             help="compile only modules included by the entry source")
         command.add_argument("--native-test-probes", action="store_true",
             help="compile test-only native adapter fault-injection probes")
+        command.add_argument("--force-cook-assets", action="store_true",
+            help="ignore the asset cook cache and regenerate every declared asset")
         command.add_argument("--optimize", action="store_true",
             help="compile the native runtime with -O2 (or set ELISA_NATIVE_OPTIMIZE=1)")
     return parser.parse_args(argv)
@@ -268,8 +271,8 @@ def load_project_config(project: Path) -> dict[str, object]:
     return value
 
 
-def cook_declared_assets(project: Path, config: dict[str, object]) -> int:
-    return asset_cooks.cook_declared_assets(project, config, run_command)
+def cook_declared_assets(project: Path, config: dict[str, object], *, force: bool = False) -> int:
+    return asset_cooks.cook_declared_assets(project, config, run_command, force=force)
 
 
 def application_settings(config: dict[str, object]) -> dict[str, object]:
@@ -438,9 +441,6 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
     abi_status = validate_wicked_archive_abi(paths, cxx)
     if abi_status != 0:
         return abi_status, None, None
-    status = cook_declared_assets(project, config)
-    if status != 0:
-        return status, None, None
     with tempfile.TemporaryDirectory(prefix="Elisa application build ", dir=output.parent) as temporary_directory:
         build_dir = Path(temporary_directory)
         wrapper = build_dir / "application_entry.elisa"
@@ -448,14 +448,23 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         staged_output = build_dir / "application"
         write_entry_wrapper(wrapper, main_source,
             include_public_runtime=not args.no_public_runtime)
+        stage_started = time.perf_counter()
         status = compile_archive(compiler, wrapper, archive)
+        print(f"Elisa archive compile: {time.perf_counter() - stage_started:.2f}s", flush=True)
         if status != 0:
             return status, None, None
         audit_archive(archive)
+        stage_started = time.perf_counter()
+        status = cook_declared_assets(project, config, force=args.force_cook_assets)
+        print(f"Asset cooking stage: {time.perf_counter() - stage_started:.2f}s", flush=True)
+        if status != 0:
+            return status, None, None
         command = native_link_command(cxx, archive, staged_output, build_dir, paths,
             args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
             runtime_object)
+        stage_started = time.perf_counter()
         status = run_command(command, cwd=project)
+        print(f"Native link: {time.perf_counter() - stage_started:.2f}s", flush=True)
         if status != 0:
             return status, None, None
         if not staged_output.is_file():
@@ -463,6 +472,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staged_output, output)
+    print(f"Application build complete: {output}", flush=True)
     return 0, output, paths["wicked_source"] / "shaders"
 
 
