@@ -29,6 +29,7 @@ struct InstanceSlot {
     std::vector<probe::PickBinding> pick_bindings;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
+    std::vector<uint8_t> animation_curve_modes;
     std::vector<float> morph_default_weights;
     probe::NativeAnimationHandle animation_submission{};
     int32_t animation_clip = -1;

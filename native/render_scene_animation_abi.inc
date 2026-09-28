@@ -12,6 +12,51 @@ float clip_phase(const InstanceSlot& instance, int32_t clip_index, float time) {
     return std::clamp(time / clip.duration_seconds, 0.0f, 1.0f);
 }
 
+// Clip policy is immutable while any playback or outgoing blend is active.
+// Mode 1 currently supports non-looping uniformly sampled actions only.
+extern "C" int32_t elisa_render_scene_v1_set_animation_interpolation(
+    int64_t handle, const char* clip_name, int32_t mode) {
+    if (mode < 0 || mode > 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    InstanceSlot& instance = state.instances[slot];
+    const int32_t index = find_animation_clip(instance, clip_name);
+    if (index < 0 || instance.animation_clip >= 0 || instance.previous_animation_clip >= 0 ||
+        !instance.interrupted_joint_pose.empty() || instance.animation_pose_overridden ||
+        instance.root_motion_exit_pending) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const auto& clip = instance.animation_clips[size_t(index)];
+    const size_t count = instance.skin_joints.size();
+    if (mode == 1) {
+        if (!count || !clip.frame_count || !clip.sample_rate ||
+            clip.local_transforms.size() != size_t(clip.frame_count) * count * 10 ||
+            !finite(clip.duration_seconds) || clip.duration_seconds < 0 ||
+            std::abs(double(clip.duration_seconds) * clip.sample_rate - (clip.frame_count - 1)) > 0.001)
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        for (uint32_t f = 0; f < clip.frame_count; ++f) {
+            for (size_t j = 0; j < count; ++j) {
+                const float* a = clip.local_transforms.data() + (size_t(f) * count + j) * 10;
+                const float* b = clip.local_transforms.data() + (size_t(std::min(f + 1, clip.frame_count - 1)) * count + j) * 10;
+                // Bound arithmetic and disallow singular/sign-crossing scales.
+                for (size_t c = 0; c < 10; ++c) {
+                    if (!finite(a[c]) || std::abs(a[c]) > 1e12f ||
+                        (c >= 7 && (std::abs(a[c]) < 1e-6f || std::signbit(a[c]) != std::signbit(b[c]))))
+                        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+                }
+                float checked[10];
+                if (!elisa::animation::interpolate_shape_transform(a, a, b, b, 0.5f, checked))
+                    return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+            }
+        }
+    }
+    instance.animation_curve_modes.resize(instance.animation_clips.size(), 0);
+    instance.animation_curve_modes[size_t(index)] = uint8_t(mode);
+    return ELISA_RENDER_SCENE_OK;
+}
+
 int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, float speed,
     float blend_seconds, int32_t flags, float start_phase = -1.0f) {
     if ((loop != 0 && loop != 1) || !finite(speed) || speed < -16.0f || speed > 16.0f ||
@@ -30,6 +75,8 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
     if (next_clip < 0 || instance.joint_entities.size() != instance.skin_joints.size()) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
+    if (loop != 0 && size_t(next_clip) < instance.animation_curve_modes.size() &&
+        instance.animation_curve_modes[size_t(next_clip)] == 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const bool has_current = instance.animation_clip >= 0 &&
         instance.animation_clip < int32_t(instance.animation_clips.size());
     if (has_current && next_clip == instance.animation_clip &&

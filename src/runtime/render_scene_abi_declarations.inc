@@ -91,6 +91,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
         @callconv(c)
+        extern elisa_render_scene_v1_set_animation_interpolation(handle: i64, clip_name: cstr, mode: i32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32) -> i32
         @callconv(c)

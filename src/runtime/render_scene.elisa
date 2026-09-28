@@ -318,6 +318,11 @@ module RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
+        # Configure before playback. Cubic supports non-looping uniform clips.
+        # Restored instances and replacement assets start with linear sampling.
+        def set_animation_cubic(handle: InstanceHandle, clip_name: cstr, enabled: bool) -> void error[RenderSceneError]:
+            mode: i32 = 1 if enabled else 0
+            try check_status(elisa_render_scene_v1_set_animation_interpolation(handle.native_value, clip_name, mode))
         # Negative speed plays a clip backward; looping playback wraps in either direction.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:

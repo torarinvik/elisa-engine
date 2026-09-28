@@ -2,6 +2,7 @@
 #include <chrono>
 #include <cstdio>
 #include "animation_rotation_interpolation.h"
+#include "animation_cubic_interpolation.h"
 #include "adaptive_resolution.h"
 #include "Utility/meshoptimizer/meshoptimizer.h"
 #include "application_abi.h"

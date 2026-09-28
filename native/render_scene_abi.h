@@ -298,6 +298,8 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
 int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low);
 int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
+// Interpolation: 0 linear/SLERP; 1 shape-preserving cubic (non-looping only).
+int32_t elisa_render_scene_v1_set_animation_interpolation(int64_t handle, const char* clip_name, int32_t mode);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_play_animation_blended(

@@ -1,5 +1,6 @@
 // Private implementation fragment: internal animation sampling and pose submission.
 void clear_animation_state(InstanceSlot& instance) {
+    instance.animation_curve_modes.clear();
     instance.displayed_joint_pose.clear();
     instance.animation_pose_overridden = false;
     instance.interrupted_joint_pose.clear();
@@ -126,6 +127,16 @@ void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, flo
     const size_t joint_count = instance.skin_joints.size();
     const float* first = clip.local_transforms.data() + (size_t(first_frame) * joint_count + joint_index) * 10;
     const float* second = clip.local_transforms.data() + (size_t(second_frame) * joint_count + joint_index) * 10;
+    if (size_t(clip_index) < instance.animation_curve_modes.size() &&
+        instance.animation_curve_modes[size_t(clip_index)] == 1) {
+        const uint32_t before = first_frame > 0 ? first_frame - 1 : 0;
+        const uint32_t after = std::min(second_frame + 1, clip.frame_count - 1);
+        const float* previous = clip.local_transforms.data() + (size_t(before) * joint_count + joint_index) * 10;
+        const float* following = clip.local_transforms.data() + (size_t(after) * joint_count + joint_index) * 10;
+        // The setup API validates all keys before enabling this path.
+        elisa::animation::interpolate_shape_transform(previous, first, second, following, weight, output);
+        return;
+    }
     interpolate_transform(first, second, weight, output);
 }
 
