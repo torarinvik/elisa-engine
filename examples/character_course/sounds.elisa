@@ -18,6 +18,12 @@ module CourseSounds:
         const MUSIC_FAILED: i32 = 4
         const AMBIENCE_FAILED: i32 = 5
 
+        # `start_injected` swaps one path for a missing file so the lifecycle
+        # stress test reaches the real clip and stream failure paths.
+        const INJECT_NONE: i32 = 0
+        const INJECT_CLIP: i32 = 1
+        const INJECT_MUSIC: i32 = 2
+
         # `fire` results: the AudioEvents outcome, or a failure.
         const PLAYED: i32 = 0
         const REPLACED: i32 = 1
@@ -80,14 +86,19 @@ module CourseSounds:
         # Paths are relative to the working directory: the project folder
         # when run from source, Contents/Resources inside the packaged app.
         def start(sounds: mutable Sounds&, session: RuntimeServices::Session&) -> i32:
+            start_injected(sounds, session, INJECT_NONE)
+
+        def start_injected(sounds: mutable Sounds&, session: RuntimeServices::Session&, inject: i32) -> i32:
             return INACTIVE if not RuntimeServices::audio_active(session)
             return DEFINITION_FAILED if not define_events(sounds)
             sounds.live <- true
-            loaded: bool = catch load_clips(sounds):
+            wind_path: cstr = "sounds/missing.wav" if inject == INJECT_CLIP else "sounds/ambience.wav"
+            music_path: cstr = "sounds/missing.wav" if inject == INJECT_MUSIC else "sounds/music.wav"
+            loaded: bool = catch load_clips(sounds, wind_path):
                 ok: true
                 error failure: false
             return CLIP_FAILED if not loaded
-            sounds.music <- catch AudioRuntime::open_stream("sounds/music.wav", true, AudioRuntime::Bus.Music, 0.5):
+            sounds.music <- catch AudioRuntime::open_stream(music_path, true, AudioRuntime::Bus.Music, 0.5):
                 value: value
                 error failure: AudioRuntime::empty_stream()
             return MUSIC_FAILED if AudioRuntime::stream_is_empty(sounds.music)
@@ -250,14 +261,14 @@ module CourseSounds:
             try AudioEvents::set_weights(board, CourseSounds::EVENT_JUMP, 3, 1, 0, 0)
             AudioEvents::set_seed(board, CourseSounds::JUMP_SEED)
 
-        def load_clips(sounds: mutable Sounds&) -> void error[AudioRuntime::AudioError]:
+        def load_clips(sounds: mutable Sounds&, wind_path: cstr) -> void error[AudioRuntime::AudioError]:
             sounds.jump_a <- try AudioRuntime::decode_file("sounds/jump_a.wav")
             sounds.jump_b <- try AudioRuntime::decode_file("sounds/jump_b.wav")
             sounds.land <- try AudioRuntime::decode_file("sounds/land.wav")
             sounds.win <- try AudioRuntime::decode_file("sounds/win.wav")
             sounds.fall <- try AudioRuntime::decode_file("sounds/fall.wav")
             sounds.save <- try AudioRuntime::decode_file("sounds/save.wav")
-            sounds.wind <- try AudioRuntime::decode_file("sounds/ambience.wav")
+            sounds.wind <- try AudioRuntime::decode_file(wind_path)
 
         # A clip that never loaded (start failed part-way) needs no release.
         def release(clip: AudioRuntime::ClipHandle) -> bool:
