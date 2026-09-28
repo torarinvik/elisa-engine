@@ -192,6 +192,36 @@ module Pose:
             pose.models[end] <- new_end
             true
 
+        # Model-space orientation control with an independent weight. Connected
+        # descendants follow rigidly; unrelated branches and joint origins stay
+        # untouched. Invalid requests are rejected before any pose mutation.
+        def pose_orient_joint(pose: mutable Pose&, skeleton: Skeleton&, joint: usize,
+            target: Geometry::Quat, weight: f32) -> bool error[PoseError]:
+            raise PoseError.ShapeMismatch if pose.count != skeleton.count
+            raise PoseError.InvalidSkeleton if not skeleton_valid(skeleton) or not pose_valid(pose)
+            raise PoseError.JointOutOfBounds if joint >= pose.count
+            return false if weight != weight or weight < 0.0 or weight > 1.0
+            length: f32 = Geometry::quat_length(target)
+            return false if not Geometry::quat_is_finite(target) or length < 0.999 or length > 1.001
+            for index in 0..<pose.count:
+                model: Geometry::Transform = pose.models[index]
+                model_length: f32 = Geometry::quat_length(model.rotation)
+                return false if not Geometry::transform_is_valid(model) or model_length < 0.999 or model_length > 1.001 or model_length - model_length != 0.0
+            return true if weight == 0.0
+            before: Geometry::Transform = pose.models[joint]
+            rotation: Geometry::Quat = Rotation::slerp(before.rotation, target, weight)
+            delta: Geometry::Quat = Geometry::quat_normalize(Geometry::quat_mul(rotation, Geometry::quat_conjugate(Geometry::quat_normalize(before.rotation))))
+            for index in 0..<pose.count |pose|:
+                ancestor: mutable i64 = skeleton.joints[index].parent
+                while ancestor >= 0 and ancestor.usize() != joint:
+                    ancestor <- skeleton.joints[ancestor.usize()].parent
+                if ancestor >= 0:
+                    child: Geometry::Transform = pose.models[index]
+                    relative: Geometry::Vec3 = Geometry::vec3_sub(child.position, before.position)
+                    pose.models[index] <- Geometry::Transform{position: Geometry::vec3_add(before.position, Geometry::quat_rotate(delta, relative)), rotation: Geometry::quat_normalize(Geometry::quat_mul(delta, child.rotation)), scale: child.scale}
+            pose.models[joint] <- Geometry::Transform{position: before.position, rotation: rotation, scale: before.scale}
+            true
+
         # Stateful variant: memory advances only when the pose solve succeeds.
         # Seed a limb with its mocap bend; reset on a coordinate-space change.
         def pose_correct_limb_stable(pose: mutable Pose&, skeleton: Skeleton&, upper: usize, lower: usize, end: usize, target: Geometry::Vec3, bend_hint: Geometry::Vec3, memory: mutable Ik::BendMemory&) -> bool error[PoseError]:

@@ -39,3 +39,35 @@ module IkFk:
                 error failure: Pose::Pose{models: zeroed, count: 0}
             raise BlendError.InvalidPose if evaluated.count == 0
             evaluated
+
+        # Position and orientation have independent weights. Position weight
+        # blends local chain rotations, retaining FK offsets; the end's model
+        # orientation is then restored or steered explicitly. Pose and bend
+        # memory commit together only after every operation succeeds.
+        def solve_limb(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&,
+            upper: usize, lower: usize, end: usize, target: Geometry::Vec3,
+            orientation: Geometry::Quat, position_weight: f32, orientation_weight: f32,
+            bend_hint: Geometry::Vec3, memory: mutable Ik::BendMemory&) -> bool error[BlendError, Pose::PoseError]:
+            raise BlendError.InvalidWeight if position_weight != position_weight or position_weight < 0.0 or position_weight > 1.0 or orientation_weight != orientation_weight or orientation_weight < 0.0 or orientation_weight > 1.0
+            raise Pose::PoseError.ShapeMismatch if pose.count != skeleton.count
+            raise Pose::PoseError.InvalidSkeleton if not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            raise Pose::PoseError.JointOutOfBounds if upper >= pose.count or lower >= pose.count or end >= pose.count
+            return false if skeleton.joints[lower].parent != upper.i64() or skeleton.joints[end].parent != lower.i64()
+            length: f32 = Geometry::quat_length(orientation)
+            return false if not Geometry::quat_is_finite(orientation) or length < 0.999 or length > 1.001 or not Geometry::vec3_is_finite(target) or not Geometry::vec3_is_finite(bend_hint)
+            candidate: mutable Pose::Pose = pose
+            bend: mutable Ik::BendMemory = memory
+            if position_weight > 0.0:
+                solved: bool = try Pose::pose_correct_limb_stable(&candidate, skeleton, upper, lower, end, target, bend_hint, &bend)
+                return false if not solved
+                weights: mutable f32[AnimationLimits::MAX_JOINTS] = zeroed
+                weights[upper] <- position_weight
+                weights[lower] <- position_weight
+                weights[end] <- position_weight
+                candidate <- try blend_rotations(skeleton, pose, candidate, weights)
+            desired: Geometry::Quat = Rotation::slerp(pose.models[end].rotation, orientation, orientation_weight)
+            oriented: bool = try Pose::pose_orient_joint(&candidate, skeleton, end, desired, 1.0)
+            return false if not oriented
+            pose <- candidate
+            memory <- bend
+            true

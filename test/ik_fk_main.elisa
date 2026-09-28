@@ -68,6 +68,31 @@ def exercise() -> i32 error[IkFk::BlendError, Pose::PoseError]:
     impossible: bool = try Pose::pose_correct_limb_stable(&corrected, skeleton, 0, 2, 4, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}, &memory)
     return 24 if impossible or Geometry::vec3_dot(before_memory.bend, memory.bend) < 0.9999
     return 25 if not near(before_pose.models[4].position.x, corrected.models[4].position.x)
+    # A finger descendant follows the independently controlled wrist while
+    # the other root remains unchanged. Test orientation-only, positional-only,
+    # partial orientation and failed target atomicity.
+    oriented_skeleton: mutable Pose::Skeleton = skeleton
+    finger: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}
+    return 26 if not Pose::skeleton_add(&oriented_skeleton, 4, finger)
+    source: Pose::Pose = try Pose::pose_evaluate(oriented_skeleton)
+    wrist_turn: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}
+    controlled: mutable Pose::Pose = source
+    control_memory: mutable Ik::BendMemory = Ik::bend_memory()
+    oriented: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, Geometry::Vec3{x: 99.0, y: 0.0, z: 0.0}, wrist_turn, 0.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 27 if not oriented or not near(controlled.models[4].position.x, 2.0) or not near(controlled.models[5].position.x, 2.0) or not near(controlled.models[5].position.y, 0.25)
+    return 28 if not near(controlled.models[3].position.x, source.models[3].position.x)
+    controlled <- source
+    positional: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, wrist_turn, 1.0, 0.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 29 if not positional or not near(controlled.models[4].position.x, 1.0) or not near(controlled.models[4].position.y, 1.0) or not near(controlled.models[4].rotation.w, 1.0)
+    controlled <- source
+    mixed: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, wrist_turn, 1.0, 0.5, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 30 if not mixed or not near(controlled.models[5].position.x, 1.1767767) or not near(controlled.models[5].position.y, 1.1767767)
+    control_before: Pose::Pose = controlled
+    memory_before: Ik::BendMemory = control_memory
+    invalid_orientation: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 2.0}, 1.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 31 if invalid_orientation or not near(controlled.models[5].position.x, control_before.models[5].position.x) or Geometry::vec3_dot(memory_before.bend, control_memory.bend) < 0.9999
+    unreachable: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, Geometry::Vec3{x: 99.0, y: 0.0, z: 0.0}, wrist_turn, 1.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 32 if unreachable or not near(controlled.models[5].position.y, control_before.models[5].position.y)
     weights[1] <- 1.1
     rejected: bool = catch IkFk::blend_rotations(skeleton, fk, ik, weights):
         value pose: false
