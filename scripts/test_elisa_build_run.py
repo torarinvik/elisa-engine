@@ -394,6 +394,35 @@ class BuildRunCliTests(unittest.TestCase):
             cached_outputs = record["entries"]["build/cooked/walk.pkg"]["outputs"]
             self.assertEqual([item["path"] for item in cached_outputs], ["build/cooked/walk.pkg"])
 
+    def test_asset_cook_cache_recooks_only_changed_source(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa selective asset cooks ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            assets = project / "assets"
+            assets.mkdir(parents=True)
+            first_source = assets / "first.fbx"
+            second_source = assets / "second.fbx"
+            first_source.write_bytes(b"first version 1")
+            second_source.write_bytes(b"second version 1")
+            config = {"asset_cooks": [
+                {"source": "assets/first.fbx", "asset_path": "assets/first.fbx",
+                    "output": "build/first.pkg"},
+                {"source": "assets/second.fbx", "asset_path": "assets/second.fbx",
+                    "output": "build/second.pkg"},
+            ]}
+            runner = __import__("elisa_build_run")
+            with mocked_asset_cooker(runner) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2)
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2)
+
+                first_source.write_bytes(b"first version 2")
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 3,
+                    "editing one source should leave the other cook cached")
+                changed_command = run.call_args_list[-1].args[0]
+                self.assertEqual(changed_command[2], str(first_source.resolve()))
+
     def test_gltf_external_resources_and_glb_extracted_texture_invalidate_cache(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa cook input dependencies ") as temporary_directory:
             project = Path(temporary_directory) / "Project"
