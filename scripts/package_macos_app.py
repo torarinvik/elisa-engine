@@ -26,6 +26,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from macos_deployment_target import METAL_MINIMUM_MACOS, deployment_targets, format_version
@@ -533,9 +534,11 @@ def main() -> int:
         if icon is None:
             candidate = project / "resources" / "AppIcon.icns"
             icon = candidate if candidate.is_file() else None
+        stage_started = time.perf_counter()
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
             manifest_window(manifest, project), options.shader_root, manifest_notices(manifest, project))
+        print(f"App packaging: {time.perf_counter() - stage_started:.2f}s", flush=True)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1
