@@ -1,0 +1,109 @@
+# Persistent contact anchors in a world-space tangent plane; no pose mutation.
+include "../math/geometry.elisa"
+
+module ContactAnchor:
+    private:
+        @callconv(c)
+        extern expf(value: f32) -> f32
+
+        def finite(value: f32) -> bool:
+            value-value == 0.0
+
+        def tangent(value: Geometry::Vec3, normal: Geometry::Vec3) -> Geometry::Vec3:
+            Geometry::vec3_sub(value,Geometry::vec3_scale(normal,Geometry::vec3_dot(value,normal)))
+
+    public:
+        error AnchorError:
+            InvalidInput
+
+        struct Settings:
+            acquire_clearance: f32
+            release_clearance: f32
+            acquire_speed: f32
+            release_speed: f32
+            confirm_seconds: f32
+            acquire_seconds: f32
+            release_seconds: f32
+            maximum_correction: f32
+
+        struct State:
+            initialized: mutable bool
+            held: mutable bool
+            previous_point: mutable Geometry::Vec3
+            anchor: mutable Geometry::Vec3
+            dwell: mutable f32
+            weight: mutable f32
+            velocity: mutable f32
+
+        struct Result:
+            held: bool
+            weight: f32
+            correction: Geometry::Vec3
+            speed: f32
+
+        def state() -> State:
+            State{initialized: false,held: false,previous_point: Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0},anchor: Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0},dwell: 0.0,weight: 0.0,velocity: 0.0}
+
+        def snapshot(value: State&) -> State:
+            State{initialized: value.initialized,held: value.held,previous_point: value.previous_point,anchor: value.anchor,dwell: value.dwell,weight: value.weight,velocity: value.velocity}
+
+        # Caller supplies an intentional support point (toe/heel, not a whole
+        # foot centroid), its clearance and eligibility. The normal and point
+        # remain in one world frame; reset on teleport or surface/frame changes.
+        # Confirmation and clearance/speed hysteresis avoid contact chatter.
+        # Anchor replacement waits for release to finish, avoiding a weighted
+        # target jump. Exact critically damped weight integration retains its
+        # velocity when the goal changes. Corrections remain tangent to the
+        # plane: vertical source motion and floor projection stay separate.
+        def update(state: mutable State&, point: Geometry::Vec3, normal: Geometry::Vec3,
+            clearance: f32, eligible: bool, dt: f32, settings: Settings&) -> Result error[AnchorError]:
+            raise AnchorError.InvalidInput if not Geometry::vec3_is_finite(point) or not Geometry::vec3_is_finite(normal) or not finite(clearance) or not finite(dt) or dt <= 0.0 or dt > 0.25
+            norm: f32 = Geometry::vec3_length(normal)
+            raise AnchorError.InvalidInput if not finite(norm) or norm < 0.9999 or norm > 1.0001
+            raise AnchorError.InvalidInput if not finite(settings.acquire_clearance) or not finite(settings.release_clearance) or settings.acquire_clearance < 0.0 or settings.release_clearance <= settings.acquire_clearance
+            raise AnchorError.InvalidInput if not finite(settings.acquire_speed) or not finite(settings.release_speed) or settings.acquire_speed < 0.0 or settings.release_speed <= settings.acquire_speed
+            raise AnchorError.InvalidInput if not finite(settings.confirm_seconds) or not finite(settings.acquire_seconds) or not finite(settings.release_seconds) or not finite(settings.maximum_correction) or settings.confirm_seconds < 0.0 or settings.acquire_seconds < 0.001 or settings.release_seconds < 0.001 or settings.maximum_correction <= 0.0
+            raise AnchorError.InvalidInput if not Geometry::vec3_is_finite(state.previous_point) or not Geometry::vec3_is_finite(state.anchor) or not finite(state.dwell) or not finite(state.weight) or not finite(state.velocity) or state.dwell < 0.0 or state.weight < 0.0 or state.weight > 1.0
+            direction: Geometry::Vec3 = Geometry::vec3_normalize(normal)
+            speed: f32 = Geometry::vec3_length(tangent(Geometry::vec3_sub(point,state.previous_point),direction))/dt if state.initialized else 0.0
+            raise AnchorError.InvalidInput if not finite(speed)
+            next: mutable State = State{initialized: state.initialized,held: state.held,previous_point: state.previous_point,anchor: state.anchor,dwell: state.dwell,weight: state.weight,velocity: state.velocity}
+            next.initialized <- true
+            next.previous_point <- point
+            separation: mutable Geometry::Vec3 = tangent(Geometry::vec3_sub(next.anchor,point),direction)
+            distance: mutable f32 = Geometry::vec3_length(separation)
+            raise AnchorError.InvalidInput if not finite(distance)
+            if next.held:
+                next.held <- false if not eligible or clearance > settings.release_clearance or speed > settings.release_speed or distance > settings.maximum_correction
+                next.dwell <- 0.0
+            elif next.weight == 0.0:
+                can_acquire: bool = eligible and clearance <= settings.acquire_clearance and speed <= settings.acquire_speed
+                next.dwell <- next.dwell+dt if can_acquire else 0.0
+                if can_acquire and next.dwell >= settings.confirm_seconds:
+                    next.held <- true
+                    next.anchor <- point
+                    next.dwell <- 0.0
+                    separation <- Geometry::Vec3{x: 0.0,y: 0.0,z: 0.0}
+                    distance <- 0.0
+            else:
+                next.dwell <- 0.0
+            # Critical damping, with carried velocity through acquisition/release.
+            goal: f32 = 1.0 if next.held else 0.0
+            seconds: f32 = settings.acquire_seconds if next.held else settings.release_seconds
+            omega: f32 = 2.0/seconds
+            difference: f32 = next.weight-goal
+            coefficient: f32 = next.velocity+omega*difference
+            decay: f32 = expf(-omega*dt)
+            weight: f32 = goal+(difference+coefficient*dt)*decay
+            velocity: f32 = (next.velocity-omega*coefficient*dt)*decay
+            # Bounds also make a direction reversal safe when carrying velocity.
+            next.weight <- 0.0 if weight < 0.0 else (1.0 if weight > 1.0 else weight)
+            next.velocity <- 0.0 if weight < 0.0 or weight > 1.0 else velocity
+            if not next.held and next.weight < 0.00001 and next.velocity > -0.001 and next.velocity < 0.001:
+                next.weight <- 0.0
+                next.velocity <- 0.0
+            scale: f32 = settings.maximum_correction/distance if distance > settings.maximum_correction else 1.0
+            correction: Geometry::Vec3 = Geometry::vec3_scale(separation,scale*next.weight)
+            raise AnchorError.InvalidInput if not Geometry::vec3_is_finite(correction) or not finite(next.velocity)
+            state <- next
+            Result{held: next.held,weight: next.weight,correction: correction,speed: speed}

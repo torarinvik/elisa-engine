@@ -1,0 +1,55 @@
+include "../src/animation/contact_anchor.elisa"
+
+def exercise() -> i32 error[ContactAnchor::AnchorError]:
+    settings: ContactAnchor::Settings = ContactAnchor::Settings{acquire_clearance: 0.008,release_clearance: 0.012,acquire_speed: 0.12,release_speed: 0.4,confirm_seconds: 0.1,acquire_seconds: 0.06,release_seconds: 0.08,maximum_correction: 0.04}
+    state: mutable ContactAnchor::State = ContactAnchor::state()
+    normal: Geometry::Vec3 = Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0}
+    point: Geometry::Vec3 = Geometry::Vec3{x: 3.0,y: 0.02,z: -2.0}
+    for tick in 0..<5 |state|:
+        result: ContactAnchor::Result = try ContactAnchor::update(&state,point,normal,0.002,true,0.016666667,settings)
+        return 1 if result.held or result.weight != 0.0
+    for tick in 0..<50 |state|:
+        _ = try ContactAnchor::update(&state,point,normal,0.002,true,0.016666667,settings)
+    return 2 if not state.held or state.weight < 0.9999 or Geometry::vec3_distance(state.anchor,point) != 0.0
+    # Slow tangent drift stays anchored; normal displacement is not suppressed.
+    moved: Geometry::Vec3 = Geometry::Vec3{x: 3.001,y: 0.023,z: -2.0}
+    retained: ContactAnchor::Result = try ContactAnchor::update(&state,moved,normal,0.009,true,0.016666667,settings)
+    return 3 if not retained.held or retained.correction.x > -0.00099 or retained.correction.y != 0.0
+    anchor: Geometry::Vec3 = state.anchor
+    _ = try ContactAnchor::update(&state,moved,normal,0.02,false,0.016666667,settings)
+    return 4 if state.held or state.weight <= 0.0 or state.weight >= 1.0 or Geometry::vec3_distance(state.anchor,anchor) != 0.0
+    # Reacquisition cannot replace an anchor while its correction is releasing.
+    _ = try ContactAnchor::update(&state,moved,normal,0.002,true,0.016666667,settings)
+    return 5 if state.held or Geometry::vec3_distance(state.anchor,anchor) != 0.0
+    for tick in 0..<100 |state|:
+        _ = try ContactAnchor::update(&state,moved,normal,0.02,false,0.016666667,settings)
+    return 6 if state.weight != 0.0 or state.velocity != 0.0
+    for tick in 0..<50 |state|:
+        _ = try ContactAnchor::update(&state,moved,normal,0.002,true,0.016666667,settings)
+    return 7 if not state.held or Geometry::vec3_distance(state.anchor,moved) != 0.0
+    # A fast displacement releases; correction remains bounded at40mm.
+    far: Geometry::Vec3 = Geometry::Vec3{x: 3.2,y: 0.023,z: -2.0}
+    released: ContactAnchor::Result = try ContactAnchor::update(&state,far,normal,0.002,true,0.016666667,settings)
+    return 8 if released.held or Geometry::vec3_length(released.correction) > 0.040001
+    saved: ContactAnchor::State = ContactAnchor::snapshot(state)
+    code: i32 = catch ContactAnchor::update(&state,far,normal,0.002,true,-0.1,settings):
+        value: 0
+        ContactAnchor::AnchorError.InvalidInput: 1
+    return 9 if code != 1 or state.weight != saved.weight or state.velocity != saved.velocity or Geometry::vec3_distance(state.anchor,saved.anchor) != 0.0 or Geometry::vec3_distance(state.previous_point,saved.previous_point) != 0.0
+    # Exact integration agrees under time subdivision while the goal is fixed.
+    a: mutable ContactAnchor::State = ContactAnchor::state()
+    a.initialized <- true
+    a.held <- true
+    a.anchor <- point
+    a.previous_point <- point
+    b: mutable ContactAnchor::State = a
+    _ = try ContactAnchor::update(&a,point,normal,0.002,true,0.1,settings)
+    for tick in 0..<10 |b|:
+        _ = try ContactAnchor::update(&b,point,normal,0.002,true,0.01,settings)
+    return 10 if a.weight-b.weight > 0.000002 or b.weight-a.weight > 0.000002 or a.velocity-b.velocity > 0.00002 or b.velocity-a.velocity > 0.00002
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 30
