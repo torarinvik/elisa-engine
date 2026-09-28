@@ -469,7 +469,7 @@ module RuntimeServices:
             try PhysicsQueries::service_overlap_capsule_all_filtered(session.physics,
                 base, tip, radius, layer_mask, filter, buffer)
 
-        def physics_poll_contacts(session: Session&, buffer: PhysicsRuntime::ContactBuffer&,
+        def physics_poll_contacts(session: Session&, buffer: mutable PhysicsRuntime::ContactBuffer&,
             dropped: mutable u32&) -> usize error[RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             raise RuntimeServicesError.SessionStopped if not session.application_live
             raise RuntimeServicesError.PhysicsUnavailable if not PhysicsRuntime::service_is_live(session.physics)

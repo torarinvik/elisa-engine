@@ -1,0 +1,17 @@
+include "../src/audio/virtual.elisa"
+
+extend AudioVirtual:
+    # Only an in-range slot can report a live sound.
+    def prove_live_in_range(pool: Pool&, slot: usize) -> bool:
+        ensure not result or slot < MAX_SOUNDS
+        live(pool, slot)
+
+    # A realized voice starts inside its clip, even a zero-length one.
+    def prove_position_in_clip(pool: Pool&, slot: usize, now_ms: u64, rate: u64) -> u64:
+        ensure result == 0 or (slot < MAX_SOUNDS and result < pool.frames[slot])
+        position(pool, slot, now_ms, rate)
+
+    # The next virtual sound is a slot or the MAX_SOUNDS sentinel.
+    def prove_next_virtual_sentinel(pool: Pool&, now_ms: u64, rate: u64) -> usize:
+        ensure result <= MAX_SOUNDS
+        next_virtual(pool, now_ms, rate)

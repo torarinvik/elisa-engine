@@ -68,6 +68,7 @@ module AudioVirtual:
             pool.real[slot] <- false
 
         def live(pool: Pool&, slot: usize) -> bool:
+            ensure not result or slot < MAX_SOUNDS
             slot < MAX_SOUNDS and pool.live[slot]
 
         def is_real(pool: Pool&, slot: usize) -> bool:
@@ -86,10 +87,12 @@ module AudioVirtual:
 
         # The frame a realized voice should start from.
         def position(pool: Pool&, slot: usize, now_ms: u64, rate: u64) -> u64:
+            ensure result == 0 or (slot < MAX_SOUNDS and result < pool.frames[slot])
             return 0 if not live(pool, slot)
             elapsed: u64 = elapsed_frames(pool, slot, now_ms, rate)
             looped: bool = pool.looped[slot]
             length: u64 = pool.frames[slot]
+            return 0 if length == 0
             wrapped: u64 = elapsed % length if looped else elapsed
             held: u64 = wrapped if wrapped < length else length - 1
             held
@@ -97,7 +100,9 @@ module AudioVirtual:
         # The highest-priority virtual sound that has not ended, oldest first
         # among equals, or MAX_SOUNDS.
         def next_virtual(pool: Pool&, now_ms: u64, rate: u64) -> usize:
+            ensure result <= MAX_SOUNDS
             for slot in 0..<MAX_SOUNDS |best: usize = MAX_SOUNDS| -> best:
+                invariant best <= MAX_SOUNDS
                 candidate: bool = pool.live[slot] and not pool.real[slot] and not ended(pool, slot, now_ms, rate)
                 best <- slot if candidate and outranks(pool, slot, best)
 
@@ -115,6 +120,7 @@ module AudioVirtual:
                 break slot if not pool.live[slot]
 
         def outranks(pool: Pool&, slot: usize, best: usize) -> bool:
+            requires slot < MAX_SOUNDS
             return true if best >= MAX_SOUNDS
             higher: bool = pool.priority[slot] > pool.priority[best]
             same: bool = pool.priority[slot] == pool.priority[best]

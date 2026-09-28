@@ -61,7 +61,7 @@ module WorldEffects:
         def time_scale_valid(value: f32) -> bool:
             value - value == 0.0 and value >= 0.0 and value <= WorldEffects::MAX_TIME_SCALE
 
-        def remove_at(effects: mutable Effects&, index: usize) -> void:
+        def remove_effect_at(effects: mutable Effects&, index: usize) -> void:
             for shift in index..<effects.count - 1 |effects|:
                 effects.entities[shift] <- effects.entities[shift + 1]
                 moved_emitter: bool = RenderScene::EmitterHandles::move(&effects.emitters, shift + 1, shift)
@@ -323,7 +323,7 @@ module WorldEffects:
                 if removed[index]:
                     # Reuse the common compactor so retired handle slots and
                     # per-row flags are cleared before this slot can be reused.
-                    remove_at(effects, index)
+                    remove_effect_at(effects, index)
             UpdateReport{updated: updated, detached_despawned: despawned, expired: expired}
 
         def clear(effects: mutable Effects&) -> void error[
@@ -331,4 +331,4 @@ module WorldEffects:
             total: usize = effects.count
             for _ in 0..<total |effects|:
                 try destroy_handles(effects, effects.count - 1)
-                remove_at(effects, effects.count - 1)
+                remove_effect_at(effects, effects.count - 1)
