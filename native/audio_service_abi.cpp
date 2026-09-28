@@ -351,6 +351,37 @@ extern "C" int32_t elisa_audio_v1_stream_position(uint32_t slot, uint32_t genera
     return ELISA_AUDIO_OK;
 }
 
+// A frame past the clip end is an invalid argument; a stale voice is an
+// invalid handle.
+extern "C" int32_t elisa_audio_v1_seek_voice(uint32_t slot, uint32_t generation, uint64_t frame) {
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    auto& service = audio_service().service;
+    const probe::audio::VoiceHandle voice{slot, generation};
+    if (!service.voice_live(voice)) return ELISA_AUDIO_INVALID_HANDLE;
+    return service.seek_voice(voice, frame) ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_ARGUMENT;
+}
+
+extern "C" int32_t elisa_audio_v1_voice_frame(uint32_t slot, uint32_t generation, uint64_t* frame) {
+    if (frame == nullptr) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    const uint64_t cursor = audio_service().service.voice_frame(probe::audio::VoiceHandle{slot, generation});
+    if (cursor == UINT64_MAX) return ELISA_AUDIO_INVALID_HANDLE;
+    *frame = cursor;
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_clip_frames(uint32_t slot, uint32_t generation, uint64_t* frames) {
+    if (frames == nullptr) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    const uint64_t length = audio_service().service.clip_frames(probe::audio::ClipHandle{slot, generation});
+    if (length == 0) return ELISA_AUDIO_INVALID_HANDLE;
+    *frames = length;
+    return ELISA_AUDIO_OK;
+}
+
 extern "C" int32_t elisa_audio_v1_active_stream_count(void) {
     const int32_t status = require_audio_service();
     if (status != ELISA_AUDIO_OK) return status;

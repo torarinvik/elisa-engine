@@ -80,6 +80,11 @@ int32_t elisa_audio_v1_active_stream_count(void);
 // INVALID_ARGUMENT. `position` is the source frame the next callback plays.
 int32_t elisa_audio_v1_seek_stream(uint32_t slot, uint32_t generation, uint64_t frame);
 int32_t elisa_audio_v1_stream_position(uint32_t slot, uint32_t generation, uint64_t* position);
+// Voice virtualization: move a live voice to a clip frame, read the frame it
+// plays next, and read a clip's length in frames at the service rate.
+int32_t elisa_audio_v1_seek_voice(uint32_t slot, uint32_t generation, uint64_t frame);
+int32_t elisa_audio_v1_voice_frame(uint32_t slot, uint32_t generation, uint64_t* frame);
+int32_t elisa_audio_v1_clip_frames(uint32_t slot, uint32_t generation, uint64_t* frames);
 // Callbacks that emitted silence instead of waiting for the owner's lock.
 int32_t elisa_audio_v1_contended_callbacks(uint64_t* count);
 // Reopen after device loss. With prefer_default, try the system default

@@ -171,6 +171,15 @@ module AudioRuntime:
         extern elisa_audio_v1_stream_position(slot: u32, generation: u32, position: mutable u64&) -> i32
 
         @callconv(c)
+        extern elisa_audio_v1_seek_voice(slot: u32, generation: u32, frame: u64) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_voice_frame(slot: u32, generation: u32, frame: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_clip_frames(slot: u32, generation: u32, frames: mutable u64&) -> i32
+
+        @callconv(c)
         extern elisa_audio_v1_active_stream_count() -> i32
 
         @callconv(c)
@@ -346,6 +355,21 @@ module AudioRuntime:
             position: mutable u64 = 0
             try check_status(elisa_audio_v1_stream_position(stream.slot, stream.generation, &position))
             position
+
+        # Realize a virtual sound at the clip frame its clock has reached.
+        def seek_voice(voice: VoiceHandle, frame: u64) -> void error[AudioError]:
+            try check_status(elisa_audio_v1_seek_voice(voice.slot, voice.generation, frame))
+
+        def voice_frame(voice: VoiceHandle) -> u64 error[AudioError]:
+            frame: mutable u64 = 0
+            try check_status(elisa_audio_v1_voice_frame(voice.slot, voice.generation, &frame))
+            frame
+
+        # A clip's length in frames at the service sample rate.
+        def clip_frames(clip: ClipHandle) -> u64 error[AudioError]:
+            frames: mutable u64 = 0
+            try check_status(elisa_audio_v1_clip_frames(clip.slot, clip.generation, &frames))
+            frames
 
         def active_stream_count() -> usize error[AudioError]:
             count: i32 = elisa_audio_v1_active_stream_count()

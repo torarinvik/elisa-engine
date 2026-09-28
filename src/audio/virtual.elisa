@@ -1,0 +1,121 @@
+# Voice virtualization policy: logical sounds outlive their native voices.
+# A sound refused by a bus budget, or stolen by a higher-priority voice,
+# stays virtual and keeps its clock. When the budget frees, the caller
+# realizes the most important virtual sound at the frame it would have
+# reached. This is pure policy; the caller owns native voices and reports
+# what the service did.
+module AudioVirtual:
+    public:
+        const MAX_SOUNDS: usize = 32
+
+        error VirtualSoundError:
+            Capacity
+            InvalidSound
+            UnknownSound
+
+        affine struct Pool:
+            private:
+                live: mutable bool[AudioVirtual::MAX_SOUNDS]
+                real: mutable bool[AudioVirtual::MAX_SOUNDS]
+                looped: mutable bool[AudioVirtual::MAX_SOUNDS]
+                priority: mutable u32[AudioVirtual::MAX_SOUNDS]
+                frames: mutable u64[AudioVirtual::MAX_SOUNDS]
+                started_ms: mutable u64[AudioVirtual::MAX_SOUNDS]
+                sequence: mutable u64[AudioVirtual::MAX_SOUNDS]
+                next_sequence: mutable u64
+
+        def Pool() -> Pool:
+            Pool{
+                live: zeroed,
+                real: zeroed,
+                looped: zeroed,
+                priority: zeroed,
+                frames: zeroed,
+                started_ms: zeroed,
+                sequence: zeroed,
+                next_sequence: 1,
+            }
+
+        # A new sound starts virtual at `now_ms`; `frames` is its clip length
+        # at the service rate. Returns its slot.
+        def add(pool: mutable Pool&, priority: u32, looped: bool, frames: u64, now_ms: u64) -> usize error[VirtualSoundError]:
+            raise VirtualSoundError.InvalidSound if frames == 0
+            slot: usize = free_slot(pool)
+            raise VirtualSoundError.Capacity if slot >= MAX_SOUNDS
+            pool.live[slot] <- true
+            pool.real[slot] <- false
+            pool.looped[slot] <- looped
+            pool.priority[slot] <- priority
+            pool.frames[slot] <- frames
+            pool.started_ms[slot] <- now_ms
+            pool.sequence[slot] <- pool.next_sequence
+            pool.next_sequence <- pool.next_sequence + 1
+            slot
+
+        # The caller started a native voice for `slot` at `frame_at`.
+        def realized(pool: mutable Pool&, slot: usize) -> void error[VirtualSoundError]:
+            raise VirtualSoundError.UnknownSound if not live(pool, slot)
+            pool.real[slot] <- true
+
+        # The native voice was stolen, refused or lost; the clock keeps running.
+        def virtualized(pool: mutable Pool&, slot: usize) -> void error[VirtualSoundError]:
+            raise VirtualSoundError.UnknownSound if not live(pool, slot)
+            pool.real[slot] <- false
+
+        def remove(pool: mutable Pool&, slot: usize) -> void error[VirtualSoundError]:
+            raise VirtualSoundError.UnknownSound if not live(pool, slot)
+            pool.live[slot] <- false
+            pool.real[slot] <- false
+
+        def live(pool: Pool&, slot: usize) -> bool:
+            slot < MAX_SOUNDS and pool.live[slot]
+
+        def is_real(pool: Pool&, slot: usize) -> bool:
+            live(pool, slot) and pool.real[slot]
+
+        def elapsed_frames(pool: Pool&, slot: usize, now_ms: u64, rate: u64) -> u64:
+            return 0 if not live(pool, slot) or now_ms < pool.started_ms[slot]
+            (now_ms - pool.started_ms[slot]) * rate / 1000
+
+        # A one-shot sound has ended once its clock passes the clip length,
+        # whether it was heard or not.
+        def ended(pool: Pool&, slot: usize, now_ms: u64, rate: u64) -> bool:
+            return true if not live(pool, slot)
+            one_shot: bool = not pool.looped[slot]
+            one_shot and elapsed_frames(pool, slot, now_ms, rate) >= pool.frames[slot]
+
+        # The frame a realized voice should start from.
+        def position(pool: Pool&, slot: usize, now_ms: u64, rate: u64) -> u64:
+            return 0 if not live(pool, slot)
+            elapsed: u64 = elapsed_frames(pool, slot, now_ms, rate)
+            looped: bool = pool.looped[slot]
+            length: u64 = pool.frames[slot]
+            wrapped: u64 = elapsed % length if looped else elapsed
+            held: u64 = wrapped if wrapped < length else length - 1
+            held
+
+        # The highest-priority virtual sound that has not ended, oldest first
+        # among equals, or MAX_SOUNDS.
+        def next_virtual(pool: Pool&, now_ms: u64, rate: u64) -> usize:
+            for slot in 0..<MAX_SOUNDS |best: usize = MAX_SOUNDS| -> best:
+                candidate: bool = pool.live[slot] and not pool.real[slot] and not ended(pool, slot, now_ms, rate)
+                best <- slot if candidate and outranks(pool, slot, best)
+
+        def virtual_count(pool: Pool&) -> usize:
+            for slot in 0..<MAX_SOUNDS |count: usize = 0| -> count:
+                count <- count + 1 if pool.live[slot] and not pool.real[slot]
+
+        def real_count(pool: Pool&) -> usize:
+            for slot in 0..<MAX_SOUNDS |count: usize = 0| -> count:
+                count <- count + 1 if pool.live[slot] and pool.real[slot]
+
+    private:
+        def free_slot(pool: Pool&) -> usize:
+            for slot in 0..<MAX_SOUNDS |found: usize = MAX_SOUNDS| -> found:
+                break slot if not pool.live[slot]
+
+        def outranks(pool: Pool&, slot: usize, best: usize) -> bool:
+            return true if best >= MAX_SOUNDS
+            higher: bool = pool.priority[slot] > pool.priority[best]
+            same: bool = pool.priority[slot] == pool.priority[best]
+            higher or (same and pool.sequence[slot] < pool.sequence[best])

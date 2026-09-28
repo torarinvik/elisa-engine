@@ -233,6 +233,9 @@
             RELEASE: i32 = 97
             REUSE: i32 = 98
             MUSIC_REWIND: i32 = 193
+            VIRTUAL: i32 = 194
+            # 100 ms at 48 kHz: the realized ambience must land this close.
+            DRIFT_FRAMES: u64 = 4800
             # 0.25 s at 48 kHz: more than one device period, well under 1.5 s.
             REWOUND_FRAMES: u64 = 12000
             PAST_END: u64 = 18446744073709551615
@@ -247,6 +250,11 @@
                 AudioRuntime::AudioError.InvalidArgument: 1
                 AudioRuntime::AudioError.InvalidHandle: 2
                 error failure: 3
+
+        def set_effects_budget(budget: u32) -> bool:
+            catch AudioRuntime::set_voice_budget(AudioRuntime::Bus.Effects, budget):
+                ok: true
+                error failure: false
 
         def audio_idle(session: RuntimeServices::Session&) -> bool:
             voices: usize = catch RuntimeServices::audio_active_voice_count(session):
@@ -294,6 +302,14 @@
             return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, false)
             CourseSounds::reset_scene(&sounds)
             return SoundCodes::SCENE_RESET if CourseSounds::event_voices(&sounds) != 0
+            return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
+            return SoundCodes::VIRTUAL if not set_effects_budget(1)
+            return SoundCodes::VIRTUAL if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 10) != CourseSounds::PLAYED
+            return SoundCodes::VIRTUAL if CourseSounds::update(&sounds) or not CourseSounds::ambience_virtual(&sounds)
+            CourseSounds::reset_scene(&sounds)
+            return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
+            return SoundCodes::VIRTUAL if CourseSounds::ambience_drift(&sounds) > SoundCodes::DRIFT_FRAMES
+            return SoundCodes::VIRTUAL if not set_effects_budget(32)
             return SoundCodes::SCENE_RESET if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
             return SoundCodes::MUSIC_REWIND if seek_outcome(music, 0) != 2

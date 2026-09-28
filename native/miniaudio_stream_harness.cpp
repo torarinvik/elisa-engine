@@ -197,6 +197,31 @@ void concurrent_checks(const std::string& path) {
     service.shutdown();
 }
 
+// Voice virtualization support: a voice realized from virtual starts at the
+// frame its clock reached, and stale voices and clips are refused.
+void voice_seek_checks(const std::string& path) {
+    audio::Service service;
+    check(service.initialize_null(RATE, 1) && service.stop_device_for_test(), "voice null device");
+    const audio::ClipHandle clip = service.decode_clip_file(path.c_str());
+    check(service.clip_frames(clip) == SOURCE_FRAMES, "clip length in service frames");
+    const audio::VoiceHandle voice = service.play(clip, true, audio::Bus::Sfx, 1.0f, 0);
+    check(service.voice_frame(voice) == 0, "a new voice starts at frame 0");
+    uint32_t cursor = 12345;
+    check(service.seek_voice(voice, cursor) && service.voice_frame(voice) == cursor, "a voice seeks");
+    check(mixes_source(service, cursor, 1000) && service.voice_frame(voice) == 13345,
+        "a seeked voice plays on from the target frame");
+    cursor = SOURCE_FRAMES - 500;
+    check(service.seek_voice(voice, cursor) && mixes_source(service, cursor, 1000) &&
+        service.voice_frame(voice) == 500, "a looped voice wraps after a seek");
+    check(!service.seek_voice(voice, SOURCE_FRAMES) && service.voice_frame(voice) == 500,
+        "a seek past the clip end is refused and changes nothing");
+    check(service.stop(voice) && !service.seek_voice(voice, 0) && service.voice_frame(voice) == UINT64_MAX,
+        "a stopped voice cannot seek or report a frame");
+    check(service.release_clip(clip) == audio::ClipReleaseStatus::Released && service.clip_frames(clip) == 0,
+        "a released clip has no length");
+    service.shutdown();
+}
+
 } // namespace
 
 int main() {
@@ -204,6 +229,7 @@ int main() {
     if (!check(!path.empty(), "write source wav")) return 1;
     deterministic_checks(path);
     concurrent_checks(path);
+    voice_seek_checks(path);
     std::remove(path.c_str());
     if (failures != 0) return 1;
     std::fprintf(stdout, "stream harness passed\n");
