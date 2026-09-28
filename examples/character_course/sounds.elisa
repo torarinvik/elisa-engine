@@ -23,6 +23,7 @@ module CourseSounds:
         const INJECT_NONE: i32 = 0
         const INJECT_CLIP: i32 = 1
         const INJECT_MUSIC: i32 = 2
+        const INJECT_EVENTS: i32 = 3
 
         # `fire` results: the AudioEvents outcome, or a failure.
         const PLAYED: i32 = 0
@@ -39,9 +40,6 @@ module CourseSounds:
         const MOOD_PAUSED: i32 = 1
         const MOOD_MENU: i32 = 2
         const RAMP_MS: u64 = 250
-        # Jump variant A plays three times as often as B; the fixed seed keeps
-        # a replayed tick on the same variant.
-        const JUMP_SEED: u64 = 20260928
         # The ambience keeps a virtual clock: when an event voice steals its
         # native voice, `update` brings it back at the frame it would have
         # reached. RATE matches the course's 48 kHz audio device.
@@ -101,7 +99,8 @@ module CourseSounds:
 
         def start_injected(sounds: mutable Sounds&, session: RuntimeServices::Session&, inject: i32) -> i32:
             return INACTIVE if not RuntimeServices::audio_active(session)
-            return DEFINITION_FAILED if not define_events(sounds)
+            events_path: cstr = "sounds/missing.sfx" if inject == INJECT_EVENTS else "sounds/events.sfx"
+            return DEFINITION_FAILED if not define_events(sounds, events_path)
             sounds.live <- true
             wind_path: cstr = "sounds/missing.wav" if inject == INJECT_CLIP else "sounds/ambience.wav"
             music_path: cstr = "sounds/missing.wav" if inject == INJECT_MUSIC else "sounds/music.wav"
@@ -307,25 +306,19 @@ module CourseSounds:
             try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, gains.effects)
             try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Ui, gains.ui)
 
-        def definition(id: u32, group: u32, limit: u32, variants: u32, cooldown: u64) -> AudioEvents::Definition:
-            AudioEvents::Definition{id: id, group: group, group_limit: limit, variants: variants, cooldown_ticks: cooldown}
-
-        def define_events(sounds: mutable Sounds&) -> bool:
+        # The events are authored in `sounds/events.sfx`; a missing or
+        # malformed file fails the start instead of falling back to code.
+        def define_events(sounds: mutable Sounds&, path: cstr) -> bool:
             sounds.board <- AudioEvents::Board()
-            catch define_all(&sounds.board):
+            source: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+            length: usize = catch AudioRuntime::read_asset(path, &source.bytes[0], SoundEventAssets::MAX_BYTES):
+                value: value
+                error failure: SoundEventAssets::MAX_BYTES + 1
+            return false if length > SoundEventAssets::MAX_BYTES
+            source.length <- length
+            catch SoundEventAssets::define_from(&sounds.board, &source):
                 ok: true
                 error failure: false
-
-        # Jump and land each keep one voice; win, fall and save share a
-        # stinger group so a new result cuts off the previous one.
-        def define_all(board: mutable AudioEvents::Board&) -> void error[AudioEvents::SoundEventError]:
-            try AudioEvents::define(board, definition(CourseSounds::EVENT_JUMP, 0, 1, 2, 0))
-            try AudioEvents::define(board, definition(CourseSounds::EVENT_LAND, 1, 1, 1, 6))
-            try AudioEvents::define(board, definition(CourseSounds::EVENT_WIN, 2, 1, 1, 0))
-            try AudioEvents::define(board, definition(CourseSounds::EVENT_FALL, 2, 1, 1, 0))
-            try AudioEvents::define(board, definition(CourseSounds::EVENT_SAVE, 2, 1, 1, 0))
-            try AudioEvents::set_weights(board, CourseSounds::EVENT_JUMP, 3, 1, 0, 0)
-            AudioEvents::set_seed(board, CourseSounds::JUMP_SEED)
 
         def load_clips(sounds: mutable Sounds&, wind_path: cstr) -> void error[AudioRuntime::AudioError]:
             sounds.jump_a <- try AudioRuntime::decode_file("sounds/jump_a.wav")

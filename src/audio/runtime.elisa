@@ -116,6 +116,9 @@ module AudioRuntime:
         extern elisa_audio_v1_recover_with_silent_device() -> i32
 
         @callconv(c)
+        extern elisa_audio_v1_read_asset(path: cstr, bytes: mutable u8&, capacity: u32, length: mutable u32&) -> i32
+
+        @callconv(c)
         extern elisa_audio_v1_decode_file(path: cstr, slot: mutable u32&, generation: mutable u32&) -> i32
 
         @callconv(c)
@@ -250,6 +253,14 @@ module AudioRuntime:
 
         def recover_with_silent_device() -> void error[AudioError]:
             try check_status(elisa_audio_v1_recover_with_silent_device())
+
+        # Reads a small authored audio asset into `bytes` and returns its
+        # length. DecodeFailed: missing or unreadable. Capacity: too long.
+        def read_asset(path: cstr, bytes: mutable u8&, capacity: usize) -> usize error[AudioError]:
+            raise AudioError.InvalidArgument if capacity == 0 or capacity > 1048576
+            length: mutable u32 = 0
+            try check_status(elisa_audio_v1_read_asset(path, bytes, capacity.u32(), &length))
+            length.usize()
 
         def decode_file(path: cstr) -> ClipHandle error[AudioError]:
             slot: mutable u32 = 0

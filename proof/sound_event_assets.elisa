@@ -1,0 +1,32 @@
+include "../src/audio/event_asset_text.elisa"
+
+extend SoundEventAssets:
+    # Scanning never leaves the line it was given.
+    def prove_skip_spaces_in_line(source: Source&, start: usize, stop: usize) -> usize:
+        requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+        ensure start <= result and result <= stop
+        skip_spaces(source, start, stop)
+
+    def prove_token_in_line(source: Source&, start: usize, stop: usize) -> usize:
+        requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+        ensure start <= result and result <= stop
+        token_end(source, start, stop)
+
+    # A line ends inside the source.
+    def prove_line_end_in_source(source: Source&, start: usize) -> usize:
+        requires start <= source.length and source.length <= MAX_BYTES
+        ensure start <= result and result <= source.length
+        line_end(source, start)
+
+    # A record has at most MAX_FIELDS numbers, so every field index is in range.
+    def prove_fields_bounded(source: Source&, start: usize, stop: usize) -> usize error[SoundAssetError]:
+        requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+        ensure result <= MAX_FIELDS
+        record: Fields = try read_fields(source, start, stop)
+        record.count
+
+    # A decimal field never exceeds the saturation cap.
+    def prove_number_capped(source: Source&, start: usize, stop: usize) -> u64 error[SoundAssetError]:
+        requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+        ensure result < CAP
+        try number(source, start, stop)

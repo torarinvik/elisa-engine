@@ -1,0 +1,187 @@
+include "../src/audio/event_assets.elisa"
+
+# Asset text is built byte by byte: Elisa has no string-to-bytes view.
+def put(source: mutable SoundEventAssets::Source&, byte: u8) -> void:
+    _ = SoundEventAssets::append(source, byte)
+
+def word(source: mutable SoundEventAssets::Source&, seed: bool) -> void:
+    if seed:
+        put(source, 115)
+        put(source, 101)
+        put(source, 101)
+        put(source, 100)
+    else:
+        put(source, 101)
+        put(source, 118)
+        put(source, 101)
+        put(source, 110)
+        put(source, 116)
+
+# Writes ` <value>` in decimal.
+def field(source: mutable SoundEventAssets::Source&, value: u64) -> void:
+    put(source, 32)
+    digits: usize =
+        for index in 0..<20 |count: usize = 1, rest: u64 = value / 10| -> count:
+            count <- count + 1 if rest > 0
+            rest <- rest / 10
+    for index in 0..<digits |source|:
+        power: u64 =
+            for step in 0..<(digits - 1 - index) |scale: u64 = 1| -> scale:
+                scale <- scale * 10
+        put(source, 48 + (value / power % 10).u8())
+
+def event(source: mutable SoundEventAssets::Source&, id: u64, group: u64, limit: u64, variants: u64, cooldown: u64) -> void:
+    word(source, false)
+    field(source, id)
+    field(source, group)
+    field(source, limit)
+    field(source, variants)
+    field(source, cooldown)
+
+def newline(source: mutable SoundEventAssets::Source&) -> void:
+    put(source, 10)
+
+def comment(source: mutable SoundEventAssets::Source&) -> void:
+    put(source, 32)
+    put(source, 35)
+    put(source, 32)
+    put(source, 120)
+
+# 0 ok, 1 Syntax, 2 UnknownRecord, 3 FieldCount, 4 NumberTooLarge,
+# 5 Oversize, 6 InvalidDefinition, 7 DuplicateEvent, 8 Capacity, 9 other.
+def load_status(board: mutable AudioEvents::Board&, source: SoundEventAssets::Source&) -> i32:
+    catch SoundEventAssets::define_from(board, source):
+        ok: 0
+        SoundEventAssets::SoundAssetError.Syntax: 1
+        SoundEventAssets::SoundAssetError.UnknownRecord: 2
+        SoundEventAssets::SoundAssetError.FieldCount: 3
+        SoundEventAssets::SoundAssetError.NumberTooLarge: 4
+        SoundEventAssets::SoundAssetError.Oversize: 5
+        AudioEvents::SoundEventError.InvalidDefinition: 6
+        AudioEvents::SoundEventError.DuplicateEvent: 7
+        AudioEvents::SoundEventError.Capacity: 8
+        error failure: 9
+
+# 0 fired (Play or Replace), 1 held back (Duplicate or Cooling), 2 error.
+def outcome(board: mutable AudioEvents::Board&, id: u32, tick: u64) -> i32:
+    catch AudioEvents::trigger(board, id, tick):
+        value: 1 if value.outcome == AudioEvents::Outcome.Duplicate or value.outcome == AudioEvents::Outcome.Cooling else 0
+        error failure: 2
+
+# The course's asset shape: comments, blank lines, a seed and a weighted event.
+def course_asset() -> SoundEventAssets::Source:
+    source: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    put(&source, 35)
+    newline(&source)
+    newline(&source)
+    word(&source, true)
+    field(&source, 20260928)
+    newline(&source)
+    event(&source, 1, 0, 1, 2, 0)
+    field(&source, 3)
+    field(&source, 1)
+    comment(&source)
+    newline(&source)
+    put(&source, 9)
+    event(&source, 2, 1, 1, 1, 6)
+    put(&source, 13)
+    newline(&source)
+    source
+
+def accepted_test() -> i32:
+    source: SoundEventAssets::Source = course_asset()
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    return 1 if load_status(&board, &source) != 0
+    return 2 if SoundEventAssets::failing_line(&source) != 0
+    return 3 if outcome(&board, 1, 10) != 0 or outcome(&board, 2, 10) != 0
+    # Land has a cooldown of 6 ticks.
+    return 4 if outcome(&board, 2, 16) != 1 or outcome(&board, 2, 17) != 0
+    return 5 if outcome(&board, 3, 10) != 2
+    0
+
+def load_one(source: SoundEventAssets::Source&) -> i32:
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    load_status(&board, source)
+
+def rejected_test() -> i32:
+    unknown: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    put(&unknown, 101)
+    field(&unknown, 1)
+    return 10 if load_one(&unknown) != 2
+
+    short: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    word(&short, false)
+    field(&short, 1)
+    field(&short, 0)
+    return 11 if load_one(&short) != 3
+
+    long: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&long, 1, 0, 1, 4, 0)
+    for extra in 0..<5 |long|:
+        field(&long, 1)
+    return 12 if load_one(&long) != 3
+
+    letters: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&letters, 1, 0, 1, 1, 0)
+    put(&letters, 120)
+    return 13 if load_one(&letters) != 1
+
+    wide: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&wide, 4294967296, 0, 1, 1, 0)
+    return 14 if load_one(&wide) != 4
+
+    huge: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    word(&huge, true)
+    field(&huge, 1000000000000000000)
+    return 15 if load_one(&huge) != 4
+
+    invalid: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&invalid, 1, 0, 1, 5, 0)
+    return 16 if load_one(&invalid) != 6
+
+    duplicate: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&duplicate, 1, 0, 1, 1, 0)
+    newline(&duplicate)
+    event(&duplicate, 1, 0, 1, 1, 0)
+    return 17 if load_one(&duplicate) != 7
+    return 18 if SoundEventAssets::failing_line(&duplicate) != 2
+
+    full: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    for id in 0..<17 |full|:
+        event(&full, id.u64() + 1, 0, 1, 1, 0)
+        newline(&full)
+    return 19 if load_one(&full) != 8
+    return 20 if SoundEventAssets::failing_line(&full) != 17
+
+    weights: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&weights, 1, 0, 1, 1, 0)
+    field(&weights, 0)
+    return 21 if load_one(&weights) != 6
+
+    filled: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    fits: bool =
+        for index in 0..<SoundEventAssets::MAX_BYTES |all: bool = true, filled| -> all:
+            all <- all and SoundEventAssets::append(&filled, 10)
+    return 22 if not fits or SoundEventAssets::append(&filled, 10)
+    return 23 if load_one(&filled) != 0
+    0
+
+# A rejected asset leaves the caller's board as it was.
+def atomic_test() -> i32:
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    first: SoundEventAssets::Source = course_asset()
+    return 30 if load_status(&board, &first) != 0
+    broken: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    event(&broken, 9, 0, 1, 1, 0)
+    newline(&broken)
+    event(&broken, 9, 0, 1, 1, 0)
+    return 31 if load_status(&board, &broken) != 7
+    return 32 if outcome(&board, 9, 10) != 2 or outcome(&board, 1, 10) != 0
+    0
+
+def main() -> i32:
+    accepted: i32 = accepted_test()
+    return accepted if accepted != 0
+    rejected: i32 = rejected_test()
+    return rejected if rejected != 0
+    atomic_test()
