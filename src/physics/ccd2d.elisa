@@ -1,0 +1,56 @@
+# Continuous collision for 2D circles against thin vertical walls, so a fast
+# projectile cannot tunnel through a wall thinner than one step's travel.
+# The swept test finds the first time in the step (in permille) at which the
+# circle's leading edge reaches the wall's near face within its height; the
+# step then stops there and reflects with restitution. Integer arithmetic
+# keeps the outcome identical on every platform and replay.
+include "./circles2d.elisa"
+
+module Physics2dCcd:
+    public:
+        struct Wall:
+            x_um: i64
+            thickness_um: i64
+            y_min_um: i64
+            y_max_um: i64
+
+        struct Hit:
+            hit: bool
+            t_permille: i64
+            # Exact horizontal travel to contact, so rounding never leaves a gap.
+            travel_um: i64
+
+        def no_hit() -> Hit:
+            Hit{hit: false, t_permille: 1000, travel_um: 0}
+
+        # First contact during a straight move of (dx, dy) micrometres.
+        def sweep(c: Physics2dCircles::Circle&, dx: i64, dy: i64, w: Wall&) -> Hit:
+            return no_hit() if dx == 0 or w.thickness_um < 0
+            # Face and leading edge depend on direction of travel.
+            face: i64 = w.x_um if dx > 0 else w.x_um + w.thickness_um
+            edge: i64 = c.x_um + c.radius_um if dx > 0 else c.x_um - c.radius_um
+            gap: i64 = face - edge
+            # Already past the face, or moving away from it.
+            return no_hit() if (dx > 0 and gap < 0) or (dx < 0 and gap > 0)
+            return no_hit() if (dx > 0 and gap > dx) or (dx < 0 and gap < dx)
+            t: i64 = gap * 1000 / dx
+            y_at: i64 = c.y_um + dy * t / 1000
+            return no_hit() if y_at + c.radius_um < w.y_min_um or y_at - c.radius_um > w.y_max_um
+            Hit{hit: true, t_permille: t, travel_um: gap}
+
+        # Semi-implicit step with CCD against `walls`: stops at the earliest
+        # wall contact and reflects the horizontal speed. Returns true on a hit.
+        def step(c: mutable Physics2dCircles::Circle&, walls: Wall[4], count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0
+            c.vy <- c.vy - gravity_um_s2 * dt_ms / 1000
+            dx: i64 = c.vx * dt_ms / 1000
+            dy: i64 = c.vy * dt_ms / 1000
+            mutable best: Hit = no_hit()
+            for i in 0..<4 |best|:
+                if i.i64() < count:
+                    h: Hit = sweep(c, dx, dy, &walls[i])
+                    best <- h if h.hit and h.t_permille < best.t_permille
+            c.x_um <- c.x_um + (best.travel_um if best.hit else dx)
+            c.y_um <- c.y_um + dy * best.t_permille / 1000
+            c.vx <- 0 - c.vx * restitution_permille / 1000 if best.hit else c.vx
+            best.hit

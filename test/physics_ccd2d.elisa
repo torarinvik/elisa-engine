@@ -1,0 +1,44 @@
+include "../src/physics/ccd2d.elisa"
+
+def bullet() -> Physics2dCircles::Circle:
+    # 5 mm bullet at 400 m/s, starting 1 m left of a 1 mm wall.
+    Physics2dCircles::Circle{x_um: 0, y_um: 1000000, vx: 400000000, vy: 0, radius_um: 5000, mass_g: 10}
+
+def main() -> i32:
+    wall: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 1000000, thickness_um: 1000, y_min_um: 0, y_max_um: 2000000}
+    walls: Physics2dCcd::Wall[4] = [wall, wall, wall, wall]
+    # Without CCD a 16 ms step (6.4 m of travel) tunnels straight through.
+    mutable naive: Physics2dCircles::Circle = bullet()
+    Physics2dCircles::integrate(&naive, 0, 16)
+    return 1 if naive.x_um < 1001000
+    # With CCD it stops at the wall face and bounces back.
+    mutable b: Physics2dCircles::Circle = bullet()
+    return 2 if not Physics2dCcd::step(&b, walls, 1, 0, 16, 500)
+    return 3 if b.x_um + b.radius_um > 1000000 or b.x_um + b.radius_um < 999000
+    return 4 if b.vx != 0 - 200000000
+    # Moving away it keeps clear of the wall for the next steps.
+    for _ in 0..<10:
+        return 5 if Physics2dCcd::step(&b, walls, 1, 0, 16, 500)
+    return 6 if b.x_um >= 0
+    # A projectile passing over the wall top is not stopped.
+    mutable high: Physics2dCircles::Circle = bullet()
+    high.y_um <- 2010000
+    return 7 if Physics2dCcd::step(&high, walls, 1, 0, 16, 500) or high.x_um < 6000000
+    # Approaching from the right hits the far face.
+    mutable back: Physics2dCircles::Circle = bullet()
+    back.x_um <- 3000000
+    back.vx <- 0 - 400000000
+    return 8 if not Physics2dCcd::step(&back, walls, 1, 0, 16, 1000) or back.x_um - back.radius_um < 1000000 or back.vx != 400000000
+    # Nearest of several walls wins.
+    near: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 500000, thickness_um: 1000, y_min_um: 0, y_max_um: 2000000}
+    two: Physics2dCcd::Wall[4] = [near, wall, wall, wall]
+    mutable c: Physics2dCircles::Circle = bullet()
+    return 9 if not Physics2dCcd::step(&c, two, 2, 0, 16, 0) or c.x_um + c.radius_um > 500000 or c.vx != 0
+    # Reproducible: the same run twice gives identical state.
+    mutable r1: Physics2dCircles::Circle = bullet()
+    mutable r2: Physics2dCircles::Circle = bullet()
+    for _ in 0..<50:
+        Physics2dCcd::step(&r1, two, 2, 9810000, 16, 700)
+        Physics2dCcd::step(&r2, two, 2, 9810000, 16, 700)
+    return 10 if r1.x_um != r2.x_um or r1.y_um != r2.y_um or r1.vx != r2.vx
+    return 0
