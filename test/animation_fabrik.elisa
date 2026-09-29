@@ -1,0 +1,34 @@
+include "../src/animation/fabrik.elisa"
+
+def arm() -> AnimationFabrik::Chain:
+    # Three bones of 1 m along +X from the origin.
+    AnimationFabrik::Chain{x: [0.0, 1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0], y: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], z: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], count: 4}
+
+def lengths_kept(c: AnimationFabrik::Chain&) -> bool:
+    mutable ok: bool = true
+    for k in 0..<3:
+        d: f64 = AnimationFabrik::bone(c, k.i64()) - 1.0
+        ok <- false if d > 0.000001 or d < -0.000001
+    ok
+
+def main() -> i32:
+    mutable a: AnimationFabrik::Chain = arm()
+    r: AnimationFabrik::Result = AnimationFabrik::solve(&a, 1.0, 1.5, 0.5, 0.001, 32)
+    return 1 if r.outcome != AnimationFabrik::Outcome.Reached or r.iterations < 1 or r.residual > 0.001
+    return 2 if not lengths_kept(&a)
+    return 3 if a.x[0] != 0.0 or a.y[0] != 0.0 or a.z[0] != 0.0
+    # Out of reach: straightened toward the target with the exact gap reported.
+    mutable b: AnimationFabrik::Chain = arm()
+    u: AnimationFabrik::Result = AnimationFabrik::solve(&b, 0.0, 5.0, 0.0, 0.001, 32)
+    return 4 if u.outcome != AnimationFabrik::Outcome.Unreachable or u.residual < 1.999 or u.residual > 2.001
+    return 5 if not lengths_kept(&b) or b.y[3] < 2.999
+    # A one-iteration budget on a hard target stops early and reports the error.
+    mutable c: AnimationFabrik::Chain = arm()
+    n: AnimationFabrik::Result = AnimationFabrik::solve(&c, 0.2, 0.2, 0.0, 0.0000001, 1)
+    return 6 if n.outcome != AnimationFabrik::Outcome.NotConverged or n.iterations != 1 or n.residual <= 0.0
+    return 7 if not lengths_kept(&c)
+    # Invalid inputs.
+    mutable d: AnimationFabrik::Chain = arm()
+    return 8 if AnimationFabrik::solve(&d, 1.0, 1.0, 0.0, 0.0, 8).outcome != AnimationFabrik::Outcome.Invalid
+    return 9 if AnimationFabrik::solve(&d, 1.0, 1.0, 0.0, 0.01, 0).outcome != AnimationFabrik::Outcome.Invalid
+    return 0

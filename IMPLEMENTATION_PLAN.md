@@ -431,6 +431,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Add distance-based sampling rates, animation LOD, visible-pose priorities, and batched jobs while preserving event semantics. Done: a crowd benchmark reports pose cost/memory and compares throttled output to full-rate reference clips.
   Progress on 2026-09-29: `src/animation/budget.elisa` decides distance-tiered update strides, staggered due frames and the smallest stride that fits a per-frame cost budget, reporting an unmeetable budget (see `docs/validation/animation-budget.md`). Consuming it in the animation runtime, measured costs and skipped-frame interpolation remain.
 - [ ] **C10 · P3 · Full-body rig solver** — After: C05, C06.
+  Progress on 2026-09-29: `AnimationFabrik` bounded single-chain FABRIK with preserved bone lengths and Reached/Unreachable/NotConverged outcomes; see `docs/validation/animation-fabrik.md`. Joint limits, multiple effectors, balance and the comparison scenes remain.
   Implement an Elisa-owned constrained full-body solver only after defining a concrete multi-effector rig and convergence/error limits. Done: reach, balance, joint-limit, and conflicting-target scenes measure quality and cost against simpler IK; failure remains bounded and diagnosable.
 
 ## N — navigation and AI foundations
