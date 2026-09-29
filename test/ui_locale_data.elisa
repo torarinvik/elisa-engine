@@ -1,0 +1,100 @@
+include "../src/ui/locale_data.elisa"
+
+# Asset text is built from byte rows: Elisa has no string-to-bytes view.
+def put(s: mutable UiLocaleData::Source&, row: u8[16], n: usize) -> void:
+    for i in 0..<16:
+        if i.usize() < n:
+            _ = UiLocaleData::append(s, row[i])
+
+def good() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [35u8, 32u8, 99u8, 111u8, 117u8, 114u8, 115u8, 101u8, 32u8, 115u8, 116u8, 114u8, 105u8, 110u8, 103u8, 115u8], 16)
+    put(&s, [10u8, 101u8, 110u8, 32u8, 48u8, 32u8, 83u8, 116u8, 97u8, 114u8, 116u8, 10u8, 101u8, 110u8, 32u8, 49u8], 16)
+    put(&s, [32u8, 67u8, 111u8, 105u8, 110u8, 115u8, 58u8, 32u8, 123u8, 48u8, 125u8, 10u8, 101u8, 110u8, 32u8, 50u8], 16)
+    put(&s, [32u8, 83u8, 101u8, 116u8, 116u8, 105u8, 110u8, 103u8, 115u8, 10u8, 110u8, 98u8, 32u8, 48u8, 32u8, 66u8], 16)
+    put(&s, [101u8, 103u8, 121u8, 110u8, 110u8, 32u8, 110u8, 195u8, 165u8, 10u8, 114u8, 117u8, 32u8, 48u8, 32u8, 208u8], 16)
+    put(&s, [157u8, 208u8, 176u8, 209u8, 135u8, 208u8, 176u8, 209u8, 130u8, 209u8, 140u8, 10u8, 97u8, 114u8, 32u8, 48u8], 16)
+    put(&s, [32u8, 216u8, 167u8, 216u8, 168u8, 216u8, 175u8, 216u8, 163u8, 13u8, 10u8, 106u8, 97u8, 32u8, 48u8, 32u8], 16)
+    put(&s, [227u8, 130u8, 185u8, 227u8, 130u8, 191u8, 227u8, 131u8, 188u8, 227u8, 131u8, 136u8, 10u8, 106u8, 97u8, 32u8], 16)
+    put(&s, [49u8, 32u8, 227u8, 130u8, 179u8, 227u8, 130u8, 164u8, 227u8, 131u8, 179u8, 32u8, 123u8, 48u8, 125u8, 10u8], 16)
+    put(&s, [10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 1)
+    s
+
+def unknown_locale() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 48u8, 32u8, 83u8, 116u8, 97u8, 114u8, 116u8, 10u8, 120u8, 120u8, 32u8, 49u8, 32u8], 16)
+    put(&s, [72u8, 105u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 3)
+    s
+
+def bad_key() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 51u8, 50u8, 32u8, 83u8, 116u8, 97u8, 114u8, 116u8, 10u8, 0u8, 0u8, 0u8, 0u8], 12)
+    s
+
+def duplicate() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 48u8, 32u8, 83u8, 116u8, 97u8, 114u8, 116u8, 10u8, 101u8, 110u8, 32u8, 48u8, 32u8], 16)
+    put(&s, [65u8, 103u8, 97u8, 105u8, 110u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 6)
+    s
+
+def bad_utf8() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 48u8, 32u8, 83u8, 116u8, 195u8, 40u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 10)
+    s
+
+def syntax() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 48u8, 32u8, 83u8, 116u8, 97u8, 114u8, 116u8, 10u8, 101u8, 110u8, 48u8, 66u8, 114u8], 16)
+    put(&s, [111u8, 107u8, 101u8, 110u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 5)
+    s
+def too_long() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 48u8, 32u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8], 16)
+    put(&s, [120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8], 16)
+    put(&s, [120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8], 16)
+    put(&s, [120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 120u8], 16)
+    put(&s, [120u8, 120u8, 120u8, 120u8, 120u8, 120u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 7)
+    s
+
+def cp_at(l: UiLocaleData::Lookup, i: i64) -> i64:
+    l.text.cp[i.usize()]
+
+def main() -> i32:
+    mutable pack: UiLocaleData::Pack = UiLocaleData::Pack()
+    s: UiLocaleData::Source = good()
+    return 1 if UiLocaleData::load(&pack, &s) != UiLocaleData::Status.Ok or pack.count != 8
+    en: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::EN, 0)
+    return 2 if en.found.fell_back or en.text.len != 5 or cp_at(en, 0) != 83
+    # UTF-8 decodes to codepoints: å, Cyrillic, Arabic (CRLF stripped), katakana.
+    nb: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::NB, 0)
+    return 3 if nb.text.len != 9 or cp_at(nb, 8) != 229
+    ru: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::RU, 0)
+    return 4 if ru.text.len != 6 or cp_at(ru, 0) != 1053
+    ar: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::AR, 0)
+    return 5 if ar.text.len != 4 or cp_at(ar, 0) != 1575 or not UiLocale::is_rtl(ar.found.locale)
+    ja: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 0)
+    return 6 if ja.text.len != 4 or cp_at(ja, 0) != 12473
+    # Missing keys fall back to English; a key nobody has is reported missing.
+    nb_coins: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::NB, 1)
+    return 7 if not nb_coins.found.fell_back or nb_coins.found.locale != UiLocale::EN or nb_coins.text.len != 10
+    none: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 9)
+    return 8 if not none.found.missing or none.text.len != 0
+    # Packaged templates format like authored ones.
+    mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
+    ja_coins: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 1)
+    return 9 if UiMessageFormat::format(&ja_coins.text, [42, 0, 0, 0], &out) != UiMessageFormat::Result.Ok or out.len != 6 or out.cp[4] != 52
+    # Bad files fail whole, name the line, and leave the pack empty.
+    u: UiLocaleData::Source = unknown_locale()
+    return 10 if UiLocaleData::load(&pack, &u) != UiLocaleData::Status.UnknownLocale or pack.line != 2 or pack.count != 0
+    return 11 if not UiLocaleData::text(&pack, UiLocale::EN, 0).found.missing
+    k: UiLocaleData::Source = bad_key()
+    return 12 if UiLocaleData::load(&pack, &k) != UiLocaleData::Status.BadKey
+    d: UiLocaleData::Source = duplicate()
+    return 13 if UiLocaleData::load(&pack, &d) != UiLocaleData::Status.Duplicate or pack.line != 2
+    b: UiLocaleData::Source = bad_utf8()
+    return 14 if UiLocaleData::load(&pack, &b) != UiLocaleData::Status.BadUtf8
+    x: UiLocaleData::Source = syntax()
+    return 15 if UiLocaleData::load(&pack, &x) != UiLocaleData::Status.Syntax or pack.line != 2
+    t: UiLocaleData::Source = too_long()
+    return 16 if UiLocaleData::load(&pack, &t) != UiLocaleData::Status.TooLong
+    0
