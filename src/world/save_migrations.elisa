@@ -1,6 +1,6 @@
 # Data-driven savegame migration chains. Each step upgrades one schema
 # version to the next with a single field operation (add a field with a
-# default, drop a field, or rescale a field). A chain is validated before use:
+# default, append one at the end, drop a field, or rescale a field). A chain is validated before use:
 # steps must be contiguous from version 1 to the current version with no gap,
 # repeat or out-of-range field. Applying a chain works on a copy and only
 # returns it when every step succeeded, so a failed migration never leaves a
@@ -14,6 +14,7 @@ module SaveMigrations:
             AddField
             DropField
             Scale
+            Append
 
         enum Check:
             Ok
@@ -79,7 +80,13 @@ module SaveMigrations:
             mutable fields: i64[8] = v.fields
             mutable count: i64 = v.count
             mutable outcome: Outcome = Outcome.Migrated
-            if s.op == Op.AddField:
+            if s.op == Op.Append:
+                if count >= MAX_FIELDS:
+                    outcome <- Outcome.Capacity
+                else:
+                    fields[count.usize()] <- s.value
+                    count <- count + 1
+            elif s.op == Op.AddField:
                 if count >= MAX_FIELDS or s.field > count:
                     outcome <- Outcome.Capacity
                 else:

@@ -56,4 +56,9 @@ def main() -> i32:
     for _ in 0..<16:
         SaveMigrations::add(&cap, SaveMigrations::Op.Scale, 0, 1)
     return 15 if SaveMigrations::add(&cap, SaveMigrations::Op.Scale, 0, 1)
+    mutable app: SaveMigrations::Chain = SaveMigrations::Chain()
+    SaveMigrations::add(&app, SaveMigrations::Op.Append, 0, 9)
+    a: SaveMigrations::Result = SaveMigrations::migrate(&app, v1())
+    return 16 if a.outcome != SaveMigrations::Outcome.Migrated or a.values.count != 4 or a.values.fields[3] != 9
+    return 17 if SaveMigrations::migrate(&app, full).outcome != SaveMigrations::Outcome.Capacity
     return 0
