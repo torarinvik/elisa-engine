@@ -41,4 +41,24 @@ def main() -> i32:
         Physics2dCcd::step(&r1, two, 2, 9810000, 16, 700)
         Physics2dCcd::step(&r2, two, 2, 9810000, 16, 700)
     return 10 if r1.x_um != r2.x_um or r1.y_um != r2.y_um or r1.vx != r2.vx
+    # A body dropped fast onto a 1 mm platform lands on it instead of falling through.
+    plat: Physics2dCcd::Platform = Physics2dCcd::Platform{y_um: 0, thickness_um: 1000, x_min_um: 0 - 1000000, x_max_um: 1000000}
+    plats: Physics2dCcd::Platform[4] = [plat, plat, plat, plat]
+    mutable drop: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 500000, vx: 0, vy: 0 - 300000000, radius_um: 5000, mass_g: 10}
+    return 11 if not Physics2dCcd::step_all(&drop, walls, 0, plats, 1, 0, 16, 500)
+    return 12 if drop.y_um - drop.radius_um != 1000 or drop.vy != 150000000
+    # Off the platform's end it falls past.
+    mutable miss: Physics2dCircles::Circle = drop
+    miss.x_um <- 2000000
+    miss.y_um <- 500000
+    miss.vy <- 0 - 300000000
+    return 13 if Physics2dCcd::step_all(&miss, walls, 0, plats, 1, 0, 16, 500) or miss.y_um > 0
+    # Rising into a ceiling hits its underside.
+    ceiling: Physics2dCcd::Platform = Physics2dCcd::Platform{y_um: 3000000, thickness_um: 1000, x_min_um: 0 - 1000000, x_max_um: 1000000}
+    ceils: Physics2dCcd::Platform[4] = [ceiling, plat, plat, plat]
+    mutable up: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 1000000, vx: 0, vy: 300000000, radius_um: 5000, mass_g: 10}
+    return 14 if not Physics2dCcd::step_all(&up, walls, 0, ceils, 1, 0, 16, 1000) or up.y_um + up.radius_um != 3000000 or up.vy != 0 - 300000000
+    # A wall nearer than a platform wins.
+    mutable diag: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 800000, vx: 400000000, vy: 0 - 400000000, radius_um: 5000, mass_g: 10}
+    return 15 if not Physics2dCcd::step_all(&diag, two, 1, plats, 1, 0, 16, 1000) or diag.vx >= 0 or diag.vy >= 0
     return 0

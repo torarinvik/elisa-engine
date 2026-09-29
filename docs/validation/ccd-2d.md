@@ -34,6 +34,21 @@ against thin vertical walls within one step.
     failed code 3; that is why the fix exists.
 - Wired into `scripts/check.elisascript`.
 
+## Platforms
+
+`Platform` is a thin horizontal floor or ceiling. `sweep_platform` reuses
+the wall sweep with the axes swapped. `step_all` stops at the earliest
+contact among walls and platforms, and reflects the speed on that
+contact's axis.
+
+Codes 11-15 of `test/physics_ccd2d.elisa` cover:
+- a 300 m/s drop landing exactly on a 1 mm platform;
+- falling past the platform's end;
+- hitting a ceiling's underside;
+- a nearer wall beating a platform on a diagonal.
+
+Negative control: treating platform hits as walls makes it exit 12.
+
 ## World integration
 
 `Physics2dSleepWorld::step` now moves awake bodies with `Physics2dCcd::step`
@@ -50,6 +65,7 @@ wall. Negative control: passing zero walls to the sweep makes it exit 9.
 
 ## Gaps
 
-- Only axis-aligned vertical walls; there are no general segments or
-  circle-circle CCD.
+- Only axis-aligned walls and platforms; there are no slanted segments or
+  circle-circle CCD. The worlds still call `step` (walls only), not
+  `step_all`.
 - Jolt CCD for 3D, solver budgets and measured presets remain.

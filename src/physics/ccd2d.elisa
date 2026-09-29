@@ -14,6 +14,13 @@ module Physics2dCcd:
             y_min_um: i64
             y_max_um: i64
 
+        # Thin horizontal platform: floor from above, ceiling from below.
+        struct Platform:
+            y_um: i64
+            thickness_um: i64
+            x_min_um: i64
+            x_max_um: i64
+
         struct Hit:
             hit: bool
             t_permille: i64
@@ -37,6 +44,45 @@ module Physics2dCcd:
             y_at: i64 = c.y_um + dy * t / 1000
             return no_hit() if y_at + c.radius_um < w.y_min_um or y_at - c.radius_um > w.y_max_um
             Hit{hit: true, t_permille: t, travel_um: gap}
+
+        # Same test with the axes swapped, for platforms.
+        def sweep_platform(c: Physics2dCircles::Circle&, dx: i64, dy: i64, p: Platform&) -> Hit:
+            swapped: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: c.y_um, y_um: c.x_um, vx: c.vy, vy: c.vx, radius_um: c.radius_um, mass_g: c.mass_g}
+            as_wall: Wall = Wall{x_um: p.y_um, thickness_um: p.thickness_um, y_min_um: p.x_min_um, y_max_um: p.x_max_um}
+            sweep(&swapped, dy, dx, &as_wall)
+
+        # Step with CCD against walls and platforms: stops at the earliest
+        # contact and reflects the speed along that contact's axis.
+        def step_all(c: mutable Physics2dCircles::Circle&, walls: Wall[4], wall_count: i64, platforms: Platform[4], platform_count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0
+            c.vy <- c.vy - gravity_um_s2 * dt_ms / 1000
+            dx: i64 = c.vx * dt_ms / 1000
+            dy: i64 = c.vy * dt_ms / 1000
+            mutable best: Hit = no_hit()
+            mutable vertical: bool = false
+            for i in 0..<4 |best, vertical|:
+                if i.i64() < wall_count:
+                    h: Hit = sweep(c, dx, dy, &walls[i])
+                    if h.hit and h.t_permille < best.t_permille:
+                        best <- h
+                        vertical <- false
+                if i.i64() < platform_count:
+                    h: Hit = sweep_platform(c, dx, dy, &platforms[i])
+                    if h.hit and h.t_permille < best.t_permille:
+                        best <- h
+                        vertical <- true
+            if not best.hit:
+                c.x_um <- c.x_um + dx
+                c.y_um <- c.y_um + dy
+            elif vertical:
+                c.y_um <- c.y_um + best.travel_um
+                c.x_um <- c.x_um + dx * best.t_permille / 1000
+                c.vy <- 0 - c.vy * restitution_permille / 1000
+            else:
+                c.x_um <- c.x_um + best.travel_um
+                c.y_um <- c.y_um + dy * best.t_permille / 1000
+                c.vx <- 0 - c.vx * restitution_permille / 1000
+            best.hit
 
         # Semi-implicit step with CCD against `walls`: stops at the earliest
         # wall contact and reflects the horizontal speed. Returns true on a hit.
