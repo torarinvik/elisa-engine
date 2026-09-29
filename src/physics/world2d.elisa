@@ -2,8 +2,10 @@
 # the sort-and-sweep broadphase, resolves them with the circle narrowphase in
 # the broadphase's deterministic order, then applies the ground. Reports how
 # many contacts were resolved and whether the pair buffer overflowed.
+# Bodies move with continuous collision against up to four thin walls.
 include "circles2d.elisa"
 include "sweep2d.elisa"
+include "ccd2d.elisa"
 
 module Physics2dWorld:
     public:
@@ -11,15 +13,19 @@ module Physics2dWorld:
             candidates: i64
             resolved: i64
             overflowed: bool
+            wall_hits: i64
 
-        def step(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64) -> Report:
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, walls: Physics2dCcd::Wall[4], wall_count: i64) -> Report:
             n: i64 = 32 if count > 32 else count
             mutable minx: i64[32] = zeroed
             mutable maxx: i64[32] = zeroed
             mutable miny: i64[32] = zeroed
             mutable maxy: i64[32] = zeroed
+            mutable wall_hits: i64 = 0
             for i in 0..<n:
-                Physics2dCircles::integrate(&bodies[i], gravity_um_s2, dt_ms)
+                mutable c: Physics2dCircles::Circle = bodies[i]
+                wall_hits <- wall_hits + 1 if Physics2dCcd::step(&c, walls, wall_count, gravity_um_s2, dt_ms, restitution_permille)
+                bodies[i] <- c
                 minx[i] <- bodies[i].x_um - bodies[i].radius_um
                 maxx[i] <- bodies[i].x_um + bodies[i].radius_um
                 miny[i] <- bodies[i].y_um - bodies[i].radius_um
@@ -39,4 +45,4 @@ module Physics2dWorld:
                 resolved <- resolved + 1 if c == Physics2dCircles::Contact.Resolved
             for i in 0..<n:
                 Physics2dCircles::ground(&bodies[i], ground_um, restitution_permille, 50000)
-            Report{candidates: found, resolved: resolved, overflowed: pairs.overflowed}
+            Report{candidates: found, resolved: resolved, overflowed: pairs.overflowed, wall_hits: wall_hits}

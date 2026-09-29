@@ -402,6 +402,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `src/physics/stability.elisa` adds material combination, a CCD-need rule and a capped fixed-step plan with `test/physics_stability.elisa` (see `docs/validation/physics-stability.md`); not connected to the runtime and no measured presets, so the item stays open.
   Progress on 2026-09-29: Physics2dCcd sweeps 2D circles against thin walls with exact contact placement, so a 400 m/s bullet at a 16 ms step stops at a 1 mm wall instead of tunnelling, reproducibly ([`ccd-2d.md`](docs/validation/ccd-2d.md)); 3D CCD, solver budgets and measured presets remain.
   Progress on 2026-09-29: the sleeping 2D world steps awake bodies through Physics2dCcd against up to four walls and reports wall hits ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
+  Progress on 2026-09-29: the plain 2D world also steps bodies through Physics2dCcd ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
