@@ -1,0 +1,112 @@
+include "../vendor/elisa_math.elisa"
+
+# Bounded FABRIK solver for one joint chain (up to 8 joints), the building
+# block for a multi-effector rig. The root stays fixed and bone lengths are
+# preserved exactly after every pass. Work is capped by `max_iterations`, and
+# the result reports how it ended: Reached within tolerance, Unreachable
+# (target beyond the chain's length, so the chain is straightened toward
+# it), or NotConverged with the remaining residual, so a failure is bounded and
+# diagnosable rather than a silent jitter.
+module AnimationFabrik:
+    public:
+        enum Outcome:
+            Reached
+            Unreachable
+            NotConverged
+            Invalid
+
+        struct Chain:
+            x: mutable f64[8]
+            y: mutable f64[8]
+            z: mutable f64[8]
+            count: i64
+
+        struct Result:
+            outcome: Outcome
+            iterations: i64
+            residual: f64
+
+        def distance(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> f64:
+            dx: f64 = bx - ax
+            dy: f64 = by - ay
+            dz: f64 = bz - az
+            ElisaMath::sqrt(dx * dx + dy * dy + dz * dz)
+
+        def bone(c: Chain&, i: i64) -> f64:
+            distance(c.x[i], c.y[i], c.z[i], c.x[i + 1], c.y[i + 1], c.z[i + 1])
+
+        # Places joint `move_i` on the line from `fixed_i` toward itself, at `length`.
+        def place(c: mutable Chain&, fixed_i: i64, move_i: i64, length: f64) -> bool:
+            d: f64 = distance(c.x[fixed_i], c.y[fixed_i], c.z[fixed_i], c.x[move_i], c.y[move_i], c.z[move_i])
+            return false if d <= 0.0
+            t: f64 = length / d
+            c.x[move_i] <- c.x[fixed_i] + (c.x[move_i] - c.x[fixed_i]) * t
+            c.y[move_i] <- c.y[fixed_i] + (c.y[move_i] - c.y[fixed_i]) * t
+            c.z[move_i] <- c.z[fixed_i] + (c.z[move_i] - c.z[fixed_i]) * t
+            true
+
+        def solve(c: mutable Chain&, tx: f64, ty: f64, tz: f64, tolerance: f64, max_iterations: i64) -> Result:
+            return Result{outcome: Outcome.Invalid, iterations: 0, residual: 0.0} if c.count < 2 or c.count > 8 or tolerance <= 0.0 or max_iterations < 1
+            mutable lengths: f64[8] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            mutable total: f64 = 0.0
+            for k in 0..<7:
+                if k.i64() < c.count - 1:
+                    lengths[k] <- bone(c, k.i64())
+                    total <- total + lengths[k]
+            rx: f64 = c.x[0]
+            ry: f64 = c.y[0]
+            rz: f64 = c.z[0]
+            last: i64 = c.count - 1
+            reach: f64 = distance(rx, ry, rz, tx, ty, tz)
+            if reach >= total:
+                straighten(c, &lengths, tx, ty, tz)
+                gap: f64 = distance(c.x[last], c.y[last], c.z[last], tx, ty, tz)
+                return Result{outcome: Outcome.Unreachable, iterations: 0, residual: gap}
+            iterate(c, &lengths, tx, ty, tz, tolerance, max_iterations)
+
+        def straighten(c: mutable Chain&, lengths: f64[8]&, tx: f64, ty: f64, tz: f64) -> bool:
+            for k in 1..<8:
+                if k.i64() < c.count:
+                    c.x[k] <- tx
+                    c.y[k] <- ty
+                    c.z[k] <- tz
+                    place(c, k.i64() - 1, k.i64(), lengths[k - 1])
+            true
+
+        def iterate(c: mutable Chain&, lengths: f64[8]&, tx: f64, ty: f64, tz: f64, tolerance: f64, max_iterations: i64) -> Result:
+            rx: f64 = c.x[0]
+            ry: f64 = c.y[0]
+            rz: f64 = c.z[0]
+            last: i64 = c.count - 1
+            mutable used: i64 = 0
+            mutable err: f64 = distance(c.x[last], c.y[last], c.z[last], tx, ty, tz)
+            for step in 0..<64:
+                if step.i64() < max_iterations and err > tolerance:
+                    backward(c, lengths, tx, ty, tz)
+                    forward(c, lengths, rx, ry, rz)
+                    used <- used + 1
+                    err <- distance(c.x[last], c.y[last], c.z[last], tx, ty, tz)
+            return Result{outcome: Outcome.Reached, iterations: used, residual: err} if err <= tolerance
+            Result{outcome: Outcome.NotConverged, iterations: used, residual: err}
+
+        # End effector to the target, then each joint back toward the root.
+        def backward(c: mutable Chain&, lengths: f64[8]&, tx: f64, ty: f64, tz: f64) -> bool:
+            last: i64 = c.count - 1
+            c.x[last] <- tx
+            c.y[last] <- ty
+            c.z[last] <- tz
+            for k in 0..<7:
+                i: i64 = last - 1 - k.i64()
+                if i >= 0:
+                    place(c, i + 1, i, lengths[i])
+            true
+
+        # Root back to its anchor, then each joint out toward the effector.
+        def forward(c: mutable Chain&, lengths: f64[8]&, rx: f64, ry: f64, rz: f64) -> bool:
+            c.x[0] <- rx
+            c.y[0] <- ry
+            c.z[0] <- rz
+            for k in 1..<8:
+                if k.i64() < c.count:
+                    place(c, k.i64() - 1, k.i64(), lengths[k - 1])
+            true

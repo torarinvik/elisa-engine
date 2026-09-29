@@ -1,0 +1,75 @@
+# Buoyancy for box-shaped floating bodies, in integer SI-milli units
+# (grams, millinewtons, milliseconds; body position and velocity in
+# micrometres so drag and motion do not stall in an integer dead zone) so a replay floats the same
+# way on every platform. Buoyancy sits behind its own feature flag and a
+# per-frame body budget: bodies past the budget are held still (reported, not
+# silently dropped), and a step whose velocity change would exceed the
+# stability limit is clamped and reported instead of exploding.
+module PhysicsBuoyancy:
+    public:
+        const module Tune:
+            GRAVITY_MM_S2: i64 = 9810
+            WATER_KG_M3: i64 = 1000
+            MAX_DV_UM_S: i64 = 2000000
+
+        enum Step:
+            Disabled
+            OverBudget
+            Clamped
+            Ok
+
+        struct Settings:
+            enabled: bool
+            max_bodies: i64
+            drag_permille: i64
+
+        struct Body:
+            y_um: mutable i64
+            vy_um_s: mutable i64
+            half_height_mm: i64
+            area_mm2: i64
+            mass_g: i64
+
+        # Depth of the body's bottom below the water surface (both in
+        # micrometres), clamped to its height.
+        def submerged_um(b: Body&, water_y_um: i64) -> i64:
+            depth: i64 = water_y_um - (b.y_um - b.half_height_mm * 1000)
+            full: i64 = 2000 * b.half_height_mm
+            return 0 if depth <= 0
+            return full if depth >= full
+            depth
+
+        def submerged_mm(b: Body&, water_y_um: i64) -> i64:
+            submerged_um(b, water_y_um) / 1000
+
+        # Archimedes: rho * g * V. V = area_mm2 * depth_um / 1000 mm^3, and
+        # 1 mm^3 of water weighs 0.00981 mN.
+        def buoyant_mn(b: Body&, water_y_um: i64) -> i64:
+            b.area_mm2 * submerged_um(b, water_y_um) / 1000 * 981 / 100000
+
+        def weight_mn(b: Body&) -> i64:
+            b.mass_g * 981 / 100
+
+        # One step of `dt_ms`. `index` is the body's position in the frame's
+        # stable update order, compared against the budget.
+        def step(b: mutable Body&, s: Settings&, water_y_um: i64, dt_ms: i64, index: i64) -> Step:
+            return Step.Disabled if not s.enabled or b.mass_g <= 0 or dt_ms <= 0
+            return Step.OverBudget if index >= s.max_bodies
+            net_mn: i64 = buoyant_mn(b, water_y_um) - weight_mn(b)
+            # a = F / m (mN / g = m/s^2), so dv in um/s = F * dt_ms * 1000 / m.
+            dv: i64 = net_mn * dt_ms * 1000 / b.mass_g
+            wet: i64 = submerged_um(b, water_y_um) / (2 * b.half_height_mm)
+            drag: i64 = b.vy_um_s * s.drag_permille / 1000 * wet / 1000 * dt_ms / 1000
+            mutable change: i64 = dv - drag
+            clamped: bool = change > 2000000 or change < 0 - 2000000
+            change <- 2000000 if change > 2000000
+            change <- 0 - 2000000 if change < 0 - 2000000
+            b.vy_um_s <- b.vy_um_s + change
+            b.y_um <- b.y_um + b.vy_um_s * dt_ms / 1000
+            return Step.Clamped if clamped
+            Step.Ok
+
+        # Equilibrium draft: the submerged depth at which buoyancy equals weight.
+        def rest_draft_mm(b: Body&) -> i64:
+            return 0 if b.area_mm2 <= 0
+            b.mass_g * 1000 / b.area_mm2

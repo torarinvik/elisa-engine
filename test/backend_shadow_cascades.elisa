@@ -1,0 +1,29 @@
+include "../src/backend/shadow_cascades.elisa"
+
+def main() -> i32:
+    # Uniform (lambda 0) and logarithmic (lambda 1000) splits over 1 m .. 1000 m.
+    return 1 if BackendShadowCascades::split_end(1000, 1000000, 4, 0, 2) != 500500
+    return 2 if BackendShadowCascades::split_end(1000, 1000000, 3, 1000, 1) != 10000
+    return 3 if BackendShadowCascades::split_end(1000, 1000000, 3, 1000, 2) != 100000
+    return 4 if BackendShadowCascades::split_end(1000, 1000000, 4, 500, 4) != 1000000
+    # Practical blend lies between, and ends strictly increase.
+    mutable previous: i64 = 1000
+    for k in 1..<5:
+        e: i64 = BackendShadowCascades::split_end(100, 200000, 4, 750, k.i64())
+        return 5 if e <= previous
+        previous <- e
+    mid: i64 = BackendShadowCascades::split_end(1000, 1000000, 3, 500, 1)
+    return 6 if mid <= 10000 or mid >= 334000
+    # Invalid input.
+    return 7 if BackendShadowCascades::split_end(0, 100, 2, 500, 1) != 0 or BackendShadowCascades::split_end(10, 10, 2, 500, 1) != 0
+    return 8 if BackendShadowCascades::split_end(10, 100, 5, 500, 1) != 0 or BackendShadowCascades::split_end(10, 100, 2, 1001, 1) != 0 or BackendShadowCascades::split_end(10, 100, 2, 500, 0) != 0
+    # Stable radius and texel snapping.
+    return 9 if BackendShadowCascades::stable_radius(12001, 1000) != 13000 or BackendShadowCascades::stable_radius(12000, 1000) != 12000
+    return 10 if BackendShadowCascades::texel_um(1024, 2048) != 1000 or BackendShadowCascades::texel_um(1, 4096) != 1
+    return 11 if BackendShadowCascades::snap_um(2500, 1000) != 2000 or BackendShadowCascades::snap_um(0 - 2500, 1000) != 0 - 3000 or BackendShadowCascades::snap_um(0 - 2000, 1000) != 0 - 2000
+    # Small camera moves inside one texel give the same origin.
+    return 12 if BackendShadowCascades::snap_um(7001, 1000) != BackendShadowCascades::snap_um(7999, 1000)
+    # Cascade blend band.
+    return 13 if BackendShadowCascades::blend_permille(9000, 10000, 1000) != 0 or BackendShadowCascades::blend_permille(9500, 10000, 1000) != 500
+    return 14 if BackendShadowCascades::blend_permille(10000, 10000, 1000) != 1000 or BackendShadowCascades::blend_permille(9999, 10000, 0) != 0
+    return 0
