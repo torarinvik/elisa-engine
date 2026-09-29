@@ -220,6 +220,10 @@
         @callconv(c)
         extern elisa_render_scene_v1_destroy_text(handle: i64) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_text_camera(handle: i64, camera_handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_text_camera(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create_overlay_panel(x: f32, y: f32,
             width: f32, height: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
         @callconv(c)
@@ -233,6 +237,11 @@
         extern elisa_render_scene_v1_set_overlay_panel_visible(handle: i64, visible: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_overlay_panel(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_camera(handle: i64,
+            camera_handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_overlay_panel_camera(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_create_electric_arc(width: f32, amplitude: f32, seed: u32) -> i64
         @callconv(c)

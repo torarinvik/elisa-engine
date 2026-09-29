@@ -1,4 +1,5 @@
 include "../src/runtime/ui_renderer.elisa"
+include "../src/runtime/render_scene_image.elisa"
 
 module RenderSceneUiNativeTests:
     private:
@@ -138,12 +139,82 @@ module RenderSceneUiNativeTests:
             0
 
     public:
+        def exercise_viewport_overlays() -> i32:
+            camera: RenderScene::CameraHandle = catch RenderScene::create_camera(
+                RenderScene::CameraProjection.Perspective, 160, 200,
+                0.7853982, 0.1, 100.0):
+                value: value
+                error failure: return 30
+            panel: RenderScene::OverlayPanelHandle = catch RenderScene::create_overlay_panel(
+                12.0, 12.0, 100.0, 32.0,
+                RenderScene::Color{red: 0.0, green: 0.1, blue: 0.3, alpha: 0.8}):
+                value: value
+                error failure: return 31
+            label: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                "PLAYER TWO", 20.0, 20.0, 14,
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 32
+            image: RenderScene::OverlayImageHandle = catch RenderScene::create_overlay_image(
+                "test/fixtures/glyph_atlas.png", 40.0, 20.0, 24.0, 24.0):
+                value: value
+                error failure: return 33
+            before_viewport: i32 = catch RenderScene::set_overlay_text_camera(label, camera):
+                ok: 0
+                RenderScene::RenderSceneError.BackendFailure: 1
+                error failure: 2
+            return 34 if before_viewport != 1
+            viewport: i32 = catch RenderScene::set_camera_viewport(camera,
+                160, 0, 160, 200, 0.0):
+                ok: 0
+                error failure: 3
+            return 35 if viewport != 0
+            panel_camera: i32 = catch RenderScene::set_overlay_panel_camera(panel, camera):
+                ok: 0
+                error failure: 4
+            return 36 if panel_camera != 0
+            text_camera: i32 = catch RenderScene::set_overlay_text_camera(label, camera):
+                ok: 0
+                error failure: 5
+            return 37 if text_camera != 0
+            image_camera: i32 = catch RenderScene::set_overlay_image_camera(image, camera):
+                ok: 0
+                error failure: 5
+            return 38 if image_camera != 0
+            pumped: mutable i32 = 0
+            for frame in 0..<2:
+                pumped <- 1 if Application::pump() != Application::PumpStatus.Running
+            return 39 if pumped != 0
+            cleared: i32 = catch RenderScene::clear_camera_viewport(camera):
+                ok: 0
+                error failure: 6
+            return 40 if cleared != 0
+            destroyed_image: i32 = catch RenderScene::destroy_overlay_image(image):
+                ok: 0
+                error failure: 8
+            return 41 if destroyed_image != 0
+            destroyed_text: i32 = catch RenderScene::destroy_overlay_text(label):
+                ok: 0
+                error failure: 7
+            return 42 if destroyed_text != 0
+            destroyed_panel: i32 = catch RenderScene::destroy_overlay_panel(panel):
+                ok: 0
+                error failure: 8
+            return 43 if destroyed_panel != 0
+            destroyed_camera: i32 = catch RenderScene::destroy_camera(camera):
+                ok: 0
+                error failure: 9
+            return 44 if destroyed_camera != 0
+            0
+
         def exercise() -> i32:
+            viewport_status: i32 = exercise_viewport_overlays()
+            return 45 + viewport_status if viewport_status != 0
             fixture: mutable Fixture = catch create_fixture():
                 value: value
                 error failure: return 11
             focus_status: i32 = review_focus_and_scroll(&fixture)
             return 12 + focus_status if focus_status != 0
             destroy_status: i32 = destroy_fixture(&fixture)
-            return 23 + destroy_status if destroy_status != 0
+            return 26 + destroy_status if destroy_status != 0
             0

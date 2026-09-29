@@ -226,6 +226,8 @@ extern "C" int32_t elisa_render_scene_v1_destroy_camera(int64_t handle) {
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (state.camera_entity == state.cameras[slot].entity) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const int32_t rehome_status = rehome_camera_overlays_to_primary(state, slot);
+    if (rehome_status != ELISA_RENDER_SCENE_OK) return rehome_status;
     if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
     state.cameras[slot].pipeline.reset();
     state.scene->Entity_Remove(state.cameras[slot].entity);
@@ -301,6 +303,8 @@ extern "C" int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const int32_t rehome_status = rehome_camera_overlays_to_primary(state, slot);
+    if (rehome_status != ELISA_RENDER_SCENE_OK) return rehome_status;
     wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
     if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();

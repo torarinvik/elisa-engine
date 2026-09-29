@@ -12,5 +12,7 @@ struct OverlayImageSlot {
     uint32_t texture_width = 0;
     uint32_t texture_height = 0;
     uint64_t generation = 0;
+    size_t camera_slot = MAX_RENDER_CAMERAS;
+    uint64_t camera_generation = 0;
     bool live = false;
 };

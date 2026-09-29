@@ -24,6 +24,11 @@ extend RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_set_overlay_image_visible(handle: i64, visible: i32) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_image_camera(handle: i64,
+            camera_handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_overlay_image_camera(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_destroy_overlay_image(handle: i64) -> i32
 
     public:
@@ -40,8 +45,8 @@ extend RenderScene:
             v1: f32
 
         # The asset path is project-relative and bounded like material
-        # textures. The quad's upper-left corner sits at (x, y) in the logical
-        # canvas and it samples the whole texture until a UV rectangle is set.
+        # textures. The quad uses primary-canvas coordinates until attached to
+        # an owned camera, when its coordinates are local to that viewport.
         def create_overlay_image(asset_path: cstr, x: f32, y: f32, width: f32,
             height: f32) -> OverlayImageHandle error[RenderSceneError]:
             native_value: i64 = elisa_render_scene_v1_create_overlay_image(asset_path,
@@ -70,5 +75,10 @@ extend RenderScene:
             visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_image_visible(
                 handle.id, 1 if visible else 0))
+        def set_overlay_image_camera(handle: OverlayImageHandle,
+            camera: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_image_camera(handle.id, camera.id))
+        def clear_overlay_image_camera(handle: OverlayImageHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_overlay_image_camera(handle.id))
         def destroy_overlay_image(handle: OverlayImageHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_overlay_image(handle.id))

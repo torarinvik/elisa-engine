@@ -7,6 +7,8 @@ constexpr uint64_t MAX_PANEL_GENERATION =
 struct OverlayPanelSlot {
     wi::Sprite sprite;
     uint64_t generation = 0;
+    size_t camera_slot = MAX_RENDER_CAMERAS;
+    uint64_t camera_generation = 0;
     bool live = false;
 };
 #include "render_scene_image_internal.inc"

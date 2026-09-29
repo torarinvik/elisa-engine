@@ -24,6 +24,12 @@
         def set_overlay_text_visible(handle: OverlayTextHandle, visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_visible(
                 handle.id, 1 if visible else 0))
+        # Overlay positions are local to the selected camera viewport.
+        def set_overlay_text_camera(handle: OverlayTextHandle,
+            camera: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_camera(handle.id, camera.id))
+        def clear_overlay_text_camera(handle: OverlayTextHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_text_camera(handle.id))
         def destroy_overlay_text(handle: OverlayTextHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_text(handle.id))
         # Position is the panel's upper-left corner in the logical canvas.
@@ -51,6 +57,11 @@
             visible: bool) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_overlay_panel_visible(
                 handle.id, 1 if visible else 0))
+        def set_overlay_panel_camera(handle: OverlayPanelHandle,
+            camera: CameraHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_overlay_panel_camera(handle.id, camera.id))
+        def clear_overlay_panel_camera(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_clear_overlay_panel_camera(handle.id))
         def destroy_overlay_panel(handle: OverlayPanelHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_destroy_overlay_panel(handle.id))
         def create_electric_arc(width: f32, amplitude: f32, seed: u32) -> ElectricArcHandle error[RenderSceneError]:

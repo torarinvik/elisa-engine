@@ -270,6 +270,16 @@ input glyphs, for example) as a screen-space sprite on the same 2D path, with
 position, size, normalized sub-rectangle UV, color/opacity and visibility
 setters. See [`overlay-image.md`](overlay-image.md).
 
+Text, panels and images can be attached to an owned camera with
+`set_overlay_text_camera`, `set_overlay_panel_camera`, or
+`set_overlay_image_camera`. Their coordinates are local to that camera's 2D
+target, and the secondary camera composition alpha-composites that target with
+its 3D result inside the camera viewport. The matching `clear_*_camera` calls
+return a widget to the primary path. Clearing a camera viewport or destroying
+the camera also rehomes its widgets before releasing the path. The focused
+native UI smoke covers text/panel/image attachment, a rendered frame, viewport
+cleanup and safe destruction.
+
 `RenderScene::debug_box`, `debug_line`, and `debug_text` submit scoped 3D
 commands through the private native debug bridge. Bounds, positions, colors,
 depth flags, owner-thread access, and queue capacity are checked before a

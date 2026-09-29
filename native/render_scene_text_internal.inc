@@ -17,5 +17,7 @@ constexpr float OVERLAY_TEXT_SHADOW_OFFSET_Y = 2.0f;
 struct OverlayTextSlot {
     wi::SpriteFont font;
     uint64_t generation = 0;
+    size_t camera_slot = MAX_RENDER_CAMERAS;
+    uint64_t camera_generation = 0;
     bool live = false;
 };

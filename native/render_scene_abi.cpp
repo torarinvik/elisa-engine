@@ -203,6 +203,8 @@ bool valid_color(float red, float green, float blue, float alpha) {
 }
 #include "render_scene_text_helpers.inc"
 #include "render_scene_panel_helpers.inc"
+#include "render_scene_overlay_view_helpers.inc"
+#include "render_scene_image_helpers.inc"
 #include "render_scene_overlay_reset.inc"
 bool on_owner_thread(const RenderSceneService& state) {
     return state.owner_thread == std::this_thread::get_id();

@@ -222,8 +222,28 @@ extern "C" int32_t elisa_render_scene_v1_destroy_text(int64_t handle) {
     const size_t slot = decode_text_handle(state, handle);
     if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     OverlayTextSlot& entry = state.overlay_texts[slot];
-    state.path->RemoveFont(&entry.font);
+    if (wi::RenderPath2D* path = overlay_render_path(state, entry)) path->RemoveFont(&entry.font);
     entry.font.SetHidden(true);
+    entry.camera_slot = MAX_RENDER_CAMERAS;
+    entry.camera_generation = 0;
     entry.live = false;
     return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_text_camera(
+    int64_t handle, int64_t camera_handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    OverlayTextSlot& entry = state.overlay_texts[slot];
+    return set_overlay_camera(state, entry, camera_handle,
+        [&](wi::RenderPath2D* path) { path->AddFont(&entry.font); },
+        [&](wi::RenderPath2D* path) { path->RemoveFont(&entry.font); });
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_text_camera(int64_t handle) {
+    return elisa_render_scene_v1_set_text_camera(handle, 0);
 }

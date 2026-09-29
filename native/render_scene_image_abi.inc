@@ -112,3 +112,21 @@ extern "C" int32_t elisa_render_scene_v1_destroy_overlay_image(int64_t handle) {
     release_overlay_image(state, state.overlay_images[slot]);
     return ELISA_RENDER_SCENE_OK;
 }
+
+extern "C" int32_t elisa_render_scene_v1_set_overlay_image_camera(
+    int64_t handle, int64_t camera_handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_image_handle(state, handle);
+    if (slot == MAX_OVERLAY_IMAGES) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    OverlayImageSlot& entry = state.overlay_images[slot];
+    return set_overlay_camera(state, entry, camera_handle,
+        [&](wi::RenderPath2D* path) { path->AddSprite(&entry.sprite); },
+        [&](wi::RenderPath2D* path) { path->RemoveSprite(&entry.sprite); });
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_overlay_image_camera(int64_t handle) {
+    return elisa_render_scene_v1_set_overlay_image_camera(handle, 0);
+}
