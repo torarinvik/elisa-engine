@@ -352,6 +352,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Connect cooked mip chains and queried format support to bounded asynchronous Wicked uploads, residency budgets, and eviction policy. Done: camera demand streams detail in and out without invalidating materials, exceeding configured memory, or stalling the render thread; unsupported formats use explicit tested fallbacks.
 - [ ] **R20 · P1 · Render diagnostics and GPU budgets** — After: R02, R15.
   Report per-pass CPU/GPU timing, draw and upload counts, resource bytes, and frame markers through the engine's Tracy integration. Done: a representative scene produces reproducible warm/cold frame reports and regression thresholds, with unavailable GPU timings labeled rather than fabricated.
+  Progress: `src/backend/frame_report.elisa` accumulates per-pass CPU/GPU time, draws, uploads and resource bytes, labels unavailable GPU timing instead of fabricating it, and judges cold and warm frames against separate budgets (see `docs/validation/render-frame-report.md`); Tracy emission, real pass timings and a representative scene report remain.
 
 ## P — physics and collision
 
