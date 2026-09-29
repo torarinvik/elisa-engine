@@ -1,0 +1,97 @@
+# Rendering failure recovery policy. Failures are reported as kinds, and the
+# policy decides whether to keep rendering, wait and retry, or stop cleanly.
+# A lost swapchain is recreated; a lost device invalidates every GPU handle,
+# which the `epoch` counter makes checkable: a handle made in an older epoch
+# is never used again, and the scene is rebuilt from authoritative asset and
+# world state, never by re-running gameplay spawns. Retries are bounded with
+# a doubling wait; running out of attempts ends in `Failed`, which is final.
+module BackendRecovery:
+    private:
+        const module Tune:
+            MAX_ATTEMPTS: i64 = 3
+            BASE_WAIT: i64 = 2
+
+    public:
+        enum State:
+            Running
+            Degraded
+            Recovering
+            Failed
+
+        enum Failure:
+            SwapchainLost
+            DeviceLost
+            UploadFailed
+            ResizeFailed
+
+        struct Recovery:
+            state: mutable State
+            attempts: mutable i64
+            wait_frames: mutable i64
+            epoch: mutable i64
+            rebuild_pending: mutable bool
+            degraded_events: mutable i64
+
+        def make() -> Recovery:
+            Recovery{state: State.Running, attempts: 0, wait_frames: 0, epoch: 0, rebuild_pending: false, degraded_events: 0}
+
+        def can_render(r: Recovery&) -> bool:
+            r.state == State.Running or r.state == State.Degraded
+
+        # A handle from an older epoch belongs to a lost device.
+        def handle_valid(r: Recovery&, handle_epoch: i64) -> bool:
+            handle_epoch == r.epoch and r.state != State.Failed
+
+        def begin_recovery(r: mutable Recovery&, device_lost: bool):
+            r.state <- State.Recovering
+            r.attempts <- 0
+            r.wait_frames <- 0
+            if device_lost:
+                r.epoch <- r.epoch + 1
+                r.rebuild_pending <- true
+
+        # Reports a failure. Upload and resize failures keep rendering with the
+        # previous resources; swapchain and device loss stop rendering until
+        # recovered. Ignored once failed, and while already recovering a device
+        # loss still escalates (a swapchain fix cannot cover it).
+        def report(r: mutable Recovery&, failure: Failure):
+            return if r.state == State.Failed
+            if failure == Failure.UploadFailed or failure == Failure.ResizeFailed:
+                r.degraded_events <- r.degraded_events + 1
+                r.state <- State.Degraded if r.state == State.Running
+                return
+            if failure == Failure.DeviceLost:
+                begin_recovery(r, true)
+                return
+            begin_recovery(r, false) if r.state != State.Recovering
+
+        # One frame passes while recovering; true when an attempt is due.
+        def tick(r: mutable Recovery&) -> bool:
+            return false if r.state != State.Recovering
+            if r.wait_frames > 0:
+                r.wait_frames <- r.wait_frames - 1
+                return false
+            true
+
+        # Result of a due recovery attempt.
+        def attempt(r: mutable Recovery&, ok: bool):
+            return if r.state != State.Recovering
+            if ok:
+                r.state <- State.Running
+                r.attempts <- 0
+                r.rebuild_pending <- false
+                return
+            r.attempts <- r.attempts + 1
+            if r.attempts >= Tune::MAX_ATTEMPTS:
+                r.state <- State.Failed
+                return
+            r.wait_frames <- Tune::BASE_WAIT * pow2(r.attempts - 1)
+
+        def pow2(n: i64) -> i64:
+            return 1 if n <= 0
+            return 8 if n > 3
+            2 * pow2(n - 1)
+
+        # A degraded renderer that completed a good frame goes back to normal.
+        def frame_ok(r: mutable Recovery&):
+            r.state <- State.Running if r.state == State.Degraded

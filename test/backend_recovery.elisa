@@ -1,0 +1,47 @@
+include "../src/backend/recovery.elisa"
+
+def main() -> i32:
+    r: BackendRecovery::Recovery = BackendRecovery::make()
+    return 1 if not BackendRecovery::can_render(&r) or not BackendRecovery::handle_valid(&r, 0)
+    # Upload failures degrade but keep rendering; a good frame recovers.
+    BackendRecovery::report(&r, BackendRecovery::Failure.UploadFailed)
+    return 2 if r.state != BackendRecovery::State.Degraded or not BackendRecovery::can_render(&r) or r.degraded_events != 1
+    BackendRecovery::report(&r, BackendRecovery::Failure.ResizeFailed)
+    BackendRecovery::frame_ok(&r)
+    return 3 if r.state != BackendRecovery::State.Running or r.degraded_events != 2
+    # Swapchain loss stops rendering; the epoch is unchanged and no rebuild.
+    BackendRecovery::report(&r, BackendRecovery::Failure.SwapchainLost)
+    return 4 if r.state != BackendRecovery::State.Recovering or BackendRecovery::can_render(&r) or r.epoch != 0 or r.rebuild_pending
+    return 5 if not BackendRecovery::tick(&r)
+    BackendRecovery::attempt(&r, true)
+    return 6 if r.state != BackendRecovery::State.Running
+    # Device loss bumps the epoch, invalidating old handles, and asks for a rebuild.
+    BackendRecovery::report(&r, BackendRecovery::Failure.DeviceLost)
+    return 7 if r.epoch != 1 or BackendRecovery::handle_valid(&r, 0) or not r.rebuild_pending
+    # First failed attempt waits 2 frames, the second 4.
+    return 8 if not BackendRecovery::tick(&r)
+    BackendRecovery::attempt(&r, false)
+    return 9 if r.attempts != 1 or r.wait_frames != 2 or BackendRecovery::tick(&r) or BackendRecovery::tick(&r) or not BackendRecovery::tick(&r)
+    BackendRecovery::attempt(&r, false)
+    return 10 if r.attempts != 2 or r.wait_frames != 4 or r.state != BackendRecovery::State.Recovering
+    # Success clears the pending rebuild; new handles use the new epoch.
+    for n in 0..<4:
+        BackendRecovery::tick(&r)
+    BackendRecovery::attempt(&r, true)
+    return 11 if r.state != BackendRecovery::State.Running or r.rebuild_pending or not BackendRecovery::handle_valid(&r, 1)
+    # A device loss during a swapchain recovery still bumps the epoch once.
+    BackendRecovery::report(&r, BackendRecovery::Failure.SwapchainLost)
+    BackendRecovery::report(&r, BackendRecovery::Failure.DeviceLost)
+    return 12 if r.epoch != 2 or not r.rebuild_pending
+    # A second swapchain report while recovering does not reset progress.
+    BackendRecovery::attempt(&r, false)
+    BackendRecovery::report(&r, BackendRecovery::Failure.SwapchainLost)
+    return 13 if r.attempts != 1
+    # Out of attempts: Failed is final and ignores further reports.
+    BackendRecovery::attempt(&r, false)
+    BackendRecovery::attempt(&r, false)
+    return 14 if r.state != BackendRecovery::State.Failed or BackendRecovery::can_render(&r) or BackendRecovery::handle_valid(&r, 2)
+    BackendRecovery::report(&r, BackendRecovery::Failure.DeviceLost)
+    BackendRecovery::attempt(&r, true)
+    return 15 if r.state != BackendRecovery::State.Failed or r.epoch != 2 or BackendRecovery::tick(&r)
+    return 0
