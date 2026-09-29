@@ -45,7 +45,25 @@ def main() -> i32:
     mutable pair: Physics2dCircles::Circle[32] = zeroed
     pair[0] <- Physics2dCircles::Circle{x_um: 0, y_um: 50000, vx: 0, vy: 7, radius_um: 100000, mass_g: 100}
     pair[1] <- Physics2dCircles::Circle{x_um: 0, y_um: 150000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
-    return 9 if Physics2dPresets::relax(&pair, 2, 0, 0) != 0 or pair[0].y_um != 50000
-    Physics2dPresets::relax(&pair, 2, 0, 8)
+    return 9 if Physics2dPresets::relax(&pair, 2, 0, 0, &open_scene) != 0 or pair[0].y_um != 50000
+    Physics2dPresets::relax(&pair, 2, 0, 8, &open_scene)
     return 10 if Physics2dPresets::max_overlap_um(&pair, 2, 0) > 1000 or pair[0].y_um < 100000 or pair[0].vy != 7
+    # Relaxation keeps bodies out of statics: a pair squeezed against a wall
+    # (x 1.0..1.1 m) is pushed back out rather than into it, and a ball
+    # pressed into a ramp face leaves along its normal.
+    mutable walled: Physics2dRamp::Statics = Physics2dRamp::open()
+    walled.walls[0] <- Physics2dCcd::Wall{x_um: 1000000, thickness_um: 100000, y_min_um: 0, y_max_um: 2000000}
+    walled.wall_count <- 1
+    mutable squeeze: Physics2dCircles::Circle[32] = zeroed
+    squeeze[0] <- Physics2dCircles::Circle{x_um: 760000, y_um: 500000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    squeeze[1] <- Physics2dCircles::Circle{x_um: 940000, y_um: 500000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    Physics2dPresets::relax(&squeeze, 2, 0, 8, &walled)
+    return 11 if squeeze[1].x_um > 900000 or squeeze[0].x_um > squeeze[1].x_um - 190000
+    mutable ramped: Physics2dRamp::Statics = Physics2dRamp::open()
+    ramped.ramps[0] <- Physics2dRamp::Segment{ax_um: 0, ay_um: 0, bx_um: 2000000, by_um: 2000000}
+    ramped.ramp_count <- 1
+    mutable c: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 1000000, y_um: 1050000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    return 12 if Physics2dPresets::push_out(&c, &ramped) != 1
+    gap: i64 = Physics2dRamp::distance_um(&ramped.ramps[0], c.x_um, c.y_um)
+    return 13 if gap < 99000 or gap > 101000
     return 0

@@ -49,7 +49,7 @@ module Physics2dPresets:
                 if left > 0:
                     dt: i64 = sub if left >= sub else left
                     r: Physics2dWorld::Report = Physics2dWorld::step(bodies, count, gravity_um_s2, dt, ground_um, restitution_permille, statics)
-                    relax(bodies, count, ground_um, preset.relax_passes)
+                    relax(bodies, count, ground_um, preset.relax_passes, statics)
                     left <- left - dt
                     steps <- steps + 1
                     resolved <- resolved + r.resolved
@@ -57,11 +57,45 @@ module Physics2dPresets:
                     overflowed <- overflowed or r.overflowed
             FrameReport{substeps: steps, dropped_ms: dropped, resolved: resolved, wall_hits: wall_hits, overflowed: overflowed}
 
+        # Moves one circle out of the static walls, platforms and ramp faces it
+        # overlaps, by position only. A wall or platform pushes to its nearer
+        # face; a ramp pushes along its front normal (ramps are one-sided).
+        def push_out(c: mutable Physics2dCircles::Circle&, st: Physics2dRamp::Statics&) -> i64:
+            r: i64 = c.radius_um
+            mutable pushes: i64 = 0
+            for k in 0..<4 |pushes|:
+                w: Physics2dCcd::Wall = st.walls[k]
+                inside: bool = k.i64() < st.wall_count and c.y_um >= w.y_min_um and c.y_um <= w.y_max_um
+                if inside and c.x_um + r > w.x_um and c.x_um - r < w.x_um + w.thickness_um:
+                    mid: i64 = w.x_um + w.thickness_um / 2
+                    c.x_um <- w.x_um - r if c.x_um < mid else w.x_um + w.thickness_um + r
+                    pushes <- pushes + 1
+            for k in 0..<4 |pushes|:
+                p: Physics2dCcd::Platform = st.platforms[k]
+                over: bool = k.i64() < st.platform_count and c.x_um >= p.x_min_um and c.x_um <= p.x_max_um
+                if over and c.y_um + r > p.y_um and c.y_um - r < p.y_um + p.thickness_um:
+                    mid: i64 = p.y_um + p.thickness_um / 2
+                    c.y_um <- p.y_um - r if c.y_um < mid else p.y_um + p.thickness_um + r
+                    pushes <- pushes + 1
+            for k in 0..<4 |pushes|:
+                s: Physics2dRamp::Segment = st.ramps[k]
+                l: i64 = Physics2dRamp::length_um(&s)
+                if k.i64() < st.ramp_count and l > 0:
+                    tx: i64 = s.bx_um - s.ax_um
+                    ty: i64 = s.by_um - s.ay_um
+                    along: i64 = (tx * (c.x_um - s.ax_um) + ty * (c.y_um - s.ay_um)) / l
+                    d: i64 = Physics2dRamp::distance_um(&s, c.x_um, c.y_um)
+                    if along >= 0 and along <= l and d >= 0 and d < r:
+                        c.x_um <- c.x_um - ty * (r - d) / l
+                        c.y_um <- c.y_um + tx * (r - d) / l
+                        pushes <- pushes + 1
+            pushes
+
         # Position-only Gauss-Seidel passes: each pass pushes every overlapping
         # pair apart by inverse mass, then lifts bodies out of the ground.
         # Velocities are untouched, so no energy is added; this drains the
         # overlap a single resolve pass leaves along a stack's contact chain.
-        def relax(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, ground_um: i64, passes: i64) -> i64:
+        def relax(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, ground_um: i64, passes: i64, statics: Physics2dRamp::Statics&) -> i64:
             n: i64 = 32 if count > 32 else count
             p: i64 = 8 if passes > 8 else passes
             mutable moved: i64 = 0
@@ -90,8 +124,11 @@ module Physics2dPresets:
                                     bodies[j] <- b
                                     moved <- moved + 1
                     for i in 0..<32:
-                        if i.i64() < n and bodies[i].mass_g > 0 and bodies[i].y_um - bodies[i].radius_um < ground_um:
-                            bodies[i].y_um <- ground_um + bodies[i].radius_um
+                        if i.i64() < n and bodies[i].mass_g > 0:
+                            mutable c: Physics2dCircles::Circle = bodies[i]
+                            push_out(&c, statics)
+                            c.y_um <- ground_um + c.radius_um if c.y_um - c.radius_um < ground_um else c.y_um
+                            bodies[i] <- c
             moved
 
         # Deepest penetration between any two circles or into the ground.
