@@ -37,4 +37,21 @@ def main() -> i32:
     empty: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(1)
     e: RuntimeDecisionLogCodec::Loaded = RuntimeDecisionLogCodec::decode(&RuntimeDecisionLogCodec::encode(&empty))
     return 9 if e.status != RuntimeDecisionLogCodec::Decode.Ok or not RuntimeDecisionLog::complete(&e.log)
+    # Bytes: negative and wide words survive the byte form exactly.
+    mutable wide: RuntimeDecisionLogCodec::Stream = s
+    wide.words[2] <- 0 - 123456789012
+    wide.words[5] <- 0 - 1
+    b: RuntimeDecisionLogCodec::Bytes = RuntimeDecisionLogCodec::pack(&wide)
+    return 10 if b.len != 8 * (6 + 3 * 80).usize() or b.b[40] != 255u8 or b.b[47] != 255u8
+    back: RuntimeDecisionLogCodec::Stream = RuntimeDecisionLogCodec::unpack(&b)
+    return 11 if back.len != wide.len or back.words[2] != 0 - 123456789012 or back.words[5] != 0 - 1 or back.words[100] != s.words[100]
+    # A stored log reloads into a working replayer.
+    sb: RuntimeDecisionLogCodec::Bytes = RuntimeDecisionLogCodec::pack(&s)
+    reread: RuntimeDecisionLogCodec::Loaded = RuntimeDecisionLogCodec::decode(&RuntimeDecisionLogCodec::unpack(&sb))
+    mutable rep2: RuntimeDecisionLog::Log = reread.log
+    return 12 if reread.status != RuntimeDecisionLogCodec::Decode.Ok or game(&rep2, 40) != total
+    # A partial word is refused rather than misaligned.
+    mutable part: RuntimeDecisionLogCodec::Bytes = sb
+    part.len <- part.len - 3
+    return 13 if RuntimeDecisionLogCodec::decode(&RuntimeDecisionLogCodec::unpack(&part)).status != RuntimeDecisionLogCodec::Decode.Truncated
     return 0

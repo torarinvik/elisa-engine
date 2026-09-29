@@ -1,0 +1,24 @@
+# Ties the decision log to the replay trace. Each replay frame's
+# `random_seed` slot carries how many logged decisions the session had made
+# by the end of that tick, so a frame comparison also catches a tick that
+# drew more or fewer times. The first divergence of a replayed session is
+# the earlier of the trace's divergent tick and the log's own divergence.
+include "./replay.elisa"
+include "./decision_log.elisa"
+
+module RuntimeDecisionReplay:
+    public:
+        def decisions_seen(log: RuntimeDecisionLog::Log&) -> i64:
+            return log.cursor if log.mode == RuntimeDecisionLog::Mode.Replaying
+            log.count
+
+        def frame(tick: i64, input: i64, log: RuntimeDecisionLog::Log&, world: i64, physics: i64, render: i64) -> Replay::Frame:
+            Replay::Frame{tick: tick, input: input, random_seed: decisions_seen(log), world_digest: world, physics_digest: physics, render_digest: render}
+
+        # -1 when neither the trace nor the log diverged.
+        def first_divergence(recorded: Replay::Recorder&, replayed: Replay::Recorder&, log: RuntimeDecisionLog::Log&) -> i64:
+            trace: i64 = Replay::first_divergent_tick(recorded, replayed)
+            drawn: i64 = log.diverged_at
+            return drawn if trace < 0
+            return trace if drawn < 0
+            trace if trace < drawn else drawn

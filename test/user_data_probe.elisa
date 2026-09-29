@@ -1,6 +1,7 @@
 # Exercises the public, Elisa-owned user-data API from the native app smoke.
 include "../src/runtime/quality_settings.elisa"
 include "../src/world/prefab_scene_codec.elisa"
+include "../src/runtime/decision_log_store.elisa"
 
 const module QualityPersistenceTest:
     PROFILE_VERSION: i64 = 1
@@ -109,6 +110,24 @@ def exercise_user_data() -> i32:
     _ = catch UserData::remove_payload("nested-scene"):
         ok: 0
         error failure: return 48
+
+    # A recorded decision log survives the disk and replays identically.
+    mutable decisions: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(99)
+    mutable drawn: i64 = 0
+    for t in 0..<30 |decisions, drawn|:
+        drawn <- drawn + RuntimeDecisionLog::draw(&decisions, t, 3, 1000)
+    return 49 if RuntimeDecisionLogStore::save("decisions", &decisions) != RuntimeDecisionLogStore::Stored.Ok
+    reloaded: RuntimeDecisionLogStore::Read = RuntimeDecisionLogStore::load("decisions")
+    return 50 if reloaded.stored != RuntimeDecisionLogStore::Stored.Ok
+    mutable replay: RuntimeDecisionLog::Log = reloaded.loaded.log
+    mutable redrawn: i64 = 0
+    for t in 0..<30 |replay, redrawn|:
+        redrawn <- redrawn + RuntimeDecisionLog::draw(&replay, t, 3, 1000)
+    return 51 if redrawn != drawn or not RuntimeDecisionLog::complete(&replay)
+    _ = catch UserData::remove_payload("decisions"):
+        ok: 0
+        error failure: return 52
+    return 53 if RuntimeDecisionLogStore::load("decisions").stored != RuntimeDecisionLogStore::Stored.NotFound
 
     invalid_key: i32 = catch UserData::write_blob("../outside", &blob):
         value: 0

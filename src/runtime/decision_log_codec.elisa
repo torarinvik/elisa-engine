@@ -10,6 +10,7 @@ module RuntimeDecisionLogCodec:
         const MAGIC: i64 = 4475463
         const VERSION: i64 = 1
         const WORDS: i64 = 774
+        const MAX_BYTES: usize = 6192
 
         enum Decode:
             Ok
@@ -26,6 +27,10 @@ module RuntimeDecisionLogCodec:
         struct Loaded:
             status: Decode
             log: RuntimeDecisionLog::Log
+
+        struct Bytes:
+            b: mutable u8[6192]
+            len: mutable usize
 
         def checksum(s: Stream&, upto: i64) -> i64:
             mutable h: i64 = 1469598103
@@ -69,3 +74,29 @@ module RuntimeDecisionLogCodec:
             rec.count <- count
             rec.overflow <- s.words[4] == 1
             Loaded{status: Decode.Ok, log: RuntimeDecisionLog::replayer(&rec)}
+
+        # Byte form for storage: 8 little-endian two's-complement bytes per
+        # word. unpack returns an empty stream for a partial word.
+        def pack(s: Stream&) -> Bytes:
+            mutable out: Bytes = Bytes{b: zeroed, len: 0}
+            for i in 0..<774 |out|:
+                if i.i64() < s.len:
+                    w: i64 = s.words[i]
+                    for k in 0..<8 |out|:
+                        out.b[i * 8 + k] <- ((w >> (8 * k).i64()) & 255).u8()
+            out.len <- (s.len * 8).usize()
+            out
+
+        def unpack(bytes: Bytes&) -> Stream:
+            mutable s: Stream = Stream{words: zeroed, len: 0}
+            return s if bytes.len % 8 != 0 or bytes.len > MAX_BYTES
+            n: i64 = (bytes.len / 8).i64()
+            for i in 0..<774 |s|:
+                if i.i64() < n:
+                    top: i64 = bytes.b[i * 8 + 7].i64()
+                    mutable w: i64 = top - 256 if top >= 128 else top
+                    for j in 0..<7 |w|:
+                        w <- w * 256 + bytes.b[i * 8 + 6 - j].i64()
+                    s.words[i] <- w
+            s.len <- n
+            s
