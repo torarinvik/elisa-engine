@@ -1,0 +1,56 @@
+# Lays out formatted, localized message text in a fixed label box: splits
+# the codepoints into words at spaces, measures each word with a simple
+# advance table (full width for CJK and fullwidth forms, half width
+# otherwise), wraps them with UiText, and places each line flush to the
+# reading edge, which is the right edge for right-to-left locales. Text that
+# needs more lines than the box holds reports `fits = false` instead of being
+# clipped silently.
+include "./message_format.elisa"
+include "./text.elisa"
+include "./locale_catalogue.elisa"
+
+module UiLocalizedLabel:
+    public:
+        struct Label:
+            lines: i64
+            fits: bool
+            line_x: i64[16]
+            line_w: i64[16]
+
+        def advance(cp: i64, em: i64) -> i64:
+            return em if cp >= 12288 and cp < 40960
+            return em if cp >= 65280 and cp < 65520
+            em / 2
+
+        # Word widths for `text`, in pixels at `em` size.
+        def measure(text: UiMessageFormat::Text&, em: i64) -> UiText::Run:
+            mutable run: UiText::Run = UiText::Run()
+            mutable width: i64 = 0
+            for i in 0..<64 |run, width|:
+                if i.i64() < text.len:
+                    c: i64 = text.cp[i]
+                    if c == 32:
+                        UiText::run_add_word(&run, width) if width > 0
+                        width <- 0
+                    else:
+                        width <- width + advance(c, em)
+            UiText::run_add_word(&run, width) if width > 0
+            run
+
+        def layout(text: UiMessageFormat::Text&, locale: i64, em: i64, box_w: i64, max_lines: i64) -> Label:
+            run: UiText::Run = measure(text, em)
+            w: UiText::Wrapped = UiText::wrap(&run, box_w, em / 2)
+            mutable xs: i64[16] = zeroed
+            mutable ws: i64[16] = zeroed
+            n: i64 = w.line_count.i64()
+            mutable widest: i64 = 0
+            for i in 0..<16 |xs, ws, widest|:
+                if i.i64() < n:
+                    lw: i64 = w.line_widths[i]
+                    ws[i] <- lw
+                    widest <- lw if lw > widest else widest
+                    # Overlong lines start at the reading edge and overflow the far one.
+                    clamped: i64 = lw if lw <= box_w else box_w
+                    xs[i] <- UiLocaleCatalogue::mirror_x(0, clamped, box_w) if UiLocale::is_rtl(locale) else 0
+            ok: bool = n > 0 and n <= max_lines and widest <= box_w
+            Label{lines: n, fits: ok, line_x: xs, line_w: ws}
