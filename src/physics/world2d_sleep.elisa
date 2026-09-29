@@ -1,7 +1,7 @@
 # P10 2D world step with sleeping: like `Physics2dWorld::step`, but sleeping
 # bodies are not integrated, and a resolved contact wakes both bodies so a
 # body knocked by a moving one never stays frozen in the air. Awake bodies
-# move with continuous collision against up to four thin walls, so fast
+# move with continuous collision against up to four thin walls and four platforms, so fast
 # bodies cannot tunnel through them.
 include "sleep2d.elisa"
 include "sweep2d.elisa"
@@ -15,7 +15,7 @@ module Physics2dSleepWorld:
             asleep: i64
             wall_hits: i64
 
-        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64, walls: Physics2dCcd::Wall[4], wall_count: i64) -> Report:
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64, walls: Physics2dCcd::Wall[4], wall_count: i64, platforms: Physics2dCcd::Platform[4], platform_count: i64) -> Report:
             n: i64 = 32 if count > 32 else count
             mutable minx: i64[32] = zeroed
             mutable maxx: i64[32] = zeroed
@@ -26,7 +26,7 @@ module Physics2dSleepWorld:
                 mutable c: Physics2dCircles::Circle = bodies[i]
                 s: Physics2dSleep::State = states[i]
                 if not s.asleep:
-                    wall_hits <- wall_hits + 1 if Physics2dCcd::step(&c, walls, wall_count, gravity_um_s2, dt_ms, restitution_permille)
+                    wall_hits <- wall_hits + 1 if Physics2dCcd::step_all(&c, walls, wall_count, platforms, platform_count, gravity_um_s2, dt_ms, restitution_permille)
                 bodies[i] <- c
                 minx[i] <- c.x_um - c.radius_um
                 maxx[i] <- c.x_um + c.radius_um
