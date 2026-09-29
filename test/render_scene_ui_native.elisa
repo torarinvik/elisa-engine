@@ -185,10 +185,69 @@ module RenderSceneUiNativeTests:
             for frame in 0..<2:
                 pumped <- 1 if Application::pump() != Application::PumpStatus.Running
             return 39 if pumped != 0
+
+            # Moving one widget back to the primary path must be reversible.
+            cleared_panel_owner: i32 = catch RenderScene::clear_overlay_panel_camera(panel):
+                ok: 0
+                error failure: 46
+            return 47 if cleared_panel_owner != 0
+            cleared_text_owner: i32 = catch RenderScene::clear_overlay_text_camera(label):
+                ok: 0
+                error failure: 48
+            return 49 if cleared_text_owner != 0
+            cleared_image_owner: i32 = catch RenderScene::clear_overlay_image_camera(image):
+                ok: 0
+                error failure: 50
+            return 51 if cleared_image_owner != 0
+            reattached_panel: i32 = catch RenderScene::set_overlay_panel_camera(panel, camera):
+                ok: 0
+                error failure: 52
+            return 53 if reattached_panel != 0
+            reattached_text: i32 = catch RenderScene::set_overlay_text_camera(label, camera):
+                ok: 0
+                error failure: 54
+            return 55 if reattached_text != 0
+            reattached_image: i32 = catch RenderScene::set_overlay_image_camera(image, camera):
+                ok: 0
+                error failure: 56
+            return 57 if reattached_image != 0
+            pumped_after_rebind: mutable i32 = 0
+            for frame in 0..<2:
+                pumped_after_rebind <- 1 if Application::pump() != Application::PumpStatus.Running
+            return 58 if pumped_after_rebind != 0
+
+            # The game destroys a secondary path when returning to solo and
+            # creates it again on the next race. Widgets must survive that
+            # transition, not retain the destroyed RenderPath pointer.
             cleared: i32 = catch RenderScene::clear_camera_viewport(camera):
                 ok: 0
-                error failure: 6
+                error failure: 59
             return 40 if cleared != 0
+            restored_viewport: i32 = catch RenderScene::set_camera_viewport(camera,
+                160, 0, 160, 200, 0.0):
+                ok: 0
+                error failure: 60
+            return 61 if restored_viewport != 0
+            restored_panel: i32 = catch RenderScene::set_overlay_panel_camera(panel, camera):
+                ok: 0
+                error failure: 62
+            return 63 if restored_panel != 0
+            restored_text: i32 = catch RenderScene::set_overlay_text_camera(label, camera):
+                ok: 0
+                error failure: 64
+            return 65 if restored_text != 0
+            restored_image: i32 = catch RenderScene::set_overlay_image_camera(image, camera):
+                ok: 0
+                error failure: 66
+            return 67 if restored_image != 0
+            pumped_after_viewport_recreate: mutable i32 = 0
+            for frame in 0..<2:
+                pumped_after_viewport_recreate <- 1 if Application::pump() != Application::PumpStatus.Running
+            return 68 if pumped_after_viewport_recreate != 0
+            cleared_again: i32 = catch RenderScene::clear_camera_viewport(camera):
+                ok: 0
+                error failure: 69
+            return 70 if cleared_again != 0
             destroyed_image: i32 = catch RenderScene::destroy_overlay_image(image):
                 ok: 0
                 error failure: 8
