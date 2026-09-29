@@ -454,6 +454,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `src/audio/voice.elisa` decides explicit-consent capture (never started by scene load, stopped by device change) and a sequence-ordered jitter buffer with loss concealment, late-frame refusal and a bandwidth check (see `docs/validation/audio-voice.md`). Device capture, Opus, RNNoise, transport and a two-process latency run remain.
 - [ ] **S07 · P2 · Audio regression harness** — After: S02, S03.
   Capture offline mixes and timing telemetry for gain, clipping, channel mapping, looping, and spatial fixtures. Done: deterministic DSP assertions complement audible/manual checks and expose underruns or callback overruns in long-session runs.
+  Progress on 2026-09-29: `src/audio/regression.elisa` gives deterministic mix statistics (peak, energy, clipping, silence), gain, downmix and loop-seam assertions, and callback overrun/underrun counters (see `docs/validation/audio-regression.md`). Wiring to real mixer output and long-session runs, and spatial fixtures, remain.
 
 ## I — input, UI, accessibility, and platform interaction
 

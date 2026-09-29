@@ -1,0 +1,42 @@
+include "../src/audio/regression.elisa"
+
+def main() -> i32:
+    s: mutable AudioRegression::Stats = AudioRegression::Stats()
+    for sample in [0, 1000, -2000, 500]:
+        s <- AudioRegression::feed(s, sample)
+    return 1 if s.samples != 4 or s.peak != 2000 or s.silent != 1 or s.clipped != 0
+    return 2 if s.energy != 5250000 or AudioRegression::mean_energy(&s) != 1312500
+    return 3 if not AudioRegression::clean(&s)
+    # Rail hits and out-of-range input count as clipped and saturate.
+    c: mutable AudioRegression::Stats = AudioRegression::Stats()
+    c <- AudioRegression::feed(c, 32767)
+    c <- AudioRegression::feed(c, 40000)
+    c <- AudioRegression::feed(c, -32767)
+    c <- AudioRegression::feed(c, -90000)
+    return 4 if c.clipped != 4 or c.peak != 32767 or AudioRegression::clean(&c)
+    # All-silence is not a clean mix; an empty mix has no energy.
+    z: mutable AudioRegression::Stats = AudioRegression::Stats()
+    z <- AudioRegression::feed(z, 0)
+    z <- AudioRegression::feed(z, 0)
+    return 5 if AudioRegression::clean(&z) or AudioRegression::mean_energy(&AudioRegression::Stats()) != 0
+    # Gain, downmix and loop seams.
+    return 6 if AudioRegression::apply_gain(1000, 500) != 500 or AudioRegression::apply_gain(-1000, 500) != -500
+    return 7 if AudioRegression::apply_gain(1000, 0) != 0 or AudioRegression::apply_gain(1000, -5) != 0
+    return 8 if AudioRegression::downmix(1000, 3000) != 2000 or AudioRegression::downmix(-1000, 1000) != 0
+    return 9 if not AudioRegression::seam_ok(100, 140, 50) or AudioRegression::seam_ok(100, 400, 50)
+    return 10 if AudioRegression::seam_ok(2000000, 0, 999999999)
+    # Timing: overruns and short deliveries are counted, bad probes ignored.
+    t: mutable AudioRegression::Timing = AudioRegression::Timing()
+    t <- AudioRegression::record(t, 800, 5000, 480, 480)
+    t <- AudioRegression::record(t, 900, 5000, 480, 480)
+    return 11 if not AudioRegression::healthy(&t) or t.worst_us != 900
+    t <- AudioRegression::record(t, 6000, 5000, 480, 480)
+    return 12 if AudioRegression::healthy(&t) or t.overruns != 1 or t.worst_us != 6000
+    u: mutable AudioRegression::Timing = AudioRegression::Timing()
+    u <- AudioRegression::record(u, 100, 5000, 400, 480)
+    return 13 if AudioRegression::healthy(&u) or u.underruns != 1 or u.short_frames != 80
+    u <- AudioRegression::record(u, -1, 5000, 480, 480)
+    u <- AudioRegression::record(u, 100, 0, 480, 480)
+    return 14 if u.callbacks != 1
+    return 15 if AudioRegression::healthy(&AudioRegression::Timing())
+    return 0
