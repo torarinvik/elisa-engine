@@ -1,0 +1,57 @@
+include "../src/net/download.elisa"
+
+def feed(d: mutable NetDownload::Download&, from: i64, count: i64) -> bool:
+    ok: mutable bool = true
+    for n in 0..<count:
+        ok <- false if not NetDownload::receive(d, from + n, (from + n) + 1)
+    ok
+
+def sum_of(count: i64) -> i64:
+    s: mutable i64 = 0
+    for n in 0..<count:
+        s <- NetDownload::step(s, n + 1)
+    s
+
+def main() -> i32:
+    d: mutable NetDownload::Download = NetDownload::Download()
+    good: i64 = sum_of(6)
+    # Bad requests never start.
+    return 1 if NetDownload::begin(&d, 0, good, 100) or NetDownload::begin(&d, 200, good, 100)
+    return 2 if NetDownload::begin(&d, 6, -1, 100) or d.phase != NetDownload::Phase.Idle
+    return 3 if not NetDownload::begin(&d, 6, good, 100)
+    return 4 if NetDownload::begin(&d, 6, good, 100)
+    # Interrupted after three bytes: resume where it stopped, not from zero.
+    return 5 if not feed(&d, 0, 3) or NetDownload::resume_offset(&d) != 3
+    # A gap or repeat is refused and changes nothing.
+    return 6 if NetDownload::receive(&d, 5, 6) or NetDownload::receive(&d, 2, 3) or d.received != 3
+    return 7 if NetDownload::receive(&d, 3, 999) or d.received != 3
+    return 8 if not feed(&d, 3, 3) or not NetDownload::finish(&d)
+    # Install replaces the package; the staging area is cleared.
+    return 9 if not NetDownload::install(&d, 1) or d.installed_version != 1 or d.installed_sum != good
+    return 10 if d.phase != NetDownload::Phase.Idle or d.received != 0
+    # A corrupted download fails, is discarded, and the installed package stays.
+    NetDownload::begin(&d, 6, good + 1, 100)
+    feed(&d, 0, 6)
+    return 11 if NetDownload::finish(&d) or d.phase != NetDownload::Phase.Failed
+    return 12 if d.installed_version != 1 or d.installed_sum != good or d.received != 0
+    # A truncated download cannot finish.
+    NetDownload::begin(&d, 6, good, 100)
+    feed(&d, 0, 4)
+    return 13 if NetDownload::finish(&d) or d.installed_version != 1
+    # Cancelling discards staging and keeps the installed package.
+    NetDownload::begin(&d, 6, good, 100)
+    feed(&d, 0, 2)
+    NetDownload::cancel(&d)
+    return 14 if d.phase != NetDownload::Phase.Idle or d.installed_version != 1 or NetDownload::resume_offset(&d) != 0
+    # Extra bytes fail the transfer; nothing installs from it.
+    NetDownload::begin(&d, 2, good, 100)
+    feed(&d, 0, 2)
+    return 15 if NetDownload::receive(&d, 2, 3) or d.phase != NetDownload::Phase.Failed
+    return 16 if NetDownload::install(&d, 5) or d.installed_version != 1
+    # Downgrades and repeats are refused.
+    NetDownload::begin(&d, 6, good, 100)
+    feed(&d, 0, 6)
+    NetDownload::finish(&d)
+    return 17 if NetDownload::install(&d, 1) or d.installed_version != 1
+    return 18 if not NetDownload::install(&d, 2) or d.installed_version != 2
+    return 0

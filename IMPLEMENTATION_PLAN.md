@@ -516,6 +516,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress: `src/net/lab.elisa` derives seeded delay/loss/reorder faults, runs the lag model, and checks explicit convergence bounds with seed, trace checksum and build identity per verdict (see `docs/validation/net-lab.md`); traffic recording, fuzzing, reconnect/late-join and multi-client sessions remain.
 - [ ] **T07 · P2 · HTTP and downloadable content** — After: A03, A04, T01.
   Add cancellable libcurl-backed requests, bounded responses, progress, integrity-checked downloads, and atomic package installation. Done: timeout, resume, corrupted content, and interrupted updates preserve the last usable package; service credentials never enter logs or bundles.
+  Progress on 2026-09-29: `src/net/download.elisa` decides staging, ordered receive, resume offsets, size/checksum verification and version-guarded install so failure, cancellation or corruption keeps the last usable package (see `docs/validation/net-download.md`). The libcurl transport, cryptographic digest, timeouts and on-disk atomic install remain.
 - [ ] **T08 · P2 · Network operations and session UI** — After: T01, I07, Q02.
   Expose connection status, host/join workflow, errors, player roster, diagnostics, and configurable service discovery. Done: a packaged two-player sample is usable without editing source paths; hosted matchmaking/relay integrations remain explicit adapters with external prerequisites.
 

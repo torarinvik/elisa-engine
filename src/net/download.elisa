@@ -1,0 +1,100 @@
+# Integrity-checked, resumable download policy. A package is received into a
+# staging area at strictly increasing offsets, checked against its declared
+# size and checksum, and only then installed in one step. Interruption keeps
+# the staged prefix so the transfer can resume at `received`; failure or
+# cancellation discards the staging area. In every case the last installed
+# package stays usable. The transport (libcurl, timeouts) lives elsewhere and
+# only feeds bytes in; no credential is ever stored here.
+module NetDownload:
+    private:
+        const module Tune:
+            MODULUS: i64 = 1000000007
+            MULTIPLIER: i64 = 257
+
+    public:
+        enum Phase:
+            Idle
+            Receiving
+            Verified
+            Failed
+
+        struct Download:
+            phase: mutable Phase
+            size: mutable i64
+            expected: mutable i64
+            received: mutable i64
+            sum: mutable i64
+            installed_version: mutable i64
+            installed_sum: mutable i64
+
+        def Download() -> Download:
+            Download{phase: Phase.Idle, size: 0, expected: 0, received: 0, sum: 0, installed_version: 0, installed_sum: 0}
+
+        # Rolling checksum step; values stay below the modulus so nothing overflows.
+        def step(sum: i64, value: i64) -> i64:
+            requires sum >= 0
+            requires sum < 1000000007
+            requires value >= 0
+            requires value < 256
+            ensure result >= 0
+            ensure result < 1000000007
+            (sum * Tune::MULTIPLIER + value) % Tune::MODULUS
+
+        def discard(d: mutable Download&):
+            d.phase <- Phase.Idle
+            d.size <- 0
+            d.expected <- 0
+            d.received <- 0
+            d.sum <- 0
+
+        # Starts (or restarts) a transfer of `size` bytes with a known checksum.
+        # Refused when empty, over `max_bytes`, or when one is already running.
+        def begin(d: mutable Download&, size: i64, expected: i64, max_bytes: i64) -> bool:
+            return false if d.phase == Phase.Receiving or size <= 0 or size > max_bytes
+            return false if expected < 0 or expected >= Tune::MODULUS
+            d.phase <- Phase.Receiving
+            d.size <- size
+            d.expected <- expected
+            d.received <- 0
+            d.sum <- 0
+            true
+
+        # Accepts one byte at exactly `offset == received`; a gap, a repeat, a
+        # bad byte or an overrun leaves the staging area unchanged (an overrun
+        # fails the transfer).
+        def receive(d: mutable Download&, offset: i64, value: i64) -> bool:
+            return false if d.phase != Phase.Receiving or offset != d.received
+            return false if value < 0 or value > 255
+            over: bool = d.received >= d.size
+            d.phase <- Phase.Failed if over else d.phase
+            return false if over
+            d.sum <- step(d.sum, value)
+            d.received <- d.received + 1
+            true
+
+        # Where to resume after an interruption; 0 when nothing is staged.
+        def resume_offset(d: Download&) -> i64:
+            return 0 if d.phase != Phase.Receiving
+            d.received
+
+        # Checks size and checksum. A mismatch discards the staging area.
+        def finish(d: mutable Download&) -> bool:
+            return false if d.phase != Phase.Receiving
+            good: bool = d.received == d.size and d.sum == d.expected
+            d.phase <- Phase.Verified if good else Phase.Failed
+            return true if good
+            discard(d)
+            d.phase <- Phase.Failed
+            false
+
+        def cancel(d: mutable Download&):
+            discard(d)
+
+        # Replaces the installed package with the verified one; a stale or
+        # repeated version is refused and the old package stays.
+        def install(d: mutable Download&, version: i64) -> bool:
+            return false if d.phase != Phase.Verified or version <= d.installed_version
+            d.installed_version <- version
+            d.installed_sum <- d.sum
+            discard(d)
+            true
