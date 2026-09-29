@@ -364,6 +364,14 @@ module CourseSounds:
                 value: value
                 error failure: empty
 
+        # The victory loop's stream status, for the second stream's underruns.
+        def victory_status(sounds: Sounds&) -> AudioRuntime::StreamStatus:
+            empty: AudioRuntime::StreamStatus = AudioRuntime::StreamStatus{state: AudioRuntime::StreamState.Finished, frames_played: 0, underrun_frames: 0}
+            return empty if not sounds.live
+            catch AudioRuntime::stream_status(sounds.victory):
+                value: value
+                error failure: empty
+
         # Restart rewinds the music to its first frame. Returns false if the
         # stream refused the seek.
         def rewind_music(sounds: Sounds&) -> bool:

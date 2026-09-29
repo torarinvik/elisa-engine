@@ -88,6 +88,9 @@ requires. `gain_permille` binds each clamped value to a local first.
     after a restart they are 1000/0.
   - Code 197 streams both loops live, crossfades, restarts, and checks that
     stop leaves no stream open.
+- Code 197 also asserts zero underrun frames on both streams (`music_status`
+  and the new `victory_status`) after the crossfade and restart, so the
+  two-loop workload is measured, not assumed.
 - Negative control: authoring a 1000 ms victory fade-in fails the course
   self-test with code 196.
 - `scripts/application_native_smoke.py --only

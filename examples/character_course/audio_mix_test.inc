@@ -84,7 +84,9 @@
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             faded: bool = CourseSounds::play_music(&sounds, CourseSounds::MUSIC_VICTORY, 10) and CourseSounds::play_music(&sounds, CourseSounds::MUSIC_VICTORY, 700)
             restarted: bool = CourseSounds::restart_music(&sounds) and CourseSounds::music_position(&sounds) < 22050
-            CourseSounds::stop(&sounds) and faded and restarted and audio_idle(session)
+            # Two loops stream together without starving either ring.
+            calm: bool = CourseSounds::music_status(&sounds).underrun_frames == 0 and CourseSounds::victory_status(&sounds).underrun_frames == 0
+            CourseSounds::stop(&sounds) and faded and restarted and calm and audio_idle(session)
 
         # Hot reload without audio: a changed asset swaps its moods in, the
         # same bytes reload nothing, and a rejected or missing file leaves the
