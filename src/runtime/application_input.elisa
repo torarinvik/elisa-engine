@@ -105,6 +105,10 @@ extend Application:
             delta_x: mutable f32&, delta_y: mutable f32&,
             buttons: mutable u32&, pressed: mutable i32&) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_rumble_gamepad(device_slot: i32,
+            low_frequency: f32, high_frequency: f32, duration_ms: i32) -> i32
+
     public:
         const module PointerButtons:
             LEFT: i32 = 1
@@ -130,6 +134,16 @@ extend Application:
             Wheel
             FocusLost
             Overflow
+
+        # A missing controller or unsupported rumble motor is an optional
+        # feedback path, so callers can safely ignore Unavailable/Unsupported.
+        enum GamepadRumbleStatus:
+            Started
+            Unavailable
+            InvalidArgument
+            NotInitialized
+            WrongThread
+            Unsupported
 
         enum KeyboardKeyCode:
             A
@@ -304,6 +318,20 @@ extend Application:
                 event.value <- 1.0 if event.pressed else 0.0
             event.chord_down <- false
             true
+
+        # Intensities are normalized to [0, 1], duration is 1..60000 ms, and
+        # device_slot uses the stable one-based slot from InputEvent. A device
+        # without rumble support returns Unavailable or Unsupported.
+        def rumble_gamepad(device_slot: i32, low_frequency: f32,
+            high_frequency: f32, duration_ms: i32) -> GamepadRumbleStatus:
+            status: i32 = elisa_application_v1_rumble_gamepad(device_slot,
+                low_frequency, high_frequency, duration_ms)
+            return GamepadRumbleStatus.Started if status == 1
+            return GamepadRumbleStatus.Unavailable if status == 0
+            return GamepadRumbleStatus.InvalidArgument if status == -1
+            return GamepadRumbleStatus.NotInitialized if status == -2
+            return GamepadRumbleStatus.WrongThread if status == -4
+            GamepadRumbleStatus.Unsupported
 
         # Pointer coordinates and deltas stay in logical window units. Editor
         # viewports apply the camera's display scale before ray construction.

@@ -63,6 +63,15 @@ initialization and returns zero while the host is stopped. Games can sample it
 around scene construction to report startup/load cost without a native timer
 shim or wall-clock assumptions.
 
+`Application::rumble_gamepad(slot, low, high, duration_ms)` sends optional
+whole-gamepad rumble to a stable one-based connection slot. Motor intensities
+are normalized to `[0, 1]`; durations are limited to 1–60000 ms. Elisa reports
+Started, Unavailable, InvalidArgument, NotInitialized, WrongThread or
+Unsupported, so missing devices and unsupported motors do not fail gameplay.
+The native application smoke checks validation and lifecycle results without
+activating a physical motor. Hardware-specific effect quality still requires a
+controller review.
+
 Review and automation code can read validated `ELISA_*` environment names with
 `Application::environment_value` and parse whole decimal values with
 `Application::environment_integer`, which returns a caller-provided fallback

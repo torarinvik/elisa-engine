@@ -28,6 +28,11 @@ enum {
     ELISA_APPLICATION_CAPTURE_CANCELLED = 3,
 };
 
+enum {
+    ELISA_APPLICATION_RUMBLE_UNAVAILABLE = 0,
+    ELISA_APPLICATION_RUMBLE_STARTED = 1,
+};
+
 // Engine-internal extension points for runtime services. The public Elisa
 // surface uses opaque handles and scalar values; these callbacks stay in the
 // native engine boundary.
@@ -124,6 +129,12 @@ int64_t elisa_application_v1_next_input_event_token(void);
 int32_t elisa_application_v1_next_pointer_event(
     int32_t* kind, int32_t* button, float* x, float* y,
     float* delta_x, float* delta_y, uint32_t* buttons, int32_t* pressed);
+// Requests normalized whole-gamepad rumble on a stable one-based connection
+// slot. Returns 1 when started, 0 when that slot/device cannot rumble, or a
+// negative application status for invalid state/arguments/thread use.
+int32_t elisa_application_v1_rumble_gamepad(
+    int32_t device_slot, float low_frequency, float high_frequency,
+    int32_t duration_ms);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);
