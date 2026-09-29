@@ -398,6 +398,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **P10 · P2 · Box2D service and 2D sample** — After: F04, F06, W04, I01.
   Implement a genuine 2D physics service with independent units, shapes, bodies, contacts, queries, and joints. Done: a small authored 2D game uses it through the shared service model, with no accidental Jolt ownership or undocumented 2D/3D transform conversion.
 - [ ] **P11 · P3 · Soft bodies and buoyancy** — After: P02, P08, R08.
+  Progress on 2026-09-29: `PhysicsBuoyancy` integer floating-body model with feature flag, per-frame budget and clamped stability limit; a dropped crate settles at its equilibrium draft; see `docs/validation/physics-buoyancy.md`. Jolt/render integration, rotation and soft bodies remain.
   Expose supported soft-body and fluid-interaction capabilities behind separate feature flags and budgets. Done: one representative deformable and floating-body scene demonstrates render synchronization, stability limits, and lifecycle correctness rather than only a settings struct.
 - [ ] **P12 · P2 · Large-world simulation strategy** — After: W05, P04, R11.
   Define double-precision simulation or origin rebasing based on actual library support; update rendering, audio, nav, and persistence conversions together. Done: travel far from origin preserves contact/picking precision and does not create a visible jump or corrupt saved coordinates.

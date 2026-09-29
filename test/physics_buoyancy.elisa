@@ -1,0 +1,34 @@
+include "../src/physics/buoyancy.elisa"
+
+def crate() -> PhysicsBuoyancy::Body:
+    # 1 m x 1 m footprint, 1 m tall, 500 kg: floats with a 0.5 m draft.
+    PhysicsBuoyancy::Body{y_um: 2000000, vy_um_s: 0, half_height_mm: 500, area_mm2: 1000000, mass_g: 500000}
+
+def main() -> i32:
+    s: PhysicsBuoyancy::Settings = PhysicsBuoyancy::Settings{enabled: true, max_bodies: 2, drag_permille: 3000}
+    mutable b: PhysicsBuoyancy::Body = crate()
+    return 1 if PhysicsBuoyancy::rest_draft_mm(&b) != 500
+    return 2 if PhysicsBuoyancy::submerged_mm(&b, 0) != 0 or PhysicsBuoyancy::buoyant_mn(&b, 0) != 0
+    # Dropped from 2 m above the water, it falls in, bobs and settles.
+    mutable clamped: i64 = 0
+    for k in 0..<3000:
+        r: PhysicsBuoyancy::Step = PhysicsBuoyancy::step(&b, &s, 0, 10, 0)
+        clamped <- clamped + 1 if r == PhysicsBuoyancy::Step.Clamped
+    draft: i64 = PhysicsBuoyancy::submerged_mm(&b, 0)
+    return 3 if draft < 480 or draft > 520
+    return 4 if b.vy_um_s > 20000 or b.vy_um_s < 0 - 20000
+    # A dense body sinks fully.
+    mutable rock: PhysicsBuoyancy::Body = PhysicsBuoyancy::Body{y_um: 0, vy_um_s: 0, half_height_mm: 100, area_mm2: 40000, mass_g: 20000}
+    for k in 0..<200:
+        PhysicsBuoyancy::step(&rock, &s, 0, 10, 1)
+    return 5 if PhysicsBuoyancy::submerged_mm(&rock, 0) != 200 or rock.vy_um_s >= 0
+    # Feature flag and budget.
+    off: PhysicsBuoyancy::Settings = PhysicsBuoyancy::Settings{enabled: false, max_bodies: 2, drag_permille: 3000}
+    mutable c: PhysicsBuoyancy::Body = crate()
+    return 6 if PhysicsBuoyancy::step(&c, &off, 0, 10, 0) != PhysicsBuoyancy::Step.Disabled or c.y_um != 2000000
+    return 7 if PhysicsBuoyancy::step(&c, &s, 0, 10, 2) != PhysicsBuoyancy::Step.OverBudget or c.vy_um_s != 0
+    # A huge step is clamped rather than exploding.
+    mutable d: PhysicsBuoyancy::Body = crate()
+    d.y_um <- 0 - 5000000
+    return 8 if PhysicsBuoyancy::step(&d, &s, 0, 1000, 0) != PhysicsBuoyancy::Step.Clamped or d.vy_um_s != 2000000
+    return 0
