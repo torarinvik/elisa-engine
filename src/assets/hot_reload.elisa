@@ -1,7 +1,7 @@
 # A10 hot-reload policy for up to 8 assets. An edited asset is staged as a
 # new generation; a broken import is recorded and never replaces the live
 # one. At a safe frame boundary `commit` swaps every staged generation whose
-# dependency (`parent`) is not itself left broken, all in one step. The
+# dependency chain (`parent` links) has no broken asset, all in one step. The
 # replaced generation is retired, not freed, until its consumers release it.
 module AssetsHotReload:
     public:
@@ -35,10 +35,16 @@ module AssetsHotReload:
             t.staged[slot] <- t.live[slot] + 1
             Stage.Staged
 
+        # An asset may swap only when no ancestor in its dependency chain is
+        # broken. The walk is bounded by the slot count, so a cyclic table
+        # is treated as not ready instead of looping.
         def ready(t: Table&, slot: i64) -> bool:
-            p: i64 = t.parent[slot]
-            return true if p < 0 or p >= t.count
-            t.broken[p] == 0
+            mutable at: i64 = t.parent[slot]
+            for hop in 0..<t.count:
+                return true if at < 0 or at >= t.count
+                return false if t.broken[at] != 0
+                at <- t.parent[at]
+            false
 
         # Swap at the frame boundary; returns how many assets swapped.
         # `consumers` is how many frames/voices still use the old generation.

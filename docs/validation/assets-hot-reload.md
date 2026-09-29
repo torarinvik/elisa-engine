@@ -26,7 +26,13 @@ broken material keeps the last good one and holds back its dependent mesh
 while an unrelated sound swaps; and fixing the material swaps both in one
 commit. Negative control: ignoring broken parents makes the test exit 9.
 
+## Transitive dependencies (2026-09-29)
+
+`ready` now walks the whole `parent` chain, bounded by the slot count, so a
+broken texture holds back a mesh two links away, and a cyclic table never
+swaps instead of looping. The test adds both cases (codes 12 and 13).
+Negative control: checking only the direct parent makes the test exit 12.
+
 ## Gaps
 
-Only a direct parent is checked (no transitive graph), there is no file
-watcher, and nothing reaches the renderer or audio yet, so A10 stays open.
+There is no file watcher, and nothing reaches the renderer or audio yet, so A10 stays open.
