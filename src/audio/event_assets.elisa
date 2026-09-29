@@ -5,27 +5,32 @@
 #   event <id> <group> <limit> <variants> <cooldown> [weight ...]
 #   footstep <event> <stride_mm>
 #   impact <event> <threshold_mm> <full_mm>
+#   mood <id> <music> <effects> <ui> <ramp_ms>
 #
 # Fields are unsigned decimal numbers separated by spaces or tabs, and `#`
 # starts a comment anywhere. Up to four weights follow the cooldown; weights
 # left out are zero. A footstep or impact record binds a movement trigger to
 # an event defined on an earlier line; an asset has at most one of each.
+# A mood record sets one mix mood's bus gains in permille and its ramp.
 # `define_from` checks the whole asset against a scratch board before it
 # writes anything to the caller's board and triggers, so a malformed asset
 # never leaves a partial event set behind.
 include "./events.elisa"
 include "./event_asset_text.elisa"
 include "./triggers.elisa"
+include "./moods.elisa"
 
 extend SoundEventAssets:
     public:
-        # The movement triggers an asset binds; event 0 means none.
+        # What an asset binds besides its events: the movement triggers
+        # (event 0 means none) and the mix moods.
         struct Triggers:
             footfalls: mutable AudioTriggers::Footfalls
             impacts: mutable AudioTriggers::Impacts
+            moods: mutable AudioMoods::Moods
 
         def Triggers() -> Triggers:
-            Triggers{footfalls: AudioTriggers::Footfalls(), impacts: AudioTriggers::Impacts()}
+            Triggers{footfalls: AudioTriggers::Footfalls(), impacts: AudioTriggers::Impacts(), moods: AudioMoods::Moods()}
 
         # Replaces `triggers` with the asset's, or leaves them untouched when
         # the asset is rejected.
@@ -36,6 +41,7 @@ extend SoundEventAssets:
             try define_lines(&scratch, &scratch_triggers, source)
             triggers.footfalls <- AudioTriggers::Footfalls()
             triggers.impacts <- AudioTriggers::Impacts()
+            triggers.moods <- AudioMoods::Moods()
             try define_lines(board, triggers, source)
 
         # The 1-based line of the first record `define_from` rejects, or 0.
@@ -70,12 +76,15 @@ extend SoundEventAssets:
             seed: bool = is_seed(source, word_start, word_stop)
             footstep: bool = is_footstep(source, word_start, word_stop)
             impact: bool = is_impact(source, word_start, word_stop)
-            raise SoundAssetError.UnknownRecord if not seed and not footstep and not impact and not is_event(source, word_start, word_stop)
+            mood: bool = is_mood(source, word_start, word_stop)
+            raise SoundAssetError.UnknownRecord if not seed and not footstep and not impact and not mood and not is_event(source, word_start, word_stop)
             record: Fields = try read_fields(source, word_stop, stop)
             fields: u64[SoundEventAssets::MAX_FIELDS] = record.values
             count: usize = record.count
             if footstep or impact:
                 try define_trigger(board, triggers, impact, fields, count)
+            elif mood:
+                try define_mood(triggers, fields, count)
             elif seed:
                 raise SoundAssetError.FieldCount if count != 1
                 AudioEvents::set_seed(board, fields[0])
@@ -109,3 +118,12 @@ extend SoundEventAssets:
                 raise SoundAssetError.DuplicateTrigger if triggers.footfalls.event != 0
                 raise SoundAssetError.InvalidTrigger if not AudioTriggers::footfalls_valid(event, fields[1])
                 triggers.footfalls <- AudioTriggers::footfalls(event, fields[1])
+
+        # A mood takes an id, the Music, Effects and Ui gains in permille and
+        # the ramp in milliseconds.
+        def define_mood(triggers: mutable Triggers&, fields: u64[SoundEventAssets::MAX_FIELDS], count: usize) -> void error[SoundAssetError]:
+            raise SoundAssetError.FieldCount if count != 5
+            raise SoundAssetError.InvalidMood if not AudioMoods::valid(fields[0], fields[1], fields[2], fields[3], fields[4])
+            raise SoundAssetError.DuplicateMood if AudioMoods::defined(&triggers.moods, fields[0])
+            value: AudioMoods::Mood = AudioMoods::mood(fields[1], fields[2], fields[3], fields[4])
+            triggers.moods <- AudioMoods::with_mood(triggers.moods, fields[0], value)

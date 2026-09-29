@@ -1,0 +1,74 @@
+# Authored mix moods: bus gains in permille and the ramp that reaches them,
+# by mood id. A game maps its states (play, pause, menu) to ids and hands
+# `gains` to AudioMixer. This is pure integer policy, proved in
+# proof/audio_moods.elisa. A mood the asset leaves out is heard at full gain
+# after the default ramp, so a game without authored moods mixes unchanged.
+module AudioMoods:
+    public:
+        const MAX_MOODS: u64 = 4
+        const FULL_PERMILLE: u64 = 1000
+        # Matches AudioMixer::MAX_RAMP_TICKS on a millisecond clock.
+        const MAX_RAMP_MS: u64 = 3600
+        const DEFAULT_RAMP_MS: u64 = 250
+
+        struct Mood:
+            defined: bool
+            music_permille: u64
+            effects_permille: u64
+            ui_permille: u64
+            ramp_ms: u64
+
+        # One slot per id; four is enough for play, pause, menu and one more.
+        struct Moods:
+            first: Mood
+            second: Mood
+            third: Mood
+            fourth: Mood
+
+        def Mood() -> Mood:
+            Mood{defined: false, music_permille: FULL_PERMILLE, effects_permille: FULL_PERMILLE, ui_permille: FULL_PERMILLE, ramp_ms: DEFAULT_RAMP_MS}
+
+        def Moods() -> Moods:
+            Moods{first: Mood(), second: Mood(), third: Mood(), fourth: Mood()}
+
+        def valid(id: u64, music: u64, effects: u64, ui: u64, ramp_ms: u64) -> bool:
+            ensure not result or (id < MAX_MOODS and music <= FULL_PERMILLE and effects <= FULL_PERMILLE and ui <= FULL_PERMILLE and ramp_ms <= MAX_RAMP_MS)
+            id < MAX_MOODS and music <= FULL_PERMILLE and effects <= FULL_PERMILLE and ui <= FULL_PERMILLE and ramp_ms <= MAX_RAMP_MS
+
+        def mood(music: u64, effects: u64, ui: u64, ramp_ms: u64) -> Mood:
+            requires music <= FULL_PERMILLE and effects <= FULL_PERMILLE and ui <= FULL_PERMILLE and ramp_ms <= MAX_RAMP_MS
+            Mood{defined: true, music_permille: music, effects_permille: effects, ui_permille: ui, ramp_ms: ramp_ms}
+
+        # The mood for `id`, or the full-gain default past the last slot.
+        def get(moods: Moods&, id: u64) -> Mood:
+            if id == 0:
+                moods.first
+            elif id == 1:
+                moods.second
+            elif id == 2:
+                moods.third
+            elif id == 3:
+                moods.fourth
+            else:
+                Mood()
+
+        def defined(moods: Moods&, id: u64) -> bool:
+            get(moods, id).defined
+
+        # `moods` with `id` replaced; an id past the last slot changes nothing.
+        def with_mood(moods: Moods, id: u64, value: Mood) -> Moods:
+            Moods{
+                first: value if id == 0 else moods.first,
+                second: value if id == 1 else moods.second,
+                third: value if id == 2 else moods.third,
+                fourth: value if id == 3 else moods.fourth,
+            }
+
+        # A gain the mixer accepts, whatever a hand-built mood holds.
+        def heard_permille(permille: u64) -> u64:
+            ensure result <= FULL_PERMILLE
+            permille if permille < FULL_PERMILLE else FULL_PERMILLE
+
+        def heard_ramp_ms(value: Mood) -> u64:
+            ensure result <= MAX_RAMP_MS
+            value.ramp_ms if value.ramp_ms < MAX_RAMP_MS else MAX_RAMP_MS

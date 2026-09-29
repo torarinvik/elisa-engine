@@ -37,13 +37,13 @@ module CourseSounds:
         const SILENT: i32 = 4
         const FIRE_FAILED: i32 = 5
 
-        # Mix moods: pause ducks the music, the controls menu ducks it
-        # further. `mix` ramps between them over RAMP_MS on a millisecond
-        # clock that keeps running while the game is paused.
+        # Mix moods, authored as `mood` records in sounds/events.sfx: pause
+        # ducks the music and the controls menu ducks it further. `mix`
+        # ramps to each over its authored time on a millisecond clock that
+        # keeps running while the game is paused. The ids are the records'.
         const MOOD_PLAY: i32 = 0
         const MOOD_PAUSED: i32 = 1
         const MOOD_MENU: i32 = 2
-        const RAMP_MS: u64 = 250
         # The ambience keeps a virtual clock: when an event voice steals its
         # native voice, `update` brings it back at the frame it would have
         # reached. RATE matches the course's 48 kHz audio device.
@@ -222,21 +222,26 @@ module CourseSounds:
             else:
                 MOOD_PLAY
 
-        def mood_snapshot(mood: i32) -> AudioMixer::Snapshot:
-            if mood == MOOD_MENU:
-                AudioMixer::snapshot(0.2, 0.3, 1.0)
-            elif mood == MOOD_PAUSED:
-                AudioMixer::snapshot(0.45, 0.3, 1.0)
-            else:
-                AudioMixer::snapshot(1.0, 1.0, 1.0)
+        # The authored gains for `mood`; full gain before the asset loads.
+        def mood_snapshot(sounds: Sounds&, mood: i32) -> AudioMixer::Snapshot:
+            value: AudioMoods::Mood = AudioMoods::get(&sounds.triggers.moods, mood_id(mood))
+            AudioMixer::snapshot(permille_gain(value.music_permille), permille_gain(value.effects_permille), permille_gain(value.ui_permille))
+
+        # Reads sounds/events.sfx without starting audio, so the mix can be
+        # checked on a session without an audio route.
+        def define_assets(sounds: mutable Sounds&) -> bool:
+            define_events(sounds, "sounds/events.sfx")
+
+        def mood_ramp_ms(sounds: Sounds&, mood: i32) -> u64:
+            AudioMoods::heard_ramp_ms(AudioMoods::get(&sounds.triggers.moods, mood_id(mood)))
 
         # Called every frame. A new mood starts a ramp from the gains heard
         # now; an unchanged mood keeps the running ramp. The heard gains go to
         # the buses when audio is live. Returns false if a bus rejected them.
         def mix(sounds: mutable Sounds&, mood: i32, now_ms: u64) -> bool:
             if mood != sounds.mood:
-                goal: AudioMixer::Snapshot = mood_snapshot(mood)
-                sounds.mix <- catch AudioMixer::transition(sounds.mix, goal, now_ms, RAMP_MS):
+                goal: AudioMixer::Snapshot = mood_snapshot(sounds, mood)
+                sounds.mix <- catch AudioMixer::transition(sounds.mix, goal, now_ms, mood_ramp_ms(sounds, mood)):
                     value: value
                     error failure: sounds.mix
                 sounds.mood <- mood
@@ -331,12 +336,18 @@ module CourseSounds:
             sounds.triggers <- SoundEventAssets::Triggers()
             sounds.mix <- settled_mix()
             sounds.mood <- MOOD_PLAY
-            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            full: AudioMixer::Snapshot = mood_snapshot(sounds, MOOD_PLAY)
             apply_gains(full) and released
 
     private:
+        def mood_id(mood: i32) -> u64:
+            mood.u64() if mood >= 0 else AudioMoods::MAX_MOODS
+
+        def permille_gain(permille: u64) -> f32:
+            AudioMoods::heard_permille(permille).f32() / 1000.0
+
         def settled_mix() -> AudioMixer::Mix:
-            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            full: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
             AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}
 
         def apply_gains(gains: AudioMixer::Snapshot) -> bool:

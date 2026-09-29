@@ -15,6 +15,8 @@ module SoundEventAssets:
             NumberTooLarge
             InvalidTrigger
             DuplicateTrigger
+            InvalidMood
+            DuplicateMood
 
         struct Source:
             bytes: mutable u8[SoundEventAssets::MAX_BYTES]
@@ -137,3 +139,7 @@ module SoundEventAssets:
         def is_impact(source: Source&, start: usize, stop: usize) -> bool:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             stop - start == 6 and source.bytes[start] == 105 and source.bytes[start + 1] == 109 and source.bytes[start + 2] == 112 and source.bytes[start + 3] == 97 and source.bytes[start + 4] == 99 and source.bytes[start + 5] == 116
+
+        def is_mood(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 4 and source.bytes[start] == 109 and source.bytes[start + 1] == 111 and source.bytes[start + 2] == 111 and source.bytes[start + 3] == 100

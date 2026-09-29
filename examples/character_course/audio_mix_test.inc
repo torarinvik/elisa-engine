@@ -7,11 +7,15 @@
             heard: AudioMixer::Snapshot = CourseSounds::heard(sounds, now_ms)
             gains_near(heard, expected)
 
-        # Pause ducks the music and the menu ducks it further; Ui stays full.
+        # Before the asset loads every mood is full gain. The authored moods
+        # duck the music for pause and further for the menu; Ui stays full.
         def moods_test() -> bool:
-            play: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_PLAY)
-            paused: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_PAUSED)
-            menu: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_MENU)
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            unloaded: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_MENU)
+            return false if not gains_near(unloaded, AudioMixer::snapshot(1.0, 1.0, 1.0)) or not CourseSounds::define_assets(&sounds)
+            play: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PLAY)
+            paused: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED)
+            menu: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_MENU)
             mapped: bool = CourseSounds::mood_for(true, true) == CourseSounds::MOOD_MENU and CourseSounds::mood_for(false, true) == CourseSounds::MOOD_PAUSED and CourseSounds::mood_for(false, false) == CourseSounds::MOOD_PLAY
             ducked: bool = menu.music < paused.music and paused.music < play.music and paused.effects < play.effects
             mapped and ducked and play.ui == 1.0 and paused.ui == 1.0 and menu.ui == 1.0
@@ -21,9 +25,10 @@
         # the menu mid-ramp starts from the gains heard then.
         def ramp_test() -> bool:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            play: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_PLAY)
-            paused: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_PAUSED)
-            menu: AudioMixer::Snapshot = CourseSounds::mood_snapshot(CourseSounds::MOOD_MENU)
+            return false if not CourseSounds::define_assets(&sounds)
+            play: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PLAY)
+            paused: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED)
+            menu: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_MENU)
             steady: bool = CourseSounds::mix(&sounds, CourseSounds::MOOD_PLAY, 500) and heard_is(&sounds, 500, play)
             _ = CourseSounds::mix(&sounds, CourseSounds::MOOD_PAUSED, 1000)
             halfway: AudioMixer::Snapshot = CourseSounds::heard(&sounds, 1125)

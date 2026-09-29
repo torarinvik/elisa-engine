@@ -49,13 +49,16 @@ def comment(source: mutable SoundEventAssets::Source&) -> void:
 
 # 0 ok, 1 Syntax, 2 UnknownRecord, 3 FieldCount, 4 NumberTooLarge,
 # 5 Oversize, 6 InvalidDefinition, 7 DuplicateEvent, 8 Capacity,
-# 10 InvalidTrigger, 11 DuplicateTrigger, 12 UnknownEvent, 9 other.
+# 10 InvalidTrigger, 11 DuplicateTrigger, 12 UnknownEvent, 13 InvalidMood,
+# 14 DuplicateMood, 9 other.
 def load_triggers(board: mutable AudioEvents::Board&, triggers: mutable SoundEventAssets::Triggers&, source: SoundEventAssets::Source&) -> i32:
     catch SoundEventAssets::define_from(board, triggers, source):
         ok: 0
         SoundEventAssets::SoundAssetError.InvalidTrigger: 10
         SoundEventAssets::SoundAssetError.DuplicateTrigger: 11
         AudioEvents::SoundEventError.UnknownEvent: 12
+        SoundEventAssets::SoundAssetError.InvalidMood: 13
+        SoundEventAssets::SoundAssetError.DuplicateMood: 14
         SoundEventAssets::SoundAssetError.Syntax: 1
         SoundEventAssets::SoundAssetError.UnknownRecord: 2
         SoundEventAssets::SoundAssetError.FieldCount: 3
@@ -273,6 +276,65 @@ def trigger_test() -> i32:
     return 52 if triggers.footfalls.event != 0 or triggers.impacts.event != 0
     0
 
+# `mood <id> <music> <effects> <ui> <ramp>` without the newline.
+def mood_fields(source: mutable SoundEventAssets::Source&, id: u64, music: u64, effects: u64, ui: u64) -> void:
+    put(source, 109)
+    put(source, 111)
+    put(source, 111)
+    put(source, 100)
+    field(source, id)
+    field(source, music)
+    field(source, effects)
+    field(source, ui)
+
+def mood(source: mutable SoundEventAssets::Source&, id: u64, music: u64, effects: u64, ui: u64, ramp: u64) -> void:
+    mood_fields(source, id, music, effects, ui)
+    field(source, ramp)
+    newline(source)
+
+def moods_near(moods: AudioMoods::Moods&, id: u64, music: u64, ramp: u64) -> bool:
+    value: AudioMoods::Mood = AudioMoods::get(moods, id)
+    value.defined and value.music_permille == music and value.effects_permille == 300 and value.ui_permille == 1000 and value.ramp_ms == ramp
+
+# Mood records set mix moods by id; a mood left out is full gain.
+def mood_test() -> i32:
+    bound: mutable SoundEventAssets::Source = course_asset()
+    mood(&bound, 1, 450, 300, 1000, 250)
+    mood(&bound, 2, 200, 300, 1000, 400)
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    return 60 if load_triggers(&board, &triggers, &bound) != 0 or SoundEventAssets::failing_line(&bound) != 0
+    return 61 if not moods_near(&triggers.moods, 1, 450, 250) or not moods_near(&triggers.moods, 2, 200, 400)
+    unset: AudioMoods::Mood = AudioMoods::get(&triggers.moods, 0)
+    past: AudioMoods::Mood = AudioMoods::get(&triggers.moods, 9)
+    return 62 if unset.defined or unset.music_permille != 1000 or unset.ramp_ms != AudioMoods::DEFAULT_RAMP_MS or past.defined
+
+    beyond: mutable SoundEventAssets::Source = course_asset()
+    mood(&beyond, 4, 450, 300, 1000, 250)
+    return 63 if trigger_status(&beyond) != 13
+    loud: mutable SoundEventAssets::Source = course_asset()
+    mood(&loud, 1, 1001, 300, 1000, 250)
+    return 64 if trigger_status(&loud) != 13
+    slow: mutable SoundEventAssets::Source = course_asset()
+    mood(&slow, 1, 450, 300, 1000, 3601)
+    return 65 if trigger_status(&slow) != 13
+
+    twice: mutable SoundEventAssets::Source = course_asset()
+    mood(&twice, 1, 450, 300, 1000, 250)
+    mood(&twice, 1, 200, 300, 1000, 250)
+    return 66 if trigger_status(&twice) != 14 or SoundEventAssets::failing_line(&twice) != 7
+
+    short: mutable SoundEventAssets::Source = course_asset()
+    mood_fields(&short, 1, 450, 300, 1000)
+    return 67 if trigger_status(&short) != 3
+
+    # A rejected asset keeps the moods; a plain one clears them.
+    return 68 if load_triggers(&board, &triggers, &twice) != 14 or not moods_near(&triggers.moods, 2, 200, 400)
+    plain: SoundEventAssets::Source = course_asset()
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 69 if load_triggers(&fresh, &triggers, &plain) != 0 or AudioMoods::defined(&triggers.moods, 1) or AudioMoods::defined(&triggers.moods, 2)
+    0
+
 def main() -> i32:
     accepted: i32 = accepted_test()
     return accepted if accepted != 0
@@ -280,4 +342,6 @@ def main() -> i32:
     return rejected if rejected != 0
     atomic: i32 = atomic_test()
     return atomic if atomic != 0
-    trigger_test()
+    triggered: i32 = trigger_test()
+    return triggered if triggered != 0
+    mood_test()
