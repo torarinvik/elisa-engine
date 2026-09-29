@@ -100,7 +100,8 @@
             fits
 
         def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:
-            _ = try row_semantics(keymap, settings, CourseControls::MENU_ROWS, 0)
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            _ = try row_semantics(keymap, &pad_defaults, settings, CourseControls::MENU_ROWS, 0)
             true
 
         def semantics_refused(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool:
@@ -110,17 +111,21 @@
 
         def semantics_test(settings: CourseAccess::Settings&) -> bool:
             keymap: CourseControls::Keymap = CourseControls::defaults()
-            first: UiSemantics::Control = catch row_semantics(&keymap, settings, 0, 7):
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            first: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, 0, 7):
                 value: value
                 error failure: return false
-            size: UiSemantics::Control = catch row_semantics(&keymap, settings, CourseControls::SLOT_COUNT, 6):
+            size: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::SLOT_COUNT, 6):
                 value: value
                 error failure: return false
-            toggle: UiSemantics::Control = catch row_semantics(&keymap, settings, CourseControls::MENU_ROWS - 1, CourseControls::MENU_ROWS - 1):
+            toggle: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST - 1, CourseControls::PAD_FIRST - 1):
+                value: value
+                error failure: return false
+            pad_row: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST, CourseControls::PAD_FIRST + 1):
                 value: value
                 error failure: return false
             outside: bool = semantics_refused(&keymap, settings)
-            first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::MENU_ROWS and outside and size.value == "< 100% >"
+            first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::PAD_FIRST and pad_row.label == "Pad jump" and pad_row.value == "A / Cross" and UiSemantics::adjustable(&pad_row) and outside and size.value == "< 100% >"
 
         def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError]:
             return 153 if not adjust_test()
@@ -140,10 +145,11 @@
             return 201 if not semantics_test(&plain_settings)
             # The live HUD takes every setting and releases every handle.
             keymap: CourseControls::Keymap = CourseControls::defaults()
-            legend: Legend = try create_legend(&keymap, &large)
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            legend: Legend = try create_legend(&keymap, &pad_defaults, &large)
             instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text("Access", 18.0, 18.0, AccessTune::BASE_FONT, box_color(1.0, 1.0, 1.0))
             try layout_hud(&legend, instruction, &large)
-            try refresh_legend(&legend, &keymap, &large, CourseControls::MENU_ROWS - 1)
+            try refresh_legend(&legend, &keymap, &pad_defaults, &large, CourseControls::MENU_ROWS - 1)
             try layout_hud(&legend, instruction, &plain_settings)
             try release_legend(&legend)
             try RenderScene::destroy_overlay_text(instruction)
@@ -156,7 +162,8 @@
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             return 160 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &expected)
             keymap: CourseControls::Keymap = CourseControls::defaults()
-            legend: Legend = try create_legend(&keymap, &loaded.settings)
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            legend: Legend = try create_legend(&keymap, &pad_defaults, &loaded.settings)
             try release_legend(&legend)
             try UserData::remove_blob(CourseAccess::storage_key())
             return 161 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing

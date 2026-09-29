@@ -92,6 +92,14 @@ module CoursePad:
             else:
                 0
 
+        def slot_name(slot: i64) -> cstr:
+            if slot == SLOT_JUMP:
+                "Pad jump"
+            elif slot == SLOT_CROUCH:
+                "Pad crouch"
+            else:
+                "Pad restart"
+
         def button_name(code: i64) -> cstr:
             if code == pool_button(0):
                 "A / Cross"
@@ -107,6 +115,20 @@ module CoursePad:
                 "Right bumper"
             else:
                 "?"
+
+        def pool_index(code: i64) -> i64:
+            found: mutable i64 = 0
+            for index in 0..<Limits::POOL_SIZE |found, code|:
+                found <- index if pool_button(index) == code
+            found
+
+        # The next (delta 1) or previous (delta -1) pool button for a slot;
+        # a button another slot holds swaps, so the map stays valid.
+        def cycle(pad: Pad, slot: i64, delta: i64) -> Pad:
+            current: i64 = pool_index(slot_code(&pad, slot))
+            next: i64 = (current + delta + Limits::POOL_SIZE) % Limits::POOL_SIZE
+            outcome: AssignOutcome = assign(pad, slot, pool_button(next))
+            outcome.pad
 
         # Every slot holds a distinct button from the pool.
         def valid(pad: Pad&) -> bool:

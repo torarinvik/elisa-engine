@@ -58,4 +58,15 @@
             values[3] <- defaults.restart
             refused_215: bool = try pad_refused(values, 3)
             return 215 if not refused_215
+            # Menu rows cycle a pad slot through the pool, wrapping and swapping.
+            forward: CoursePad::Pad = CoursePad::cycle(defaults, CoursePad::SLOT_JUMP, 1)
+            back: CoursePad::Pad = CoursePad::cycle(defaults, CoursePad::SLOT_JUMP, -1)
+            east: i64 = pad_button(Application::GamepadButtonCode.East)
+            right_bumper: i64 = pad_button(Application::GamepadButtonCode.RightShoulder)
+            return 216 if forward.jump != east or forward.crouch != defaults.jump or back.jump != right_bumper or not CoursePad::valid(&forward) or not CoursePad::valid(&back)
+            menu: CourseControls::Menu = CourseControls::Menu(keymap)
+            on_pad: CourseControls::Menu = CourseControls::Menu{keymap: keymap, selected: CourseControls::PAD_FIRST}
+            right: CourseControls::MenuStep = CourseControls::menu_key(on_pad, key_code(Application::KeyboardKeyCode.ArrowRight))
+            typed: CourseControls::MenuStep = CourseControls::menu_key(on_pad, key_code(Application::KeyboardKeyCode.J))
+            return 217 if right.result != CourseControls::MenuResult.Adjusted or right.delta != 1 or right.menu.selected != CourseControls::PAD_FIRST or typed.result != CourseControls::MenuResult.Ignored or menu.selected != CourseControls::SLOT_FORWARD
             0
