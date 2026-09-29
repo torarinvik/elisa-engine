@@ -216,7 +216,8 @@
             remapped: CourseControls::Keymap = CourseControls::assign(defaults,
                 CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.J)).keymap
             input: mutable ActionInput::Input = ActionInput::Input()
-            return ControlsCodes::REBIND_INPUT if not CourseControls::bind(&input, &remapped)
+            default_pad: CoursePad::Pad = CoursePad::defaults()
+            return ControlsCodes::REBIND_INPUT if not CourseControls::bind(&input, &remapped, &default_pad)
             ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.W), 1.0))
             old_key_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
             ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.J), 1.0))

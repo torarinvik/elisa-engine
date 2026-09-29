@@ -1,0 +1,171 @@
+# Rebindable, saved gamepad buttons for the character course. Jump, crouch
+# and restart take buttons from a pool of face and shoulder buttons; the
+# D-pad, stick, Start and Back stay fixed so a pad player can always move,
+# pause and reopen the menu. A load that fails any check keeps the defaults.
+module CoursePad:
+    private:
+        const module Limits:
+            KEY: cstr = "course-pad"
+            VERSION: i64 = 1
+            FIELD_COUNT: usize = 4
+            POOL_SIZE: i64 = 6
+
+        def button(code: Application::GamepadButtonCode) -> i64:
+            Application::gamepad_button_code(code)
+
+        def pool_button(index: i64) -> i64:
+            if index == 0:
+                button(Application::GamepadButtonCode.South)
+            elif index == 1:
+                button(Application::GamepadButtonCode.East)
+            elif index == 2:
+                button(Application::GamepadButtonCode.West)
+            elif index == 3:
+                button(Application::GamepadButtonCode.North)
+            elif index == 4:
+                button(Application::GamepadButtonCode.LeftShoulder)
+            else:
+                button(Application::GamepadButtonCode.RightShoulder)
+
+        def rejected_load(status: LoadStatus) -> LoadResult:
+            LoadResult{status: status, pad: defaults()}
+
+        def with_slot(pad: Pad, slot: i64, code: i64) -> Pad:
+            if slot == SLOT_JUMP:
+                Pad{jump: code, crouch: pad.crouch, restart: pad.restart}
+            elif slot == SLOT_CROUCH:
+                Pad{jump: pad.jump, crouch: code, restart: pad.restart}
+            else:
+                Pad{jump: pad.jump, crouch: pad.crouch, restart: code}
+
+    public:
+        const SLOT_JUMP: i64 = 0
+        const SLOT_CROUCH: i64 = 1
+        const SLOT_RESTART: i64 = 2
+        const SLOT_COUNT: i64 = 3
+
+        struct Pad:
+            jump: i64
+            crouch: i64
+            restart: i64
+
+        enum AssignResult:
+            Assigned
+            Swapped
+            Unchanged
+            Reserved
+            InvalidSlot
+
+        struct AssignOutcome:
+            result: AssignResult
+            pad: Pad
+
+        enum LoadStatus:
+            Loaded
+            Missing
+            Unreadable
+            Rejected
+
+        struct LoadResult:
+            status: LoadStatus
+            pad: Pad
+
+        def defaults() -> Pad:
+            Pad{jump: pool_button(0), crouch: pool_button(1), restart: pool_button(2)}
+
+        def storage_key() -> cstr:
+            Limits::KEY
+
+        def rebindable(code: i64) -> bool:
+            found: mutable bool = false
+            for index in 0..<Limits::POOL_SIZE |found, code|:
+                found <- true if pool_button(index) == code
+            found
+
+        def slot_code(pad: Pad&, slot: i64) -> i64:
+            if slot == SLOT_JUMP:
+                pad.jump
+            elif slot == SLOT_CROUCH:
+                pad.crouch
+            elif slot == SLOT_RESTART:
+                pad.restart
+            else:
+                0
+
+        def button_name(code: i64) -> cstr:
+            if code == pool_button(0):
+                "A / Cross"
+            elif code == pool_button(1):
+                "B / Circle"
+            elif code == pool_button(2):
+                "X / Square"
+            elif code == pool_button(3):
+                "Y / Triangle"
+            elif code == pool_button(4):
+                "Left bumper"
+            elif code == pool_button(5):
+                "Right bumper"
+            else:
+                "?"
+
+        # Every slot holds a distinct button from the pool.
+        def valid(pad: Pad&) -> bool:
+            ok: mutable bool = true
+            for slot in 0..<SLOT_COUNT |ok, pad|:
+                code: i64 = slot_code(pad, slot)
+                ok <- false if not rebindable(code)
+                for other in 0..<SLOT_COUNT |ok, pad, code, slot|:
+                    ok <- false if other != slot and slot_code(pad, other) == code
+            ok
+
+        # A button held by another slot moves to this slot's old button, so
+        # the map stays complete and duplicate-free after every assignment.
+        def assign(pad: Pad, slot: i64, code: i64) -> AssignOutcome:
+            return AssignOutcome{result: AssignResult.InvalidSlot, pad: pad} if slot < 0 or slot >= SLOT_COUNT
+            return AssignOutcome{result: AssignResult.Reserved, pad: pad} if not rebindable(code)
+            previous: i64 = slot_code(&pad, slot)
+            return AssignOutcome{result: AssignResult.Unchanged, pad: pad} if previous == code
+            holder: mutable i64 = -1
+            for other in 0..<SLOT_COUNT |holder, pad, code|:
+                holder <- other if slot_code(&pad, other) == code
+            updated: Pad = with_slot(pad, slot, code)
+            if holder >= 0:
+                AssignOutcome{result: AssignResult.Swapped, pad: with_slot(updated, holder, previous)}
+            else:
+                AssignOutcome{result: AssignResult.Assigned, pad: updated}
+
+        def encode(pad: Pad&) -> Save::Blob error[Save::SaveError]:
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- Limits::VERSION
+            values[1] <- pad.jump
+            values[2] <- pad.crouch
+            values[3] <- pad.restart
+            try Save::save_write(values, Limits::FIELD_COUNT)
+
+        def decode(blob: Save::Blob&) -> LoadResult:
+            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+                value: value
+                error failure: false
+            return rejected_load(LoadStatus.Rejected) if not readable
+            return rejected_load(LoadStatus.Rejected) if Save::save_value_or(blob, 0, 0) != Limits::VERSION
+            pad: Pad = Pad{jump: Save::save_value_or(blob, 1, 0), crouch: Save::save_value_or(blob, 2, 0), restart: Save::save_value_or(blob, 3, 0)}
+            return rejected_load(LoadStatus.Rejected) if not valid(&pad)
+            LoadResult{status: LoadStatus.Loaded, pad: pad}
+
+        # UserData::initialize remains application-owned.
+        def save(pad: Pad&) -> void error[Save::SaveError, UserData::UserDataError]:
+            blob: Save::Blob = try encode(pad)
+            try UserData::write_blob(Limits::KEY, &blob)
+
+        def load() -> LoadResult:
+            blob: mutable Save::Blob = Save::Blob(0)
+            read_status: i32 = catch UserData::read_blob(Limits::KEY, &blob):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                error failure: 2
+            if read_status == 1:
+                rejected_load(LoadStatus.Missing)
+            elif read_status == 2:
+                rejected_load(LoadStatus.Unreadable)
+            else:
+                decode(&blob)

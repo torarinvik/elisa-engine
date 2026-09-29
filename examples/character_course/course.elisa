@@ -1,5 +1,6 @@
 # Playable Jolt character course built entirely from public Elisa runtime APIs.
 include "./progress.elisa"
+include "./pad.elisa"
 include "./controls.elisa"
 include "./sounds.elisa"
 include "./beacons.elisa"
@@ -331,6 +332,7 @@ module CharacterCourse:
 
         include "./access_test.inc"
         include "./pointer_test.inc"
+        include "./pad_test.inc"
         include "./audio_mix_test.inc"
         include "./stress_test.inc"
 
@@ -408,6 +410,8 @@ module CharacterCourse:
                 return access_status if access_status != 0
                 pointer_status: i32 = pointer_test()
                 return pointer_status if pointer_status != 0
+                pad_status: i32 = try pad_test()
+                return pad_status if pad_status != 0
                 mix_status: i32 = audio_mix_test(session)
                 return mix_status if mix_status != 0
                 stressed: ProgressOutcome = try stress_test(session, character)

@@ -225,8 +225,10 @@
             # replaced when the player closes the rebind menu.
             saved_controls: CourseControls::LoadResult = CourseControls::load()
             keymap: mutable CourseControls::Keymap = saved_controls.keymap
+            saved_pad: CoursePad::LoadResult = CoursePad::load()
+            pads: CoursePad::Pad = saved_pad.pad
             input: mutable ActionInput::Input = ActionInput::Input()
-            return 33 if not CourseControls::bind(&input, &keymap)
+            return 33 if not CourseControls::bind(&input, &keymap, &pads)
             # Accessibility settings load the same way and apply before the
             # first frame; they are saved with the controls on menu close.
             saved_access: CourseAccess::LoadResult = CourseAccess::load()
@@ -260,7 +262,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -286,7 +288,7 @@
                             menu_open <- false
                             keymap <- menu.keymap
                             rebound: mutable ActionInput::Input = ActionInput::Input()
-                            return 33 if not CourseControls::bind(&rebound, &keymap)
+                            return 33 if not CourseControls::bind(&rebound, &keymap, &pads)
                             input <- rebound
                             keys_stored: bool = catch CourseControls::save(&keymap):
                                 ok: true
