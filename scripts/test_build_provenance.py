@@ -10,7 +10,8 @@ import subprocess
 import tempfile
 import unittest
 
-from build_provenance import repository_identity, write_build_provenance
+from build_provenance import (compute_build_identity, repository_identity,
+    write_build_provenance)
 
 
 def git(path: Path, *args: str) -> str:
@@ -60,7 +61,7 @@ class BuildProvenanceTests(unittest.TestCase):
                 native_artifacts=[linked], options={"native_optimize": False})
             record = json.loads(sidecar.read_text(encoding="utf-8"))
 
-            self.assertEqual(record["schema"], 1)
+            self.assertEqual(record["schema"], 2)
             self.assertTrue(record["repositories"]["game"]["dirty"])
             self.assertTrue(record["repositories"]["assets"]["dirty"])
             self.assertFalse(record["repositories"]["engine"]["dirty"])
@@ -72,6 +73,19 @@ class BuildProvenanceTests(unittest.TestCase):
                 hashlib.sha256(b"wicked archive").hexdigest())
             self.assertEqual(record["binary"]["sha256"],
                 hashlib.sha256(b"application").hexdigest())
+            expected_identity = compute_build_identity(project=project,
+                main_source=main, engine_root=engine, wicked_root=wicked,
+                compiler=str(compiler), cxx=str(compiler), runtime_object=runtime,
+                output=binary,
+                native_artifacts=[linked], options={"native_optimize": False})
+            self.assertEqual(record["build_identity"], f"{expected_identity:016x}")
+            linked.write_bytes(b"updated Wicked archive")
+            changed_identity = compute_build_identity(project=project,
+                main_source=main, engine_root=engine, wicked_root=wicked,
+                compiler=str(compiler), cxx=str(compiler), runtime_object=runtime,
+                output=binary,
+                native_artifacts=[linked], options={"native_optimize": False})
+            self.assertNotEqual(expected_identity, changed_identity)
 
     def test_untracked_file_content_changes_repository_identity(self) -> None:
         with tempfile.TemporaryDirectory() as folder:

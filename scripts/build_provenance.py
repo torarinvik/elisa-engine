@@ -113,11 +113,81 @@ def artifact_identities(paths: Iterable[Path]) -> list[dict[str, object]]:
     return artifacts
 
 
+def compute_build_identity(*, project: Path, main_source: Path, engine_root: Path,
+    wicked_root: Path, compiler: str, cxx: str, runtime_object: Path,
+    native_artifacts: Iterable[Path], options: dict[str, object],
+    output: Path | None = None) -> int:
+    """Return a stable, compact ID for the source/tool inputs of one build.
+
+    Machine-local checkout paths and the output binary hash are intentionally
+    excluded. The full provenance record remains the authoritative explanation
+    of this ID; the 63-bit value is suitable for a compact runtime report.
+    """
+    project = project.resolve()
+    repositories: dict[str, dict[str, object] | None] = {}
+    roots = [("game", project), ("engine", engine_root), ("wicked", wicked_root),
+        ("assets", project / "assets")]
+    seen_roots: set[Path] = set()
+    generated_outputs = set()
+    if output is not None:
+        output_path = output.resolve()
+        generated_outputs.add(output_path)
+        generated_outputs.add(output_path.with_name(output_path.name + ".provenance.json"))
+    for label, candidate in roots:
+        identity = repository_identity(candidate)
+        if identity is None:
+            repositories[label] = None
+            continue
+        root = Path(str(identity["root"]))
+        if root in seen_roots:
+            repositories[label] = None
+            continue
+        seen_roots.add(root)
+        root = Path(str(identity["root"]))
+        untracked = [item for item in identity["untracked_files"]
+            if (root / str(item.get("path", ""))).resolve() not in generated_outputs]
+        empty_diff = hashlib.sha256(b"").hexdigest()
+        repositories[label] = {
+            "commit": identity["commit"],
+            "dirty": identity["tracked_diff_sha256"] != empty_diff or bool(untracked),
+            "tracked_diff_sha256": identity["tracked_diff_sha256"],
+            "untracked_files": untracked,
+        }
+
+    tools = {
+        "elisa_compiler_sha256": executable_identity(compiler).get("sha256"),
+        "native_compiler_sha256": executable_identity(cxx).get("sha256"),
+        "runtime_object_sha256": optional_sha256(runtime_object),
+    }
+    artifacts = [{
+        "name": Path(str(item.get("path", ""))).name,
+        "sha256": item.get("sha256"),
+        "size_bytes": item.get("size_bytes"),
+    } for item in artifact_identities(native_artifacts)]
+    identity_options = {key: options.get(key) for key in (
+        "native_optimize", "public_runtime", "native_test_probes", "force_cook_assets")}
+    payload = {
+        "schema": 1,
+        "project_manifest_sha256": optional_sha256(project / "elisa.project.json"),
+        "dependency_manifest_sha256": optional_sha256(project / "config/dependencies.json"),
+        "main_source_sha256": sha256_file(main_source),
+        "repositories": repositories,
+        "tools": tools,
+        "native_link_artifacts": artifacts,
+        "options": identity_options,
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    identity = int.from_bytes(hashlib.sha256(encoded).digest()[:8], "big") & ((1 << 63) - 1)
+    return identity if identity != 0 else 1
+
+
 def write_build_provenance(*, output: Path, project: Path, main_source: Path,
     engine_root: Path, wicked_root: Path, compiler: str, cxx: str,
-    runtime_object: Path, native_artifacts: Iterable[Path], options: dict[str, object]) -> Path:
+    runtime_object: Path, native_artifacts: Iterable[Path], options: dict[str, object],
+    build_identity: int | None = None) -> Path:
     """Write an atomic provenance sidecar next to a successfully linked binary."""
     project = project.resolve()
+    native_artifacts = tuple(native_artifacts)
     repositories: dict[str, dict[str, object] | None] = {}
     roots = [("game", project), ("engine", engine_root), ("wicked", wicked_root),
         ("assets", project / "assets")]
@@ -134,8 +204,16 @@ def write_build_provenance(*, output: Path, project: Path, main_source: Path,
         seen_roots.add(root)
         repositories[label] = identity
 
+    if build_identity is None:
+        build_identity = compute_build_identity(project=project, main_source=main_source,
+            engine_root=engine_root, wicked_root=wicked_root, compiler=compiler, cxx=cxx,
+            runtime_object=runtime_object, native_artifacts=native_artifacts, options=options,
+            output=output)
+    if build_identity <= 0 or build_identity >= (1 << 63):
+        raise ValueError("build identity must be a nonzero 63-bit integer")
     record = {
-        "schema": 1,
+        "schema": 2,
+        "build_identity": f"{build_identity:016x}",
         "built_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds"),
         "project_root": str(project),
         "main_source": str(main_source.resolve()),

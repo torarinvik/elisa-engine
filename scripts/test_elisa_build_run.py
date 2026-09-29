@@ -277,10 +277,12 @@ class BuildRunCliTests(unittest.TestCase):
         arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
         default = runner.native_link_command("clang++", *arguments)
         optimized = runner.native_link_command("clang++", *arguments, optimize=True)
+        identified = runner.native_link_command("clang++", *arguments, build_identity=0x12345)
         self.assertIn("-O0", default)
         self.assertNotIn("-O2", default)
         self.assertIn("-O2", optimized)
         self.assertNotIn("-O0", optimized)
+        self.assertIn("-DELISA_APPLICATION_BUILD_ID=74565", identified)
 
     def test_command_line_paths_override_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa manifest overrides ") as temporary_directory:

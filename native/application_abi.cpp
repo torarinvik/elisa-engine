@@ -28,6 +28,14 @@
 #include <string>
 #include <thread>
 
+#ifndef ELISA_APPLICATION_BUILD_ID
+#define ELISA_APPLICATION_BUILD_ID 0
+#endif
+
+static_assert(ELISA_APPLICATION_BUILD_ID >= 0 &&
+    ELISA_APPLICATION_BUILD_ID <= INT64_MAX,
+    "ELISA_APPLICATION_BUILD_ID must fit a nonnegative signed 64-bit integer");
+
 namespace {
 
 constexpr size_t INPUT_EVENT_CAPACITY = 512;
@@ -182,6 +190,10 @@ void configure_shader_root() {
 
 extern "C" uint32_t elisa_application_abi_version(void) {
     return ELISA_APPLICATION_ABI_VERSION;
+}
+
+extern "C" int64_t elisa_application_v1_build_identity(void) {
+    return int64_t(ELISA_APPLICATION_BUILD_ID);
 }
 
 extern "C" const char* elisa_application_v1_project_title(void) {

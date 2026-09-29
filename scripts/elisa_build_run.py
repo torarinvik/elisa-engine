@@ -16,7 +16,7 @@ from pathlib import Path
 
 import asset_cooks
 from asset_cooks import BuildConfigurationError
-from build_provenance import write_build_provenance
+from build_provenance import compute_build_identity, write_build_provenance
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -367,7 +367,8 @@ def audit_archive(archive: Path) -> None:
 
 def native_link_command(cxx: str, archive: Path, staged_output: Path,
     build_dir: Path, paths: dict[str, Path], native_test_probes: bool = False,
-    optimize: bool = False, runtime_object: Path | None = None) -> list[str]:
+    optimize: bool = False, runtime_object: Path | None = None,
+    build_identity: int = 0) -> list[str]:
     wicked_source = paths["wicked_source"]
     libraries = paths["libraries"]
     utility = libraries / "Utility"
@@ -381,6 +382,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         cxx, "-std=c++17", "-O2" if optimize else "-O0", "-fno-rtti", "-include", "filesystem",
         "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
+        f"-DELISA_APPLICATION_BUILD_ID={build_identity}",
         "-I", str(build_dir), "-I", str(ENGINE_ROOT / "native"),
         "-I", str(ENGINE_ROOT / "dependencies/meshoptimizer"), "-I", str(wicked_source),
         "-I", str(utility_source), "-I", str(utility_source / "metal"),
@@ -439,9 +441,40 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
     cxx = args.cxx or os.environ.get("CXX", default_native_compiler())
     compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
     runtime_object = resolve_runtime_object(args.runtime_object, compiler)
+    library_dir = paths["libraries"]
+    utility_dir = library_dir / "Utility"
+    brew_link_inputs = [
+        next((paths["brew_library"] / f"lib{name}.{suffix}"
+            for suffix in ("dylib", "a")
+            if (paths["brew_library"] / f"lib{name}.{suffix}").is_file()),
+            paths["brew_library"] / f"lib{name}.dylib")
+        for name in ("freetype", "harfbuzz", "zstd")]
+    native_artifacts = [
+        library_dir / "libWickedEngine.a", library_dir / "libJolt.a",
+        utility_dir / "libUtility.a", utility_dir / "FAudio/libFAudio.a",
+        library_dir / "LUA/libLUA.a", paths["recast"] / "build/Recast/libRecast.a",
+        paths["recast"] / "build/Detour/libDetour.a",
+        paths["sdl_library"] / "libSDL3.dylib",
+        *brew_link_inputs,
+        runtime_object,
+    ]
+    build_options = {
+        "action": args.action,
+        "native_optimize": args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
+        "public_runtime": not args.no_public_runtime,
+        "native_test_probes": args.native_test_probes,
+        "force_cook_assets": args.force_cook_assets,
+        "wicked_build": str(paths["wicked_build"]),
+        "compiler_request": compiler,
+        "native_compiler_request": cxx,
+    }
     abi_status = validate_wicked_archive_abi(paths, cxx)
     if abi_status != 0:
         return abi_status, None, None
+    build_identity = compute_build_identity(project=project, main_source=main_source,
+        engine_root=ENGINE_ROOT, wicked_root=paths["wicked_root"], compiler=compiler,
+        cxx=cxx, runtime_object=runtime_object, native_artifacts=native_artifacts,
+        options=build_options, output=output)
     with tempfile.TemporaryDirectory(prefix="Elisa application build ", dir=output.parent) as temporary_directory:
         build_dir = Path(temporary_directory)
         wrapper = build_dir / "application_entry.elisa"
@@ -462,7 +495,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return status, None, None
         command = native_link_command(cxx, archive, staged_output, build_dir, paths,
             args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
-            runtime_object)
+            runtime_object, build_identity)
         stage_started = time.perf_counter()
         status = run_command(command, cwd=project)
         print(f"Native link: {time.perf_counter() - stage_started:.2f}s", flush=True)
@@ -473,38 +506,12 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staged_output, output)
-    library_dir = paths["libraries"]
-    utility_dir = library_dir / "Utility"
-    brew_link_inputs = [
-        next((paths["brew_library"] / f"lib{name}.{suffix}"
-            for suffix in ("dylib", "a")
-            if (paths["brew_library"] / f"lib{name}.{suffix}").is_file()),
-            paths["brew_library"] / f"lib{name}.dylib")
-        for name in ("freetype", "harfbuzz", "zstd")]
-    native_artifacts = [
-        library_dir / "libWickedEngine.a", library_dir / "libJolt.a",
-        utility_dir / "libUtility.a", utility_dir / "FAudio/libFAudio.a",
-        library_dir / "LUA/libLUA.a", paths["recast"] / "build/Recast/libRecast.a",
-        paths["recast"] / "build/Detour/libDetour.a",
-        paths["sdl_library"] / "libSDL3.dylib",
-        *brew_link_inputs,
-        runtime_object,
-    ]
     try:
         provenance = write_build_provenance(output=output, project=project,
             main_source=main_source, engine_root=ENGINE_ROOT,
             wicked_root=paths["wicked_root"], compiler=compiler, cxx=cxx,
             runtime_object=runtime_object, native_artifacts=native_artifacts,
-            options={
-                "action": args.action,
-                "native_optimize": args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
-                "public_runtime": not args.no_public_runtime,
-                "native_test_probes": args.native_test_probes,
-                "force_cook_assets": args.force_cook_assets,
-                "wicked_build": str(paths["wicked_build"]),
-                "compiler_request": compiler,
-                "native_compiler_request": cxx,
-            })
+            options=build_options, build_identity=build_identity)
         print(f"Build provenance: {provenance}", flush=True)
     except (OSError, ValueError) as error:
         print(f"Could not write build provenance: {error}", file=sys.stderr, flush=True)

@@ -363,6 +363,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
 
 def exercise_application() -> i32:
     config: Application::Config = Application::default_config()
+    return 239 if Application::build_identity() <= 0
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
 

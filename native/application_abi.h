@@ -76,6 +76,9 @@ enum {
 };
 
 uint32_t elisa_application_abi_version(void);
+// Stable 63-bit identifier for source/tool inputs compiled by the project
+// runner. Direct native builds use zero when no build ID is set.
+int64_t elisa_application_v1_build_identity(void);
 const char* elisa_application_v1_project_title(void);
 int32_t elisa_application_v1_project_width(void);
 int32_t elisa_application_v1_project_height(void);
