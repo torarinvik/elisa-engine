@@ -1,0 +1,31 @@
+include "../src/animation/layers.elisa"
+
+def main() -> i32:
+    return 1 if AnimLayers::override_joint(0, 1000, 500, 1000) != 500
+    return 2 if AnimLayers::override_joint(100, 900, 1000, 0) != 100
+    return 3 if AnimLayers::override_joint(0, 1000, 2000, 1000) != 1000 or AnimLayers::override_joint(0, 1000, 0 - 5, 1000) != 0
+    # Additive: a 30-degree lean layered on a walk that already bends 10 degrees.
+    return 4 if AnimLayers::additive_joint(10000, 45000, 15000, 1000, 1000) != 40000
+    return 5 if AnimLayers::additive_joint(10000, 45000, 15000, 500, 1000) != 25000
+    return 6 if AnimLayers::additive_joint(10000, 45000, 15000, 1000, 0) != 10000
+    # Upper-body mask: joints 8.. take the layer, the legs keep the base.
+    base: i64[16] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+    layer: i64[16] = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]
+    mask: i64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+    mutable out: i64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 7 if AnimLayers::override_pose(&base, &layer, &mask, 1000, 16, &out) != 8
+    return 8 if out[0] != 1 or out[7] != 8 or out[8] != 100 or out[15] != 100
+    # Root motion: 1.2 m per 1000 ms cycle.
+    return 9 if AnimLayers::root_at(500, 1000, 1200000) != 600000
+    return 10 if AnimLayers::root_at(3250, 1000, 1200000) != 3900000
+    return 11 if AnimLayers::root_delta(900, 1100, 1000, 1200000) != 240000
+    # One hour at 60 Hz accumulates exactly, with no per-frame drift.
+    mutable total: i64 = 0
+    mutable t: i64 = 0
+    for k in 0..<216000:
+        nxt: i64 = (k + 1) * 1000 / 60
+        total <- total + AnimLayers::root_delta(t, nxt, 1000, 1200000)
+        t <- nxt
+    return 12 if total != 3600 * 1200000
+    return 13 if AnimLayers::root_at(500, 0, 1200000) != 0
+    0

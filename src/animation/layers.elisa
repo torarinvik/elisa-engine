@@ -1,0 +1,46 @@
+# C04 layer policy over per-joint channels (up to 16 joints, one integer
+# channel each, e.g. a rotation in millidegrees): masked override layers,
+# additive layers relative to a reference pose, and looping root-motion
+# extraction that counts whole cycles so long playback never drifts.
+module AnimLayers:
+    public:
+        const module Limits:
+            JOINTS: i64 = 16
+
+        # Override: out = base + (layer - base) * weight * mask[j] / 10^6.
+        def override_joint(base: i64, layer: i64, weight_permille: i64, mask_permille: i64) -> i64:
+            w: i64 = clamp_permille(weight_permille) * clamp_permille(mask_permille)
+            base + (layer - base) * w / 1000000
+
+        # Additive: out = base + (layer - reference) * weight * mask / 10^6.
+        def additive_joint(base: i64, layer: i64, reference: i64, weight_permille: i64, mask_permille: i64) -> i64:
+            w: i64 = clamp_permille(weight_permille) * clamp_permille(mask_permille)
+            base + (layer - reference) * w / 1000000
+
+        def clamp_permille(v: i64) -> i64:
+            return 0 if v < 0
+            return 1000 if v > 1000
+            v
+
+        # Masked override over `count` joints; returns the number changed.
+        def override_pose(base: i64[16]&, layer: i64[16]&, mask: i64[16]&, weight_permille: i64, count: i64, out: mutable i64[16]&) -> i64:
+            mutable changed: i64 = 0
+            n: i64 = 16 if count > 16 else count
+            for j in 0..<n:
+                v: i64 = override_joint(base[j], layer[j], weight_permille, mask[j])
+                out[j] <- v
+                changed <- changed + 1 if v != base[j]
+            changed
+
+        # Root position (µm) of a looping clip at `t_ms`, where the clip moves
+        # the root linearly by `cycle_um` every `length_ms`. Whole cycles are
+        # counted, so the result is exact for any playback time.
+        def root_at(t_ms: i64, length_ms: i64, cycle_um: i64) -> i64:
+            return 0 if length_ms <= 0 or t_ms <= 0
+            cycles: i64 = t_ms / length_ms
+            within: i64 = t_ms - cycles * length_ms
+            cycles * cycle_um + cycle_um * within / length_ms
+
+        # Root motion to apply to the character between two playback times.
+        def root_delta(start_ms: i64, until_ms: i64, length_ms: i64, cycle_um: i64) -> i64:
+            root_at(until_ms, length_ms, cycle_um) - root_at(start_ms, length_ms, cycle_um)
