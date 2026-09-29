@@ -49,6 +49,24 @@ Codes 11-15 of `test/physics_ccd2d.elisa` cover:
 
 Negative control: treating platform hits as walls makes it exit 12.
 
+## Circle pairs
+
+`sweep_pair` finds the first time in a step at which two moving circles
+touch. It solves the relative-motion quadratic in millimetres, so the
+squared terms stay far from i64 overflow at 600 m/s closing speeds.
+Contact is exact to 1 mm.
+
+Codes 16-20 of `test/physics_ccd2d.elisa` cover:
+- two 5 mm bullets closing at 600 m/s from 5 m apart (t = 519 permille,
+  worked by hand);
+- a miss offset beyond the combined radius;
+- a later grazing hit;
+- separating bodies;
+- bodies too far apart to meet within the step.
+
+Negative control: taking the far root instead of the near one makes it
+exit 16.
+
 ## World integration
 
 `Physics2dSleepWorld::step` now moves awake bodies with `Physics2dCcd::step`
@@ -70,6 +88,6 @@ passing zero platforms makes it exit 9.
 
 ## Gaps
 
-- Only axis-aligned walls and platforms; there are no slanted segments or
-  circle-circle CCD.
+- Only axis-aligned walls and platforms; there are no slanted segments. `sweep_pair`
+  is not used by the worlds' pair resolution yet.
 - Jolt CCD for 3D, solver budgets and measured presets remain.

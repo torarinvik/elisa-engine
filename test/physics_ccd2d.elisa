@@ -61,4 +61,27 @@ def main() -> i32:
     # A wall nearer than a platform wins.
     mutable diag: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 800000, vx: 400000000, vy: 0 - 400000000, radius_um: 5000, mass_g: 10}
     return 15 if not Physics2dCcd::step_all(&diag, two, 1, plats, 1, 0, 16, 1000) or diag.vx >= 0 or diag.vy >= 0
+    # Two 5 mm bullets closing at 600 m/s, 5 m apart: one 16 ms step would
+    # carry them straight through each other; the pair sweep finds contact.
+    left: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 0, vx: 300000000, vy: 0, radius_um: 5000, mass_g: 10}
+    right: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 5000000, y_um: 0, vx: 0 - 300000000, vy: 0, radius_um: 5000, mass_g: 10}
+    ph: Physics2dCcd::Hit = Physics2dCcd::sweep_pair(&left, &right, 16)
+    # Gap 4990 mm at 9600 mm per step: t = 519.79 permille.
+    return 16 if not ph.hit or ph.t_permille != 519
+    # Offset by more than the combined radius they miss.
+    mutable wide: Physics2dCircles::Circle = right
+    wide.y_um <- 11000
+    return 17 if Physics2dCcd::sweep_pair(&left, &wide, 16).hit
+    # Grazing inside the radius still hits, later than head-on.
+    mutable graze: Physics2dCircles::Circle = right
+    graze.y_um <- 8000
+    gh: Physics2dCcd::Hit = Physics2dCcd::sweep_pair(&left, &graze, 16)
+    return 18 if not gh.hit or gh.t_permille <= 519
+    # Separating or too far for this step: no hit.
+    mutable away: Physics2dCircles::Circle = right
+    away.vx <- 300000000
+    return 19 if Physics2dCcd::sweep_pair(&left, &away, 16).hit
+    mutable far: Physics2dCircles::Circle = right
+    far.x_um <- 20000000
+    return 20 if Physics2dCcd::sweep_pair(&left, &far, 16).hit
     return 0

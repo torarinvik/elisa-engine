@@ -51,6 +51,28 @@ module Physics2dCcd:
             as_wall: Wall = Wall{x_um: p.y_um, thickness_um: p.thickness_um, y_min_um: p.x_min_um, y_max_um: p.x_max_um}
             sweep(&swapped, dy, dx, &as_wall)
 
+        # First time in this step (permille) at which two moving circles touch,
+        # from their current velocities. Solved in millimetres so the squared
+        # terms stay far from i64 overflow; the result is exact to 1 mm.
+        def sweep_pair(a: Physics2dCircles::Circle&, b: Physics2dCircles::Circle&, dt_ms: i64) -> Hit:
+            return no_hit() if dt_ms <= 0
+            px: i64 = (b.x_um - a.x_um) / 1000
+            py: i64 = (b.y_um - a.y_um) / 1000
+            dx: i64 = (b.vx - a.vx) * dt_ms / 1000000
+            dy: i64 = (b.vy - a.vy) * dt_ms / 1000000
+            r: i64 = (a.radius_um + b.radius_um) / 1000
+            qa: i64 = dx * dx + dy * dy
+            qb: i64 = px * dx + py * dy
+            qc: i64 = px * px + py * py - r * r
+            # Already touching, separating, or not moving relative to each other.
+            return no_hit() if qc <= 0 or qb >= 0 or qa == 0
+            disc: i64 = qb * qb - qa * qc
+            return no_hit() if disc < 0
+            # t = (-qb - sqrt(disc)) / qa, with qb the half-coefficient.
+            num: i64 = 0 - qb - Physics2dCircles::isqrt(disc)
+            return no_hit() if num < 0 or num > qa
+            Hit{hit: true, t_permille: num * 1000 / qa, travel_um: 0}
+
         # Step with CCD against walls and platforms: stops at the earliest
         # contact and reflects the speed along that contact's axis.
         def step_all(c: mutable Physics2dCircles::Circle&, walls: Wall[4], wall_count: i64, platforms: Platform[4], platform_count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:

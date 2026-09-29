@@ -405,6 +405,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: the plain 2D world also steps bodies through Physics2dCcd ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
   Progress on 2026-09-29: Physics2dCcd adds thin horizontal platforms and a combined step_all over walls and platforms ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
   Progress on 2026-09-29: both 2D worlds step through Physics2dCcd::step_all with walls and platforms ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
+  Progress on 2026-09-29: Physics2dCcd::sweep_pair gives circle-circle time of impact for fast pairs ([`ccd-2d.md`](docs/validation/ccd-2d.md)); not yet used by world pair resolution.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
