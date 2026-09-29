@@ -1,0 +1,37 @@
+# Sound-event triggers recorded through the runtime decision log. Each
+# trigger that starts a voice logs its outcome, slot and variant as one
+# decision (site = SITE_BASE + event id). A recording run keeps the board's
+# own seeded choices; a replaying run checks every trigger against the log,
+# so a replay that would play a different variant, or steal a different
+# voice, reports the tick where the audio diverged instead of drifting
+# silently.
+include "./events.elisa"
+include "../runtime/decision_log.elisa"
+
+module AudioEventsLogged:
+    public:
+        const SITE_BASE: i64 = 4096
+
+        # Outcome (1 Play, 2 Replace), slot and variant folded into one value.
+        def encode(t: AudioEvents::Trigger) -> i64:
+            kind: i64 = 2 if t.outcome == AudioEvents::Outcome.Replace else 1
+            kind * 100000 + t.slot.i64() * 100 + t.variant.i64()
+
+        # Seeds the board from the log so recording and replay roll the same
+        # weighted variants.
+        def seed_from(board: mutable AudioEvents::Board&, log: RuntimeDecisionLog::Log&) -> void:
+            AudioEvents::set_seed(board, log.seed.u64())
+
+        # Triggers `id` at `tick` and records (or, replaying, checks) what
+        # started. Duplicate and cooling triggers start nothing and log
+        # nothing. `matched` is false once the replay has diverged.
+        struct Logged:
+            trigger: AudioEvents::Trigger
+            matched: bool
+
+        def trigger(board: mutable AudioEvents::Board&, id: u32, tick: u64, log: mutable RuntimeDecisionLog::Log&) -> Logged error[AudioEvents::SoundEventError]:
+            t: AudioEvents::Trigger = try AudioEvents::trigger(board, id, tick)
+            started: bool = t.outcome == AudioEvents::Outcome.Play or t.outcome == AudioEvents::Outcome.Replace
+            return Logged{trigger: t, matched: log.diverged_at < 0} if not started
+            ok: bool = RuntimeDecisionLog::decide(log, tick.i64(), SITE_BASE + id.i64(), encode(t))
+            Logged{trigger: t, matched: ok or (log.mode == RuntimeDecisionLog::Mode.Recording and not log.overflow)}

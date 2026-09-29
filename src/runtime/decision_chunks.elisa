@@ -1,0 +1,29 @@
+# Chunked decision logs for sessions longer than one log's CAP entries.
+# A recorder that fills up is sealed and handed off (to be saved, e.g. by
+# RuntimeDecisionLogStore under a per-chunk key) and recording continues
+# in a fresh chunk that carries the generator state, so the draws are the
+# same as one unbounded log would give. Replay walks the chunks in order:
+# it may only move on once the current chunk was consumed exactly, and a
+# divergence stays reported rather than being cleared by the next chunk.
+include "./decision_log.elisa"
+
+module RuntimeDecisionChunks:
+    public:
+        def full(log: RuntimeDecisionLog::Log&) -> bool:
+            log.count >= RuntimeDecisionLog::CAP
+
+        # The recorder that continues after `sealed`: same seed and generator
+        # state, no entries.
+        def continue_after(sealed: RuntimeDecisionLog::Log&) -> RuntimeDecisionLog::Log:
+            RuntimeDecisionLog::Log{mode: RuntimeDecisionLog::Mode.Recording, state: sealed.state, seed: sealed.seed, entries: zeroed, count: 0, cursor: 0, overflow: false, diverged_at: 0 - 1}
+
+        # A replay chunk is finished when every entry was consumed without
+        # divergence.
+        def finished(replay: RuntimeDecisionLog::Log&) -> bool:
+            replay.mode == RuntimeDecisionLog::Mode.Replaying and replay.diverged_at < 0 and replay.cursor == replay.count
+
+        # Moves a replay to the next recorded chunk. Refused (the current
+        # replay is returned unchanged) until the current chunk is finished.
+        def advance(replay: RuntimeDecisionLog::Log&, next: RuntimeDecisionLog::Log&) -> RuntimeDecisionLog::Log:
+            return replay if not finished(replay)
+            RuntimeDecisionLog::replayer(next)
