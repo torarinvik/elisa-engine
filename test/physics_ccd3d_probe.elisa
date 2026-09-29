@@ -1,0 +1,74 @@
+# Thin-wall projectile regression for the Jolt path: a 5 cm sphere fired at
+# a 2 cm wall at up to 600 m/s (10 m per 60 Hz step, 500 wall thicknesses)
+# must never finish on the far side. Wicked creates every Jolt body with
+# LinearCast motion quality; this measures that it holds.
+include "../src/runtime/services.elisa"
+
+module PhysicsCcd3dProbe:
+    private:
+        const module Tune:
+            STEP_SECONDS: f32 = 1.0 / 60.0
+            WALL_HALF_THICKNESS: f32 = 0.01
+            WALL_HALF_EXTENT: f32 = 20.0
+            BALL_RADIUS: f32 = 0.05
+            BALL_START_X: f32 = -3.0
+            STEPS: usize = 30
+
+        def body(session: RuntimeServices::Session&, kind: PhysicsRuntime::BodyKind, shape: PhysicsRuntime::BodyShape, position: Geometry::Vec3, dimensions: Geometry::Vec3, mass: f32) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
+                kind: kind, shape: shape, position: position,
+                rotation: Geometry::quat_identity(), dimensions: dimensions,
+                mass: mass, sensor: false, collision_layer: 0,
+                center_of_mass_offset: Geometry::vec3_zero(),
+            })
+
+    public:
+        # Fires one sphere at `speed` m/s along +x and returns the furthest x
+        # its centre reached, or a large value on any service failure.
+        def shoot(session: mutable RuntimeServices::Session&, speed: f32) -> f32:
+            wall: PhysicsRuntime::BodyHandle = catch body(session, PhysicsRuntime::BodyKind.Static, PhysicsRuntime::BodyShape.Box,
+                Geometry::vec3_zero(), Geometry::Vec3{x: Tune::WALL_HALF_THICKNESS, y: Tune::WALL_HALF_EXTENT, z: Tune::WALL_HALF_EXTENT}, 0.0):
+                value: value
+                error failure: return 1000.0
+            ball: PhysicsRuntime::BodyHandle = catch body(session, PhysicsRuntime::BodyKind.Dynamic, PhysicsRuntime::BodyShape.Sphere,
+                Geometry::Vec3{x: Tune::BALL_START_X, y: 0.0, z: 0.0}, Geometry::Vec3{x: Tune::BALL_RADIUS, y: 0.0, z: 0.0}, 1.0):
+                value: value
+                error failure: return 1001.0
+            # Bodies join the Jolt world on the next step; launch after it.
+            _ = catch RuntimeServices::physics_fixed_step(session, Tune::STEP_SECONDS):
+                value: 0
+                error failure: 1
+            launched: bool = catch RuntimeServices::physics_body_set_linear_velocity(session, ball, Geometry::Vec3{x: speed, y: 0.0, z: 0.0}):
+                ok: true
+                error failure: false
+            return 1002.0 if not launched
+            mutable furthest: f32 = Tune::BALL_START_X
+            for _ in 0..<Tune::STEPS |furthest|:
+                _ = catch RuntimeServices::physics_fixed_step(session, Tune::STEP_SECONDS):
+                    value: 0
+                    error failure: 1
+                p: Geometry::Vec3 = catch RuntimeServices::physics_body_position(session, ball):
+                    value: value
+                    error failure: Geometry::Vec3{x: 1003.0, y: 0.0, z: 0.0}
+                furthest <- p.x if p.x > furthest else furthest
+            _ = catch RuntimeServices::physics_body_destroy(session, ball):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, wall):
+                ok: true
+                error failure: false
+            furthest
+
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            # Contact puts the centre a radius short of the near face
+            # (-0.06 m). Measured: -0.048 m (12 mm of Jolt penetration) at both
+            # 50 and 600 m/s. Budget: 30 mm, i.e. the centre stays below -0.03.
+            limit: f32 = 0.0 - Tune::WALL_HALF_THICKNESS - Tune::BALL_RADIUS + 0.03
+            mutable code: i32 = 0
+            speeds: f32[4] = [50.0, 150.0, 300.0, 600.0]
+            for i in 0..<4 |code|:
+                reached: f32 = shoot(session, speeds[i])
+                code <- 10 + i.i32() if code == 0 and reached > limit
+                # It must actually reach the wall, not fail early.
+                code <- 20 + i.i32() if code == 0 and reached < limit - 0.1
+            code
