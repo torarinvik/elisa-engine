@@ -150,6 +150,19 @@
             try refresh_legend(&legend, keymap, pads, settings, -1)
             legend
 
+        # The caption line spans the label and key columns.
+        def caption_width(settings: CourseAccess::Settings&) -> f32:
+            legend_key_offset(settings) + CourseAccess::scaled(settings, Tune::LEGEND_KEY_WIDTH)
+
+        # The caption for `event` broken into lines that fit the caption line.
+        def wrapped_caption(words: CourseText::Captions&, settings: CourseAccess::Settings&, event: u32) -> UiLocaleData::Utf8:
+            em: i64 = CourseAccess::font_size(settings, Tune::LEGEND_FONT_SIZE).i64()
+            UiLocaleData::wrap_utf8(CourseText::line(words, settings.locale, event), em, caption_width(settings).i64())
+
+        # Right-to-left captions hang from the right edge of the legend.
+        def caption_anchor_x(settings: CourseAccess::Settings&) -> f32:
+            Tune::LEGEND_X + caption_width(settings) if UiLocale::is_rtl(settings.locale) else Tune::LEGEND_X
+
         # Text size moves every row and the key column; high contrast shows
         # the backing panel. The caption line sits below the last row.
         def layout_legend(legend: Legend&, settings: CourseAccess::Settings&) -> void error[RenderScene::RenderSceneError]:
@@ -172,7 +185,11 @@
                 try RenderScene::set_overlay_text_position(key, key_x, row_y)
             caption_y: f32 = legend_row_y(settings, CourseControls::MENU_ROWS)
             try RenderScene::set_overlay_text_size(legend.caption, size)
-            try RenderScene::set_overlay_text_position(legend.caption, Tune::LEGEND_X, caption_y)
+            try RenderScene::set_overlay_text_position(legend.caption, caption_anchor_x(settings), caption_y)
+            if UiLocale::is_rtl(settings.locale):
+                try RenderScene::set_overlay_text_alignment(legend.caption, RenderScene::OverlayTextAlignment.Right, RenderScene::OverlayTextAlignment.Top)
+            else:
+                try RenderScene::set_overlay_text_alignment(legend.caption, RenderScene::OverlayTextAlignment.Left, RenderScene::OverlayTextAlignment.Top)
             try RenderScene::set_overlay_text_color(legend.caption, CourseAccess::caption_color(settings))
             margin: f32 = CourseAccess::scaled(settings, Tune::LEGEND_PANEL_MARGIN)
             try RenderScene::set_overlay_panel_position(legend.panel, Tune::LEGEND_X - margin, legend_row_y(settings, -1) - margin)
@@ -213,7 +230,7 @@
             wanted: u32 = captions.event if CourseAccess::caption_visible(captions, settings, now_nanos) else 0
             return shown if wanted == shown
             if wanted != 0 and legend.words.loaded:
-                line: UiLocaleData::Utf8 = CourseText::line(&legend.words, settings.locale, wanted)
+                line: UiLocaleData::Utf8 = wrapped_caption(&legend.words, settings, wanted)
                 try RenderScene::set_overlay_text_utf8(legend.caption, &line.bytes[0], line.length)
             elif wanted != 0:
                 try RenderScene::set_overlay_text(legend.caption, CourseAccess::caption_text(wanted))

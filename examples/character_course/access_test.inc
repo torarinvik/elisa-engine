@@ -129,6 +129,46 @@
                 settings <- CourseAccess::adjust(settings, CourseAccess::ROW_TEXT_SIZE, 1)
             fits
 
+        # The sound event whose caption uses `key`.
+        def caption_event(key: i64) -> u32:
+            return CourseSounds::EVENT_JUMP if key == CourseText::MSG_CAPTION_JUMP
+            return CourseSounds::EVENT_LAND if key == CourseText::MSG_CAPTION_LAND
+            return CourseSounds::EVENT_WIN if key == CourseText::MSG_CAPTION_WIN
+            return CourseSounds::EVENT_FALL if key == CourseText::MSG_CAPTION_FALL
+            return CourseSounds::EVENT_STEP if key == CourseText::MSG_CAPTION_STEP
+            CourseSounds::EVENT_SAVE
+
+        # The widest packaged caption over every language, or -1 while a
+        # measurement is still pending.
+        def widest_caption(captions: CourseText::Captions&, settings: CourseAccess::Settings&) -> f32 error[RenderScene::RenderSceneError]:
+            words: CourseText::Captions = captions
+            font_size: i32 = CourseAccess::font_size(settings, Tune::LEGEND_FONT_SIZE)
+            widest: mutable f32 = 0.0
+            pending: mutable bool = false
+            for index in 0..<30 |words, settings, widest, pending, font_size|:
+                shown: CourseAccess::Settings = CourseAccess::Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: settings.captions, locale: index / CourseText::CAPTIONS}
+                line: UiLocaleData::Utf8 = wrapped_caption(&words, &shown, caption_event(index % CourseText::CAPTIONS))
+                metrics: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text_utf8(&line.bytes[0], line.length, font_size)
+                pending <- true if not metrics.ready
+                widest <- metrics.width if metrics.width > widest
+            -1.0 if pending else widest
+
+        # At 150% every caption in every language fits the caption line, and
+        # Arabic hangs from the right edge while English starts at the left.
+        def captions_fit(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError]:
+            captions: CourseText::Captions = CourseText::load(CourseText::PATH)
+            large: CourseAccess::Settings = handoff_access()
+            _ = try widest_caption(&captions, &large)
+            for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
+                _ = try RuntimeServices::pump(session)
+            widest: f32 = try widest_caption(&captions, &large)
+            arabic: CourseAccess::Settings = CourseAccess::Settings{text_scale: large.text_scale, high_contrast: large.high_contrast, captions: large.captions, locale: UiLocale::AR}
+            english: CourseAccess::Settings = CourseAccess::defaults()
+            anchored: bool = caption_anchor_x(&arabic) == Tune::LEGEND_X + caption_width(&arabic) and caption_anchor_x(&english) == Tune::LEGEND_X
+            return 184 if not captions.loaded or not anchored
+            return 183 if widest <= 0.0 or widest >= caption_width(&large)
+            0
+
         def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:
             pad_defaults: CoursePad::Pad = CoursePad::defaults()
             _ = try row_semantics(keymap, &pad_defaults, settings, CourseControls::MENU_ROWS, 0)
@@ -179,6 +219,8 @@
             return 180 if not localized_captions_test()
             fits: bool = try layout_fits(session)
             return 159 if not fits
+            caption_status: i32 = try captions_fit(session)
+            return caption_status if caption_status != 0
             return 201 if not semantics_test(&plain_settings)
             # The live HUD takes every setting and releases every handle.
             keymap: CourseControls::Keymap = CourseControls::defaults()
