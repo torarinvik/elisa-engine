@@ -46,8 +46,7 @@ fails the smoke with status 168 (104 + probe code 64).
 
 - There is one session slot, and sessions longer than 8 chunks are not
   handled.
-- No course session has been replayed from disk. The course saves its
-  sealed chunks but not its final partial chunk, and there is no replay mode
+- No course session has been replayed from disk. There is no replay mode
   that feeds saved chunks back into the course.
 
 ## Course wiring
@@ -62,4 +61,10 @@ fails the smoke with status 168 (104 + probe code 64).
   chunk, then clears the store.
 - Both course smokes pass.
 - Negative control: making `seal` skip the save fails
+  `character-course-smoke` with status 169.
+- `CourseSounds::stop` also saves the partial live chunk when it holds
+  decisions, so the whole session is on disk.
+- The self-test then checks for a two-chunk manifest, and that chunk 1
+  loads with at least 44 entries.
+- Negative control: disabling the save in `stop` fails
   `character-course-smoke` with status 169.

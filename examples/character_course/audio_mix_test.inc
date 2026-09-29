@@ -53,13 +53,17 @@
             # Each of the 300 jumps started a voice and logged one decision;
             # the first 256 were sealed and saved as the session's chunk 0.
             return 169 if CourseSounds::decisions(&sounds) != 300
-            return 169 if RuntimeDecisionSessionStore::manifest().chunks != 1 or not RuntimeDecisionSessionStore::clear()
+            return 169 if RuntimeDecisionSessionStore::manifest().chunks != 1
             _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
             first: u32 = CourseSounds::last_variant(&sounds)
             CourseSounds::reset_scene(&sounds)
             _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
             return 170 if CourseSounds::last_variant(&sounds) != first
             return 171 if not CourseSounds::stop(&sounds) or not audio_idle(session)
+            # Stopping saved the partial second chunk, so the whole session is on disk.
+            last_chunk: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(1)
+            return 169 if RuntimeDecisionSessionStore::manifest().chunks != 2 or last_chunk.stored != RuntimeDecisionLogStore::Stored.Ok or last_chunk.loaded.log.count < 44
+            return 169 if not RuntimeDecisionSessionStore::clear()
             0
 
         def cue_gains(sounds: CourseSounds::Sounds&, course: u64, victory: u64) -> bool:
