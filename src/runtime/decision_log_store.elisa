@@ -1,0 +1,54 @@
+# Stores a decision log's word stream in the user-data directory as a
+# checksummed, versioned payload (8 little-endian two's-complement bytes per
+# word), so a replay tool can reload the exact decisions a session made.
+# Everything read back goes through RuntimeDecisionLogCodec::decode, so a
+# stale or corrupt file never starts a replay.
+include "./decision_log_codec.elisa"
+include "./user_data.elisa"
+
+module RuntimeDecisionLogStore:
+    public:
+        const VERSION: i64 = 1
+
+        enum Stored:
+            Ok
+            NotFound
+            WrongVersion
+            Corrupt
+            StorageFailure
+
+        struct Read:
+            stored: Stored
+            loaded: RuntimeDecisionLogCodec::Loaded
+
+        def save(key: cstr, log: RuntimeDecisionLog::Log&) -> Stored:
+            stream: RuntimeDecisionLogCodec::Stream = RuntimeDecisionLogCodec::encode(log)
+            mutable bytes: RuntimeDecisionLogCodec::Bytes = RuntimeDecisionLogCodec::pack(&stream)
+            status: i32 = catch UserData::write_payload(key, VERSION, &bytes.b[0], bytes.len):
+                ok: 0
+                error failure: 1
+            return Stored.StorageFailure if status != 0
+            Stored.Ok
+
+        def failed(stored: Stored) -> Read:
+            Read{stored: stored, loaded: RuntimeDecisionLogCodec::fail(RuntimeDecisionLogCodec::Decode.Truncated)}
+
+        def load(key: cstr) -> Read:
+            mutable bytes: RuntimeDecisionLogCodec::Bytes = RuntimeDecisionLogCodec::Bytes{b: zeroed, len: 0}
+            mutable version: i64 = 0
+            mutable length: usize = 0
+            status: i32 = catch UserData::read_payload(key, &version, &bytes.b[0], RuntimeDecisionLogCodec::MAX_BYTES, &length):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                UserData::UserDataError.WrongVersion: 2
+                UserData::UserDataError.Corrupt: 3
+                error failure: 4
+            return failed(Stored.NotFound) if status == 1
+            return failed(Stored.WrongVersion) if status == 2 or (status == 0 and version != VERSION)
+            return failed(Stored.Corrupt) if status == 3
+            return failed(Stored.StorageFailure) if status != 0
+            bytes.len <- length
+            stream: RuntimeDecisionLogCodec::Stream = RuntimeDecisionLogCodec::unpack(&bytes)
+            loaded: RuntimeDecisionLogCodec::Loaded = RuntimeDecisionLogCodec::decode(&stream)
+            stored: Stored = Stored.Ok if loaded.status == RuntimeDecisionLogCodec::Decode.Ok else Stored.Corrupt
+            Read{stored: stored, loaded: loaded}
