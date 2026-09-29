@@ -1,5 +1,6 @@
 # SDL3 native gate for Jolt thin-wall projectile CCD.
 include "./physics_ccd3d_probe.elisa"
+include "./physics_stack3d_probe.elisa"
 
 def main() -> i32:
     config: Application::Config = Application::Config{
@@ -36,7 +37,8 @@ def main() -> i32:
     if report.state != Capabilities::RequirementState.Fallback:
         _ = RuntimeServices::shutdown(&session)
         return 2
-    result: i32 = PhysicsCcd3dProbe::run(&session)
+    mutable result: i32 = PhysicsCcd3dProbe::run(&session)
+    result <- PhysicsStack3dProbe::run(&session) if result == 0 else result
     closed: bool = RuntimeServices::shutdown(&session)
     return result if result != 0
     return 3 if not closed

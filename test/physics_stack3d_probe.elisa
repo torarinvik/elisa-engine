@@ -1,0 +1,91 @@
+# Stacked-body and large-timestep regression for the Jolt path: a tower of
+# five 0.5 m boxes must stand on a static floor, both at 60 Hz and when the
+# whole tower is stepped at 15 Hz.
+include "../src/runtime/services.elisa"
+
+module PhysicsStack3dProbe:
+    private:
+        const module Tune:
+            HALF: f32 = 0.25
+            GAP: f32 = 0.01
+
+        def make(session: RuntimeServices::Session&, kind: PhysicsRuntime::BodyKind, position: Geometry::Vec3, half: Geometry::Vec3, mass: f32) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            try RuntimeServices::physics_body_create(session, PhysicsRuntime::BodyDesc{
+                kind: kind, shape: PhysicsRuntime::BodyShape.Box, position: position,
+                rotation: Geometry::quat_identity(), dimensions: half,
+                mass: mass, sensor: false, collision_layer: 0,
+                center_of_mass_offset: Geometry::vec3_zero(),
+            })
+
+        def box_at(session: RuntimeServices::Session&, level: f32) -> PhysicsRuntime::BodyHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            y: f32 = Tune::HALF + level * (2.0 * Tune::HALF + Tune::GAP)
+            try make(session, PhysicsRuntime::BodyKind.Dynamic, Geometry::Vec3{x: 0.0, y: y, z: 0.0},
+                Geometry::Vec3{x: Tune::HALF, y: Tune::HALF, z: Tune::HALF}, 10.0)
+
+    public:
+        # Builds the tower, steps `steps` times at `dt` and returns the top
+        # box's final centre, or a far-away point on any service failure.
+        def settle(session: mutable RuntimeServices::Session&, dt: f32, steps: usize) -> Geometry::Vec3:
+            bad: Geometry::Vec3 = Geometry::Vec3{x: 1000.0, y: 1000.0, z: 1000.0}
+            floor: PhysicsRuntime::BodyHandle = catch make(session, PhysicsRuntime::BodyKind.Static,
+                Geometry::Vec3{x: 0.0, y: 0.0 - 0.5, z: 0.0}, Geometry::Vec3{x: 20.0, y: 0.5, z: 20.0}, 0.0):
+                value: value
+                error failure: return bad
+            b0: PhysicsRuntime::BodyHandle = catch box_at(session, 0.0):
+                value: value
+                error failure: return bad
+            b1: PhysicsRuntime::BodyHandle = catch box_at(session, 1.0):
+                value: value
+                error failure: return bad
+            b2: PhysicsRuntime::BodyHandle = catch box_at(session, 2.0):
+                value: value
+                error failure: return bad
+            b3: PhysicsRuntime::BodyHandle = catch box_at(session, 3.0):
+                value: value
+                error failure: return bad
+            b4: PhysicsRuntime::BodyHandle = catch box_at(session, 4.0):
+                value: value
+                error failure: return bad
+            for _ in 0..<steps:
+                _ = catch RuntimeServices::physics_fixed_step(session, dt):
+                    value: 0
+                    error failure: 1
+            top: Geometry::Vec3 = catch RuntimeServices::physics_body_position(session, b4):
+                value: value
+                error failure: bad
+            _ = catch RuntimeServices::physics_body_destroy(session, b0):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, b1):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, b2):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, b3):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, b4):
+                ok: true
+                error failure: false
+            _ = catch RuntimeServices::physics_body_destroy(session, floor):
+                ok: true
+                error failure: false
+            top
+
+        # Resting top centre is 2.25 m; drift is measured in millimetres.
+        def drift_mm(top: Geometry::Vec3) -> i32:
+            dy: f32 = top.y - 2.25
+            dy2: f32 = dy if dy >= 0.0 else 0.0 - dy
+            dx: f32 = top.x if top.x >= 0.0 else 0.0 - top.x
+            dz: f32 = top.z if top.z >= 0.0 else 0.0 - top.z
+            ((dy2 + dx + dz) * 1000.0).i32()
+
+        def run(session: mutable RuntimeServices::Session&) -> i32:
+            a: i32 = drift_mm(settle(session, 1.0 / 60.0, 300))
+            b: i32 = drift_mm(settle(session, 1.0 / 15.0, 75))
+            # Measured top drift: 3 mm at 60 Hz, 39 mm at 15 Hz. Budgets: 10 and
+            # 80 mm; a toppled or sunk tower drifts by hundreds.
+            return 30 if a > 10
+            return 31 if b > 80
+            0
