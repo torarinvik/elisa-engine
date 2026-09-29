@@ -405,6 +405,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: the plain 2D world also steps bodies through Physics2dCcd ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
   Progress on 2026-09-29: Physics2dCcd adds thin horizontal platforms and a combined step_all over walls and platforms ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
   Progress on 2026-09-29: both 2D worlds step through Physics2dCcd::step_all with walls and platforms ([`ccd-2d.md`](docs/validation/ccd-2d.md)).
+  Progress on 2026-09-29: Physics2dCcd::sweep_pair gives circle-circle time of impact for fast pairs ([`ccd-2d.md`](docs/validation/ccd-2d.md)); not yet used by world pair resolution.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
@@ -544,6 +545,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Define stable message keys, plural/locale formatting, extraction, translations, and live language switching. Done: a long-text and right-to-left locale exercise layout, missing-key fallbacks, and packaged locale data without rebuilding gameplay code.
   Progress: `src/ui/locale.elisa` and `locale_catalogue.elisa` provide plural rules, fallback resolution, live switching, RTL mirroring and expansion reserve (see `docs/validation/ui-locale.md`); message text/formatting, extraction, packaged locale data and a real layout exercise remain.
   Progress on 2026-09-29: UiMessageFormat formats {0}..{3} placeholders and CLDR plural forms with bounded output and malformed-template errors (docs/validation/message-format.md); extraction, packaged locale data and a real layout exercise remain.
+  Progress on 2026-09-29: formatted localized labels are measured, wrapped and RTL-mirrored in a reserved box, reporting overflow ([localized-label](docs/validation/localized-label.md)); real font metrics and shaping remain.
 
 ## T — networking and online runtime
 
