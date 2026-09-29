@@ -1,0 +1,33 @@
+include "../src/assets/hot_reload.elisa"
+
+def main() -> i32:
+    # 0 texture, 1 material using it, 2 mesh using the material, 3 sound.
+    mutable t: AssetsHotReload::Table = AssetsHotReload::table([0 - 1, 0, 1, 0 - 1, 0 - 1, 0 - 1, 0 - 1, 0 - 1], 4)
+    return 1 if AssetsHotReload::stage(&t, 0, true) != AssetsHotReload::Stage.Staged
+    return 2 if AssetsHotReload::stage(&t, 9, true) != AssetsHotReload::Stage.BadSlot
+    # Nothing changes until the frame boundary.
+    return 3 if t.live[0] != 1
+    return 4 if AssetsHotReload::commit(&t, 2) != 1 or t.live[0] != 2 or t.retired[0] != 1
+    # The old texture lives until both in-flight frames release it.
+    return 5 if AssetsHotReload::release(&t, 0) or t.retired[0] != 1
+    return 6 if not AssetsHotReload::release(&t, 0) or t.retired[0] != 0
+    return 7 if AssetsHotReload::release(&t, 0)
+    # A broken material keeps the last good one and holds back the mesh
+    # that depends on it, while the unrelated sound still swaps.
+    AssetsHotReload::stage(&t, 2, true)
+    AssetsHotReload::stage(&t, 3, true)
+    return 8 if AssetsHotReload::stage(&t, 1, false) != AssetsHotReload::Stage.Broken or t.errors != 1
+    return 9 if AssetsHotReload::commit(&t, 0) != 1 or t.live[1] != 1 or t.live[2] != 1 or t.live[3] != 2
+    # Fixing the material releases both at the next boundary, in one step.
+    AssetsHotReload::stage(&t, 1, true)
+    return 10 if AssetsHotReload::commit(&t, 1) != 2 or t.live[1] != 2 or t.live[2] != 2
+    return 11 if AssetsHotReload::commit(&t, 1) != 0
+    # A broken texture also holds back the mesh two links away.
+    AssetsHotReload::stage(&t, 2, true)
+    AssetsHotReload::stage(&t, 0, false)
+    return 12 if AssetsHotReload::commit(&t, 0) != 0 or t.live[2] != 2
+    # A cyclic table never swaps and does not hang.
+    mutable c: AssetsHotReload::Table = AssetsHotReload::table([1, 0, 0 - 1, 0 - 1, 0 - 1, 0 - 1, 0 - 1, 0 - 1], 2)
+    AssetsHotReload::stage(&c, 0, true)
+    return 13 if AssetsHotReload::commit(&c, 0) != 0
+    0

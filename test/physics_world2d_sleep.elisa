@@ -1,0 +1,35 @@
+include "../src/physics/world2d_sleep.elisa"
+
+def ball(x: i64, y: i64, vx: i64) -> Physics2dCircles::Circle:
+    Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: 0, radius_um: 100000, mass_g: 100}
+
+def main() -> i32:
+    rule: Physics2dSleep::Rule = Physics2dSleep::Rule{speed_um_s: 20000, steps: 30}
+    mutable b: Physics2dCircles::Circle[32] = zeroed
+    mutable s: Physics2dSleep::State[32] = zeroed
+    b[0] <- ball(0, 100000, 0)
+    mutable r: Physics2dSleepWorld::Report = Physics2dSleepWorld::Report{resolved: 0, woken: 0, asleep: 0}
+    for k in 0..<100:
+        r <- Physics2dSleepWorld::step(&b, &s, 1, &rule, 9810000, 5, 0, 500, 300)
+    return 1 if r.asleep != 1 or not s[0].asleep
+    # A second ball rolls into the sleeper: the contact wakes it and it moves.
+    b[1] <- ball(0 - 1000000, 100000, 3000000)
+    mutable woke: i64 = 0
+    for k in 0..<120:
+        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300)
+        woke <- woke + r.woken
+    return 2 if woke < 1
+    return 3 if b[0].x_um <= 0
+    # Ground friction brings both to rest, and both fall asleep again.
+    for k in 0..<4000:
+        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300)
+    return 4 if r.asleep != 2 or b[0].vx != 0 or b[1].vx != 0
+    # Without friction the struck ball would still be rolling.
+    mutable f: Physics2dCircles::Circle = ball(0, 100000, 1000000)
+    return 5 if not Physics2dCircles::ground_friction(&f, 0, 300, 9810000, 5) or f.vx != 1000000 - 14715
+    mutable g: Physics2dCircles::Circle = ball(0, 100000, 0 - 10000)
+    Physics2dCircles::ground_friction(&g, 0, 300, 9810000, 5)
+    return 6 if g.vx != 0
+    mutable air: Physics2dCircles::Circle = ball(0, 500000, 1000000)
+    return 7 if Physics2dCircles::ground_friction(&air, 0, 300, 9810000, 5) or air.vx != 1000000
+    0

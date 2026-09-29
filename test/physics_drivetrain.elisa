@@ -1,0 +1,32 @@
+include "../src/physics/drivetrain.elisa"
+
+def main() -> i32:
+    return 1 if PhysicsDrivetrain::engine_rpm(0, 1) != 900 or PhysicsDrivetrain::engine_rpm(999999999, 1) != 6500
+    # 40 rad/s in first: 40 * 14.4 * 60 / 2pi = 5500 rpm.
+    r: i64 = PhysicsDrivetrain::engine_rpm(40000, 1)
+    return 2 if r < 5495 or r > 5505
+    return 3 if PhysicsDrivetrain::engine_rpm(0 - 40000, 1) != r
+    return 4 if PhysicsDrivetrain::curve_nmm(900) != 180000 or PhysicsDrivetrain::curve_nmm(4000) != 260000 or PhysicsDrivetrain::curve_nmm(6500) != 200000
+    mutable b: PhysicsDrivetrain::Box = PhysicsDrivetrain::neutral()
+    return 5 if PhysicsDrivetrain::wheel_torque_nmm(&b, 1000, 4000) != 3744000
+    return 6 if PhysicsDrivetrain::wheel_torque_nmm(&b, 500, 4000) != 1872000 or PhysicsDrivetrain::wheel_torque_nmm(&b, 1000, 6500) != 0
+    # Upshift at 5800, then no drive during the 250 ms shift.
+    return 7 if not PhysicsDrivetrain::update(&b, 5900, 16) or b.gear != 2
+    return 8 if PhysicsDrivetrain::wheel_torque_nmm(&b, 1000, 4000) != 0
+    # The rpm drop after the upshift is inside the hysteresis band: no hunting.
+    mutable starts: i64 = 0
+    for k in 0..<100:
+        starts <- starts + 1 if PhysicsDrivetrain::update(&b, 3400, 16)
+    return 9 if starts != 0 or b.gear != 2 or b.shift_left_ms != 0
+    # From a crawl it first drops to first, climbs to fifth, then coasts back:
+    # 1 earlier + 1 down + 4 up + 4 down = 10 shifts, none of them hunting.
+    mutable wheel: i64 = 10000
+    for k in 0..<4000:
+        PhysicsDrivetrain::update(&b, PhysicsDrivetrain::engine_rpm(wheel, b.gear), 16)
+        wheel <- wheel + 100
+    return 10 if b.gear != 5
+    for k in 0..<4000:
+        PhysicsDrivetrain::update(&b, PhysicsDrivetrain::engine_rpm(wheel, b.gear), 16)
+        wheel <- wheel - 100 if wheel > 0
+    return 11 if b.gear != 1 or b.shifts != 10
+    0

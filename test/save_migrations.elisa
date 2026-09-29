@@ -1,0 +1,59 @@
+include "../src/world/save_migrations.elisa"
+
+def v1() -> SaveMigrations::Values:
+    # Version 1: [health, x_m, y_m]
+    SaveMigrations::Values{version: 1, fields: [100, 3, 4, 0, 0, 0, 0, 0], count: 3}
+
+def chain() -> SaveMigrations::Chain:
+    mutable c: SaveMigrations::Chain = SaveMigrations::Chain()
+    # v1 -> v2: positions become millimetres.
+    SaveMigrations::add(&c, SaveMigrations::Op.Scale, 1, 1000)
+    SaveMigrations::add(&c, SaveMigrations::Op.Scale, 2, 1000)
+    # v3 -> v4: insert stamina (default 50) after health.
+    SaveMigrations::add(&c, SaveMigrations::Op.AddField, 1, 50)
+    # v4 -> v5: drop health.
+    SaveMigrations::add(&c, SaveMigrations::Op.DropField, 0, 0)
+    c
+
+def main() -> i32:
+    c: SaveMigrations::Chain = chain()
+    return 1 if SaveMigrations::check(&c) != SaveMigrations::Check.Ok or SaveMigrations::current(&c) != 5
+    r: SaveMigrations::Result = SaveMigrations::migrate(&c, v1())
+    return 2 if r.outcome != SaveMigrations::Outcome.Migrated or r.values.version != 5 or r.values.count != 3
+    return 3 if r.values.fields[0] != 50 or r.values.fields[1] != 3000 or r.values.fields[2] != 4000 or r.values.fields[3] != 0
+    # A mid-chain save only runs the remaining steps.
+    mid: SaveMigrations::Values = SaveMigrations::Values{version: 3, fields: [80, 7000, 8000, 0, 0, 0, 0, 0], count: 3}
+    m: SaveMigrations::Result = SaveMigrations::migrate(&c, mid)
+    return 4 if m.outcome != SaveMigrations::Outcome.Migrated or m.values.fields[0] != 50 or m.values.fields[1] != 7000 or m.values.count != 3
+    # Current, too new, too old.
+    return 5 if SaveMigrations::migrate(&c, r.values).outcome != SaveMigrations::Outcome.Current
+    future: SaveMigrations::Values = SaveMigrations::Values{version: 6, fields: zeroed, count: 0}
+    return 6 if SaveMigrations::migrate(&c, future).outcome != SaveMigrations::Outcome.TooNew
+    old: SaveMigrations::Values = SaveMigrations::Values{version: 0, fields: zeroed, count: 0}
+    return 7 if SaveMigrations::migrate(&c, old).outcome != SaveMigrations::Outcome.TooOld
+    # Overflow in step 2 leaves the original untouched (all or nothing).
+    huge: SaveMigrations::Values = SaveMigrations::Values{version: 1, fields: [1, 2, 9000000000000, 0, 0, 0, 0, 0], count: 3}
+    h: SaveMigrations::Result = SaveMigrations::migrate(&c, huge)
+    return 8 if h.outcome != SaveMigrations::Outcome.Overflow or h.values.version != 1 or h.values.fields[1] != 2
+    # A narrow record cannot take a scale on a missing field.
+    narrow: SaveMigrations::Values = SaveMigrations::Values{version: 1, fields: [1, 2, 0, 0, 0, 0, 0, 0], count: 2}
+    return 9 if SaveMigrations::migrate(&c, narrow).outcome != SaveMigrations::Outcome.Capacity
+    # Bad chains are rejected before any record is touched.
+    return 10 if SaveMigrations::check(&SaveMigrations::Chain()) != SaveMigrations::Check.Empty
+    mutable bad: SaveMigrations::Chain = SaveMigrations::Chain()
+    SaveMigrations::add(&bad, SaveMigrations::Op.Scale, 0, 0)
+    return 11 if SaveMigrations::check(&bad) != SaveMigrations::Check.BadScale
+    return 12 if SaveMigrations::migrate(&bad, v1()).outcome != SaveMigrations::Outcome.BadChain
+    mutable wide: SaveMigrations::Chain = SaveMigrations::Chain()
+    SaveMigrations::add(&wide, SaveMigrations::Op.DropField, 8, 0)
+    return 13 if SaveMigrations::check(&wide) != SaveMigrations::Check.BadField
+    # A full record cannot gain a field.
+    mutable grow: SaveMigrations::Chain = SaveMigrations::Chain()
+    SaveMigrations::add(&grow, SaveMigrations::Op.AddField, 0, 1)
+    full: SaveMigrations::Values = SaveMigrations::Values{version: 1, fields: [1, 2, 3, 4, 5, 6, 7, 8], count: 8}
+    return 14 if SaveMigrations::migrate(&grow, full).outcome != SaveMigrations::Outcome.Capacity
+    mutable cap: SaveMigrations::Chain = SaveMigrations::Chain()
+    for _ in 0..<16:
+        SaveMigrations::add(&cap, SaveMigrations::Op.Scale, 0, 1)
+    return 15 if SaveMigrations::add(&cap, SaveMigrations::Op.Scale, 0, 1)
+    return 0

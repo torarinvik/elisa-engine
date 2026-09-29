@@ -1,0 +1,58 @@
+# P10 2D world step with sleeping: like `Physics2dWorld::step`, but sleeping
+# bodies are not integrated, and a resolved contact wakes both bodies so a
+# body knocked by a moving one never stays frozen in the air.
+include "sleep2d.elisa"
+include "sweep2d.elisa"
+
+module Physics2dSleepWorld:
+    public:
+        struct Report:
+            resolved: i64
+            woken: i64
+            asleep: i64
+
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64) -> Report:
+            n: i64 = 32 if count > 32 else count
+            mutable minx: i64[32] = zeroed
+            mutable maxx: i64[32] = zeroed
+            mutable miny: i64[32] = zeroed
+            mutable maxy: i64[32] = zeroed
+            for i in 0..<n:
+                mutable c: Physics2dCircles::Circle = bodies[i]
+                s: Physics2dSleep::State = states[i]
+                Physics2dSleep::integrate(&c, &s, gravity_um_s2, dt_ms)
+                bodies[i] <- c
+                minx[i] <- c.x_um - c.radius_um
+                maxx[i] <- c.x_um + c.radius_um
+                miny[i] <- c.y_um - c.radius_um
+                maxy[i] <- c.y_um + c.radius_um
+            mutable pairs: Physics2dSweep::Pairs = Physics2dSweep::empty()
+            found: i64 = Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, n, &pairs)
+            mutable resolved: i64 = 0
+            mutable woken: i64 = 0
+            for k in 0..<found:
+                ia: i64 = pairs.first[k]
+                ib: i64 = pairs.second[k]
+                mutable a: Physics2dCircles::Circle = bodies[ia]
+                mutable o: Physics2dCircles::Circle = bodies[ib]
+                if Physics2dCircles::pair(&a, &o, restitution_permille) == Physics2dCircles::Contact.Resolved:
+                    resolved <- resolved + 1
+                    mutable sa: Physics2dSleep::State = states[ia]
+                    mutable sb: Physics2dSleep::State = states[ib]
+                    woken <- woken + 1 if Physics2dSleep::wake(&sa)
+                    woken <- woken + 1 if Physics2dSleep::wake(&sb)
+                    states[ia] <- sa
+                    states[ib] <- sb
+                bodies[ia] <- a
+                bodies[ib] <- o
+            mutable asleep: i64 = 0
+            for i in 0..<n:
+                mutable c: Physics2dCircles::Circle = bodies[i]
+                mutable s: Physics2dSleep::State = states[i]
+                Physics2dCircles::ground(&c, ground_um, restitution_permille, 50000)
+                Physics2dCircles::ground_friction(&c, ground_um, friction_permille, gravity_um_s2, dt_ms)
+                Physics2dSleep::update(&c, &s, rule)
+                asleep <- asleep + 1 if s.asleep
+                bodies[i] <- c
+                states[i] <- s
+            Report{resolved: resolved, woken: woken, asleep: asleep}

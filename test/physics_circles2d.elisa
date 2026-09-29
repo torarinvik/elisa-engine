@@ -1,0 +1,43 @@
+include "../src/physics/circles2d.elisa"
+
+def ball(x: i64, y: i64, vx: i64, mass: i64) -> Physics2dCircles::Circle:
+    Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: 0, radius_um: 100000, mass_g: mass}
+
+def main() -> i32:
+    return 1 if Physics2dCircles::isqrt(0) != 0 or Physics2dCircles::isqrt(99) != 9 or Physics2dCircles::isqrt(100) != 10 or Physics2dCircles::isqrt(1000000000000) != 1000000
+    # A ball dropped from 1 m bounces lower each time and comes to rest on the ground.
+    mutable b: Physics2dCircles::Circle = ball(0, 1000000, 0, 100)
+    mutable bounces: i64 = 0
+    for k in 0..<2000:
+        Physics2dCircles::integrate(&b, 9810000, 5)
+        bounces <- bounces + 1 if Physics2dCircles::ground(&b, 0, 600, 50000) == Physics2dCircles::Contact.Resolved
+    return 2 if bounces < 3
+    return 3 if b.y_um != 100000 or b.vy != 0
+    # Equal masses, head-on elastic: velocities swap and momentum is kept.
+    mutable l: Physics2dCircles::Circle = ball(0, 0, 1000000, 200)
+    mutable r: Physics2dCircles::Circle = ball(190000, 0, 0, 200)
+    before: i64 = Physics2dCircles::momentum_x(&l, &r)
+    return 4 if Physics2dCircles::pair(&l, &r, 1000) != Physics2dCircles::Contact.Resolved
+    return 5 if l.vx != 0 or r.vx != 1000000
+    return 6 if Physics2dCircles::momentum_x(&l, &r) != before
+    return 7 if r.x_um - l.x_um < 199999
+    # Already separating: positions corrected, velocities untouched.
+    mutable p: Physics2dCircles::Circle = ball(0, 0, 0 - 5, 200)
+    mutable q: Physics2dCircles::Circle = ball(150000, 0, 5, 200)
+    return 8 if Physics2dCircles::pair(&p, &q, 1000) != Physics2dCircles::Contact.Touching or p.vx != 0 - 5
+    # Apart circles are untouched.
+    mutable f: Physics2dCircles::Circle = ball(0, 0, 0, 200)
+    mutable g: Physics2dCircles::Circle = ball(300000, 0, 0 - 7, 200)
+    return 9 if Physics2dCircles::pair(&f, &g, 1000) != Physics2dCircles::Contact.None or g.vx != 0 - 7
+    # A ball hitting a static wall circle reflects; the wall never moves.
+    mutable w: Physics2dCircles::Circle = ball(190000, 0, 0, 0)
+    mutable m: Physics2dCircles::Circle = ball(0, 0, 400000, 100)
+    return 10 if Physics2dCircles::pair(&m, &w, 500) != Physics2dCircles::Contact.Resolved
+    return 11 if m.vx != 0 - 200000 or w.x_um != 190000 or w.vx != 0
+    return 12 if Physics2dCircles::integrate(&w, 9810000, 5) or w.y_um != 0
+    # Coincident centres separate instead of dividing by zero.
+    mutable c1: Physics2dCircles::Circle = ball(0, 0, 0, 100)
+    mutable c2: Physics2dCircles::Circle = ball(0, 0, 0, 100)
+    Physics2dCircles::pair(&c1, &c2, 0)
+    return 13 if c2.x_um - c1.x_um < 199999
+    0

@@ -1,0 +1,42 @@
+# P10 2D world step: integrates up to 32 circles, finds candidate pairs with
+# the sort-and-sweep broadphase, resolves them with the circle narrowphase in
+# the broadphase's deterministic order, then applies the ground. Reports how
+# many contacts were resolved and whether the pair buffer overflowed.
+include "circles2d.elisa"
+include "sweep2d.elisa"
+
+module Physics2dWorld:
+    public:
+        struct Report:
+            candidates: i64
+            resolved: i64
+            overflowed: bool
+
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64) -> Report:
+            n: i64 = 32 if count > 32 else count
+            mutable minx: i64[32] = zeroed
+            mutable maxx: i64[32] = zeroed
+            mutable miny: i64[32] = zeroed
+            mutable maxy: i64[32] = zeroed
+            for i in 0..<n:
+                Physics2dCircles::integrate(&bodies[i], gravity_um_s2, dt_ms)
+                minx[i] <- bodies[i].x_um - bodies[i].radius_um
+                maxx[i] <- bodies[i].x_um + bodies[i].radius_um
+                miny[i] <- bodies[i].y_um - bodies[i].radius_um
+                maxy[i] <- bodies[i].y_um + bodies[i].radius_um
+            mutable pairs: Physics2dSweep::Pairs = Physics2dSweep::empty()
+            found: i64 = Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, n, &pairs)
+            mutable resolved: i64 = 0
+            for k in 0..<found:
+                # Copy the two bodies out: the pair must not alias one array.
+                ia: i64 = pairs.first[k]
+                ib: i64 = pairs.second[k]
+                mutable a: Physics2dCircles::Circle = bodies[ia]
+                mutable o: Physics2dCircles::Circle = bodies[ib]
+                c: Physics2dCircles::Contact = Physics2dCircles::pair(&a, &o, restitution_permille)
+                bodies[ia] <- a
+                bodies[ib] <- o
+                resolved <- resolved + 1 if c == Physics2dCircles::Contact.Resolved
+            for i in 0..<n:
+                Physics2dCircles::ground(&bodies[i], ground_um, restitution_permille, 50000)
+            Report{candidates: found, resolved: resolved, overflowed: pairs.overflowed}

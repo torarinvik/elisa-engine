@@ -1,0 +1,39 @@
+include "../src/physics/sleep2d.elisa"
+
+def main() -> i32:
+    rule: Physics2dSleep::Rule = Physics2dSleep::Rule{speed_um_s: 20000, steps: 30}
+    mutable c: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 400000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    mutable s: Physics2dSleep::State = Physics2dSleep::awake()
+    mutable slept_at: i64 = 0 - 1
+    for k in 0..<2000:
+        Physics2dSleep::integrate(&c, &s, 9810000, 5)
+        Physics2dCircles::ground(&c, 0, 500, 50000)
+        slept_at <- k if Physics2dSleep::update(&c, &s, &rule)
+    return 1 if not s.asleep or slept_at < 30
+    # Asleep: gravity no longer moves it.
+    y: i64 = c.y_um
+    for k in 0..<100:
+        Physics2dSleep::integrate(&c, &s, 9810000, 5)
+    return 2 if c.y_um != y or c.vy != 0
+    # The same scene sleeps on the same step every run.
+    mutable c2: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 400000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    mutable s2: Physics2dSleep::State = Physics2dSleep::awake()
+    mutable again: i64 = 0 - 1
+    for k in 0..<2000:
+        Physics2dSleep::integrate(&c2, &s2, 9810000, 5)
+        Physics2dCircles::ground(&c2, 0, 500, 50000)
+        again <- k if Physics2dSleep::update(&c2, &s2, &rule)
+    return 3 if again != slept_at
+    # Waking lets it move again; a push resets the quiet counter.
+    return 4 if not Physics2dSleep::wake(&s) or Physics2dSleep::wake(&s)
+    for k in 0..<5:
+        Physics2dSleep::update(&c, &s, &rule)
+    return 7 if s.quiet != 5
+    c.vx <- 500000
+    Physics2dSleep::update(&c, &s, &rule)
+    return 5 if s.quiet != 0 or s.asleep
+    # Static bodies never sleep (they never move anyway).
+    mutable w: Physics2dCircles::Circle = Physics2dCircles::Circle{x_um: 0, y_um: 0, vx: 0, vy: 0, radius_um: 1, mass_g: 0}
+    mutable ws: Physics2dSleep::State = Physics2dSleep::awake()
+    return 6 if Physics2dSleep::update(&w, &ws, &rule)
+    0

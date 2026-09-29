@@ -1,0 +1,36 @@
+include "../src/world/mailbox.elisa"
+
+def main() -> i32:
+    mutable b: WorldMailbox::Box = WorldMailbox::open()
+    return 1 if WorldMailbox::post(&b, 1, 10) != WorldMailbox::Post.Queued
+    WorldMailbox::post(&b, 2, 20)
+    # Read-only phases deliver nothing and keep the queue.
+    r: (ok: bool, kind: i64, payload: i64) = WorldMailbox::take(&b, WorldMailbox::Phase.Render)
+    return 2 if r.ok or b.count != 2
+    return 3 if WorldMailbox::take(&b, WorldMailbox::Phase.Input).ok or WorldMailbox::take(&b, WorldMailbox::Phase.Audio).ok
+    a: (ok: bool, kind: i64, payload: i64) = WorldMailbox::take(&b, WorldMailbox::Phase.Simulation)
+    return 4 if not a.ok or a.kind != 1 or a.payload != 10
+    c: (ok: bool, kind: i64, payload: i64) = WorldMailbox::take(&b, WorldMailbox::Phase.Physics)
+    return 5 if not c.ok or c.kind != 2 or c.payload != 20
+    return 6 if WorldMailbox::take(&b, WorldMailbox::Phase.Simulation).ok
+    # Order survives wraparound over many cycles.
+    mutable expect: i64 = 0
+    mutable sent: i64 = 0
+    for round in 0..<10:
+        for k in 0..<11:
+            WorldMailbox::post(&b, 7, sent)
+            sent <- sent + 1
+        for k in 0..<11:
+            m: (ok: bool, kind: i64, payload: i64) = WorldMailbox::take(&b, WorldMailbox::Phase.Simulation)
+            return 7 if not m.ok or m.payload != expect
+            expect <- expect + 1
+    # A full ring rejects instead of overwriting the oldest message.
+    for k in 0..<16:
+        WorldMailbox::post(&b, 8, 100 + k)
+    return 8 if WorldMailbox::post(&b, 8, 999) != WorldMailbox::Post.Full or b.dropped != 1
+    first: (ok: bool, kind: i64, payload: i64) = WorldMailbox::take(&b, WorldMailbox::Phase.Simulation)
+    return 9 if first.payload != 100
+    # Shutdown discards the rest and refuses new posts.
+    return 10 if WorldMailbox::close(&b) != 15 or WorldMailbox::post(&b, 1, 1) != WorldMailbox::Post.Closed
+    return 11 if WorldMailbox::take(&b, WorldMailbox::Phase.Simulation).ok
+    0

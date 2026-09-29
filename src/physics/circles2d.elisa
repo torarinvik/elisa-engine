@@ -1,0 +1,98 @@
+# Integer 2D circle dynamics for the P10 2D physics path: positions in
+# micrometres, velocities in micrometres per second, mass in grams, so a 2D
+# game has its own units with no 3D/Jolt conversion and replays identically.
+# Contacts are resolved with a restitution impulse along the contact normal
+# plus a positional correction split by inverse mass; static bodies
+# (mass 0) never move.
+module Physics2dCircles:
+    public:
+        enum Contact:
+            None
+            Touching
+            Resolved
+
+        struct Circle:
+            x_um: mutable i64
+            y_um: mutable i64
+            vx: mutable i64
+            vy: mutable i64
+            radius_um: i64
+            mass_g: i64
+
+        # Floor square root for non-negative values (Newton iteration).
+        def isqrt(n: i64) -> i64:
+            return 0 if n <= 0
+            mutable x: i64 = n
+            mutable y: i64 = (x + 1) / 2
+            while y < x:
+                x <- y
+                y <- (x + n / x) / 2
+            x
+
+        # Semi-implicit Euler: gravity (µm/s², +y up) then position.
+        def integrate(c: mutable Circle&, gravity_um_s2: i64, dt_ms: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0
+            c.vy <- c.vy - gravity_um_s2 * dt_ms / 1000
+            c.x_um <- c.x_um + c.vx * dt_ms / 1000
+            c.y_um <- c.y_um + c.vy * dt_ms / 1000
+            true
+
+        # Ground plane at `ground_um`: push out and reflect the falling speed.
+        # Bounces slower than `rest_um_s` stop, so a body settles.
+        def ground(c: mutable Circle&, ground_um: i64, restitution_permille: i64, rest_um_s: i64) -> Contact:
+            return Contact.None if c.mass_g <= 0 or c.y_um - c.radius_um > ground_um
+            c.y_um <- ground_um + c.radius_um
+            return Contact.Touching if c.vy >= 0
+            bounce: i64 = 0 - c.vy * restitution_permille / 1000
+            c.vy <- bounce
+            c.vy <- 0 if bounce < rest_um_s
+            Contact.Resolved
+
+        # Coulomb friction from the ground while resting on it: the
+        # horizontal speed drops by mu * g * dt toward zero, never past it.
+        def ground_friction(c: mutable Circle&, ground_um: i64, friction_permille: i64, gravity_um_s2: i64, dt_ms: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0 or c.y_um - c.radius_um > ground_um
+            cut: i64 = gravity_um_s2 * friction_permille / 1000 * dt_ms / 1000
+            return false if cut <= 0
+            if c.vx > 0:
+                c.vx <- 0 if c.vx <= cut else c.vx - cut
+            if c.vx < 0:
+                c.vx <- 0 if c.vx >= 0 - cut else c.vx + cut
+            true
+
+        # Circle-circle contact. Returns None when apart, Touching when
+        # overlapping but already separating (positions corrected only).
+        def pair(a: mutable Circle&, b: mutable Circle&, restitution_permille: i64) -> Contact:
+            dx: i64 = b.x_um - a.x_um
+            dy: i64 = b.y_um - a.y_um
+            reach: i64 = a.radius_um + b.radius_um
+            return Contact.None if dx > reach or dx < 0 - reach or dy > reach or dy < 0 - reach
+            dist2: i64 = dx * dx + dy * dy
+            return Contact.None if dist2 >= reach * reach
+            return Contact.None if a.mass_g <= 0 and b.mass_g <= 0
+            mutable dist: i64 = isqrt(dist2)
+            # Coincident centres: separate along +x.
+            nx_pm: i64 = 1000000 if dist == 0 else dx * 1000000 / dist
+            ny_pm: i64 = 0 if dist == 0 else dy * 1000000 / dist
+            depth: i64 = reach - dist
+            # Inverse masses scaled so a static body contributes 0.
+            ia: i64 = 0 if a.mass_g <= 0 else 1000000 / a.mass_g
+            ib: i64 = 0 if b.mass_g <= 0 else 1000000 / b.mass_g
+            total: i64 = ia + ib
+            return Contact.None if total <= 0
+            a.x_um <- a.x_um - nx_pm * depth / 1000000 * ia / total
+            a.y_um <- a.y_um - ny_pm * depth / 1000000 * ia / total
+            b.x_um <- b.x_um + nx_pm * depth / 1000000 * ib / total
+            b.y_um <- b.y_um + ny_pm * depth / 1000000 * ib / total
+            closing: i64 = ((b.vx - a.vx) * nx_pm + (b.vy - a.vy) * ny_pm) / 1000000
+            return Contact.Touching if closing >= 0
+            j: i64 = 0 - closing * (1000 + restitution_permille) / 1000
+            a.vx <- a.vx - j * nx_pm / 1000000 * ia / total
+            a.vy <- a.vy - j * ny_pm / 1000000 * ia / total
+            b.vx <- b.vx + j * nx_pm / 1000000 * ib / total
+            b.vy <- b.vy + j * ny_pm / 1000000 * ib / total
+            Contact.Resolved
+
+        # Linear momentum along x in g·µm/s, for conservation checks.
+        def momentum_x(a: Circle&, b: Circle&) -> i64:
+            a.mass_g * a.vx + b.mass_g * b.vx

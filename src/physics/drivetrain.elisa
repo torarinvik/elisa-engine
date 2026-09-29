@@ -1,0 +1,68 @@
+# P09 drivetrain policy: an integer engine/gearbox model that turns a throttle
+# and the driven wheels' speed into wheel torque. Engine speed follows the
+# wheels through the selected ratio (clamped to idle and the limiter), torque
+# comes from a three-point curve, and the automatic gearbox shifts with
+# hysteresis and a shift delay so it never hunts between two gears.
+module PhysicsDrivetrain:
+    public:
+        const module Tune:
+            IDLE_RPM: i64 = 900
+            REDLINE_RPM: i64 = 6500
+            UP_RPM: i64 = 5800
+            DOWN_RPM: i64 = 2200
+            SHIFT_MS: i64 = 250
+            GEARS: i64 = 5
+
+        struct Box:
+            gear: mutable i64
+            shift_left_ms: mutable i64
+            shifts: mutable i64
+
+        def neutral() -> Box:
+            Box{gear: 1, shift_left_ms: 0, shifts: 0}
+
+        # Overall ratio (gear x final drive) in thousandths, 1-based gear.
+        def ratio_milli(gear: i64) -> i64:
+            return 14400 if gear == 1
+            return 8600 if gear == 2
+            return 6000 if gear == 3
+            return 4600 if gear == 4
+            return 3700 if gear == 5
+            0
+
+        # Engine rpm from wheel angular speed in milliradians per second.
+        def engine_rpm(wheel_mrad_s: i64, gear: i64) -> i64:
+            w: i64 = 0 - wheel_mrad_s if wheel_mrad_s < 0 else wheel_mrad_s
+            raw: i64 = w * ratio_milli(gear) / 1000 * 60 / 6283
+            return Tune::IDLE_RPM if raw < Tune::IDLE_RPM
+            return Tune::REDLINE_RPM if raw > Tune::REDLINE_RPM
+            raw
+
+        # Full-throttle engine torque in newton-millimetres, linear between
+        # (idle, 180 Nm), (4000, 260 Nm) and (redline, 200 Nm).
+        def curve_nmm(rpm: i64) -> i64:
+            return 180000 if rpm <= Tune::IDLE_RPM
+            return 180000 + (rpm - Tune::IDLE_RPM) * 80000 / (4000 - Tune::IDLE_RPM) if rpm <= 4000
+            return 200000 if rpm >= Tune::REDLINE_RPM
+            260000 - (rpm - 4000) * 60000 / (Tune::REDLINE_RPM - 4000)
+
+        # Torque at the driven axle. None while a shift is in progress or at
+        # the limiter, so the wheels are never driven past redline.
+        def wheel_torque_nmm(b: Box&, throttle_permille: i64, rpm: i64) -> i64:
+            return 0 if b.shift_left_ms > 0 or rpm >= Tune::REDLINE_RPM or throttle_permille <= 0
+            t: i64 = 1000 if throttle_permille > 1000 else throttle_permille
+            curve_nmm(rpm) * t / 1000 * ratio_milli(b.gear) / 1000
+
+        # Automatic gearbox step: returns true when a shift starts.
+        def update(b: mutable Box&, rpm: i64, dt_ms: i64) -> bool:
+            if b.shift_left_ms > 0:
+                b.shift_left_ms <- b.shift_left_ms - dt_ms
+                b.shift_left_ms <- 0 if b.shift_left_ms < 0
+                return false
+            up: bool = rpm >= Tune::UP_RPM and b.gear < Tune::GEARS
+            down: bool = rpm <= Tune::DOWN_RPM and b.gear > 1
+            return false if not up and not down
+            b.gear <- b.gear + 1 if up else b.gear - 1
+            b.shift_left_ms <- Tune::SHIFT_MS
+            b.shifts <- b.shifts + 1
+            true
