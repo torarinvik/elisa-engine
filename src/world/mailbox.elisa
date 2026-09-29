@@ -1,0 +1,65 @@
+# W08 worker-to-main delivery: a bounded ring of (kind, payload) messages
+# that workers post and the main thread drains only in phases where the world
+# may be mutated (simulation and physics). Messages keep their post order
+# across wraparound, a full ring rejects the post with a counted drop rather
+# than overwriting, and draining in any other phase delivers nothing.
+module WorldMailbox:
+    public:
+        const module Limits:
+            SLOTS: i64 = 16
+
+        enum Phase:
+            Input
+            Simulation
+            Physics
+            Animation
+            Render
+            Audio
+
+        enum Post:
+            Queued
+            Full
+            Closed
+
+        struct Box:
+            kind: mutable i64[16]
+            payload: mutable i64[16]
+            head: mutable i64
+            count: mutable i64
+            dropped: mutable i64
+            closed: mutable bool
+
+        def open() -> Box:
+            Box{kind: zeroed, payload: zeroed, head: 0, count: 0, dropped: 0, closed: false}
+
+        def post(b: mutable Box&, kind: i64, payload: i64) -> Post:
+            return Post.Closed if b.closed
+            if b.count >= 16:
+                b.dropped <- b.dropped + 1
+                return Post.Full
+            slot: i64 = (b.head + b.count) % 16
+            b.kind[slot] <- kind
+            b.payload[slot] <- payload
+            b.count <- b.count + 1
+            Post.Queued
+
+        def may_mutate(phase: Phase) -> bool:
+            phase == Phase.Simulation or phase == Phase.Physics
+
+        # Take the oldest message if the phase allows it. Returns
+        # (ok, kind, payload); ok is false when empty or in a read-only phase.
+        def take(b: mutable Box&, phase: Phase) -> (ok: bool, kind: i64, payload: i64):
+            return (ok: false, kind: 0, payload: 0) if not may_mutate(phase) or b.count <= 0
+            k: i64 = b.kind[b.head]
+            p: i64 = b.payload[b.head]
+            b.head <- (b.head + 1) % 16
+            b.count <- b.count - 1
+            (ok: true, kind: k, payload: p)
+
+        # Shutdown: refuse further posts and discard what is queued,
+        # returning how many were discarded.
+        def close(b: mutable Box&) -> i64:
+            n: i64 = b.count
+            b.closed <- true
+            b.count <- 0
+            n
