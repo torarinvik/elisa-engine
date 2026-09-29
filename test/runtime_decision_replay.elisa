@@ -1,0 +1,36 @@
+include "../src/runtime/decision_replay.elisa"
+
+# A tiny game: each tick draws a spawn lane, and on even ticks with `extra`
+# set it draws a second time (a behaviour change between builds).
+def run(log: mutable RuntimeDecisionLog::Log&, trace: mutable Replay::Recorder&, ticks: i64, extra: bool) -> i64:
+    mutable world: i64 = 0
+    for t in 0..<ticks |log, trace, world|:
+        world <- world * 7 + RuntimeDecisionLog::draw(log, t, 1, 5)
+        world <- world + RuntimeDecisionLog::draw(log, t, 2, 3) if extra and t % 2 == 0 and t >= 4
+        world <- world % 1000003
+        _ = catch Replay::append(trace, RuntimeDecisionReplay::frame(t, 0, log, world, 0, 0)):
+            ok: 0
+            error failure: 1
+    world
+
+def main() -> i32:
+    mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    mutable recorded: Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    total: i64 = run(&rec, &recorded, 10, false)
+    return 1 if Replay::frame_at(&recorded, 9).random_seed != 10
+    # Faithful replay: identical trace, complete log, no divergence.
+    mutable rep: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    mutable replayed: Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    return 2 if run(&rep, &replayed, 10, false) != total
+    return 3 if RuntimeDecisionReplay::first_divergence(&recorded, &replayed, &rep) != 0 - 1 or not RuntimeDecisionLog::complete(&rep)
+    # A build that draws an extra time from tick 4 diverges exactly there.
+    mutable bad: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    mutable bad_trace: Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    run(&bad, &bad_trace, 10, true)
+    return 4 if RuntimeDecisionReplay::first_divergence(&recorded, &bad_trace, &bad) != 4
+    # The recording side of the extra-draw build also shows it in the trace.
+    mutable rec2: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    mutable trace2: Replay::Recorder = Replay::Recorder(Replay::DeterminismScope.SameBuild)
+    run(&rec2, &trace2, 10, true)
+    return 5 if Replay::first_divergent_tick(&recorded, &trace2) != 4 or Replay::frame_at(&trace2, 4).random_seed != 6
+    return 0
