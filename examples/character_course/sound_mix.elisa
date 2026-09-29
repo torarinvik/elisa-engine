@@ -1,0 +1,14 @@
+# Pure mixing helpers for CourseSounds: mood slots, heard gains and the
+# settled (full-gain) mix.
+
+module CourseSoundMix:
+    public:
+        def mood_slot(mood: i32) -> u64:
+            mood.u64() if mood >= 0 else AudioMoods::MAX_MOODS
+
+        def permille_gain(permille: u64) -> f32:
+            AudioMoods::heard_permille(permille).f32() / 1000.0
+
+        def settled_mix() -> AudioMixer::Mix:
+            full: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
+            AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}

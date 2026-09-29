@@ -40,11 +40,25 @@ Negative controls:
 The test is wired into `scripts/check.elisascript`, and the source-length
 check passes.
 
+## Course wiring
+
+- `CourseSounds` now fires every event through `AudioEventsLogged` into a
+  chunked decision log. It seals a chunk when the log fills, and
+  `CourseSounds::decisions` reports the total across chunks.
+- The board and log both use seed 0, so the variants heard are unchanged.
+- To keep `sounds.elisa` under 600 lines (595), its pure mixing helpers
+  moved to `examples/character_course/sound_mix.elisa` (`CourseSoundMix`).
+- The live weighted-jump self-test asserts that all 200 jumps logged one
+  decision each.
+- `scripts/application_native_smoke.py --only
+  character-course-smoke,character-course-relaunch-smoke` passes.
+- Negative control: expecting 201 decisions fails the smoke with status 169.
+
 ## Gaps
 
 - Chunk persistence (saving each sealed chunk under its own key and naming
   the chunk index) is left to the caller. There is no native test of a
   multi-chunk save and load yet.
-- The course game still does not record its sound events.
-  `examples/character_course/sounds.elisa` is at 589 of 600 lines and needs
-  splitting first.
+- The course records its sound decisions but does not save them or replay
+  a session from them. Only the chunk count is exercised live, and the live
+  test never fills a chunk (200 < 256).
