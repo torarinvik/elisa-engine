@@ -510,6 +510,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress: `src/net/server.elisa` decides ticks per wall-clock slice with a catch-up cap, overrun metrics, persistence cadence and drain-to-stop shutdown (see `docs/validation/net-server.md`); the server executable, real clock, authored level and remote clients remain.
 - [ ] **T06 · P2 · Multiplayer test laboratory** — After: T03, T04, T05.
   Add deterministic transport fault injection, reconnect/late-join tests, traffic recording, protocol fuzzing, and long multi-client sessions. Done: failures include seed/trace/build identities and compare server/client state against explicit convergence bounds.
+  Progress: `src/net/lab.elisa` derives seeded delay/loss/reorder faults, runs the lag model, and checks explicit convergence bounds with seed, trace checksum and build identity per verdict (see `docs/validation/net-lab.md`); traffic recording, fuzzing, reconnect/late-join and multi-client sessions remain.
 - [ ] **T07 · P2 · HTTP and downloadable content** — After: A03, A04, T01.
   Add cancellable libcurl-backed requests, bounded responses, progress, integrity-checked downloads, and atomic package installation. Done: timeout, resume, corrupted content, and interrupted updates preserve the last usable package; service credentials never enter logs or bundles.
 - [ ] **T08 · P2 · Network operations and session UI** — After: T01, I07, Q02.
