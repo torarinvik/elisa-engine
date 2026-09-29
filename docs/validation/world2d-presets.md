@@ -25,6 +25,9 @@ for `Physics2dWorld::step`:
   (fast 4, balanced 2, stable 1). Each pass pushes every overlapping pair
   apart by inverse mass and then lifts bodies out of the ground. Velocities
   are untouched, so relaxation adds no energy.
+- After the pair pushes, `push_out` moves each body out of any wall,
+  platform or ramp it overlaps. Walls and platforms push to their nearer
+  face. Ramps push along their front normal, since ramps are one-sided.
 - `max_overlap_um` measures the deepest circle–circle or ground penetration.
 
 ## Measurements
@@ -58,7 +61,11 @@ The test also checks:
 - that a 10 ms `balanced` frame runs 8 + 2 ms;
 - that zero relaxation passes move nothing;
 - that eight passes separate an overlapping pair and lift it off the ground
-  with its velocity unchanged.
+  with its velocity unchanged;
+- that a pair squeezed against a wall is pushed back out of it, not into it
+  (code 11);
+- that a ball pressed into a ramp face ends one radius (±1 mm) from the
+  face (codes 12–13).
 
 ## Checks
 
@@ -66,6 +73,7 @@ The test also checks:
 - Negative controls:
   - Running the whole remaining frame as one step exits 1.
   - Removing the relaxation call exits 2.
+  - Removing `push_out` exits 11.
 - The source-length check passes.
 
 ## Gaps
@@ -74,5 +82,7 @@ The test also checks:
   3D have no presets.
 - The budgets are measured on one stack scene, not on a scene suite, and
   there is no per-preset CPU timing.
-- Relaxation is all-pairs (O(n²) for up to 32 bodies). It ignores walls
-  and ramps, so a body can be relaxed into a static that is not the ground.
+- Relaxation is all-pairs (O(n²) for up to 32 bodies). A ball deep enough
+  that its centre is behind a ramp face is not pushed out (one-sided), and
+  push-out runs once per pass, so a body wedged between two statics can end
+  a pass inside one of them.
