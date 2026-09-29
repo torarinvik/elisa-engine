@@ -1,0 +1,99 @@
+# Streamed navigation tiles with generation-tagged path requests. Every load,
+# unload and obstacle rebake bumps a tile's generation. A path request records
+# the generation of each tile it crosses; its result is only usable while every
+# one of those tiles still has that generation, so a route computed across a
+# tile that was unloaded or rebuilt meanwhile is never handed to an agent.
+# Rebakes are queued and spent at a fixed number per frame.
+module NavStream:
+    private:
+        const module Tune:
+            TILES: i64 = 8
+            LEGS: i64 = 4
+            REBAKES_PER_FRAME: i64 = 2
+
+    public:
+        struct Streamer:
+            loaded: mutable bool[8]
+            generation: mutable i64[8]
+            dirty: mutable bool[8]
+
+        struct Request:
+            count: mutable i64
+            tiles: mutable i64[4]
+            seen: mutable i64[4]
+
+        def make() -> Streamer:
+            Streamer{loaded: [false, false, false, false, false, false, false, false], generation: [0, 0, 0, 0, 0, 0, 0, 0], dirty: [false, false, false, false, false, false, false, false]}
+
+        def empty_request() -> Request:
+            Request{count: 0, tiles: [0, 0, 0, 0], seen: [0, 0, 0, 0]}
+
+        def known(tile: i64) -> bool:
+            tile >= 0 and tile < 8
+
+        def load(s: mutable Streamer&, tile: i64) -> bool:
+            return false if not known(tile) or s.loaded[tile]
+            s.loaded[tile] <- true
+            s.generation[tile] <- s.generation[tile] + 1
+            true
+
+        def unload(s: mutable Streamer&, tile: i64) -> bool:
+            return false if not known(tile) or not s.loaded[tile]
+            s.loaded[tile] <- false
+            s.generation[tile] <- s.generation[tile] + 1
+            s.dirty[tile] <- false
+            true
+
+        # An obstacle changed: the tile must be rebuilt, and its old routes
+        # are stale straight away.
+        def mark_dirty(s: mutable Streamer&, tile: i64) -> bool:
+            return false if not known(tile) or not s.loaded[tile]
+            s.dirty[tile] <- true
+            s.generation[tile] <- s.generation[tile] + 1
+            true
+
+        def add_leg(s: Streamer&, r: mutable Request&, tile: i64) -> bool:
+            return false if not known(tile) or not s.loaded[tile] or r.count >= 4
+            r.tiles[r.count] <- tile
+            r.seen[r.count] <- s.generation[tile]
+            r.count <- r.count + 1
+            true
+
+        def leg_fresh(s: Streamer&, r: Request&, k: i64) -> bool:
+            requires k >= 0
+            requires k < 4
+            t: i64 = r.tiles[k]
+            known(t) and s.loaded[t] and not s.dirty[t] and s.generation[t] == r.seen[k]
+
+        def fresh_from(s: Streamer&, r: Request&, k: i64) -> bool:
+            requires k >= 0
+            return true if k >= r.count or k >= 4
+            return false if not leg_fresh(s, r, k)
+            fresh_from(s, r, k + 1)
+
+        # True only when every recorded tile is loaded, clean and unchanged.
+        # A request with no legs is never usable.
+        def usable(s: Streamer&, r: Request&) -> bool:
+            r.count > 0 and fresh_from(s, r, 0)
+
+        def pending(s: Streamer&) -> i64:
+            n: mutable i64 = 0
+            for k in 0..<8:
+                t: i64 = k.i64()
+                n <- n + 1 if s.dirty[t]
+            n
+
+        def rebake_one(s: mutable Streamer&, t: i64) -> bool:
+            return false if not s.dirty[t]
+            s.dirty[t] <- false
+            s.generation[t] <- s.generation[t] + 1
+            true
+
+        # Rebuilds up to REBAKES_PER_FRAME dirty tiles, lowest index first.
+        # Returns how many were rebuilt; the rest wait for the next frame.
+        def rebake(s: mutable Streamer&) -> i64:
+            done: mutable i64 = 0
+            for k in 0..<8:
+                if done < Tune::REBAKES_PER_FRAME:
+                    done <- done + 1 if rebake_one(s, k.i64())
+            done

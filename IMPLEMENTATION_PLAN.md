@@ -437,6 +437,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `src/nav/crowd.elisa` provides deterministic capped separation for up to eight agents with equal-and-opposite pair pushes and a tie-break for stacked agents (see `docs/validation/nav-crowd.md`). Reciprocal avoidance, Detour integration, larger crowds and measured budgets remain.
 - [ ] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.
   Integrate tile streaming and supported DetourTileCache obstacle updates with generation-tagged query results. Done: unload/rebuild during a pending path request cannot return stale routes; rebakes are bounded and agents recover when tiles become available.
+  Progress on 2026-09-29: `src/nav/stream.elisa` adds generation-tagged path requests over streamed tiles with bounded per-frame rebakes and `test/nav_stream.elisa` (see `docs/validation/nav-stream.md`); no DetourTileCache binding or agent recovery, so the item stays open.
 
 ## S — audio and acoustics
 
