@@ -4,7 +4,7 @@
 # releases them all on `stop`. Without an audio route every call is a no-op.
 include "./sound_mix.elisa"
 include "../../src/audio/events_logged.elisa"
-include "../../src/runtime/decision_chunks.elisa"
+include "../../src/runtime/decision_session_store.elisa"
 
 module CourseSounds:
     public:
@@ -251,7 +251,7 @@ module CourseSounds:
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
             return SILENT if not sounds.live
             if RuntimeDecisionChunks::full(&sounds.decisions):
-                sounds.decisions <- RuntimeDecisionChunks::continue_after(&sounds.decisions)
+                sounds.decisions <- RuntimeDecisionSessionStore::seal(sounds.sealed_chunks, &sounds.decisions)
                 sounds.sealed_chunks <- sounds.sealed_chunks + 1
             trigger: AudioEvents::Trigger = catch AudioEventsLogged::trigger(&sounds.board, event, tick, &sounds.decisions):
                 value: value.trigger

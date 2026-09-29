@@ -46,6 +46,20 @@ fails the smoke with status 168 (104 + probe code 64).
 
 - There is one session slot, and sessions longer than 8 chunks are not
   handled.
-- The course's `CourseSounds` still discards its sealed chunks instead of
-  calling `save_chunk`.
-- No course session has been replayed from disk.
+- No course session has been replayed from disk. The course saves its
+  sealed chunks but not its final partial chunk, and there is no replay mode
+  that feeds saved chunks back into the course.
+
+## Course wiring
+
+- `CourseSounds` now seals a full recorder through
+  `RuntimeDecisionSessionStore::seal`. `seal` saves the chunk under the next
+  index and continues recording.
+- A failed save does not stop play. The manifest then names only the chunks
+  that were written.
+- The course self-test (code 169) fires 300 jumps, which seals one chunk. It
+  checks that 300 decisions were logged and that the manifest names one
+  chunk, then clears the store.
+- Both course smokes pass.
+- Negative control: making `seal` skip the save fails
+  `character-course-smoke` with status 169.
