@@ -8,7 +8,8 @@ earlier notes listed as remaining.
 
 `src/world/save_migrations.elisa` (`SaveMigrations`) describes schema
 upgrades as data. Step *n* upgrades version *n* to *n + 1* with one
-operation: `AddField` (insert with a default), `DropField` or `Scale`.
+operation: `AddField` (insert with a default), `Append`, `DropField` or
+`Scale`.
 
 - `check` validates a chain before use: it must be non-empty, have at most
   16 steps, name fields below 8, and use scale factors in 1..1,000,000.
@@ -31,8 +32,15 @@ operation: `AddField` (insert with a default), `DropField` or `Scale`.
   the test exit 8.
 - Wired into `scripts/check.elisascript`.
 
+## Adoption
+
+`SaveSchema::migrate` now runs its v1-to-v2 upgrade (append one zeroed
+field) through this chain, so a failed record is left as it was.
+`test/save_schema.elisa` still exits 0. Negative control: appending 7
+instead of 0 makes it exit 7. `test/save_migrations.elisa` adds `Append`
+cases (codes 16-17).
+
 ## Gaps
 
-- `SaveSchema::migrate` and the course checkpoint still use their own
-  hand-written v1-to-v2 steps and have not been moved onto this chain.
+- The course checkpoint still uses its own hand-written v1-to-v2 step.
 - Whole-world restoration and native resource rehydration remain.

@@ -1,0 +1,44 @@
+include "../src/physics/ragdoll_handoff.elisa"
+
+def exclusive(rig: PhysicsRagdollHandoff::Rig&) -> bool:
+    # No joint is written by both systems.
+    mutable ok: bool = true
+    for j in 0..<16 |ok|:
+        r: PhysicsRagdollHandoff::Ref = PhysicsRagdollHandoff::reference(rig, j.i64())
+        ok <- false if PhysicsRagdollHandoff::physics_writes(rig, r) and PhysicsRagdollHandoff::animation_writes(rig, r)
+    ok
+
+def main() -> i32:
+    mutable rig: PhysicsRagdollHandoff::Rig = PhysicsRagdollHandoff::Rig(400)
+    return 1 if PhysicsRagdollHandoff::count(&rig, PhysicsRagdollHandoff::ANIMATION) != 16
+    # Partial ragdoll: the left arm (joints 4..6) goes limp on impact.
+    arm: i64 = 16 + 32 + 64
+    return 2 if PhysicsRagdollHandoff::impact(&rig, arm) != 3 or PhysicsRagdollHandoff::impact(&rig, arm) != 0
+    elbow: PhysicsRagdollHandoff::Ref = PhysicsRagdollHandoff::reference(&rig, 5)
+    spine: PhysicsRagdollHandoff::Ref = PhysicsRagdollHandoff::reference(&rig, 1)
+    return 3 if not PhysicsRagdollHandoff::physics_writes(&rig, elbow) or PhysicsRagdollHandoff::animation_writes(&rig, elbow)
+    return 4 if PhysicsRagdollHandoff::physics_writes(&rig, spine) or not exclusive(&rig)
+    # Full ragdoll, then recover everything.
+    return 5 if PhysicsRagdollHandoff::impact(&rig, 65535) != 13
+    return 6 if PhysicsRagdollHandoff::recover(&rig, 65535) != 16 or not exclusive(&rig)
+    return 7 if PhysicsRagdollHandoff::blend(&rig, elbow, 100, 900) != 100
+    PhysicsRagdollHandoff::advance(&rig, 100)
+    return 8 if PhysicsRagdollHandoff::animation_weight(&rig, elbow) != 250 or PhysicsRagdollHandoff::blend(&rig, elbow, 100, 900) != 300
+    # A huge step completes recovery without overshooting.
+    PhysicsRagdollHandoff::advance(&rig, 100000)
+    return 9 if PhysicsRagdollHandoff::count(&rig, PhysicsRagdollHandoff::ANIMATION) != 16 or PhysicsRagdollHandoff::blend(&rig, elbow, 100, 900) != 900
+    # A second impact mid-recovery takes the joint straight back to physics.
+    PhysicsRagdollHandoff::impact(&rig, 32)
+    PhysicsRagdollHandoff::recover(&rig, 32)
+    PhysicsRagdollHandoff::advance(&rig, 200)
+    PhysicsRagdollHandoff::impact(&rig, 32)
+    return 10 if PhysicsRagdollHandoff::animation_weight(&rig, elbow) != 0 or not exclusive(&rig)
+    # Recover only affects physics joints.
+    return 11 if PhysicsRagdollHandoff::recover(&rig, 2) != 0
+    # Despawn: old references write nothing; later calls are inert.
+    PhysicsRagdollHandoff::despawn(&rig)
+    return 12 if PhysicsRagdollHandoff::writer(&rig, elbow) != PhysicsRagdollHandoff::NONE
+    return 13 if PhysicsRagdollHandoff::impact(&rig, 65535) != 0 or PhysicsRagdollHandoff::count(&rig, PhysicsRagdollHandoff::PHYSICS) != 0
+    bad: PhysicsRagdollHandoff::Ref = PhysicsRagdollHandoff::Ref{generation: 1, joint: 16}
+    return 14 if PhysicsRagdollHandoff::writer(&rig, bad) != PhysicsRagdollHandoff::NONE
+    return 0

@@ -1,0 +1,58 @@
+# Cooked skeleton-to-body mapping for ragdolls. A skeleton lists each joint's
+# parent (-1 for the root, parents before children); a mapping gives each
+# joint a ragdoll body index or -1 for joints that follow their parent. Cook
+# validation rejects mappings that would let two joints drive one body, name
+# a body out of range, leave the root unmapped, or break the parent order, so
+# the runtime handoff never sees an ambiguous writer.
+module PhysicsRagdollMapping:
+    public:
+        const JOINTS: i64 = 16
+        const BODIES: i64 = 16
+
+        enum Cook:
+            Ok
+            Empty
+            BadParent
+            RootUnmapped
+            BodyRange
+            SharedBody
+
+        struct Mapping:
+            parent: i64[16]
+            body: i64[16]
+            joints: i64
+
+        def cook(m: Mapping&) -> Cook:
+            return Cook.Empty if m.joints <= 0 or m.joints > JOINTS
+            return Cook.BadParent if m.parent[0] != 0 - 1
+            return Cook.RootUnmapped if m.body[0] < 0
+            mutable result: Cook = Cook.Ok
+            mutable used: i64 = 0
+            for j in 0..<16 |result, used|:
+                if j.i64() < m.joints and result == Cook.Ok:
+                    p: i64 = m.parent[j]
+                    b: i64 = m.body[j]
+                    result <- Cook.BadParent if j > 0 and (p < 0 or p >= j.i64())
+                    result <- Cook.BodyRange if result == Cook.Ok and (b < 0 - 1 or b >= BODIES)
+                    if result == Cook.Ok and b >= 0:
+                        result <- Cook.SharedBody if (used >> b) & 1 == 1
+                        used <- used | (1 << b)
+            result
+
+        # Body that moves joint `j`: its own, else the nearest mapped ancestor.
+        def driver(m: Mapping&, j: i64) -> i64:
+            return 0 - 1 if j < 0 or j >= m.joints
+            mutable at: i64 = j
+            for _ in 0..<16 |at|:
+                at <- m.parent[at.usize()] if at > 0 and m.body[at.usize()] < 0 else at
+            m.body[at.usize()]
+
+        # Joint mask (for PhysicsRagdollHandoff::impact) of every joint driven by
+        # a body in `bodies`, so a hit body takes its followers with it.
+        def joints_for(m: Mapping&, bodies: i64) -> i64:
+            mutable mask: i64 = 0
+            for j in 0..<16 |mask|:
+                if j.i64() < m.joints:
+                    d: i64 = driver(m, j.i64())
+                    mask <- mask | (1 << j.i64()) if d >= 0 and (bodies >> d) & 1 == 1
+            mask

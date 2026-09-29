@@ -1,6 +1,8 @@
 # Bounded world save schema. Records contain stable gameplay IDs and plain
 # values only; native handles remain outside the durable document. A staged
 # transaction computes its checksum before atomically replacing one record.
+include "./save_migrations.elisa"
+
 module SaveSchema:
     private:
         const module Limits:
@@ -61,17 +63,19 @@ module SaveSchema:
         def record_valid(record: Record&) -> bool:
             record.version > 0 and record.version <= Limits::CURRENT_VERSION and record.stable_id > 0 and record.field_count <= Limits::MAX_FIELDS and record.checksum == record_checksum(record)
 
+        # Upgrades through the data-driven chain in save_migrations.elisa,
+        # all or nothing: a failed record is left exactly as it was.
         def migrate(record: mutable Record&) -> bool:
             return false if record.version <= 0 or record.version > Limits::CURRENT_VERSION or record.stable_id <= 0 or record.field_count > Limits::MAX_FIELDS
-            for _ in 0..<Limits::MAX_FIELDS |record|:
-                break if record.version == Limits::CURRENT_VERSION
-                if record.version == 1:
-                    return false if record.field_count >= Limits::MAX_FIELDS
-                    record.fields[record.field_count] <- 0
-                    record.field_count <- record.field_count + 1
-                    record.version <- 2
-                else:
-                    return false
+            chain: mutable SaveMigrations::Chain = SaveMigrations::Chain()
+            # v1 -> v2 appends one zeroed field.
+            SaveMigrations::add(&chain, SaveMigrations::Op.Append, 0, 0)
+            values: SaveMigrations::Values = SaveMigrations::Values{version: record.version, fields: record.fields, count: record.field_count.i64()}
+            r: SaveMigrations::Result = SaveMigrations::migrate(&chain, values)
+            return false if r.outcome != SaveMigrations::Outcome.Migrated and r.outcome != SaveMigrations::Outcome.Current
+            record.fields <- r.values.fields
+            record.field_count <- r.values.count.usize()
+            record.version <- r.values.version
             record.checksum <- record_checksum(record)
             true
 
