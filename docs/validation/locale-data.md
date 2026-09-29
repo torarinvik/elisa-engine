@@ -54,3 +54,13 @@ The source-length check passes.
 - There is no extraction tool that lists the keys used by code.
 - The course does not load a `.loc` file yet.
 - There are no real font metrics or shaping, which Arabic needs.
+
+## Plural forms (2026-09-29)
+
+A key may carry a plural category: `<loc> <key>:<zero|one|two|few|many|other> <text>`;
+a bare key is `other`. `plural_text(pack, locale, key, count)` resolves the
+locale's CLDR category through `UiLocale::plural` and falls back to the `other`
+form, and then to the English fallback locale. Codes 17–24 cover English
+one/other, Russian one/few/many (1, 3, 11, 21), Norwegian falling back to
+English, an unknown category word (Syntax) and a repeated plural line
+(Duplicate, line 2). Negative control: pinning the count to 5 gives 17.

@@ -565,6 +565,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: UiMessageFormat formats {0}..{3} placeholders and CLDR plural forms with bounded output and malformed-template errors (docs/validation/message-format.md); extraction, packaged locale data and a real layout exercise remain.
   Progress on 2026-09-29: formatted localized labels are measured, wrapped and RTL-mirrored in a reserved box, reporting overflow ([localized-label](docs/validation/localized-label.md)); real font metrics and shaping remain.
   Progress on 2026-09-29: UiLocaleData loads packaged translations from a UTF-8 text asset (all-or-nothing with line-numbered errors, fallback lookup, formatting) ([locale-data](docs/validation/locale-data.md)); plural authoring, extraction, course loading and shaping remain.
+  Progress on 2026-09-29: locale data files carry CLDR plural categories (`key:one`…) and `UiLocaleData::plural_text` picks them with other-form and locale fallback; see docs/validation/locale-data.md.
 
 ## T — networking and online runtime
 

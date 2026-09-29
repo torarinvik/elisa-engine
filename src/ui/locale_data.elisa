@@ -2,7 +2,8 @@
 # a new language or a corrected string needs no gameplay rebuild. Each line is
 # `<locale> <key> <text>`: a two-letter code (en, nb, ru, ar, ja), a message
 # key below UiLocale::KEYS, one space, and the UTF-8 text to the end of the
-# line. `#` starts a comment line. Loading is all or nothing: the first bad
+# line. A key may carry a plural category, `<key>:<zero|one|two|few|many|other>`;
+# a plain key is its `other` form. `#` starts a comment line. Loading is all or nothing: the first bad
 # line is reported by number and the pack stays empty, so a broken file never
 # ships half a language. Lookups resolve through the catalogue's fallback
 # chain, so a key missing in one locale shows the English text.
@@ -32,6 +33,7 @@ module UiLocaleData:
         struct Entry:
             locale: i64
             key: i64
+            category: i64
             text: UiMessageFormat::Text
 
         struct Pack:
@@ -85,8 +87,19 @@ module UiLocaleData:
             mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
             for i in 0..<48 |out|:
                 e: Entry = pack.entries[i]
-                out <- e.text if i.i64() < pack.count and not found.missing and e.locale == found.locale and e.key == key else out
+                out <- e.text if i.i64() < pack.count and not found.missing and e.locale == found.locale and e.key == key and e.category == UiLocale::OTHER else out
             Lookup{found: found, text: out}
+
+        # The plural form for `count` in the resolved locale, or its `other`
+        # form when that category was not authored.
+        def plural_text(pack: Pack&, locale: i64, key: i64, count: i64) -> Lookup:
+            base: Lookup = text(pack, locale, key)
+            category: i64 = UiLocale::plural(base.found.locale, count)
+            mutable out: UiMessageFormat::Text = base.text
+            for i in 0..<48 |out|:
+                e: Entry = pack.entries[i]
+                out <- e.text if i.i64() < pack.count and not base.found.missing and e.locale == base.found.locale and e.key == key and e.category == category else out
+            Lookup{found: base.found, text: out}
 
     private:
         struct Decoded:
@@ -107,6 +120,27 @@ module UiLocaleData:
             return UiLocale::AR if a == 97u8 and b == 114u8
             return UiLocale::JA if a == 106u8 and b == 97u8
             0 - 1
+
+        # Plural category named by the two letters after `:`, or -1.
+        def category_code(a: u8, b: u8) -> i64:
+            return UiLocale::ZERO if a == 122u8 and b == 101u8
+            return UiLocale::ONE if a == 111u8 and b == 110u8
+            return UiLocale::TWO if a == 116u8 and b == 119u8
+            return UiLocale::FEW if a == 102u8 and b == 101u8
+            return UiLocale::MANY if a == 109u8 and b == 97u8
+            return UiLocale::OTHER if a == 111u8 and b == 116u8
+            0 - 1
+
+        # Length of the category word: zero/four-letter forms and `other`.
+        def category_length(category: i64) -> usize:
+            return 3 if category == UiLocale::ONE or category == UiLocale::TWO or category == UiLocale::FEW
+            return 5 if category == UiLocale::OTHER
+            4
+
+        def has_entry(pack: Pack&, locale: i64, key: i64, category: i64) -> bool:
+            for i in 0..<48 |found: bool = false| -> found:
+                e: Entry = pack.entries[i]
+                found <- found or (i.i64() < pack.count and e.locale == locale and e.key == key and e.category == category)
 
         def is_digit(b: u8) -> bool:
             b >= 48u8 and b <= 57u8
@@ -141,10 +175,17 @@ module UiLocaleData:
                 if digits == k.usize() and at < stop and is_digit(source.bytes[at]):
                     key <- key * 10 + (source.bytes[at].i64() - 48)
                     digits <- digits + 1
-            space: usize = start + 3 + digits
-            return Status.Syntax if digits == 0 or space >= stop or source.bytes[space] != 32u8
+            after: usize = start + 3 + digits
+            return Status.Syntax if digits == 0 or after + 3 >= stop
+            mutable category: i64 = UiLocale::OTHER
+            mutable space: usize = after
+            if source.bytes[after] == 58u8:
+                category <- category_code(source.bytes[after + 1], source.bytes[after + 2])
+                return Status.Syntax if category < 0
+                space <- after + 1 + category_length(category)
+            return Status.Syntax if space >= stop or source.bytes[space] != 32u8
             return Status.BadKey if key >= UiLocale::KEYS
-            return Status.Duplicate if UiLocaleCatalogue::has_key(&pack.catalogue, locale, key)
+            return Status.Duplicate if has_entry(pack, locale, key, category)
             return Status.TooMany if pack.count >= MAX_ENTRIES
             mutable text: UiMessageFormat::Text = UiMessageFormat::Text()
             mutable at: usize = space + 1
@@ -156,7 +197,8 @@ module UiLocaleData:
                     status <- Status.TooLong if d.size > 0 and not UiMessageFormat::push(&text, d.cp) else status
                     at <- at + d.size
             return status if status != Status.Ok
-            _ = UiLocaleCatalogue::translate(&pack.catalogue, locale, key)
-            pack.entries[pack.count.usize()] <- Entry{locale: locale, key: key, text: text}
+            if category == UiLocale::OTHER:
+                _ = UiLocaleCatalogue::translate(&pack.catalogue, locale, key)
+            pack.entries[pack.count.usize()] <- Entry{locale: locale, key: key, category: category, text: text}
             pack.count <- pack.count + 1
             Status.Ok

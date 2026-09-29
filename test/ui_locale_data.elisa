@@ -17,7 +17,15 @@ def good() -> UiLocaleData::Source:
     put(&s, [32u8, 216u8, 167u8, 216u8, 168u8, 216u8, 175u8, 216u8, 163u8, 13u8, 10u8, 106u8, 97u8, 32u8, 48u8, 32u8], 16)
     put(&s, [227u8, 130u8, 185u8, 227u8, 130u8, 191u8, 227u8, 131u8, 188u8, 227u8, 131u8, 136u8, 10u8, 106u8, 97u8, 32u8], 16)
     put(&s, [49u8, 32u8, 227u8, 130u8, 179u8, 227u8, 130u8, 164u8, 227u8, 131u8, 179u8, 32u8, 123u8, 48u8, 125u8, 10u8], 16)
-    put(&s, [10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 1)
+    put(&s, [10u8, 101u8, 110u8, 32u8, 51u8, 58u8, 111u8, 110u8, 101u8, 32u8, 123u8, 48u8, 125u8, 32u8, 99u8, 111u8], 16)
+    put(&s, [105u8, 110u8, 10u8, 101u8, 110u8, 32u8, 51u8, 58u8, 111u8, 116u8, 104u8, 101u8, 114u8, 32u8, 123u8, 48u8], 16)
+    put(&s, [125u8, 32u8, 99u8, 111u8, 105u8, 110u8, 115u8, 10u8, 114u8, 117u8, 32u8, 51u8, 58u8, 111u8, 110u8, 101u8], 16)
+    put(&s, [32u8, 123u8, 48u8, 125u8, 32u8, 208u8, 188u8, 208u8, 190u8, 208u8, 189u8, 208u8, 181u8, 209u8, 130u8, 208u8], 16)
+    put(&s, [176u8, 10u8, 114u8, 117u8, 32u8, 51u8, 58u8, 102u8, 101u8, 119u8, 32u8, 123u8, 48u8, 125u8, 32u8, 208u8], 16)
+    put(&s, [188u8, 208u8, 190u8, 208u8, 189u8, 208u8, 181u8, 209u8, 130u8, 209u8, 139u8, 10u8, 114u8, 117u8, 32u8, 51u8], 16)
+    put(&s, [58u8, 109u8, 97u8, 110u8, 121u8, 32u8, 123u8, 48u8, 125u8, 32u8, 208u8, 188u8, 208u8, 190u8, 208u8, 189u8], 16)
+    put(&s, [208u8, 181u8, 209u8, 130u8, 10u8, 114u8, 117u8, 32u8, 51u8, 32u8, 123u8, 48u8, 125u8, 32u8, 208u8, 188u8], 16)
+    put(&s, [208u8, 190u8, 208u8, 189u8, 208u8, 181u8, 209u8, 130u8, 209u8, 139u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8], 11)
     s
 
 def unknown_locale() -> UiLocaleData::Source:
@@ -59,10 +67,23 @@ def too_long() -> UiLocaleData::Source:
 def cp_at(l: UiLocaleData::Lookup, i: i64) -> i64:
     l.text.cp[i.usize()]
 
+def bad_category() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 51u8, 58u8, 108u8, 111u8, 116u8, 115u8, 32u8, 123u8, 48u8, 125u8, 32u8, 99u8, 111u8], 16)
+    put(&s, [105u8, 110u8, 115u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 4)
+    s
+
+def plural_dup() -> UiLocaleData::Source:
+    mutable s: UiLocaleData::Source = UiLocaleData::Source()
+    put(&s, [101u8, 110u8, 32u8, 51u8, 58u8, 111u8, 110u8, 101u8, 32u8, 123u8, 48u8, 125u8, 32u8, 99u8, 111u8, 105u8], 16)
+    put(&s, [110u8, 10u8, 101u8, 110u8, 32u8, 51u8, 58u8, 111u8, 110u8, 101u8, 32u8, 123u8, 48u8, 125u8, 32u8, 99u8], 16)
+    put(&s, [111u8, 105u8, 110u8, 10u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8, 0u8], 4)
+    s
+
 def main() -> i32:
     mutable pack: UiLocaleData::Pack = UiLocaleData::Pack()
     s: UiLocaleData::Source = good()
-    return 1 if UiLocaleData::load(&pack, &s) != UiLocaleData::Status.Ok or pack.count != 8
+    return 1 if UiLocaleData::load(&pack, &s) != UiLocaleData::Status.Ok or pack.count != 14
     en: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::EN, 0)
     return 2 if en.found.fell_back or en.text.len != 5 or cp_at(en, 0) != 83
     # UTF-8 decodes to codepoints: å, Cyrillic, Arabic (CRLF stripped), katakana.
@@ -83,6 +104,19 @@ def main() -> i32:
     mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
     ja_coins: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 1)
     return 9 if UiMessageFormat::format(&ja_coins.text, [42, 0, 0, 0], &out) != UiMessageFormat::Result.Ok or out.len != 6 or out.cp[4] != 52
+    # Plural forms: English one/other, Russian one/few/many by CLDR rules;
+    # Norwegian has none of key 3 and falls back to English's forms.
+    return 17 if UiLocaleData::plural_text(&pack, UiLocale::EN, 3, 1).text.len != 8
+    return 18 if UiLocaleData::plural_text(&pack, UiLocale::EN, 3, 5).text.len != 9
+    return 19 if UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 21).text.len != 10
+    return 20 if UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 3).text.len != 10 or cp_at(UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 3), 9) != 1099
+    return 21 if UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 11).text.len != 9
+    nb_plural: UiLocaleData::Lookup = UiLocaleData::plural_text(&pack, UiLocale::NB, 3, 1)
+    return 22 if nb_plural.found.locale != UiLocale::EN or nb_plural.text.len != 8
+    c: UiLocaleData::Source = bad_category()
+    return 23 if UiLocaleData::load(&pack, &c) != UiLocaleData::Status.Syntax
+    pd: UiLocaleData::Source = plural_dup()
+    return 24 if UiLocaleData::load(&pack, &pd) != UiLocaleData::Status.Duplicate or pack.line != 2
     # Bad files fail whole, name the line, and leave the pack empty.
     u: UiLocaleData::Source = unknown_locale()
     return 10 if UiLocaleData::load(&pack, &u) != UiLocaleData::Status.UnknownLocale or pack.line != 2 or pack.count != 0
