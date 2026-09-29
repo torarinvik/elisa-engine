@@ -1,0 +1,87 @@
+# Bounded structured diagnostics. The log is a fixed ring of numeric records
+# (level, subsystem, code, value): no free text, so private project paths or
+# user content cannot enter it by accident. When full, the oldest record is
+# overwritten and counted as dropped, so a crash artifact is always small and
+# says how much history was lost. Telemetry upload is off unless explicitly
+# configured, and private data classes need a second, separate opt-in.
+module RuntimeDiagnostics:
+    private:
+        const module Tune:
+            RING: usize = 8
+
+    public:
+        enum Level:
+            Debug
+            Info
+            Warn
+            Fault
+
+        enum Class:
+            Crash
+            Metrics
+            ProjectPath
+            UserContent
+
+        struct Entry:
+            seq: i64
+            level: i64
+            subsystem: i64
+            code: i64
+            value: i64
+
+        struct Log:
+            entries: mutable Entry[8]
+            total: mutable i64
+            dropped: mutable i64
+            filtered: mutable i64
+            min_level: mutable i64
+
+        struct Telemetry:
+            configured: bool
+            private_opt_in: bool
+
+        def rank(level: Level) -> i64:
+            return 0 if level == Level.Debug
+            return 1 if level == Level.Info
+            return 2 if level == Level.Warn
+            3
+
+        def Log(min_level: Level) -> Log:
+            blank: Entry = Entry{seq: 0, level: 0, subsystem: 0, code: 0, value: 0}
+            Log{entries: [blank, blank, blank, blank, blank, blank, blank, blank], total: 0, dropped: 0, filtered: 0, min_level: rank(min_level)}
+
+        def Telemetry() -> Telemetry:
+            Telemetry{configured: false, private_opt_in: false}
+
+        def capacity() -> i64:
+            Tune::RING.i64()
+
+        # Records an event; false when it is below the level filter (counted
+        # as filtered, never stored).
+        def append(log: mutable Log&, level: Level, subsystem: i64, code: i64, value: i64) -> bool:
+            wanted: bool = rank(level) >= log.min_level
+            log.filtered <- log.filtered + 1 if not wanted else log.filtered
+            return false if not wanted
+            slot: i64 = log.total - (log.total / capacity()) * capacity()
+            log.entries[slot.usize()] <- Entry{seq: log.total + 1, level: rank(level), subsystem: subsystem, code: code, value: value}
+            log.dropped <- log.dropped + 1 if log.total >= capacity() else log.dropped
+            log.total <- log.total + 1
+            true
+
+        def kept(log: Log&) -> i64:
+            return log.total if log.total < capacity()
+            capacity()
+
+        # Entry `age` records back from the newest (0 = newest); seq 0 when
+        # there is no such record.
+        def recent(log: Log&, age: i64) -> Entry:
+            none: Entry = Entry{seq: 0, level: 0, subsystem: 0, code: 0, value: 0}
+            return none if age < 0 or age >= kept(log)
+            index: i64 = log.total - 1 - age
+            slot: i64 = index - (index / capacity()) * capacity()
+            log.entries[slot.usize()]
+
+        def allows(t: Telemetry&, kind: Class) -> bool:
+            return false if not t.configured
+            return true if kind == Class.Crash or kind == Class.Metrics
+            t.private_opt_in
