@@ -350,6 +350,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **R18 · P2 · Multiple native windows and render surfaces** — After: F09, R03, R14.
   Own SDL3 windows and Wicked swapchains as independent generation-checked surfaces, each with its own resize, DPI, suspension, and close lifecycle. Done: an editor and a detached game view render simultaneously, and destroying either surface leaves the other and the game world usable.
 - [ ] **R19 · P2 · Texture residency and mip streaming** — After: A04, A06, F08, R15.
+  Progress on 2026-09-29: `src/backend/residency.elisa` adds a texture residency policy (coarsest mip always resident, memory-budget eviction, per-frame upload cap) with `test/backend_residency.elisa` (see `docs/validation/backend-residency.md`); no cooked chains, format fallbacks or Wicked uploads, so the item stays open.
   Connect cooked mip chains and queried format support to bounded asynchronous Wicked uploads, residency budgets, and eviction policy. Done: camera demand streams detail in and out without invalidating materials, exceeding configured memory, or stalling the render thread; unsupported formats use explicit tested fallbacks.
 - [ ] **R20 · P1 · Render diagnostics and GPU budgets** — After: R02, R15.
   Report per-pass CPU/GPU timing, draw and upload counts, resource bytes, and frame markers through the engine's Tracy integration. Done: a representative scene produces reproducible warm/cold frame reports and regression thresholds, with unavailable GPU timings labeled rather than fabricated.
