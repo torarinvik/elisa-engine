@@ -1,0 +1,23 @@
+include "../src/ui/contrast.elisa"
+
+def main() -> i32:
+    black: UiContrast::Rgb = UiContrast::Rgb{r: 0, g: 0, b: 0}
+    white: UiContrast::Rgb = UiContrast::Rgb{r: 255, g: 255, b: 255}
+    return 1 if UiContrast::ratio(&black, &white) != 2100 or UiContrast::ratio(&white, &black) != 2100
+    return 2 if UiContrast::ratio(&white, &white) != 100 or UiContrast::ratio(&black, &black) != 100
+    # Grey #767676 (118) on white sits near the 4.5:1 line under this approximation.
+    grey: UiContrast::Rgb = UiContrast::Rgb{r: 118, g: 118, b: 118}
+    return 3 if UiContrast::ratio(&grey, &white) < 450 or UiContrast::ratio(&grey, &white) > 520
+    light: UiContrast::Rgb = UiContrast::Rgb{r: 200, g: 200, b: 200}
+    return 4 if UiContrast::passes_text(&light, &white) or UiContrast::passes_large(&light, &white)
+    dark: UiContrast::Rgb = UiContrast::Rgb{r: 30, g: 30, b: 30}
+    return 5 if not UiContrast::passes_enhanced(&dark, &white) or not UiContrast::passes_text(&dark, &white)
+    return 6 if not UiContrast::passes_large(&grey, &white)
+    # Yellow on white fails; green outweighs blue in luminance.
+    yellow: UiContrast::Rgb = UiContrast::Rgb{r: 255, g: 255, b: 0}
+    blue: UiContrast::Rgb = UiContrast::Rgb{r: 0, g: 0, b: 255}
+    return 7 if UiContrast::passes_large(&yellow, &white) or UiContrast::luminance(&yellow) <= UiContrast::luminance(&blue)
+    # Invalid colours never pass.
+    bad: UiContrast::Rgb = UiContrast::Rgb{r: 256, g: 0, b: 0}
+    return 8 if UiContrast::ratio(&bad, &white) != 0 or UiContrast::passes_large(&bad, &white)
+    return 0

@@ -1,0 +1,61 @@
+# Contrast checking for UI themes, in integers. Relative luminance follows the
+# WCAG form (0.2126 R + 0.7152 G + 0.0722 B) but linearises each channel by
+# interpolating a 17-knot table of the sRGB curve, so results are
+# approximations (a few percent off in dark tones, where the absolute error is
+# tiny) and exact for black and white. The ratio is reported in hundredths (2100 = 21:1). A theme
+# is only accepted when every text/background pair clears its threshold.
+module UiContrast:
+    private:
+        const module Tune:
+            AA_TEXT: i64 = 450
+            AA_LARGE: i64 = 300
+            AAA_TEXT: i64 = 700
+
+    public:
+        struct Rgb:
+            r: i64
+            g: i64
+            b: i64
+
+        def channel_ok(c: i64) -> bool:
+            c >= 0 and c <= 255
+
+        def rgb_ok(c: Rgb&) -> bool:
+            channel_ok(c.r) and channel_ok(c.g) and channel_ok(c.b)
+
+        def linear(c: i64) -> i64:
+            requires c >= 0
+            requires c <= 255
+            return 1000000 if c >= 255
+            knots: i64[17] = [0, 5182, 14444, 29557, 51269, 80220, 116971, 162029, 215861, 278894, 351533, 434154, 527115, 630757, 745404, 871367, 1000000]
+            k: i64 = c / 16
+            f: i64 = c % 16
+            knots[k] + (knots[k + 1] - knots[k]) * f / 16
+
+        # Relative luminance in millionths.
+        def luminance(c: Rgb&) -> i64:
+            requires c.r >= 0
+            requires c.r <= 255
+            requires c.g >= 0
+            requires c.g <= 255
+            requires c.b >= 0
+            requires c.b <= 255
+            (2126 * linear(c.r) + 7152 * linear(c.g) + 722 * linear(c.b)) / 10000
+
+        # Contrast ratio in hundredths; 0 for an invalid colour.
+        def ratio(a: Rgb&, b: Rgb&) -> i64:
+            return 0 if not rgb_ok(a) or not rgb_ok(b)
+            la: i64 = luminance(a)
+            lb: i64 = luminance(b)
+            hi: i64 = la if la > lb else lb
+            lo: i64 = lb if la > lb else la
+            (hi + 50000) * 100 / (lo + 50000)
+
+        def passes_text(a: Rgb&, b: Rgb&) -> bool:
+            ratio(a, b) >= 450
+
+        def passes_large(a: Rgb&, b: Rgb&) -> bool:
+            ratio(a, b) >= 300
+
+        def passes_enhanced(a: Rgb&, b: Rgb&) -> bool:
+            ratio(a, b) >= 700
