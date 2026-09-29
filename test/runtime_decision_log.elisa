@@ -1,0 +1,47 @@
+include "../src/runtime/decision_log.elisa"
+
+# A tiny "game": each tick rolls damage (site 1) and picks an AI move (site 2).
+def run(log: mutable RuntimeDecisionLog::Log&, ticks: i64, swap_at: i64) -> i64:
+    mutable hp: i64 = 1000
+    for t in 0..<ticks |hp, log|:
+        dmg: i64 = RuntimeDecisionLog::draw(log, t, 1, 20)
+        hp <- hp - dmg
+        choice: i64 = hp % 3
+        site: i64 = 3 if t == swap_at else 2
+        RuntimeDecisionLog::decide(log, t, site, choice)
+    hp
+
+def main() -> i32:
+    mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    hp: i64 = run(&rec, 50, 0 - 1)
+    return 1 if rec.count != 100 or rec.overflow
+    # Same seed, same draws.
+    mutable again: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    return 2 if run(&again, 50, 0 - 1) != hp
+    mutable other: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(43)
+    return 3 if run(&other, 50, 0 - 1) == hp
+    # Faithful replay reproduces the run and consumes the whole log.
+    mutable rep: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    return 4 if run(&rep, 50, 0 - 1) != hp or not RuntimeDecisionLog::complete(&rep)
+    # A code change that asks from a different site at tick 17 is caught there.
+    mutable bad: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    run(&bad, 50, 17)
+    return 5 if bad.diverged_at != 17 or RuntimeDecisionLog::complete(&bad)
+    # Asking for more than was recorded diverges at the first extra tick.
+    mutable long: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    run(&long, 60, 0 - 1)
+    return 6 if long.diverged_at != 50
+    # Stopping early is not a complete replay.
+    mutable short: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+    run(&short, 30, 0 - 1)
+    return 7 if short.diverged_at >= 0 or RuntimeDecisionLog::complete(&short)
+    # Bounds and capacity.
+    mutable cap: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(0)
+    for t in 0..<300:
+        v: i64 = RuntimeDecisionLog::draw(&cap, t, 1, 6)
+        return 8 if v < 0 or v >= 6
+    return 9 if not cap.overflow or cap.count != 256
+    mutable over: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&cap)
+    run(&over, 1, 0 - 1)
+    return 10 if RuntimeDecisionLog::complete(&over)
+    return 0

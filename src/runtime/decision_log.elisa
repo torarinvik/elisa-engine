@@ -1,0 +1,85 @@
+# Seeded random draws and gameplay decisions recorded for replay. While
+# recording, each draw comes from a xorshift64 generator seeded per run and
+# is logged with its tick and a caller-chosen site id. While replaying, draws
+# are served from the log instead, and the first entry whose tick or site
+# differs from what the game asks for is reported as the divergence, so a
+# desync names where it started rather than silently drifting.
+module RuntimeDecisionLog:
+    public:
+        const CAP: i64 = 256
+
+        enum Mode:
+            Recording
+            Replaying
+
+        struct Entry:
+            tick: i64
+            site: i64
+            value: i64
+
+        struct Log:
+            mode: mutable Mode
+            state: mutable u64
+            seed: i64
+            entries: mutable Entry[256]
+            count: mutable i64
+            cursor: mutable i64
+            overflow: mutable bool
+            diverged_at: mutable i64
+
+        def recorder(seed: i64) -> Log:
+            s: u64 = seed.u64() if seed != 0 else 88172645463325252u64
+            Log{mode: Mode.Recording, state: s, seed: seed, entries: zeroed, count: 0, cursor: 0, overflow: false, diverged_at: 0 - 1}
+
+        # A replayer over a recorded log, starting from its first entry.
+        def replayer(recorded: Log&) -> Log:
+            Log{mode: Mode.Replaying, state: recorded.state, seed: recorded.seed, entries: recorded.entries, count: recorded.count, cursor: 0, overflow: recorded.overflow, diverged_at: 0 - 1}
+
+        def next_raw(log: mutable Log&) -> u64:
+            mutable x: u64 = log.state
+            x <- x ^ (x << 13u64)
+            x <- x ^ (x >> 7u64)
+            x <- x ^ (x << 17u64)
+            log.state <- x
+            x
+
+        # A draw in [0, bound). Returns -1 after a replay divergence.
+        def draw(log: mutable Log&, tick: i64, site: i64, bound: i64) -> i64:
+            return 0 if bound <= 0
+            if log.mode == Mode.Replaying:
+                return 0 - 1 if log.diverged_at >= 0
+                if log.cursor >= log.count:
+                    log.diverged_at <- tick
+                    return 0 - 1
+                e: Entry = log.entries[log.cursor.usize()]
+                if e.tick != tick or e.site != site or e.value >= bound:
+                    log.diverged_at <- tick
+                    return 0 - 1
+                log.cursor <- log.cursor + 1
+                return e.value
+            value: i64 = (next_raw(log) % bound.u64()).i64()
+            if log.count < CAP:
+                log.entries[log.count.usize()] <- Entry{tick: tick, site: site, value: value}
+                log.count <- log.count + 1
+            else:
+                log.overflow <- true
+            value
+
+        # Records a decision made outside the generator (e.g. an AI choice).
+        def decide(log: mutable Log&, tick: i64, site: i64, value: i64) -> bool:
+            if log.mode == Mode.Replaying:
+                return false if log.diverged_at >= 0
+                ok: bool = log.cursor < log.count and log.entries[log.cursor.usize()].tick == tick and log.entries[log.cursor.usize()].site == site and log.entries[log.cursor.usize()].value == value
+                if ok:
+                    log.cursor <- log.cursor + 1
+                else:
+                    log.diverged_at <- tick
+                return ok
+            return false if log.count >= CAP
+            log.entries[log.count.usize()] <- Entry{tick: tick, site: site, value: value}
+            log.count <- log.count + 1
+            true
+
+        # A replay is complete when every entry was consumed without divergence.
+        def complete(log: Log&) -> bool:
+            log.mode == Mode.Replaying and log.diverged_at < 0 and log.cursor == log.count and not log.overflow
