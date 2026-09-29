@@ -1,0 +1,53 @@
+# Physics stability policy: how two materials combine, when a mover needs
+# continuous collision detection (CCD), and how a large frame time is split
+# into fixed substeps without a spiral of death. Integers only: friction and
+# restitution in permille, distances in mm, time in microseconds.
+module PhysicsStability:
+    private:
+        const module Tune:
+            LIMIT: i64 = 1000000000
+
+    public:
+        struct Steps:
+            count: i64
+            dropped_us: i64
+
+        def isqrt(n: i64) -> i64:
+            requires n >= 0
+            requires n <= 1000000
+            root: mutable i64 = 0
+            for k in 0..<1001:
+                root <- k.i64() if k.i64() * k.i64() <= n
+            root
+
+        # Friction of a contact: the geometric mean, so a slippery surface
+        # keeps the contact slippery. Inputs clamp to 0..1000.
+        def combine_friction(a: i64, b: i64) -> i64:
+            x: i64 = 0 if a < 0 else (1000 if a > 1000 else a)
+            y: i64 = 0 if b < 0 else (1000 if b > 1000 else b)
+            isqrt(x * y)
+
+        # Restitution of a contact: the bouncier surface wins.
+        def combine_restitution(a: i64, b: i64) -> i64:
+            x: i64 = 0 if a < 0 else (1000 if a > 1000 else a)
+            y: i64 = 0 if b < 0 else (1000 if b > 1000 else b)
+            return x if x > y
+            y
+
+        # A mover needs CCD when one step could carry it more than half its
+        # own thickness, the point where it may skip a thin wall. Bad input
+        # (non-positive thickness or step, absurd values) asks for CCD, the
+        # safe answer.
+        def needs_ccd(speed_mm_s: i64, thickness_mm: i64, step_us: i64) -> bool:
+            return true if thickness_mm <= 0 or step_us <= 0 or speed_mm_s >= 1000000000 or step_us >= 1000000000 or thickness_mm >= 1000000000
+            speed: i64 = 0 - speed_mm_s if speed_mm_s < 0 else speed_mm_s
+            speed * step_us / 1000000 * 2 > thickness_mm
+
+        # Splits `frame_us` into fixed steps of `step_us`, at most `max_steps`.
+        # Time beyond that is dropped and reported, so a hitch cannot make the
+        # next frame even longer.
+        def plan(frame_us: i64, step_us: i64, max_steps: i64) -> Steps:
+            return Steps{count: 0, dropped_us: 0} if frame_us <= 0 or step_us <= 0 or max_steps <= 0 or frame_us >= 1000000000 or step_us >= 1000000000
+            wanted: i64 = frame_us / step_us
+            return Steps{count: wanted, dropped_us: 0} if wanted <= max_steps
+            Steps{count: max_steps, dropped_us: frame_us - max_steps * step_us}
