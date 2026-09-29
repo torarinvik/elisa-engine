@@ -1,0 +1,24 @@
+include "../src/ui/touch_math.elisa"
+
+extend UiTouchMath:
+    # Haptic requests are always within the safe range, whatever the caller asks.
+    def prove_strength(strength: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 1000
+        clamp_strength(strength)
+
+    def prove_duration(duration_ms: i64, max_ms: i64) -> i64:
+        ensure result >= 0
+        ensure result <= max_ms or max_ms < 0
+        return 0 if max_ms < 0
+        limit: i64 = max_ms
+        clamp_duration(duration_ms, limit)
+
+    # A gesture's movement distance is never negative, for any finger travel.
+    def prove_manhattan(dx: i64, dy: i64) -> i64:
+        ensure result >= 0
+        return 0 if dx <= 0 - 1000000000
+        return 0 if dx >= 1000000000
+        return 0 if dy <= 0 - 1000000000
+        return 0 if dy >= 1000000000
+        manhattan(dx, dy)

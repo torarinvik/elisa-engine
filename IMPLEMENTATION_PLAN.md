@@ -489,6 +489,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Integrate ThorVG for a concrete SVG/Lottie UI asset path with scale, animation, clipping, and cache lifetime policy. Done: a real HUD/editor panel consumes vector assets with validated rendering cost and graceful unsupported-format diagnostics.
 - [ ] **I09 · P2 · Touch and haptics** — After: I01, I03.
   Add multi-pointer actions, gestures, controller vibration, and capability-based haptic output through SDL3. Done: touch/controller-specific examples handle cancellation and disconnect; unsupported devices preserve gameplay and disclose unavailable feedback.
+  Progress: `src/ui/touch.elisa` tracks bounded multi-pointer contacts with tap/drag/pinch, cancel and disconnect handling, and clamped capability-aware haptics that disclose unavailable output (see `docs/validation/ui-touch.md`); the SDL3 event/vibration binding and a device example remain.
 - [ ] **I10 · P2 · Localization pipeline** — After: I04, E04.
   Define stable message keys, plural/locale formatting, extraction, translations, and live language switching. Done: a long-text and right-to-left locale exercise layout, missing-key fallbacks, and packaged locale data without rebuilding gameplay code.
   Progress: `src/ui/locale.elisa` and `locale_catalogue.elisa` provide plural rules, fallback resolution, live switching, RTL mirroring and expansion reserve (see `docs/validation/ui-locale.md`); message text/formatting, extraction, packaged locale data and a real layout exercise remain.
