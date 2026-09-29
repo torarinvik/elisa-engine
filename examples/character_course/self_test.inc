@@ -89,6 +89,24 @@
             short_record: Save::Blob = try Save::save_write(values, 2)
             try UserData::write_blob(CourseProgress::key(), &short_record)
             return ProgressOutcome{status: Tune::PROGRESS_SHAPE_CODE, character: current} if progress_status(CourseProgress::load().status) != 3
+            # Schema migration: an older release's six-field record loads
+            # (marked migrated), a current save is not, and a tampered
+            # checksum or unknown schema is rejected.
+            older: Save::Blob = try CourseProgress::encode_legacy(&saved)
+            try UserData::write_blob(CourseProgress::key(), &older)
+            migrated: CourseProgress::LoadResult = CourseProgress::load()
+            try CourseProgress::save(&saved)
+            current_load: CourseProgress::LoadResult = CourseProgress::load()
+            return ProgressOutcome{status: Tune::PROGRESS_MIGRATE_CODE, character: current} if progress_status(migrated.status) != 0 or not migrated.migrated or migrated.checkpoint.attempts != Tune::SELF_TEST_ATTEMPTS or progress_status(current_load.status) != 0 or current_load.migrated
+            tampered: mutable Save::Blob = try CourseProgress::encode(&saved)
+            tampered.fields[7] <- tampered.fields[7] + 1
+            try UserData::write_blob(CourseProgress::key(), &tampered)
+            bad_sum: i32 = progress_status(CourseProgress::load().status)
+            future: mutable Save::Blob = try CourseProgress::encode(&saved)
+            future.fields[1] <- CourseProgress::SCHEMA + 1
+            try UserData::write_blob(CourseProgress::key(), &future)
+            bad_schema: i32 = progress_status(CourseProgress::load().status)
+            return ProgressOutcome{status: Tune::PROGRESS_CHECKSUM_CODE, character: current} if bad_sum != 3 or bad_schema != 3
             try UserData::remove_blob(CourseProgress::key())
             return ProgressOutcome{status: Tune::PROGRESS_MISSING_CODE, character: current} if progress_status(CourseProgress::load().status) != 1
             after_rejects: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, current)

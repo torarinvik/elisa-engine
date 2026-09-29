@@ -89,6 +89,8 @@ module CharacterCourse:
             PROGRESS_MISSING_CODE: i32 = 65
             PROGRESS_UNCHANGED_CODE: i32 = 66
             PROGRESS_CYCLE_CODE: i32 = 67
+            PROGRESS_MIGRATE_CODE: i32 = 68
+            PROGRESS_CHECKSUM_CODE: i32 = 69
             PROGRESS_CYCLES: usize = 3
             SELF_TEST_ATTEMPTS: i64 = 2
             PHYSICS_LAYER_MASK: u32 = 1
