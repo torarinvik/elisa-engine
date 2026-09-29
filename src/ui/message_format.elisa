@@ -1,0 +1,95 @@
+# Message formatting over codepoint buffers: a translated template holds
+# `{0}`..`{3}` placeholders that are replaced by decimal integer arguments,
+# and a plural message picks its template by the locale's plural category
+# (falling back to OTHER) before formatting. Output is bounded; a result that
+# does not fit, or a malformed placeholder, is reported instead of truncated.
+include "./locale.elisa"
+
+module UiMessageFormat:
+    public:
+        const CAP: i64 = 64
+        const ARGS: i64 = 4
+
+        enum Result:
+            Ok
+            Overflow
+            BadPlaceholder
+
+        struct Text:
+            cp: mutable i64[64]
+            len: mutable i64
+
+        # One template per plural category, `set` is a bitmask of authored ones.
+        struct Plural:
+            forms: mutable Text[6]
+            set: mutable i64
+
+        def Text() -> Text:
+            Text{cp: zeroed, len: 0}
+
+        def push(t: mutable Text&, c: i64) -> bool:
+            return false if t.len >= CAP
+            t.cp[t.len.usize()] <- c
+            t.len <- t.len + 1
+            true
+
+        def push_number(t: mutable Text&, value: i64) -> bool:
+            mutable digits: i64[20] = zeroed
+            mutable n: i64 = 0
+            mutable v: i64 = value
+            if value < 0:
+                return false if not push(t, 45)
+                v <- 0 - value
+            for _ in 0..<20 |v, n, digits|:
+                if v > 0 or n == 0:
+                    digits[n.usize()] <- 48 + v % 10
+                    n <- n + 1
+                    v <- v / 10
+            mutable ok: bool = true
+            for k in 0..<20 |ok|:
+                i: i64 = n - 1 - k
+                ok <- push(t, digits[i.usize()]) if i >= 0 and ok else ok
+            ok
+
+        def format(template: Text&, args: i64[4], out: mutable Text&) -> Result:
+            out.len <- 0
+            mutable result: Result = Result.Ok
+            mutable skip: i64 = 0
+            for i in 0..<64 |result, skip|:
+                if i < template.len and result == Result.Ok:
+                    c: i64 = template.cp[i]
+                    if skip > 0:
+                        skip <- skip - 1
+                    elif c == 123:
+                        close: i64 = template.cp[i + 2] if i + 2 < template.len else 0
+                        index: i64 = template.cp[i + 1] - 48 if i + 1 < template.len else 0 - 1
+                        if close != 125 or index < 0 or index >= ARGS:
+                            result <- Result.BadPlaceholder
+                        else:
+                            result <- Result.Overflow if not push_number(out, args[index.usize()])
+                            skip <- 2
+                    elif c == 125:
+                        result <- Result.BadPlaceholder
+                    else:
+                        result <- Result.Overflow if not push(out, c)
+            result
+
+        def Plural() -> Plural:
+            Plural{forms: zeroed, set: 0}
+
+        def author(p: mutable Plural&, category: i64, t: Text) -> bool:
+            return false if category < UiLocale::ZERO or category > UiLocale::OTHER
+            p.forms[category.usize()] <- t
+            p.set <- p.set | (1 << category)
+            true
+
+        # Category used for `count`: the locale's own, else OTHER.
+        def pick(p: Plural&, locale: i64, count: i64) -> i64:
+            category: i64 = UiLocale::plural(locale, count)
+            return category if (p.set >> category) & 1 == 1
+            UiLocale::OTHER
+
+        def format_plural(p: Plural&, locale: i64, count: i64, out: mutable Text&) -> Result:
+            category: i64 = pick(p, locale, count)
+            return Result.BadPlaceholder if (p.set >> category) & 1 == 0
+            format(&p.forms[category.usize()], [count, 0, 0, 0], out)
