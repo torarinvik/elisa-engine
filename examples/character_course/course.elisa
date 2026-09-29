@@ -9,6 +9,7 @@ include "./access.elisa"
 include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
+include "../../src/runtime/replay_subsystems.elisa"
 
 module CharacterCourse:
     private:
@@ -336,6 +337,7 @@ module CharacterCourse:
         include "./pad_test.inc"
         include "./audio_mix_test.inc"
         include "./stress_test.inc"
+        include "./replay_test.inc"
 
         include "./play.inc"
 
@@ -415,6 +417,8 @@ module CharacterCourse:
                 return pad_status if pad_status != 0
                 mix_status: i32 = audio_mix_test(session)
                 return mix_status if mix_status != 0
+                replay_status: i32 = try replay_digest_test(session)
+                return replay_status if replay_status != 0
                 stressed: ProgressOutcome = try stress_test(session, character)
                 character <- stressed.character
                 return stressed.status if stressed.status != 0
