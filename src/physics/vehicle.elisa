@@ -1,0 +1,72 @@
+# Wheel-level vehicle policy in integers: suspension force, speed-sensitive
+# steering and a traction limit shared between driving and cornering. A spring
+# only pushes (a wheel in the air carries no force), steering narrows as speed
+# rises so a fast car is not twitchy, and the tyre can spend no more force than
+# friction allows, so hard steering leaves less for braking or throttle.
+# Units: millimetres, mm/s, newtons and permille.
+module PhysicsVehicle:
+    private:
+        const module Tune:
+            LIMIT: i64 = 1000000
+
+    public:
+        struct Wheel:
+            stiffness_n_per_mm: i64
+            damping_n_s_per_mm: i64
+            max_steer_permille: i64
+            friction_permille: i64
+
+        struct Tyre:
+            drive: i64
+            side: i64
+            saturated: bool
+
+        def near(value: i64) -> bool:
+            value > 0 - Tune::LIMIT and value < Tune::LIMIT
+
+        # Vertical force from a spring-damper. `compression_mm` is how far the
+        # wheel is pushed in, `rate_mm_s` how fast (positive = compressing).
+        # Never negative: a spring cannot pull the body down. The damper is
+        # only counted while the wheel is loaded.
+        def suspension_force(w: Wheel&, compression_mm: i64, rate_mm_s: i64) -> i64:
+            return 0 if compression_mm <= 0 or not near(compression_mm) or not near(rate_mm_s)
+            spring: i64 = w.stiffness_n_per_mm * compression_mm
+            damper: i64 = w.damping_n_s_per_mm * rate_mm_s / 1000
+            total: i64 = spring + damper
+            return 0 if total < 0
+            total
+
+        # Steering angle (permille of full lock) for an input in -1000..1000,
+        # reduced linearly to a quarter at `full_speed_mm_s` and beyond.
+        def steer_permille(w: Wheel&, input: i64, speed_mm_s: i64, full_speed_mm_s: i64) -> i64:
+            return 0 if full_speed_mm_s <= 0 or w.max_steer_permille <= 0
+            clipped: i64 = 1000 if input > 1000 else (0 - 1000 if input < 0 - 1000 else input)
+            speed: i64 = 0 if speed_mm_s < 0 else (full_speed_mm_s if speed_mm_s > full_speed_mm_s else speed_mm_s)
+            scale: i64 = 1000 - (speed * 750) / full_speed_mm_s
+            clipped * w.max_steer_permille / 1000 * scale / 1000
+
+        def bigger(a: i64, b: i64) -> i64:
+            return a if a > b
+            b
+
+        def magnitude(value: i64) -> i64:
+            return 0 - value if value < 0
+            value
+
+        def cap(value: i64, limit: i64) -> i64:
+            return limit if value > limit
+            return 0 - limit if value < 0 - limit
+            value
+
+        # Splits the tyre's friction budget (normal load times friction) between
+        # cornering and driving. Cornering demand is served first; drive gets
+        # what is left. `saturated` says the tyre asked for more than it has.
+        def tyre_force(w: Wheel&, normal_n: i64, drive_demand: i64, side_demand: i64) -> Tyre:
+            none: Tyre = Tyre{drive: 0, side: 0, saturated: false}
+            return none if normal_n <= 0 or not near(normal_n) or not near(drive_demand) or not near(side_demand)
+            budget: i64 = normal_n * w.friction_permille / 1000
+            side: i64 = cap(side_demand, budget)
+            left: i64 = budget - magnitude(side)
+            drive: i64 = cap(drive_demand, left)
+            asked: bool = magnitude(side_demand) > budget or magnitude(drive_demand) > left
+            Tyre{drive: drive, side: side, saturated: asked}

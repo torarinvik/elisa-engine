@@ -385,6 +385,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress: individual bodies can configure bounded friction and restitution through `PhysicsRuntime::PhysicsMaterial` and `body_set_material`; the RuntimeServices probe observes a full-restitution bounce. CCD, solver budgets, diagnostics, material-combination policy, and measured stability presets remain open.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
+  Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
 - [ ] **P10 · P2 · Box2D service and 2D sample** — After: F04, F06, W04, I01.
   Implement a genuine 2D physics service with independent units, shapes, bodies, contacts, queries, and joints. Done: a small authored 2D game uses it through the shared service model, with no accidental Jolt ownership or undocumented 2D/3D transform conversion.
 - [ ] **P11 · P3 · Soft bodies and buoyancy** — After: P02, P08, R08.
