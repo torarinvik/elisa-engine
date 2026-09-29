@@ -429,6 +429,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: external CPU timing of the 2D presets (all ~32 us/frame on the five-ball tower, overhead-dominated; many-body timing still open); see docs/validation/world2d-preset-timing.md.
   Progress on 2026-09-29: 32-body 2D preset timing with overhead baseline (fast 125, balanced 149, stable 188 us/frame on M5); see docs/validation/world2d-preset-timing.md.
   Progress on 2026-09-29: native 3D stack/large-timestep regression (five boxes on Jolt: 3 mm drift at 60 Hz, 39 mm at 15 Hz; budgets 10/80 mm); see docs/validation/stack-3d.md.
+  Progress on 2026-09-30: checked Wicked's solver controls. wi::physics::SetAccuracy only caps catch-up steps per frame (accumulator clamp to TIMESTEP*ACCURACY), which the runtime clock already does with MAX_STEPS 4; Jolt velocity/position iteration counts are not exposed, so solver presets stay blocked on an upstream wiPhysics hook.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
