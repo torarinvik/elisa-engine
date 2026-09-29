@@ -1,0 +1,46 @@
+include "../src/runtime/replay_subsystems.elisa"
+
+def fill(t: mutable ReplaySubsystems::Trace&, ticks: i64) -> bool:
+    for k in 0..<16:
+        if k.i64() < ticks:
+            ReplaySubsystems::begin_tick(t)
+            for s in 0..<6:
+                ReplaySubsystems::record(t, s.i64(), k.i64() * 10 + s.i64())
+    true
+
+def main() -> i32:
+    mutable a: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    mutable b: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    fill(&a, 5)
+    fill(&b, 5)
+    return 1 if ReplaySubsystems::judge(&a, &b, true) != ReplaySubsystems::Verdict.Match
+    # Physics (2) diverges at tick 3: same build reports it, cross-platform ignores it.
+    b.digests[3 * 6 + 2] <- 999
+    d: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&a, &b, true)
+    return 3 if d.tick != 3 or d.subsystem != 2
+    return 4 if ReplaySubsystems::judge(&a, &b, true) != ReplaySubsystems::Verdict.Diverged
+    return 5 if ReplaySubsystems::judge(&a, &b, false) != ReplaySubsystems::Verdict.Match
+    # Input (0) diverges at tick 4 as well: earlier tick still wins, and Exact is always compared.
+    b.digests[4 * 6 + 0] <- 555
+    e: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&a, &b, false)
+    return 6 if e.tick != 4 or e.subsystem != 0
+    # Same tick: lowest subsystem index is named first.
+    b.digests[4 * 6 + 3] <- 777
+    f: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&a, &b, true)
+    return 7 if f.tick != 3 or f.subsystem != 2
+    # Audio (5) is never compared.
+    mutable c: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    mutable g: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    fill(&c, 3)
+    fill(&g, 3)
+    g.digests[1 * 6 + 5] <- 42
+    return 8 if ReplaySubsystems::judge(&c, &g, true) != ReplaySubsystems::Verdict.Match
+    # Length mismatch and range checks.
+    mutable h: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    fill(&h, 2)
+    return 9 if ReplaySubsystems::judge(&c, &h, true) != ReplaySubsystems::Verdict.BadShape
+    return 10 if ReplaySubsystems::record(&h, 6, 1) or ReplaySubsystems::record(&h, 0 - 1, 1)
+    mutable full: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    fill(&full, 16)
+    return 11 if ReplaySubsystems::begin_tick(&full) or full.ticks != 16
+    return 0
