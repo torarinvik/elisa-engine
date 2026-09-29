@@ -427,6 +427,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Keep intent and movement policy in Elisa; implement corridor following, stuck detection, path requests, and link traversal. Done: agents reach goals through doors/platform links, replan on obstruction, and cannot overwrite character/physics-owned transforms.
 - [ ] **N04 · P1 · AI decision model** — After: N03, W08.
   Add typed reusable perception, blackboard/state-machine or behavior-tree primitives with bounded update work and debug state. Done: a patrol/chase/search/interact agent operates in the character playground and can be replayed and inspected from Elisa state.
+  Progress (2026-09-29): `AiBrain` state machine (patrol/chase/search/interact, cone+hearing perception, replay digest) and proved `AiPatrol` route arithmetic; see [`docs/validation/ai-brain.md`](docs/validation/ai-brain.md). Remaining: drive an agent in the character playground (body, NavAgent, rendering) and inspect state in game.
 - [ ] **N05 · P2 · Crowds and avoidance** — After: N03, W07.
   Integrate DetourCrowd where it fits the movement contract, with agent lifecycle and per-tick budgets. Done: converging crowds avoid obstacles and each other, recover from blocked exits, and retain bounded cost without bypassing gameplay or physics authority.
 - [ ] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.

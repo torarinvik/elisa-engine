@@ -1,0 +1,21 @@
+# Patrol route arithmetic for the decision model, kept integer-only so its
+# contract is proved (proof/ai_brain.elisa).
+module AiPatrol:
+    public:
+        # The waypoint after `index`: the same one until the agent arrives,
+        # then the next, wrapping to 0 after the last of `points`.
+        def next_waypoint(index: u32, points: u32, arrived: bool) -> u32:
+            requires points > 0
+            requires index < points
+            ensure result < points
+            return index if not arrived
+            following: u32 = index + 1
+            return 0 if following >= points
+            following
+
+        # A stored index that no longer names a waypoint (a shorter route
+        # after a retune) restarts the route instead of trapping.
+        def guarded_next(index: u32, points: u32, arrived: bool) -> u32:
+            ensure result < points or points == 0
+            return 0 if points == 0 or index >= points
+            next_waypoint(index, points, arrived)

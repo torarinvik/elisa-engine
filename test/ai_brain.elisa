@@ -1,0 +1,84 @@
+include "../src/ai/brain.elisa"
+
+# The target's x position for a scripted tick; the agent stands at the
+# origin facing +x. `variant` shifts when the target first appears.
+def script_x(tick: u64, variant: u64) -> f32:
+    if tick < 10 + variant:
+        20.0
+    elif tick < 20 + variant:
+        8.0
+    elif tick < 50 + variant:
+        1.0
+    elif tick < 60 + variant:
+        20.0
+    elif tick < 70 + variant:
+        8.0
+    else:
+        30.0
+
+def step(brain: AiBrain::Brain, tuning: AiBrain::Tuning&, x: f32, noise: f32, clear: bool, tick: u64) -> AiBrain::Decision:
+    percept: AiBrain::Percept = AiBrain::perceive(tuning, 0.0, 0.0, 1.0, 0.0, x, 0.0, noise, clear)
+    AiBrain::think(brain, &percept, tuning, false, tick)
+
+def run(ticks: u64, variant: u64) -> AiBrain::Brain:
+    tuning: AiBrain::Tuning = AiBrain::default_tuning()
+    result: AiBrain::Brain = for tick in 0..<ticks |brain: AiBrain::Brain = AiBrain::Brain()| -> brain:
+        decision: AiBrain::Decision = step(brain, &tuning, script_x(tick, variant), 0.0, true, tick)
+        brain <- decision.brain
+    result
+
+def main() -> i32:
+    tuning: AiBrain::Tuning = AiBrain::default_tuning()
+    # Patrol while the target is out of sight range.
+    patrol: AiBrain::Brain = run(10, 0)
+    return 1 if patrol.mode != AiBrain::Mode.Patrol or patrol.transitions != 0
+    # Seen at 8 m: chase.
+    chase: AiBrain::Brain = run(15, 0)
+    return 2 if chase.mode != AiBrain::Mode.Chase or chase.transitions != 1
+    # Within 1.5 m: interact, held for its ticks, then back to patrol.
+    interact: AiBrain::Brain = run(25, 0)
+    return 3 if interact.mode != AiBrain::Mode.Interact
+    return 4 if interact.previous != AiBrain::Mode.Chase
+    done: AiBrain::Brain = run(49, 0)
+    return 5 if done.mode != AiBrain::Mode.Interact
+    resumed: AiBrain::Brain = run(55, 0)
+    return 6 if resumed.mode != AiBrain::Mode.Patrol
+    # Lost sight after a chase: search, then give up after the search ticks.
+    lost: AiBrain::Brain = run(72, 0)
+    return 7 if lost.mode != AiBrain::Mode.Chase and lost.mode != AiBrain::Mode.Search
+    searching: AiBrain::Brain = run(100, 0)
+    return 8 if searching.mode != AiBrain::Mode.Search
+    return 9 if not searching.has_last_seen or searching.last_seen_x != 8.0
+    gave_up: AiBrain::Brain = run(200, 0)
+    return 10 if gave_up.mode != AiBrain::Mode.Patrol
+    # Replaying the same script gives the same transitions and digest; a
+    # different script does not.
+    again: AiBrain::Brain = run(200, 0)
+    return 11 if again.digest != gave_up.digest or again.transitions != gave_up.transitions
+    shifted: AiBrain::Brain = run(200, 3)
+    return 12 if shifted.digest == gave_up.digest
+    # Perception: behind the agent is unseen, a loud noise is heard, a
+    # blocked line hides the target, and quiet noise is ignored.
+    behind: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, -3.0, 0.0, 0.0, true)
+    return 13 if behind.seen or behind.heard
+    loud: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, -3.0, 0.0, 0.9, true)
+    return 14 if loud.seen or not loud.heard
+    blocked: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, 5.0, 0.0, 0.0, false)
+    return 15 if blocked.seen
+    quiet: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, -3.0, 0.0, 0.1, true)
+    return 16 if quiet.heard
+    wide: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, 3.0, 8.0, 0.0, true)
+    return 17 if wide.seen
+    far: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, 13.0, 0.0, 0.0, true)
+    return 18 if far.seen
+    # A heard-only target is chased but never interacted with.
+    hearing: AiBrain::Decision = step(AiBrain::Brain(), &tuning, -1.0, 0.9, true, 0)
+    return 19 if hearing.brain.mode != AiBrain::Mode.Chase or not hearing.move
+    # Patrol waypoints cycle through the route.
+    percept: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, 50.0, 0.0, 0.0, true)
+    walk: AiBrain::Brain = for tick in 0..<9 |brain: AiBrain::Brain = AiBrain::Brain()| -> brain:
+        next: AiBrain::Decision = AiBrain::think(brain, &percept, &tuning, true, tick)
+        brain <- next.brain
+    return 20 if walk.patrol_index != 1
+    return 21 if AiBrain::mode_name(AiBrain::Mode.Search) != "search"
+    0

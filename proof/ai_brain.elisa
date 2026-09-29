@@ -1,0 +1,8 @@
+include "../src/ai/patrol.elisa"
+
+extend AiPatrol:
+    # Whatever the tuning or the stored index, a patrol advance stays on
+    # the route: the guard `think` applies through `guarded_next`.
+    def prove_patrol_index(index: u32, points: u32, arrived: bool) -> u32:
+        ensure result < points or points == 0
+        guarded_next(index, points, arrived)
