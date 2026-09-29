@@ -1,0 +1,26 @@
+include "../src/runtime/perf_budget.elisa"
+
+def main() -> i32:
+    b: RuntimePerfBudget::Budget = RuntimePerfBudget::Budget{warm_us: 8000, cold_us: 30000, max_overhead_permille: 100}
+    ok: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 25000, warm_us: 7000, profiled_warm_us: 7500}
+    return 1 if RuntimePerfBudget::judge(&b, &ok) != RuntimePerfBudget::Verdict.Pass
+    return 2 if RuntimePerfBudget::overhead_permille(&ok) != 71
+    # Exactly on budget passes.
+    edge: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 30000, warm_us: 8000, profiled_warm_us: 8000}
+    return 3 if RuntimePerfBudget::judge(&b, &edge) != RuntimePerfBudget::Verdict.Pass
+    warm: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 20000, warm_us: 8001, profiled_warm_us: 8100}
+    return 4 if RuntimePerfBudget::judge(&b, &warm) != RuntimePerfBudget::Verdict.WarmOver
+    cold: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 30001, warm_us: 7000, profiled_warm_us: 7100}
+    return 5 if RuntimePerfBudget::judge(&b, &cold) != RuntimePerfBudget::Verdict.ColdOver
+    # Heavy profiling is reported first, even when the warm run also misses.
+    heavy: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 20000, warm_us: 9000, profiled_warm_us: 12000}
+    return 6 if RuntimePerfBudget::judge(&b, &heavy) != RuntimePerfBudget::Verdict.ProfilerTooHeavy
+    # A profiled run faster than the plain one is zero overhead.
+    fast: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 20000, warm_us: 7000, profiled_warm_us: 6000}
+    return 7 if RuntimePerfBudget::overhead_permille(&fast) != 0
+    # Bad budgets and samples are invalid, never a pass.
+    bad: RuntimePerfBudget::Budget = RuntimePerfBudget::Budget{warm_us: 8000, cold_us: 4000, max_overhead_permille: 100}
+    return 8 if RuntimePerfBudget::judge(&bad, &ok) != RuntimePerfBudget::Verdict.Invalid
+    zero: RuntimePerfBudget::Sample = RuntimePerfBudget::Sample{cold_us: 0, warm_us: 0, profiled_warm_us: 0}
+    return 9 if RuntimePerfBudget::judge(&b, &zero) != RuntimePerfBudget::Verdict.Invalid
+    return 0

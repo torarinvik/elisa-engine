@@ -1,0 +1,114 @@
+# Texture residency for mip streaming under a memory budget. Every texture
+# always keeps its coarsest mip resident, so a material never points at a
+# missing texture; finer mips stream in and out around it. Camera demand sets
+# the mip each texture wants. `step` first evicts detail until the total fits
+# the budget (most surplus detail first), then upgrades textures one mip at a
+# time in index order, limited by a per-frame upload budget so the render
+# thread is never asked to take an unbounded upload.
+module BackendResidency:
+    private:
+        const module Tune:
+            TEXTURES: i64 = 8
+            MAX_MIPS: i64 = 6
+            MAX_BASE: i64 = 268435456
+
+    public:
+        struct Pool:
+            budget: i64
+            count: mutable i64
+            base: mutable i64[8]
+            mips: mutable i64[8]
+            resident: mutable i64[8]
+            wanted: mutable i64[8]
+
+        def make(budget_bytes: i64) -> Pool:
+            zero: i64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+            Pool{budget: budget_bytes, count: 0, base: zero, mips: zero, resident: zero, wanted: zero}
+
+        # Size in bytes of mip `level`: a quarter of the one before, at least 1.
+        def mip_bytes(base: i64, level: i64) -> i64:
+            return 1 if level < 0 or level > 10 or base <= 0
+            size: mutable i64 = base
+            for k in 0..<10:
+                size <- size / 4 if k.i64() < level
+            return 1 if size < 1
+            size
+
+        def texture_bytes(p: Pool&, i: i64) -> i64:
+            requires i >= 0
+            requires i < 8
+            total: mutable i64 = 0
+            for k in 0..<6:
+                m: i64 = k.i64()
+                total <- total + mip_bytes(p.base[i], m) if m >= p.resident[i] and m < p.mips[i]
+            total
+
+        def total(p: Pool&) -> i64:
+            sum: mutable i64 = 0
+            for k in 0..<8:
+                t: i64 = k.i64()
+                sum <- sum + texture_bytes(p, t) if t < p.count
+            sum
+
+        # Registers a texture with only its coarsest mip resident. Returns its
+        # index, or -1 if the input is bad, the pool is full, or even the
+        # coarsest mips would no longer fit the budget.
+        def add(p: mutable Pool&, base_bytes: i64, mips: i64) -> i64:
+            return -1 if p.count >= 8 or base_bytes <= 0 or base_bytes > 268435456 or mips < 1 or mips > 6
+            i: i64 = p.count
+            coarsest: i64 = mip_bytes(base_bytes, mips - 1)
+            return -1 if total(p) + coarsest > p.budget
+            p.base[i] <- base_bytes
+            p.mips[i] <- mips
+            p.resident[i] <- mips - 1
+            p.wanted[i] <- mips - 1
+            p.count <- i + 1
+            i
+
+        # Camera demand: the finest mip wanted, clamped to the chain.
+        def want(p: mutable Pool&, i: i64, mip: i64) -> bool:
+            return false if i < 0 or i >= p.count
+            m: mutable i64 = mip
+            m <- 0 if m < 0
+            m <- p.mips[i] - 1 if m > p.mips[i] - 1
+            p.wanted[i] <- m
+            true
+
+        # Texture with the most detail beyond what it wants (ties: lowest
+        # index) that can still give up a mip; -1 when none can.
+        def eviction_pick(p: Pool&) -> i64:
+            best: mutable i64 = -1
+            best_excess: mutable i64 = -100
+            for k in 0..<8:
+                t: i64 = k.i64()
+                if t < p.count and p.resident[t] < p.mips[t] - 1:
+                    excess: i64 = p.wanted[t] - p.resident[t]
+                    if excess > best_excess:
+                        best <- t
+                        best_excess <- excess
+            best
+
+        def evict_once(p: mutable Pool&) -> bool:
+            t: i64 = eviction_pick(p)
+            return false if t < 0
+            p.resident[t] <- p.resident[t] + 1
+            true
+
+        def upgrade_cost(p: Pool&, t: i64) -> i64:
+            requires t >= 0
+            requires t < 8
+            return 0 if t >= p.count or p.resident[t] <= p.wanted[t]
+            mip_bytes(p.base[t], p.resident[t] - 1)
+
+        # One frame of streaming; returns the bytes uploaded.
+        def step(p: mutable Pool&, upload_budget: i64) -> i64:
+            for n in 0..<48:
+                evict_once(p) if total(p) > p.budget
+            sent: mutable i64 = 0
+            for k in 0..<8:
+                t: i64 = k.i64()
+                cost: i64 = upgrade_cost(p, t)
+                if cost > 0 and total(p) + cost <= p.budget and sent + cost <= upload_budget:
+                    p.resident[t] <- p.resident[t] - 1
+                    sent <- sent + cost
+            sent

@@ -1,0 +1,33 @@
+include "../src/physics/origin.elisa"
+
+def main() -> i32:
+    # Inside the threshold nothing moves.
+    return 1 if PhysicsOrigin::needs_rebase(1000, -2000, 500, 10000, 1000)
+    return 2 if PhysicsOrigin::axis_shift(10000, 10000, 1000) != 0 or PhysicsOrigin::axis_shift(-10000, 10000, 1000) != 0
+    # Past it, the shift is a whole number of cells toward the focus.
+    return 3 if PhysicsOrigin::axis_shift(25500, 10000, 1000) != 25000
+    return 4 if PhysicsOrigin::axis_shift(-25500, 10000, 1000) != -25000
+    # Bad parameters change nothing.
+    return 5 if PhysicsOrigin::axis_shift(99999, 0, 1000) != 0 or PhysicsOrigin::axis_shift(99999, 10000, 0) != 0
+    return 6 if PhysicsOrigin::axis_shift(99999, 500, 1000) != 0 or PhysicsOrigin::axis_shift(2000000000000, 10000, 1000) != 0
+    # A rebase keeps every world position identical.
+    o0: PhysicsOrigin::Origin = PhysicsOrigin::Origin()
+    focus_world: i64 = 25500
+    prop_world: i64 = 26000
+    far_world: i64 = -40000
+    focus_local: i64 = PhysicsOrigin::to_local_x(&o0, focus_world)
+    return 7 if not PhysicsOrigin::needs_rebase(focus_local, 0, 0, 10000, 1000)
+    shift: PhysicsOrigin::Shift = PhysicsOrigin::plan(focus_local, 0, 0, 10000, 1000)
+    o1: PhysicsOrigin::Origin = PhysicsOrigin::apply(o0, &shift)
+    return 8 if o1.rebases != 1 or o1.x != 25000 or o1.y != 0
+    return 9 if PhysicsOrigin::to_local_x(&o1, focus_world) != 500 or PhysicsOrigin::to_local_x(&o1, prop_world) != 1000
+    return 10 if PhysicsOrigin::to_world_x(&o1, PhysicsOrigin::to_local_x(&o1, far_world)) != far_world
+    # After rebasing, the focus is inside the threshold, so no repeat.
+    return 11 if PhysicsOrigin::needs_rebase(PhysicsOrigin::to_local_x(&o1, focus_world), 0, 0, 10000, 1000)
+    # A no-op shift is not counted as a rebase.
+    idle: PhysicsOrigin::Shift = PhysicsOrigin::plan(0, 0, 0, 10000, 1000)
+    return 12 if PhysicsOrigin::apply(o1, &idle).rebases != 1
+    # Precision cost grows with distance from the origin.
+    return 13 if PhysicsOrigin::spacing_um(1000) != 1 or PhysicsOrigin::spacing_um(16777000) != 1000
+    return 14 if PhysicsOrigin::spacing_um(-16777000) != 1000 or PhysicsOrigin::spacing_um(2000000000000) != 0
+    return 0

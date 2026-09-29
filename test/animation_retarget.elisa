@@ -1,0 +1,24 @@
+include "../src/animation/retarget.elisa"
+
+def main() -> i32:
+    m: AnimationRetarget::Map = AnimationRetarget::make()
+    return 1 if not AnimationRetarget::pair(&m, 0, 10) or not AnimationRetarget::pair(&m, 1, 11) or m.count != 2
+    return 2 if AnimationRetarget::lookup(&m, 1) != 11 or AnimationRetarget::lookup(&m, 5) != -1
+    # Two source bones cannot drive one target bone, nor one source two targets.
+    return 3 if AnimationRetarget::pair(&m, 2, 10) or AnimationRetarget::pair(&m, 0, 12) or m.count != 2
+    return 4 if AnimationRetarget::pair(&m, -1, 3) or AnimationRetarget::pair(&m, 3, 64)
+    # The map holds 16 pairs.
+    for n in 2..<16:
+        AnimationRetarget::pair(&m, n.i64(), n.i64() + 20)
+    return 5 if m.count != 16 or AnimationRetarget::pair(&m, 40, 50)
+    # Height ratio 1.8 m rig to 1.2 m rig: 400 mm bone -> 267 mm.
+    r: i64 = AnimationRetarget::scale_permille(600, 400)
+    return 6 if r != 666
+    return 7 if AnimationRetarget::scale_translation(400, r) != 266 or AnimationRetarget::scale_translation(-400, r) != 0 - 266
+    return 8 if AnimationRetarget::scale_permille(0, 400) != 0 or AnimationRetarget::scale_permille(600, -1) != 0
+    return 9 if AnimationRetarget::scale_translation(400, 0) != 0
+    ok: AnimationRetarget::Socket = AnimationRetarget::Socket{bone: 5, offset_x: 10, offset_y: 0, offset_z: 20}
+    return 10 if not AnimationRetarget::socket_ok(&ok, 6) or AnimationRetarget::socket_ok(&ok, 5)
+    far: AnimationRetarget::Socket = AnimationRetarget::Socket{bone: 0, offset_x: 999999, offset_y: 0, offset_z: 0}
+    return 11 if AnimationRetarget::socket_ok(&far, 6) or AnimationRetarget::socket_ok(&ok, 0)
+    return 0

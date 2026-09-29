@@ -1,0 +1,63 @@
+# Floating-origin policy for large worlds. Absolute positions are kept in
+# whole millimetres (i64) while simulation and rendering use offsets from an
+# origin, so single-precision maths stays accurate near the player. When the
+# focus drifts past a threshold the origin is rebased by whole cells; every
+# local position then shifts by the opposite amount, so world positions never
+# change. The shift is a multiple of the cell size, keeping streamed-cell
+# boundaries aligned with the origin.
+module PhysicsOrigin:
+    private:
+        const module Tune:
+            LIMIT: i64 = 1000000000000
+
+    public:
+        struct Origin:
+            x: i64
+            y: i64
+            z: i64
+            rebases: i64
+
+        struct Shift:
+            x: i64
+            y: i64
+            z: i64
+
+        def Origin() -> Origin:
+            Origin{x: 0, y: 0, z: 0, rebases: 0}
+
+        def near(value: i64) -> bool:
+            value > 0 - Tune::LIMIT and value < Tune::LIMIT
+
+        # Whole-cell offset that brings `local` back within `threshold` of the
+        # origin along one axis (0 when it is already inside).
+        def axis_shift(local: i64, threshold: i64, cell: i64) -> i64:
+            return 0 if threshold <= 0 or cell <= 0 or not near(local) or cell > threshold
+            return 0 if local <= threshold and local >= 0 - threshold
+            (local / cell) * cell
+
+        def needs_rebase(local_x: i64, local_y: i64, local_z: i64, threshold: i64, cell: i64) -> bool:
+            axis_shift(local_x, threshold, cell) != 0 or axis_shift(local_y, threshold, cell) != 0 or axis_shift(local_z, threshold, cell) != 0
+
+        # The shift to apply for a focus at local coordinates. Every local
+        # position in the scene must then be reduced by this shift.
+        def plan(local_x: i64, local_y: i64, local_z: i64, threshold: i64, cell: i64) -> Shift:
+            Shift{x: axis_shift(local_x, threshold, cell), y: axis_shift(local_y, threshold, cell), z: axis_shift(local_z, threshold, cell)}
+
+        def apply(origin: Origin, shift: Shift&) -> Origin:
+            moved: bool = shift.x != 0 or shift.y != 0 or shift.z != 0
+            Origin{x: origin.x + shift.x, y: origin.y + shift.y, z: origin.z + shift.z, rebases: origin.rebases + 1 if moved else origin.rebases}
+
+        def to_local_x(origin: Origin&, world_x: i64) -> i64:
+            world_x - origin.x
+
+        def to_world_x(origin: Origin&, local_x: i64) -> i64:
+            local_x + origin.x
+
+        # Worst spacing between adjacent single-precision values at this
+        # distance, in micrometres (24-bit significand): a fixed-point estimate
+        # of how much precision the local range costs.
+        def spacing_um(distance_mm: i64) -> i64:
+            return 0 if not near(distance_mm)
+            magnitude: i64 = distance_mm if distance_mm >= 0 else 0 - distance_mm
+            return 1 if magnitude < 16777
+            magnitude / 16777

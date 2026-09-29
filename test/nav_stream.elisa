@@ -1,0 +1,37 @@
+include "../src/nav/stream.elisa"
+
+def main() -> i32:
+    s: NavStream::Streamer = NavStream::make()
+    return 1 if NavStream::load(&s, 8) or NavStream::load(&s, -1) or NavStream::unload(&s, 0)
+    return 2 if not NavStream::load(&s, 0) or not NavStream::load(&s, 1) or NavStream::load(&s, 0)
+    r: NavStream::Request = NavStream::empty_request()
+    return 3 if NavStream::usable(&s, &r)
+    return 4 if NavStream::add_leg(&s, &r, 2)
+    return 5 if not NavStream::add_leg(&s, &r, 0) or not NavStream::add_leg(&s, &r, 1) or not NavStream::usable(&s, &r)
+    # Unloading a tile a pending request crosses invalidates it, and a
+    # reload does not bring it back: the generation moved on.
+    return 6 if not NavStream::unload(&s, 1) or NavStream::usable(&s, &r)
+    return 7 if not NavStream::load(&s, 1) or NavStream::usable(&s, &r)
+    # A fresh request over the reloaded tile is usable.
+    r2: NavStream::Request = NavStream::empty_request()
+    return 8 if not NavStream::add_leg(&s, &r2, 0) or not NavStream::add_leg(&s, &r2, 1) or not NavStream::usable(&s, &r2)
+    # An obstacle makes routes stale at once, before the rebuild runs.
+    return 9 if not NavStream::mark_dirty(&s, 0) or NavStream::usable(&s, &r2)
+    return 10 if NavStream::pending(&s) != 1
+    return 11 if NavStream::rebake(&s) != 1 or NavStream::pending(&s) != 0
+    # The rebuilt tile carries a new generation, so the old request stays stale.
+    return 12 if NavStream::usable(&s, &r2)
+    r3: NavStream::Request = NavStream::empty_request()
+    return 13 if not NavStream::add_leg(&s, &r3, 0) or not NavStream::usable(&s, &r3)
+    # Rebakes are bounded per frame.
+    for k in 2..<6:
+        NavStream::load(&s, k.i64())
+        NavStream::mark_dirty(&s, k.i64())
+    return 14 if NavStream::pending(&s) != 4
+    return 15 if NavStream::rebake(&s) != 2 or NavStream::pending(&s) != 2
+    return 16 if NavStream::rebake(&s) != 2 or NavStream::rebake(&s) != 0
+    # A request holds at most four legs and dirty marks on unloaded tiles do nothing.
+    r4: NavStream::Request = NavStream::empty_request()
+    return 17 if not NavStream::add_leg(&s, &r4, 0) or not NavStream::add_leg(&s, &r4, 1) or not NavStream::add_leg(&s, &r4, 2) or not NavStream::add_leg(&s, &r4, 3) or NavStream::add_leg(&s, &r4, 4)
+    return 18 if NavStream::mark_dirty(&s, 7) or NavStream::pending(&s) != 0
+    return 0

@@ -1,0 +1,25 @@
+include "../src/animation/foot_plant.elisa"
+
+def main() -> i32:
+    # Flat ground: no drop. Ground above the root plane does not raise the pelvis.
+    return 1 if AnimationFootPlant::pelvis_drop(0, 0, 300) != 0 or AnimationFootPlant::pelvis_drop(50, 80, 300) != 0
+    # One foot on a step 120 mm lower: the pelvis drops 120.
+    return 2 if AnimationFootPlant::pelvis_drop(0, -120, 300) != 120 or AnimationFootPlant::pelvis_drop(-90, 30, 300) != 90
+    # A cliff is capped at the allowed drop.
+    return 3 if AnimationFootPlant::pelvis_drop(0, -900, 300) != 300
+    return 4 if AnimationFootPlant::pelvis_drop(0, -100, 0) != 0 or AnimationFootPlant::pelvis_drop(500000, 0, 300) != 0
+    # Targets are relative to the moved pelvis.
+    p: AnimationFootPlant::Plan = AnimationFootPlant::plan(0, -120, 300)
+    return 5 if p.pelvis_drop != 120 or p.left_target != 120 or p.right_target != 0
+    q: AnimationFootPlant::Plan = AnimationFootPlant::plan(60, 20, 300)
+    return 6 if q.pelvis_drop != 0 or q.left_target != 60 or q.right_target != 20
+    bad: AnimationFootPlant::Plan = AnimationFootPlant::plan(999999, 0, 300)
+    return 7 if bad.pelvis_drop != 0 or bad.left_target != 0
+    # Leg reach: 400 + 450 mm leg reaches 50..850.
+    return 8 if AnimationFootPlant::clamp_reach(400, 450, 600) != 600
+    return 9 if AnimationFootPlant::clamp_reach(400, 450, 900) != 850 or AnimationFootPlant::clamp_reach(400, 450, 10) != 50
+    return 10 if AnimationFootPlant::clamp_reach(0, 450, 100) != 0 or AnimationFootPlant::clamp_reach(400, 450, -1) != 0
+    # Smoothing moves at most max_step per call and lands exactly.
+    return 11 if AnimationFootPlant::approach(0, 100, 30) != 30 or AnimationFootPlant::approach(100, 0, 30) != 70
+    return 12 if AnimationFootPlant::approach(90, 100, 30) != 100 or AnimationFootPlant::approach(5, 5, 30) != 5
+    return 0

@@ -1,0 +1,31 @@
+include "../src/backend/lod.elisa"
+
+def main() -> i32:
+    l: BackendLod::Levels = BackendLod::Levels{count: 4, error_mm: [0, 20, 80, 320]}
+    v: BackendLod::View = BackendLod::View{focal_px: 1000, max_error_px: 2, draw_distance_mm: 300000, hysteresis_permille: 100}
+    return 1 if not BackendLod::valid(&l, &v)
+    return 2 if BackendLod::error_px(&l, &v, 1, 10000) != 2
+    # Detail drops with distance: 0 near, then 1, 2, 3 from 6.7/26.7/107 m.
+    return 3 if BackendLod::choose(&l, &v, -1, 5000) != 0 or BackendLod::choose(&l, &v, -1, 10000) != 1
+    return 4 if BackendLod::choose(&l, &v, -1, 40000) != 2 or BackendLod::choose(&l, &v, -1, 160000) != 3
+    # Beyond the draw distance, or a negative distance, nothing is drawn.
+    return 5 if BackendLod::choose(&l, &v, 3, 300001) != BackendLod::hidden() or BackendLod::choose(&l, &v, 3, -1) != BackendLod::hidden()
+    return 6 if BackendLod::choose(&l, &v, 3, 300000) != 3
+    # Hysteresis going coarser: the level-1 boundary is 6.67 m; at 7 m level 0
+    # stays and at 8 m (past the margin) it switches to 1.
+    return 7 if BackendLod::choose(&l, &v, 0, 7000) != 0
+    return 8 if BackendLod::choose(&l, &v, 0, 8000) != 1
+    # Going finer: level 1 holds at 6.5 m and only gives way at 6 m.
+    return 9 if BackendLod::choose(&l, &v, 1, 6500) != 1
+    return 10 if BackendLod::choose(&l, &v, 1, 6000) != 0
+    # A level from a previous asset that is out of range is ignored.
+    return 11 if BackendLod::choose(&l, &v, 9, 10000) != 1
+    # Fewer levels: never chooses beyond the count.
+    two: BackendLod::Levels = BackendLod::Levels{count: 2, error_mm: [0, 20, 20, 20]}
+    return 12 if BackendLod::choose(&two, &v, -1, 250000) != 1
+    # Invalid input hides rather than guessing.
+    bad: BackendLod::View = BackendLod::View{focal_px: 0, max_error_px: 2, draw_distance_mm: 300000, hysteresis_permille: 100}
+    return 13 if BackendLod::choose(&l, &bad, -1, 1000) != BackendLod::hidden()
+    backwards: BackendLod::Levels = BackendLod::Levels{count: 3, error_mm: [0, 80, 20, 20]}
+    return 14 if BackendLod::valid(&backwards, &v)
+    return 0

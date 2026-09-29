@@ -1,0 +1,93 @@
+# Deterministic assertions over offline mixes and callback timing. A mix is
+# fed sample by sample into `Stats`, which tracks peak, energy, clipping and
+# silence; `Timing` records callback duration against its budget and frames
+# short of the request, so a long run exposes overruns and underruns as
+# counts, not anecdotes. Samples are 16-bit values held in i64.
+module AudioRegression:
+    private:
+        const module Tune:
+            FULL_SCALE: i64 = 32767
+            MAX_SAMPLES: i64 = 100000000
+
+    public:
+        struct Stats:
+            samples: i64
+            peak: i64
+            energy: i64
+            clipped: i64
+            silent: i64
+
+        struct Timing:
+            callbacks: i64
+            overruns: i64
+            underruns: i64
+            worst_us: i64
+            short_frames: i64
+
+        def Stats() -> Stats:
+            Stats{samples: 0, peak: 0, energy: 0, clipped: 0, silent: 0}
+
+        def Timing() -> Timing:
+            Timing{callbacks: 0, overruns: 0, underruns: 0, worst_us: 0, short_frames: 0}
+
+        def absolute(value: i64) -> i64:
+            requires value > -1000000000000
+            requires value < 1000000000000
+            ensure result >= 0
+            return 0 - value if value < 0
+            value
+
+        # Limits a sample to the 16-bit range.
+        def limit(sample: i64) -> i64:
+            ensure result >= 0 - 32767
+            ensure result <= 32767
+            return 32767 if sample > 32767
+            return 0 - 32767 if sample < 0 - 32767
+            sample
+
+        # Adds one sample; out-of-range input counts as clipped at full scale,
+        # and the run is bounded so the energy sum cannot overflow.
+        def feed(stats: Stats, sample: i64) -> Stats:
+            return stats if stats.samples >= Tune::MAX_SAMPLES
+            clipped_in: bool = sample > Tune::FULL_SCALE or sample < 0 - Tune::FULL_SCALE
+            level: i64 = limit(sample)
+            magnitude: i64 = absolute(level)
+            at_rail: bool = clipped_in or magnitude == Tune::FULL_SCALE
+            Stats{samples: stats.samples + 1, peak: magnitude if magnitude > stats.peak else stats.peak, energy: stats.energy + magnitude * magnitude, clipped: stats.clipped + 1 if at_rail else stats.clipped, silent: stats.silent + 1 if magnitude == 0 else stats.silent}
+
+        # Mean energy per sample (0 for an empty mix).
+        def mean_energy(stats: Stats&) -> i64:
+            return 0 if stats.samples <= 0
+            stats.energy / stats.samples
+
+        # A mix is clean when nothing hit the rail and it is not all silence.
+        def clean(stats: Stats&) -> bool:
+            stats.clipped == 0 and stats.silent < stats.samples
+
+        # Linear gain in permille applied to one sample, rounded toward zero.
+        def apply_gain(sample: i64, gain_permille: i64) -> i64:
+            return 0 if gain_permille <= 0 or sample > 1000000 or sample < -1000000 or gain_permille > 100000
+            sample * gain_permille / 1000
+
+        # Stereo to mono, and mono to a stereo pair.
+        def downmix(left: i64, right: i64) -> i64:
+            (left + right) / 2
+
+        # A loop seam is inaudible when the last and first samples are within
+        # `limit` of each other.
+        def seam_ok(last: i64, first: i64, limit: i64) -> bool:
+            return false if last > 1000000 or last < -1000000 or first > 1000000 or first < -1000000
+            gap: i64 = absolute(last - first)
+            gap <= limit
+
+        # Records one audio callback: how long it took against its budget and
+        # how many frames it delivered against those requested.
+        def record(t: Timing, took_us: i64, budget_us: i64, delivered: i64, requested: i64) -> Timing:
+            return t if took_us < 0 or budget_us <= 0 or delivered < 0 or requested <= 0
+            over: bool = took_us > budget_us
+            short: i64 = requested - delivered if delivered < requested else 0
+            Timing{callbacks: t.callbacks + 1, overruns: t.overruns + 1 if over else t.overruns, underruns: t.underruns + 1 if short > 0 else t.underruns, worst_us: took_us if took_us > t.worst_us else t.worst_us, short_frames: t.short_frames + short}
+
+        # A long run passes when no callback overran or came up short.
+        def healthy(t: Timing&) -> bool:
+            t.callbacks > 0 and t.overruns == 0 and t.underruns == 0

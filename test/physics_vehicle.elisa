@@ -1,0 +1,31 @@
+include "../src/physics/vehicle.elisa"
+
+def main() -> i32:
+    w: PhysicsVehicle::Wheel = PhysicsVehicle::Wheel{stiffness_n_per_mm: 30, damping_n_s_per_mm: 4, max_steer_permille: 600, friction_permille: 1000}
+    # Spring pushes with compression, plus damping while compressing.
+    return 1 if PhysicsVehicle::suspension_force(&w, 10, 0) != 300
+    return 2 if PhysicsVehicle::suspension_force(&w, 10, 500) != 302 or PhysicsVehicle::suspension_force(&w, 10, -500) != 298
+    # It never pulls: an unloaded wheel or a hard rebound gives zero.
+    return 3 if PhysicsVehicle::suspension_force(&w, 0, 500) != 0 or PhysicsVehicle::suspension_force(&w, -5, 0) != 0
+    return 4 if PhysicsVehicle::suspension_force(&w, 1, -90000) != 0
+    return 5 if PhysicsVehicle::suspension_force(&w, 2000000, 0) != 0
+    # Steering narrows with speed and is clipped.
+    return 6 if PhysicsVehicle::steer_permille(&w, 1000, 0, 20000) != 600
+    return 7 if PhysicsVehicle::steer_permille(&w, 1000, 20000, 20000) != 150
+    return 8 if PhysicsVehicle::steer_permille(&w, 5000, 0, 20000) != 600 or PhysicsVehicle::steer_permille(&w, -1000, 0, 20000) != -600
+    return 9 if PhysicsVehicle::steer_permille(&w, 1000, 90000, 20000) != 150 or PhysicsVehicle::steer_permille(&w, 1000, -5, 20000) != 600
+    return 10 if PhysicsVehicle::steer_permille(&w, 1000, 0, 0) != 0
+    # Tyre budget: 4000 N load and friction 1.0 gives 4000 N in total.
+    free: PhysicsVehicle::Tyre = PhysicsVehicle::tyre_force(&w, 4000, 1500, 1000)
+    return 11 if free.drive != 1500 or free.side != 1000 or free.saturated
+    # Cornering is served first; drive gets what remains.
+    hard: PhysicsVehicle::Tyre = PhysicsVehicle::tyre_force(&w, 4000, 3000, 3000)
+    return 12 if hard.side != 3000 or hard.drive != 1000 or not hard.saturated
+    over: PhysicsVehicle::Tyre = PhysicsVehicle::tyre_force(&w, 4000, 500, 9000)
+    return 13 if over.side != 4000 or over.drive != 0 or not over.saturated
+    back: PhysicsVehicle::Tyre = PhysicsVehicle::tyre_force(&w, 4000, -6000, 0)
+    return 14 if back.drive != -4000 or back.side != 0
+    # No load, no force.
+    air: PhysicsVehicle::Tyre = PhysicsVehicle::tyre_force(&w, 0, 1000, 1000)
+    return 15 if air.drive != 0 or air.side != 0 or air.saturated
+    return 0

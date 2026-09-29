@@ -1,0 +1,25 @@
+include "../src/physics/stability.elisa"
+
+def main() -> i32:
+    return 1 if PhysicsStability::isqrt(0) != 0 or PhysicsStability::isqrt(1000000) != 1000 or PhysicsStability::isqrt(999999) != 999
+    # Geometric-mean friction: 400 with 900 gives 600; zero stays zero.
+    return 2 if PhysicsStability::combine_friction(400, 900) != 600 or PhysicsStability::combine_friction(0, 900) != 0
+    return 3 if PhysicsStability::combine_friction(-5, 900) != 0 or PhysicsStability::combine_friction(5000, 1000) != 1000
+    return 4 if PhysicsStability::combine_restitution(200, 700) != 700 or PhysicsStability::combine_restitution(900, 100) != 900 or PhysicsStability::combine_restitution(2000, -3) != 1000
+    # A 50 m/s bullet at 60 Hz (16667 us) moves ~833 mm: it needs CCD against a 100 mm wall.
+    return 5 if not PhysicsStability::needs_ccd(50000, 100, 16667)
+    # A 1 m/s walker moves ~16 mm per step: no CCD for a 100 mm body.
+    return 6 if PhysicsStability::needs_ccd(1000, 100, 16667)
+    # Direction does not matter; the boundary is half the thickness.
+    return 7 if not PhysicsStability::needs_ccd(-50000, 100, 16667)
+    return 8 if PhysicsStability::needs_ccd(3000, 100, 16667) or not PhysicsStability::needs_ccd(3100, 100, 16667)
+    return 9 if not PhysicsStability::needs_ccd(10, 0, 16667) or not PhysicsStability::needs_ccd(10, 100, 0)
+    # Fixed steps: a 50.1 ms frame at 16.667 ms gives 3 steps and no drop.
+    s: PhysicsStability::Steps = PhysicsStability::plan(50100, 16667, 8)
+    return 10 if s.count != 3 or s.dropped_us != 0
+    # A one-second hitch is capped at 4 steps and the rest is dropped.
+    h: PhysicsStability::Steps = PhysicsStability::plan(1000000, 16667, 4)
+    return 11 if h.count != 4 or h.dropped_us != 1000000 - 4 * 16667
+    z: PhysicsStability::Steps = PhysicsStability::plan(0, 16667, 4)
+    return 12 if z.count != 0 or PhysicsStability::plan(100, 0, 4).count != 0 or PhysicsStability::plan(100, 10, 0).count != 0
+    return 0

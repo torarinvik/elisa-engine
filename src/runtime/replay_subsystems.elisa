@@ -1,0 +1,78 @@
+# Per-subsystem replay digests. Each tick records one digest per subsystem, so
+# comparing two runs names the first divergent tick AND the subsystem that
+# diverged first. Each subsystem declares its determinism scope: Exact digests
+# must match everywhere, SameBuild digests (solver, floating point) are only
+# compared between runs of one build and platform, and Excluded subsystems
+# (wall-clock, audio device timing) are never compared. Cross-platform bit
+# identity is therefore not promised for what cannot keep it.
+module ReplaySubsystems:
+    public:
+        const module Tune:
+            SUBSYSTEMS: i64 = 6
+            TICKS: i64 = 16
+
+        # Subsystem indices: 0 input, 1 world, 2 physics, 3 ai, 4 animation, 5 audio.
+        enum Scope:
+            Exact
+            SameBuild
+            Excluded
+
+        enum Verdict:
+            Match
+            Diverged
+            BadShape
+
+        struct Trace:
+            digests: mutable i64[96]
+            ticks: mutable i64
+
+        struct Divergence:
+            tick: i64
+            subsystem: i64
+
+        def new_trace() -> Trace:
+            z: i64[96] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            Trace{digests: z, ticks: 0}
+
+        # Appends one tick's digests; subsystem index selects the slot.
+        def begin_tick(t: mutable Trace&) -> bool:
+            return false if t.ticks >= 16
+            t.ticks <- t.ticks + 1
+            true
+
+        def record(t: mutable Trace&, subsystem: i64, digest: i64) -> bool:
+            return false if t.ticks <= 0 or subsystem < 0 or subsystem >= 6
+            t.digests[(t.ticks - 1) * 6 + subsystem] <- digest
+            true
+
+        def scope_of(subsystem: i64) -> Scope:
+            return Scope.Exact if subsystem <= 1
+            return Scope.SameBuild if subsystem == 2 or subsystem == 4
+            return Scope.Exact if subsystem == 3
+            Scope.Excluded
+
+        # `same_build` says whether both traces came from one build and platform.
+        def compared(subsystem: i64, same_build: bool) -> bool:
+            s: Scope = scope_of(subsystem)
+            return false if s == Scope.Excluded
+            return same_build if s == Scope.SameBuild
+            true
+
+        # Earliest divergence by tick, then by lowest subsystem index (the
+        # order in which subsystems feed each other), or tick -1 when none.
+        def first_divergence(a: Trace&, b: Trace&, same_build: bool) -> Divergence:
+            mutable found: Divergence = Divergence{tick: 0 - 1, subsystem: 0 - 1}
+            for k in 0..<96:
+                tick: i64 = k.i64() / 6
+                sub: i64 = k.i64() % 6
+                live: bool = tick < a.ticks and tick < b.ticks and found.tick < 0
+                differs: bool = live and a.digests[k] != b.digests[k] and compared(sub, same_build)
+                found <- Divergence{tick: tick, subsystem: sub} if differs
+            found
+
+        def judge(a: Trace&, b: Trace&, same_build: bool) -> Verdict:
+            return Verdict.BadShape if a.ticks != b.ticks
+            d: Divergence = first_divergence(a, b, same_build)
+            differs: bool = d.tick >= 0
+            return Verdict.Diverged if differs
+            Verdict.Match

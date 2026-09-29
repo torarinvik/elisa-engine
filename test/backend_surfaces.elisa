@@ -1,0 +1,32 @@
+include "../src/backend/surfaces.elisa"
+
+def main() -> i32:
+    t: BackendSurfaces::Table = BackendSurfaces::make()
+    editor: BackendSurfaces::Handle = BackendSurfaces::open_surface(&t, 1280, 800, 2000)
+    game: BackendSurfaces::Handle = BackendSurfaces::open_surface(&t, 640, 480, 1000)
+    return 1 if not BackendSurfaces::valid(&t, &editor) or not BackendSurfaces::valid(&t, &game) or BackendSurfaces::live_count(&t) != 2
+    return 2 if BackendSurfaces::pixel_width(&t, &editor) != 2560 or BackendSurfaces::pixel_width(&t, &game) != 640
+    # Bad sizes and DPI are refused without consuming a slot.
+    return 3 if BackendSurfaces::open_surface(&t, 0, 480, 1000).slot != -1 or BackendSurfaces::open_surface(&t, 640, 20000, 1000).slot != -1 or BackendSurfaces::open_surface(&t, 640, 480, 100).slot != -1
+    return 4 if BackendSurfaces::live_count(&t) != 2
+    # Each surface resizes and suspends on its own.
+    return 5 if not BackendSurfaces::resize(&t, &game, 800, 600) or t.width[editor.slot] != 1280
+    return 6 if not BackendSurfaces::suspend(&t, &editor, true) or BackendSurfaces::renderable(&t, &editor) or not BackendSurfaces::renderable(&t, &game)
+    return 7 if BackendSurfaces::resize(&t, &game, 0, 600) or BackendSurfaces::set_dpi(&t, &game, 99999)
+    # Closing the editor leaves the game surface working; the old handle is dead.
+    return 8 if not BackendSurfaces::close(&t, &editor) or BackendSurfaces::valid(&t, &editor)
+    return 9 if not BackendSurfaces::renderable(&t, &game) or BackendSurfaces::live_count(&t) != 1
+    return 10 if BackendSurfaces::close(&t, &editor) or BackendSurfaces::resize(&t, &editor, 100, 100) or BackendSurfaces::suspend(&t, &editor, false)
+    # Slot reuse gets a new generation, so the stale handle stays dead.
+    again: BackendSurfaces::Handle = BackendSurfaces::open_surface(&t, 320, 200, 1000)
+    return 11 if again.slot != editor.slot or again.generation == editor.generation or BackendSurfaces::valid(&t, &editor) or not BackendSurfaces::valid(&t, &again)
+    return 12 if BackendSurfaces::renderable(&t, &again) == false or BackendSurfaces::pixel_width(&t, &editor) != 0
+    # Out-of-range and none handles are invalid.
+    nobody: BackendSurfaces::Handle = BackendSurfaces::none()
+    far: BackendSurfaces::Handle = BackendSurfaces::Handle{slot: 9, generation: 1}
+    return 13 if BackendSurfaces::valid(&t, &nobody) or BackendSurfaces::valid(&t, &far)
+    # The table holds four surfaces.
+    BackendSurfaces::open_surface(&t, 100, 100, 1000)
+    BackendSurfaces::open_surface(&t, 100, 100, 1000)
+    return 14 if BackendSurfaces::live_count(&t) != 4 or BackendSurfaces::open_surface(&t, 100, 100, 1000).slot != -1
+    return 0

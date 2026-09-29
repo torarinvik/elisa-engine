@@ -1,0 +1,35 @@
+include "../src/ui/vector.elisa"
+
+def square() -> UiVector::Polygon:
+    UiVector::Polygon{xs: [0, 10, 10, 0, 0, 0, 0, 0], ys: [0, 0, 10, 10, 0, 0, 0, 0], count: 4}
+
+def main() -> i32:
+    a: UiVector::Point = UiVector::Point{x: 0, y: 0}
+    b: UiVector::Point = UiVector::Point{x: 50, y: 100}
+    c: UiVector::Point = UiVector::Point{x: 100, y: 0}
+    flat: UiVector::Point = UiVector::Point{x: 50, y: 0}
+    # Roots and step counts.
+    return 1 if UiVector::isqrt(0) != 0 or UiVector::isqrt(1) != 1 or UiVector::isqrt(24) != 4 or UiVector::isqrt(25) != 5
+    return 2 if UiVector::steps_for(&a, &flat, &c, 1) != 1
+    fine: i64 = UiVector::steps_for(&a, &b, &c, 1)
+    coarse: i64 = UiVector::steps_for(&a, &b, &c, 16)
+    return 3 if fine <= coarse or fine > 32 or coarse < 1
+    return 4 if UiVector::steps_for(&a, &b, &c, 0) != 1
+    # Curve points hit the ends and the exact midpoint.
+    return 5 if UiVector::point_at(&a, &b, &c, 0, 4).x != 0 or UiVector::point_at(&a, &b, &c, 4, 4).x != 100
+    mid: UiVector::Point = UiVector::point_at(&a, &b, &c, 2, 4)
+    return 6 if mid.x != 50 or mid.y != 50
+    return 7 if UiVector::point_at(&a, &b, &c, 1, 0).x != 0
+    # Fill: inside, outside, edges by the half-open rule, degenerate shapes.
+    sq: UiVector::Polygon = square()
+    return 8 if not UiVector::filled(&sq, 5, 5) or UiVector::filled(&sq, 15, 5) or UiVector::filled(&sq, 5, 15)
+    return 9 if UiVector::winding(&sq, 5, 5) != 1
+    rev: UiVector::Polygon = UiVector::Polygon{xs: [0, 0, 10, 10, 0, 0, 0, 0], ys: [0, 10, 10, 0, 0, 0, 0, 0], count: 4}
+    return 10 if UiVector::winding(&rev, 5, 5) != 0 - 1 or not UiVector::filled(&rev, 5, 5)
+    line: UiVector::Polygon = UiVector::Polygon{xs: [0, 10, 0, 0, 0, 0, 0, 0], ys: [0, 10, 0, 0, 0, 0, 0, 0], count: 2}
+    return 11 if UiVector::filled(&line, 3, 3)
+    # A doubled loop winds twice, still nonzero.
+    twice: UiVector::Polygon = UiVector::Polygon{xs: [0, 10, 10, 0, 0, 10, 10, 0], ys: [0, 0, 10, 10, 0, 0, 10, 10], count: 8}
+    return 12 if UiVector::winding(&twice, 5, 5) != 2
+    return 13 if UiVector::filled(&sq, 2000000, 5)
+    return 0

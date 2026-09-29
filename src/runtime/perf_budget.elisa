@@ -1,0 +1,50 @@
+# Performance budgets for an engine scene: cold and warm runs are judged
+# separately, and the cost of the profiler itself is measured so a trace taken
+# with Tracy on is not mistaken for engine cost. Microseconds throughout.
+module RuntimePerfBudget:
+    private:
+        const module Tune:
+            LIMIT: i64 = 1000000000
+
+    public:
+        struct Budget:
+            warm_us: i64
+            cold_us: i64
+            max_overhead_permille: i64
+
+        struct Sample:
+            cold_us: i64
+            warm_us: i64
+            profiled_warm_us: i64
+
+        enum Verdict:
+            Pass
+            Invalid
+            WarmOver
+            ColdOver
+            ProfilerTooHeavy
+
+        def valid(b: Budget&) -> bool:
+            b.warm_us > 0 and b.cold_us >= b.warm_us and b.warm_us < Tune::LIMIT and b.cold_us < Tune::LIMIT and b.max_overhead_permille >= 0
+
+        def sample_ok(s: Sample&) -> bool:
+            s.warm_us > 0 and s.warm_us < Tune::LIMIT and s.cold_us > 0 and s.cold_us < Tune::LIMIT and s.profiled_warm_us > 0 and s.profiled_warm_us < Tune::LIMIT
+
+        # Profiling cost in permille of the unprofiled warm frame. A profiled
+        # run that is somehow faster counts as no overhead.
+        def overhead_permille(s: Sample&) -> i64:
+            requires s.warm_us > 0
+            requires s.warm_us < 1000000000
+            requires s.profiled_warm_us > 0
+            requires s.profiled_warm_us < 1000000000
+            return 0 if s.profiled_warm_us <= s.warm_us
+            (s.profiled_warm_us - s.warm_us) * 1000 / s.warm_us
+
+        # A trace whose profiler cost is over the limit says nothing reliable
+        # about the engine, so that is reported before any budget miss.
+        def judge(b: Budget&, s: Sample&) -> Verdict:
+            return Verdict.Invalid if not valid(b) or not sample_ok(s)
+            return Verdict.ProfilerTooHeavy if overhead_permille(s) > b.max_overhead_permille
+            return Verdict.WarmOver if s.warm_us > b.warm_us
+            return Verdict.ColdOver if s.cold_us > b.cold_us
+            Verdict.Pass
