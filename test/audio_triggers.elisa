@@ -1,0 +1,61 @@
+include "../src/audio/trigger_units.elisa"
+
+# Walks `ticks` grounded ticks of `moved` millimetres and counts footfalls.
+def walk(steps: mutable AudioTriggers::Footfalls&, ticks: usize, moved: u64) -> usize:
+    for tick in 0..<ticks |count: usize = 0, steps| -> count:
+        count <- count + 1 if AudioTriggers::step(steps, true, moved)
+
+# Rises from `ground` to `peak` in two airborne ticks and lands at `landing`.
+def fall(impacts: mutable AudioTriggers::Impacts&, ground: i64, peak: i64, landing: i64) -> u64:
+    grounded: u64 = AudioTriggers::land(impacts, true, ground)
+    low: u64 = AudioTriggers::land(impacts, false, ground + 10)
+    high: u64 = AudioTriggers::land(impacts, false, peak)
+    return 9999 if grounded != 0 or low != 0 or high != 0
+    AudioTriggers::land(impacts, true, landing)
+
+def main() -> i32:
+    # Validation of authored values.
+    return 1 if AudioTriggers::footfalls_valid(0, 700) or not AudioTriggers::footfalls_valid(1, 700)
+    return 2 if AudioTriggers::footfalls_valid(1, 99) or AudioTriggers::footfalls_valid(1, 10001)
+    return 3 if not AudioTriggers::impacts_valid(2, 500, 3000) or AudioTriggers::impacts_valid(2, 3000, 3000)
+    return 4 if AudioTriggers::impacts_valid(0, 500, 3000) or AudioTriggers::impacts_valid(2, 0, 1000001)
+
+    # Footfalls: one per stride, the remainder carried, at most one per tick.
+    steps: mutable AudioTriggers::Footfalls = AudioTriggers::footfalls(1, 700)
+    return 10 if walk(&steps, 7, 100) != 1 or steps.travelled_mm != 0
+    return 11 if walk(&steps, 20, 150) != 4 or steps.travelled_mm != 200
+    return 12 if walk(&steps, 3, 50000) != 3 or steps.travelled_mm != 200
+    return 13 if AudioTriggers::step(&steps, false, 600) or steps.travelled_mm != 0
+    return 14 if walk(&steps, 6, 100) != 0 or steps.travelled_mm != 600
+    spare: mutable AudioTriggers::Impacts = AudioTriggers::Impacts()
+    AudioTriggers::reset(&steps, &spare)
+    return 15 if steps.travelled_mm != 0
+    off: mutable AudioTriggers::Footfalls = AudioTriggers::Footfalls()
+    return 16 if walk(&off, 50, 1000) != 0
+
+    # Impacts: silent below the threshold, floor gain at it, full at the top.
+    impacts: mutable AudioTriggers::Impacts = AudioTriggers::impacts(2, 500, 3000)
+    return 20 if fall(&impacts, 0, 400, 0) != 0
+    return 21 if fall(&impacts, 0, 500, 0) != 250
+    return 22 if fall(&impacts, 0, 1750, 0) != 625
+    return 23 if fall(&impacts, 0, 3000, 0) != 1000 or fall(&impacts, 0, 90000, 0) != 1000
+    return 24 if fall(&impacts, 0, 2000, 1500) != 250
+    return 25 if fall(&impacts, 0, 2000, 2500) != 0
+    return 26 if AudioTriggers::land(&impacts, true, 0) != 0
+    return 27 if fall(&impacts, 5000, 9000, -1000000000) != 1000
+    silent: mutable AudioTriggers::Impacts = AudioTriggers::Impacts()
+    return 28 if fall(&silent, 0, 90000, 0) != 0
+    malformed: mutable AudioTriggers::Impacts = AudioTriggers::Impacts{event: 2, threshold_mm: 3000, full_mm: 3000, peak_mm: 0, airborne: false}
+    return 29 if fall(&malformed, 0, 90000, 0) != 0
+
+    # A reset forgets a fall in progress.
+    return 30 if AudioTriggers::land(&impacts, false, 4000) != 0
+    AudioTriggers::reset(&steps, &impacts)
+    return 31 if AudioTriggers::land(&impacts, true, 0) != 0
+
+    # Metre conversions clamp and ignore NaN.
+    return 40 if AudioTriggers::millimetres(0.25) != 250 or AudioTriggers::millimetres(-1.0) != 0
+    return 41 if AudioTriggers::millimetres(0.0 / 0.0) != 0 or AudioTriggers::millimetres(5000.0) != AudioTriggers::MAX_DROP_MM
+    return 42 if AudioTriggers::height_millimetres(-2.5) != -2500 or AudioTriggers::height_millimetres(0.0 / 0.0) != 0
+    return 43 if AudioTriggers::height_millimetres(-5000.0) != -1000000
+    0

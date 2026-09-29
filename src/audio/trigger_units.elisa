@@ -1,0 +1,20 @@
+# Converts measured metres into the whole millimetres AudioTriggers works
+# in. Kept apart from triggers.elisa because it reads floats, which the proof
+# of the trigger policy does not model.
+include "./triggers.elisa"
+
+extend AudioTriggers:
+    public:
+        # A metre-scale distance in whole millimetres, rounded down and
+        # clamped to [0, MAX_DROP_MM]; NaN reads as 0.
+        def millimetres(metres: f32) -> u64:
+            return 0 if not (metres > 0.0)
+            return MAX_DROP_MM if metres >= 1000.0
+            (metres * 1000.0).u64()
+
+        # A signed height in whole millimetres, clamped to +-MAX_DROP_MM.
+        def height_millimetres(metres: f32) -> i64:
+            return 0 if metres != metres
+            return 1000000 if metres >= 1000.0
+            return -1000000 if metres <= -1000.0
+            (metres * 1000.0).i64()

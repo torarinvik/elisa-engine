@@ -1,0 +1,133 @@
+# Movement-driven sound triggers: footfalls from distance walked on the
+# ground and landing impacts scaled by the height fallen. This is pure policy
+# over whole millimetres, so a replayed movement gives the same triggers and
+# the proof, proof/audio_triggers.elisa, works in exact integers. The caller
+# measures movement from its committed poses, converts it with
+# trigger_units.elisa, and fires the returned events through AudioEvents.
+module AudioTriggers:
+    public:
+        const MIN_STRIDE_MM: u64 = 100
+        const MAX_STRIDE_MM: u64 = 10000
+        const MAX_DROP_MM: u64 = 1000000
+        # Gains in permille. A drop at the impact threshold is heard at the
+        # floor gain and one at or past the full drop at 1000.
+        const FLOOR_PERMILLE: u64 = 250
+        const FULL_PERMILLE: u64 = 1000
+
+        # `event` 0 turns a trigger off.
+        struct Footfalls:
+            event: u32
+            stride_mm: u64
+            travelled_mm: mutable u64
+
+        struct Impacts:
+            event: u32
+            threshold_mm: u64
+            full_mm: u64
+            # The highest point since the character last stood on the ground.
+            peak_mm: mutable i64
+            airborne: mutable bool
+
+        def Footfalls() -> Footfalls:
+            Footfalls{event: 0, stride_mm: MIN_STRIDE_MM, travelled_mm: 0}
+
+        def Impacts() -> Impacts:
+            Impacts{event: 0, threshold_mm: 0, full_mm: 1, peak_mm: 0, airborne: false}
+
+        def footfalls_valid(event: u32, stride_mm: u64) -> bool:
+            event != 0 and stride_mm >= MIN_STRIDE_MM and stride_mm <= MAX_STRIDE_MM
+
+        def impacts_valid(event: u32, threshold_mm: u64, full_mm: u64) -> bool:
+            event != 0 and threshold_mm < full_mm and full_mm <= MAX_DROP_MM
+
+        def footfalls(event: u32, stride_mm: u64) -> Footfalls:
+            requires stride_mm >= MIN_STRIDE_MM and stride_mm <= MAX_STRIDE_MM
+            Footfalls{event: event, stride_mm: stride_mm, travelled_mm: 0}
+
+        def impacts(event: u32, threshold_mm: u64, full_mm: u64) -> Impacts:
+            requires threshold_mm < full_mm and full_mm <= MAX_DROP_MM
+            Impacts{event: event, threshold_mm: threshold_mm, full_mm: full_mm, peak_mm: 0, airborne: false}
+
+        # Adds one tick's ground travel and reports whether a foot lands. At
+        # most one footfall per tick: travel past a whole stride is dropped,
+        # so a teleport or hitch does not burst steps. Leaving the ground
+        # forgets the partial stride; the landing has its own sound.
+        def step(steps: mutable Footfalls&, grounded: bool, moved_mm: u64) -> bool:
+            stride: u64 = stride_or_minimum(steps.stride_mm)
+            if not grounded or steps.event == 0:
+                steps.travelled_mm <- 0
+                return false
+            walked: u64 = travel_after(steps.travelled_mm, moved_mm, stride)
+            landed: bool = walked >= stride
+            steps.travelled_mm <- walked - stride if landed else walked
+            landed
+
+        # Tracks height while airborne. On the first grounded tick after a
+        # fall it returns the landing gain in permille, or 0 when the drop is
+        # below the threshold, the trigger is off or malformed, or nothing was
+        # airborne.
+        def land(impacts: mutable Impacts&, grounded: bool, height_mm: i64) -> u64:
+            if not grounded:
+                impacts.peak_mm <- height_mm if not impacts.airborne or height_mm > impacts.peak_mm else impacts.peak_mm
+                impacts.airborne <- true
+                return 0
+            was_airborne: bool = impacts.airborne
+            peak: i64 = impacts.peak_mm
+            impacts.airborne <- false
+            return 0 if not was_airborne or impacts.event == 0 or peak <= height_mm
+            threshold: u64 = impacts.threshold_mm
+            full: u64 = impacts.full_mm
+            # A trigger built without `impacts` may hold any range; it stays silent.
+            return 0 if threshold >= full or full > MAX_DROP_MM
+            gain(threshold, full, drop_mm(peak, height_mm))
+
+        # Scene replacement or restart forgets the partial stride and any fall.
+        def reset(steps: mutable Footfalls&, impacts: mutable Impacts&) -> void:
+            steps.travelled_mm <- 0
+            impacts.airborne <- false
+            impacts.peak_mm <- 0
+
+        # The permille gain for a drop: 0 below the threshold, rising
+        # linearly from the floor gain to 1000 at the full drop.
+        def gain(threshold_mm: u64, full_mm: u64, drop: u64) -> u64:
+            requires threshold_mm < full_mm and full_mm <= MAX_DROP_MM
+            ensure result <= FULL_PERMILLE
+            return 0 if drop < threshold_mm
+            return FULL_PERMILLE if drop >= full_mm
+            share: u64 = scale(drop - threshold_mm, full_mm - threshold_mm)
+            FLOOR_PERMILLE + share
+
+    private:
+        const RISE_PERMILLE: u64 = 750
+
+        # The share of the rise from the floor to full gain that `part` of
+        # `whole` earns, rounded down, so it stays below the full rise.
+        def scale(part: u64, whole: u64) -> u64:
+            requires part < whole and whole <= MAX_DROP_MM
+            ensure result < RISE_PERMILLE
+            part * RISE_PERMILLE / whole
+
+        def stride_or_minimum(stride_mm: u64) -> u64:
+            ensure result >= MIN_STRIDE_MM and result <= MAX_STRIDE_MM
+            return MIN_STRIDE_MM if stride_mm < MIN_STRIDE_MM
+            return MAX_STRIDE_MM if stride_mm > MAX_STRIDE_MM
+            stride_mm
+
+        # The partial stride plus this tick's travel, capped one stride past
+        # the partial so it stays below two strides and never overflows.
+        def travel_after(travelled_mm: u64, moved_mm: u64, stride: u64) -> u64:
+            requires stride >= MIN_STRIDE_MM and stride <= MAX_STRIDE_MM
+            ensure result < stride + stride and result < MAX_STRIDE_MM + MAX_STRIDE_MM
+            partial: u64 = travelled_mm if travelled_mm < stride else stride - 1
+            added: u64 = moved_mm if moved_mm < stride else stride
+            partial + added
+
+        # How far a peak lies above the landing height, clamped to MAX_DROP_MM.
+        def drop_mm(peak: i64, height: i64) -> u64:
+            requires peak > height
+            ensure result <= MAX_DROP_MM
+            top: i64 = peak if peak < 1000000 else 1000000
+            bottom: i64 = height if height > -1000000 else -1000000
+            return 0 if top <= bottom
+            span: u64 = (top - bottom).u64()
+            span if span < MAX_DROP_MM else MAX_DROP_MM
