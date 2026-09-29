@@ -1,0 +1,86 @@
+# Continuous collision for 2D circles against one-sided slanted segments
+# (ramps and sloped roofs), complementing the axis-aligned walls and
+# platforms in ccd2d.elisa. The solid side is to the right of a -> b, so a
+# ramp authored left to right is solid below. A circle whose centre starts in
+# front of the segment and would end closer is stopped at the
+# contact and its normal speed is reflected with restitution, keeping the
+# tangential speed, so a ball rolls on down a slope instead of tunnelling.
+# Positions are micrometres (segments up to 10 m keep products in i64).
+include "./ccd2d.elisa"
+
+module Physics2dRamp:
+    public:
+        struct Segment:
+            ax_um: i64
+            ay_um: i64
+            bx_um: i64
+            by_um: i64
+
+        struct Contact:
+            hit: bool
+            t_permille: i64
+            # Placement fraction in millionths, so a fast body stops within a
+            # micrometre-scale gap rather than a permille of its travel.
+            t_ppm: i64
+
+        def length_um(s: Segment&) -> i64:
+            tx: i64 = s.bx_um - s.ax_um
+            ty: i64 = s.by_um - s.ay_um
+            Physics2dCircles::isqrt(tx * tx + ty * ty)
+
+        # Signed distance of a point in front of the segment's line, in um.
+        def distance_um(s: Segment&, x: i64, y: i64) -> i64:
+            l: i64 = length_um(s)
+            return 0 if l == 0
+            nx: i64 = 0 - (s.by_um - s.ay_um)
+            ny: i64 = s.bx_um - s.ax_um
+            (nx * (x - s.ax_um) + ny * (y - s.ay_um)) / l
+
+        def sweep(c: Physics2dCircles::Circle&, dx: i64, dy: i64, s: Segment&) -> Contact:
+            miss: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000}
+            l: i64 = length_um(s)
+            return miss if l == 0
+            d0: i64 = distance_um(s, c.x_um, c.y_um)
+            d1: i64 = distance_um(s, c.x_um + dx, c.y_um + dy)
+            # A circle resting in contact (centre in front, within a radius)
+            # and still pressing in is stopped at once; one behind is ignored.
+            return miss if d0 < 0 or d1 >= c.radius_um or d1 >= d0
+            raw: i64 = (d0 - c.radius_um) * 1000000 / (d0 - d1)
+            t: i64 = raw if raw > 0 else 0
+            px: i64 = c.x_um + dx * t / 1000000
+            py: i64 = c.y_um + dy * t / 1000000
+            along: i64 = ((s.bx_um - s.ax_um) * (px - s.ax_um) + (s.by_um - s.ay_um) * (py - s.ay_um)) / l
+            return miss if along < 0 or along > l
+            Contact{hit: true, t_permille: t / 1000, t_ppm: t}
+
+        # Reflects the normal component of the velocity (um/s).
+        def bounce(c: mutable Physics2dCircles::Circle&, s: Segment&, restitution_permille: i64) -> void:
+            l: i64 = length_um(s)
+            nx: i64 = 0 - (s.by_um - s.ay_um)
+            ny: i64 = s.bx_um - s.ax_um
+            vn: i64 = (c.vx * nx + c.vy * ny) / l
+            if l > 0 and vn < 0:
+                k: i64 = vn * (1000 + restitution_permille) / 1000
+                c.vx <- c.vx - k * nx / l
+                c.vy <- c.vy - k * ny / l
+
+        # Semi-implicit step against up to four segments; returns true on a hit.
+        def step(c: mutable Physics2dCircles::Circle&, ramps: Segment[4], count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0
+            c.vy <- c.vy - gravity_um_s2 * dt_ms / 1000
+            dx: i64 = c.vx * dt_ms / 1000
+            dy: i64 = c.vy * dt_ms / 1000
+            mutable best: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000}
+            mutable which: i64 = 0
+            for i in 0..<4 |best, which|:
+                if i.i64() < count:
+                    h: Contact = sweep(c, dx, dy, &ramps[i])
+                    if h.hit and h.t_ppm < best.t_ppm:
+                        best <- h
+                        which <- i.i64()
+            c.x_um <- c.x_um + dx * best.t_ppm / 1000000
+            c.y_um <- c.y_um + dy * best.t_ppm / 1000000
+            if best.hit:
+                hit_ramp: Segment = ramps[which.usize()]
+                bounce(c, &hit_ramp, restitution_permille)
+            best.hit

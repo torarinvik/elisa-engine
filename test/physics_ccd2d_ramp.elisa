@@ -1,0 +1,40 @@
+include "../src/physics/ccd2d_ramp.elisa"
+
+def ball(x: i64, y: i64, vx: i64, vy: i64) -> Physics2dCircles::Circle:
+    Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: vy, radius_um: 50000, mass_g: 100}
+
+def main() -> i32:
+    # A 45 degree ramp down to the right; solid below.
+    ramp: Physics2dRamp::Segment = Physics2dRamp::Segment{ax_um: 0, ay_um: 0, bx_um: 4000000, by_um: 0 - 4000000}
+    ramps: Physics2dRamp::Segment[4] = [ramp, ramp, ramp, ramp]
+    return 1 if Physics2dRamp::distance_um(&ramp, 0, 1000000) != 707106
+    # A 200 m/s drop would pass the ramp in one 16 ms step without CCD.
+    mutable fast: Physics2dCircles::Circle = ball(1000000, 1000000, 0, 0 - 200000000)
+    return 2 if not Physics2dRamp::step(&fast, ramps, 1, 0, 16, 0)
+    d: i64 = Physics2dRamp::distance_um(&ramp, fast.x_um, fast.y_um)
+    return 3 if d < 49000 or d > 51000
+    # Inelastic: the normal speed is gone, the tangential speed slides it down the slope.
+    sum: i64 = fast.vx + fast.vy
+    return 4 if fast.vx <= 0 or fast.vy >= 0 or sum > 1000 or sum < 0 - 1000
+    # Under gravity it keeps sliding on the surface for a second, never sinking.
+    mutable deepest: i64 = d
+    for _ in 0..<60 |fast, deepest|:
+        Physics2dRamp::step(&fast, ramps, 1, 9810000, 16, 0)
+        now: i64 = Physics2dRamp::distance_um(&ramp, fast.x_um, fast.y_um)
+        deepest <- now if now < deepest else deepest
+    return 5 if deepest < 45000 or fast.x_um <= 1000000
+    # One-sided: a ball below the ramp moving up passes through.
+    mutable under: Physics2dCircles::Circle = ball(2000000, 0 - 3000000, 0, 100000000)
+    return 6 if Physics2dRamp::step(&under, ramps, 1, 0, 16, 0)
+    # Past the segment's end there is nothing to hit.
+    mutable beyond: Physics2dCircles::Circle = ball(6000000, 0 - 3000000, 0, 0 - 100000000)
+    return 7 if Physics2dRamp::step(&beyond, ramps, 1, 0, 16, 0)
+    # Elastic bounce off a flat segment reverses the fall.
+    floor: Physics2dRamp::Segment = Physics2dRamp::Segment{ax_um: 0, ay_um: 0, bx_um: 2000000, by_um: 0}
+    floors: Physics2dRamp::Segment[4] = [floor, floor, floor, floor]
+    mutable drop: Physics2dCircles::Circle = ball(1000000, 60000, 0, 0 - 1000000)
+    return 8 if not Physics2dRamp::step(&drop, floors, 1, 0, 16, 1000) or drop.vy != 1000000 or drop.y_um != 50000
+    # Behind the ramp and moving further away (falling beneath it) is not stopped either.
+    mutable below: Physics2dCircles::Circle = ball(2000000, 0 - 3000000, 0, 0 - 100000000)
+    return 9 if Physics2dRamp::step(&below, ramps, 1, 0, 16, 0) or below.y_um != 0 - 4600000
+    return 0
