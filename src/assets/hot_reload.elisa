@@ -1,0 +1,70 @@
+# A10 hot-reload policy for up to 8 assets. An edited asset is staged as a
+# new generation; a broken import is recorded and never replaces the live
+# one. At a safe frame boundary `commit` swaps every staged generation whose
+# dependency (`parent`) is not itself left broken, all in one step. The
+# replaced generation is retired, not freed, until its consumers release it.
+module AssetsHotReload:
+    public:
+        enum Stage:
+            Staged
+            Broken
+            BadSlot
+
+        struct Table:
+            live: mutable i64[8]
+            staged: mutable i64[8]
+            broken: mutable i64[8]
+            parent: i64[8]
+            retired: mutable i64[8]
+            retired_refs: mutable i64[8]
+            count: i64
+            errors: mutable i64
+
+        # `parent[i]` is the slot asset i depends on, or -1.
+        def table(parent: i64[8], count: i64) -> Table:
+            Table{live: [1, 1, 1, 1, 1, 1, 1, 1], staged: zeroed, broken: zeroed, parent: parent, retired: zeroed, retired_refs: zeroed, count: count, errors: 0}
+
+        def stage(t: mutable Table&, slot: i64, import_ok: bool) -> Stage:
+            return Stage.BadSlot if slot < 0 or slot >= t.count
+            if not import_ok:
+                t.broken[slot] <- 1
+                t.staged[slot] <- 0
+                t.errors <- t.errors + 1
+                return Stage.Broken
+            t.broken[slot] <- 0
+            t.staged[slot] <- t.live[slot] + 1
+            Stage.Staged
+
+        def ready(t: Table&, slot: i64) -> bool:
+            p: i64 = t.parent[slot]
+            return true if p < 0 or p >= t.count
+            t.broken[p] == 0
+
+        # Swap at the frame boundary; returns how many assets swapped.
+        # `consumers` is how many frames/voices still use the old generation.
+        def commit(t: mutable Table&, consumers: i64) -> i64:
+            mutable go: i64[8] = zeroed
+            for i in 0..<t.count:
+                go[i] <- 1 if t.staged[i] > 0 and ready(t, i)
+            mutable swapped: i64 = 0
+            for i in 0..<t.count:
+                if go[i] == 1:
+                    retire(t, i, consumers)
+                    swapped <- swapped + 1
+            swapped
+
+        def retire(t: mutable Table&, i: i64, consumers: i64) -> bool:
+            t.retired[i] <- t.live[i]
+            t.retired_refs[i] <- consumers
+            t.live[i] <- t.staged[i]
+            t.staged[i] <- 0
+            true
+
+        # A consumer finished with slot `i`'s retired generation. Returns
+        # true when it may now be freed.
+        def release(t: mutable Table&, i: i64) -> bool:
+            return false if i < 0 or i >= t.count or t.retired[i] == 0 or t.retired_refs[i] <= 0
+            t.retired_refs[i] <- t.retired_refs[i] - 1
+            return false if t.retired_refs[i] > 0
+            t.retired[i] <- 0
+            true
