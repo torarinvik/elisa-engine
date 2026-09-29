@@ -1,0 +1,94 @@
+# Bounded list model for UI lists: items carry stable ids, focus and scroll
+# are tracked by id and position, and only a fixed-size window of rows is ever
+# realised, so a large collection costs the same per frame as a small one.
+# Removal and reordering repair focus in the same call, so focus never names a
+# row that no longer exists.
+module UiListModel:
+    public:
+        const module Tune:
+            CAPACITY: i64 = 64
+
+        struct List:
+            ids: mutable i64[64]
+            count: mutable i64
+            focus_id: mutable i64
+            scroll: mutable i64
+
+        def new_list() -> List:
+            z: i64[64] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            List{ids: z, count: 0, focus_id: 0 - 1, scroll: 0}
+
+        def index_of(l: List&, id: i64) -> i64:
+            mutable found: i64 = 0 - 1
+            for k in 0..<64:
+                found <- k.i64() if k.i64() < l.count and l.ids[k] == id and found < 0
+            found
+
+        def push(l: mutable List&, id: i64) -> bool:
+            return false if id < 0 or l.count >= 64 or index_of(l, id) >= 0
+            l.ids[l.count] <- id
+            l.count <- l.count + 1
+            true
+
+        def focus(l: mutable List&, id: i64) -> bool:
+            return false if index_of(l, id) < 0
+            l.focus_id <- id
+            true
+
+        # Removing the focused row moves focus to its successor (or predecessor
+        # at the end); an empty list has no focus.
+        def remove(l: mutable List&, id: i64) -> bool:
+            at: i64 = index_of(l, id)
+            return false if at < 0
+            for k in 0..<63:
+                l.ids[k] <- l.ids[k + 1] if k.i64() >= at
+            l.count <- l.count - 1
+            l.ids[l.count] <- 0
+            repair(l, at)
+            true
+
+        def repair(l: mutable List&, at: i64) -> bool:
+            l.focus_id <- 0 - 1 if l.count == 0
+            keep: bool = index_of(l, l.focus_id) >= 0
+            fallback: i64 = at if at < l.count else l.count - 1
+            l.focus_id <- l.ids[fallback] if l.count > 0 and not keep
+            l.scroll <- clamp_scroll(l.scroll, l.count, 8)
+            true
+
+        def clamp_scroll(scroll: i64, count: i64, rows: i64) -> i64:
+            top: i64 = count - rows if count > rows else 0
+            return 0 if scroll < 0
+            return top if scroll > top
+            scroll
+
+        # Moves the row at `from` to `to`, shifting the rows between; focus
+        # follows the row it was on because it is tracked by id.
+        def move(l: mutable List&, from_at: i64, to_at: i64) -> bool:
+            return false if from_at < 0 or to_at < 0 or from_at >= l.count or to_at >= l.count
+            moving: i64 = l.ids[from_at]
+            step: i64 = 1 if to_at > from_at else 0 - 1
+            mutable at: i64 = from_at
+            for k in 0..<64:
+                l.ids[at] <- l.ids[at + step] if at != to_at
+                at <- at + step if at != to_at
+            l.ids[to_at] <- moving
+            true
+
+        # The realised window: first row index and row count for a viewport of
+        # `rows` rows, never more than `rows` regardless of collection size.
+        def window_first(l: List&, rows: i64) -> i64:
+            clamp_scroll(l.scroll, l.count, rows)
+
+        def window_count(l: List&, rows: i64) -> i64:
+            first: i64 = window_first(l, rows)
+            left: i64 = l.count - first
+            left if left < rows else rows
+
+        # Keeps the focused row inside the window.
+        def reveal_focus(l: mutable List&, rows: i64) -> bool:
+            at: i64 = index_of(l, l.focus_id)
+            return false if at < 0 or rows <= 0
+            l.scroll <- at if at < l.scroll
+            l.scroll <- at - rows + 1 if at >= l.scroll + rows
+            l.scroll <- clamp_scroll(l.scroll, l.count, rows)
+            true
