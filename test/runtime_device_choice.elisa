@@ -1,0 +1,42 @@
+include "../src/runtime/device_choice.elisa"
+
+def main() -> i32:
+    mutable ds: DeviceChoice::Devices = DeviceChoice::new_devices()
+    c0: DeviceChoice::Choice = DeviceChoice::resolve(&ds, 5)
+    return 1 if c0.source != DeviceChoice::Source.NoneAvailable or c0.id != 0
+    return 2 if DeviceChoice::add(&ds, 0, true, false)
+    DeviceChoice::add(&ds, 3, true, false)
+    DeviceChoice::add(&ds, 5, true, true)
+    DeviceChoice::add(&ds, 7, false, false)
+    c1: DeviceChoice::Choice = DeviceChoice::resolve(&ds, 3)
+    return 3 if c1.source != DeviceChoice::Source.Saved or c1.id != 3
+    # Saved device gone: default is used.
+    c2: DeviceChoice::Choice = DeviceChoice::resolve(&ds, 9)
+    return 4 if c2.source != DeviceChoice::Source.SystemDefault or c2.id != 5
+    # Saved device present but unusable falls back too.
+    c3: DeviceChoice::Choice = DeviceChoice::resolve(&ds, 7)
+    return 5 if c3.source != DeviceChoice::Source.SystemDefault
+    # No default: first usable.
+    mutable e: DeviceChoice::Devices = DeviceChoice::new_devices()
+    DeviceChoice::add(&e, 4, false, true)
+    DeviceChoice::add(&e, 6, true, false)
+    c4: DeviceChoice::Choice = DeviceChoice::resolve(&e, 0)
+    return 6 if c4.source != DeviceChoice::Source.FirstUsable or c4.id != 6
+    # Nothing usable.
+    mutable n: DeviceChoice::Devices = DeviceChoice::new_devices()
+    DeviceChoice::add(&n, 4, false, true)
+    return 7 if DeviceChoice::resolve(&n, 4).source != DeviceChoice::Source.NoneAvailable
+    # Capacity.
+    mutable f: DeviceChoice::Devices = DeviceChoice::new_devices()
+    for k in 0..<8:
+        return 8 if not DeviceChoice::add(&f, 1 + k.i64(), true, false)
+    return 9 if DeviceChoice::add(&f, 99, true, false)
+    # Display modes: 1920x1080, 1280x720, 800x600, 3840x2160.
+    w: i64[8] = [1920, 1280, 800, 3840, 0, 0, 0, 0]
+    h: i64[8] = [1080, 720, 600, 2160, 0, 0, 0, 0]
+    return 10 if DeviceChoice::pick_mode(w, h, 4, 1920, 1080) != 0
+    return 11 if DeviceChoice::pick_mode(w, h, 4, 1400, 900) != 1
+    return 12 if DeviceChoice::pick_mode(w, h, 4, 640, 480) != 2
+    return 13 if DeviceChoice::pick_mode(w, h, 0, 1920, 1080) != 0 - 1
+    return 14 if DeviceChoice::pick_mode(w, h, 4, 9999, 9999) != 3
+    return 0

@@ -1,0 +1,85 @@
+# Resolves saved device/display settings against what exists now. A saved
+# choice is applied only while that device is still present; otherwise the
+# system default is used, then the first usable device, then none, and the
+# reason is reported so the UI can say why the setting was not honoured. The
+# saved value is never overwritten by a fallback, so reconnecting the device
+# restores it.
+module DeviceChoice:
+    public:
+        const module Tune:
+            MAX_DEVICES: i64 = 8
+
+        enum Source:
+            Saved
+            SystemDefault
+            FirstUsable
+            NoneAvailable
+
+        struct Device:
+            id: i64
+            usable: bool
+            is_default: bool
+
+        struct Devices:
+            list: mutable Device[8]
+            count: mutable i64
+
+        struct Choice:
+            source: Source
+            id: i64
+
+        def new_devices() -> Devices:
+            d: Device = Device{id: 0, usable: false, is_default: false}
+            Devices{list: [d, d, d, d, d, d, d, d], count: 0}
+
+        def add(ds: mutable Devices&, id: i64, usable: bool, is_default: bool) -> bool:
+            return false if ds.count >= 8 or id <= 0
+            ds.list[ds.count] <- Device{id: id, usable: usable, is_default: is_default}
+            ds.count <- ds.count + 1
+            true
+
+        def find_saved(ds: Devices&, saved: i64) -> i64:
+            mutable at: i64 = 0 - 1
+            for k in 0..<8:
+                hit: bool = k.i64() < ds.count and ds.list[k].id == saved and ds.list[k].usable and at < 0 and saved > 0
+                at <- k.i64() if hit
+            at
+
+        def find_default(ds: Devices&) -> i64:
+            mutable at: i64 = 0 - 1
+            for k in 0..<8:
+                hit: bool = k.i64() < ds.count and ds.list[k].is_default and ds.list[k].usable and at < 0
+                at <- k.i64() if hit
+            at
+
+        def find_first(ds: Devices&) -> i64:
+            mutable at: i64 = 0 - 1
+            for k in 0..<8:
+                hit: bool = k.i64() < ds.count and ds.list[k].usable and at < 0
+                at <- k.i64() if hit
+            at
+
+        def resolve(ds: Devices&, saved: i64) -> Choice:
+            s: i64 = find_saved(ds, saved)
+            return Choice{source: Source.Saved, id: ds.list[s].id} if s >= 0
+            d: i64 = find_default(ds)
+            return Choice{source: Source.SystemDefault, id: ds.list[d].id} if d >= 0
+            f: i64 = find_first(ds)
+            return Choice{source: Source.FirstUsable, id: ds.list[f].id} if f >= 0
+            Choice{source: Source.NoneAvailable, id: 0}
+
+        # Display mode fallback: the largest mode not exceeding the saved
+        # size in either dimension, or the smallest mode when none fits.
+        # Modes are width/height pairs; returns the chosen index or -1.
+        def pick_mode(widths: i64[8], heights: i64[8], count: i64, want_w: i64, want_h: i64) -> i64:
+            mutable best: i64 = 0 - 1
+            mutable smallest: i64 = 0 - 1
+            for k in 0..<8:
+                live: bool = k.i64() < count and widths[k] > 0 and heights[k] > 0
+                fits: bool = live and widths[k] <= want_w and heights[k] <= want_h
+                bigger: bool = fits and (best < 0 or widths[k] * heights[k] > widths[best] * heights[best])
+                best <- k.i64() if bigger
+                smaller: bool = live and (smallest < 0 or widths[k] * heights[k] < widths[smallest] * heights[smallest])
+                smallest <- k.i64() if smaller
+            return best if best >= 0
+            smallest
