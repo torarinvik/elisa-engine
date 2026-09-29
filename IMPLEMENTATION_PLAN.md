@@ -391,6 +391,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Expose supported soft-body and fluid-interaction capabilities behind separate feature flags and budgets. Done: one representative deformable and floating-body scene demonstrates render synchronization, stability limits, and lifecycle correctness rather than only a settings struct.
 - [ ] **P12 · P2 · Large-world simulation strategy** — After: W05, P04, R11.
   Define double-precision simulation or origin rebasing based on actual library support; update rendering, audio, nav, and persistence conversions together. Done: travel far from origin preserves contact/picking precision and does not create a visible jump or corrupt saved coordinates.
+  Progress on 2026-09-29: `src/physics/origin.elisa` provides the whole-cell floating-origin rebase arithmetic and local/world conversions with world-position invariance across a rebase (see `docs/validation/physics-origin.md`). Applying shifts to physics, render, audio, nav and saves, the double-precision decision and a far-travel scene remain.
 
 ## C — animation and character behavior
 
