@@ -498,6 +498,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Promote the loopback probe into server/client connection lifecycle, reliable/unreliable channels, backpressure, timeouts, and structured errors. Done: two independent processes connect, exchange gameplay data, disconnect/reconnect, and shut down cleanly; P2P/relay support is claimed only when actually configured and tested.
 - [ ] **T02 · P2 · Versioned multiplayer protocol** — After: T01, W04.
   Extend the fixed demo frame into negotiated schemas, entity spawn/despawn, RPC/event limits, ownership, and authorization checks. Done: incompatible peers, malformed/oversized traffic, duplicate messages, and unauthorized state changes fail safely before world mutation.
+  Progress (2026-09-29): `NetProtocol` negotiation and message admission (version, size, duplicate, ownership, budget) with proved integer limits; see [`docs/validation/net-protocol.md`](docs/validation/net-protocol.md). Remaining: wire it to `Wire` and the session service, entity spawn/despawn messages and real authorization.
 - [ ] **T03 · P2 · Replication and interest management** — After: T02, W05.
   Implement subscriptions, relevance, baselines, deltas, acknowledgments, and per-client bandwidth budgets from Elisa world data. Done: separate clients receive only relevant entities; loss and late joining recover full state without stale references or unbounded queues.
 - [ ] **T04 · P2 · Prediction, reconciliation, lag handling** — After: T03, P04, W09.

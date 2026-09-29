@@ -559,7 +559,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    for asset_test in ["catalogue", "visual_shelf", "ui_semantics", "ai_brain"]:
+    for asset_test in ["catalogue", "visual_shelf", "ui_semantics", "ai_brain", "net_protocol"]:
         asset_test_binary: sview = str(root.joinpath(f"build/{asset_test}-test"))
         status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_test_binary, str(root.joinpath(f"test/{asset_test}.elisa"))])
         return status if status != 0
