@@ -434,6 +434,8 @@ module CourseSounds:
         # `start` reuses the freed slots. Returns false if a release failed.
         def stop(sounds: mutable Sounds&) -> bool:
             return true if not sounds.live
+            if sounds.decisions.count > 0:
+                _ = RuntimeDecisionSessionStore::save_chunk(sounds.sealed_chunks, &sounds.decisions)
             reset_scene(sounds)
             _ = catch AudioRuntime::stop(sounds.ambience):
                 ok: true
