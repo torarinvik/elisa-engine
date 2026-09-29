@@ -55,6 +55,11 @@ module CourseSounds:
         # reached. RATE matches the course's 48 kHz audio device.
         const RATE: u64 = 48000
         const AMBIENCE_PRIORITY: u32 = 1
+        # `reload_events` results, and how often `poll_reload` re-reads the asset.
+        const RELOADED: i32 = 0
+        const UNCHANGED: i32 = 1
+        const REJECTED: i32 = 2
+        const RELOAD_POLL_MS: u64 = 500
 
         affine struct Sounds:
             private:
@@ -85,6 +90,8 @@ module CourseSounds:
                 mix: mutable AudioMixer::Mix
                 mood: mutable i32
                 last_variant: mutable u32
+                asset_sum: mutable u64
+                asset_checked_ms: mutable u64
 
         def Sounds() -> Sounds:
             Sounds{
@@ -114,6 +121,8 @@ module CourseSounds:
                 mix: settled_mix(),
                 mood: MOOD_PLAY,
                 last_variant: 0,
+                asset_sum: 0,
+                asset_checked_ms: 0,
             }
 
         def live(sounds: Sounds&) -> bool:
@@ -248,6 +257,42 @@ module CourseSounds:
         # checked on a session without an audio route.
         def define_assets(sounds: mutable Sounds&) -> bool:
             define_events(sounds, "sounds/events.sfx")
+
+        # Hot reload: re-reads `path` and swaps in its events, moods, cues and
+        # triggers. A file that is unreadable or invalid leaves everything as
+        # it was. Events that survive keep their firing history and live
+        # voices, so a reload cannot double-fire a tick; voices of removed
+        # events are stopped. The same bytes reload nothing.
+        def reload_events(sounds: mutable Sounds&, path: cstr) -> i32:
+            source: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+            length: usize = catch AudioRuntime::read_asset(path, &source.bytes[0], SoundEventAssets::MAX_BYTES):
+                value: value
+                error failure: SoundEventAssets::MAX_BYTES + 1
+            return REJECTED if length > SoundEventAssets::MAX_BYTES
+            source.length <- length
+            sum: u64 = asset_sum(&source)
+            return UNCHANGED if sum == sounds.asset_sum
+            sounds.asset_sum <- sum
+            next: mutable AudioEvents::Board = AudioEvents::Board()
+            next_triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+            accepted: bool = catch SoundEventAssets::define_from(&next, &next_triggers, &source):
+                ok: true
+                error failure: false
+            return REJECTED if not accepted
+            AudioEvents::carry_over(&next, &sounds.board)
+            for slot in 0..<AudioEvents::MAX_INSTANCES |sounds, next|:
+                if AudioEvents::live(&sounds.board, slot) and not AudioEvents::live(&next, slot):
+                    stop_slot(sounds, slot)
+            sounds.board <- next
+            sounds.triggers <- next_triggers
+            sounds.tracked <- false
+            RELOADED
+
+        # Called every frame; checks the asset at most every RELOAD_POLL_MS.
+        def poll_reload(sounds: mutable Sounds&, now_ms: u64) -> i32:
+            return UNCHANGED if not sounds.live or now_ms < sounds.asset_checked_ms + RELOAD_POLL_MS
+            sounds.asset_checked_ms <- now_ms
+            reload_events(sounds, "sounds/events.sfx")
 
         def mood_ramp_ms(sounds: Sounds&, mood: i32) -> u64:
             AudioMoods::heard_ramp_ms(AudioMoods::get(&sounds.triggers.moods, mood_id(mood)))
@@ -438,9 +483,15 @@ module CourseSounds:
                 error failure: SoundEventAssets::MAX_BYTES + 1
             return false if length > SoundEventAssets::MAX_BYTES
             source.length <- length
+            sounds.asset_sum <- asset_sum(&source)
             catch SoundEventAssets::define_from(&sounds.board, &sounds.triggers, &source):
                 ok: true
                 error failure: false
+
+        # A checksum that never overflows (0 is reserved for "nothing read").
+        def asset_sum(source: SoundEventAssets::Source&) -> u64:
+            for at in 0..<source.length |sum: u64 = 1| -> sum:
+                sum <- (sum * 31 + source.bytes[at].u64()) % 1000000007
 
         def load_clips(sounds: mutable Sounds&, wind_path: cstr) -> void error[AudioRuntime::AudioError]:
             sounds.jump_a <- try AudioRuntime::decode_file("sounds/jump_a.wav")

@@ -132,4 +132,21 @@ def main() -> i32:
     AudioEvents::reset(&replayed)
     return 64 if fire(&replayed, 6, 33).variant != before or variant_at(7, 33) != before
     return 65 if seed_differences(7, 8) == 0 or seed_differences(7, 7) != 0
+
+    # Hot reload: survivors keep history and live voices; removed events drop.
+    old: mutable AudioEvents::Board = AudioEvents::Board()
+    return 70 if define_status(&old, definition(1, 0, 1, 2, 3)) != 0 or define_status(&old, definition(2, 1, 1, 1, 0)) != 0
+    started: AudioEvents::Trigger = fire(&old, 1, 10)
+    return 71 if outcome_code(started) != 0 or outcome_code(fire(&old, 2, 10)) != 0
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 72 if define_status(&fresh, definition(2, 1, 1, 1, 0)) != 0 or define_status(&fresh, definition(1, 0, 1, 2, 3)) != 0
+    AudioEvents::carry_over(&fresh, &old)
+    return 73 if AudioEvents::live_count(&fresh) != 2
+    return 74 if outcome_code(fire(&fresh, 1, 10)) != 2 or outcome_code(fire(&fresh, 1, 12)) != 3
+    return 75 if fire(&fresh, 1, 14).variant != 1
+    return 76 if outcome_code(fire(&fresh, 2, 11)) != 1 or AudioEvents::live_count(&fresh) != 2
+    dropped: mutable AudioEvents::Board = AudioEvents::Board()
+    return 77 if define_status(&dropped, definition(2, 1, 1, 1, 0)) != 0
+    AudioEvents::carry_over(&dropped, &old)
+    return 78 if AudioEvents::live_count(&dropped) != 1 or AudioEvents::live(&dropped, started.slot)
     0

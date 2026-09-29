@@ -86,9 +86,41 @@
             restarted: bool = CourseSounds::restart_music(&sounds) and CourseSounds::music_position(&sounds) < 22050
             CourseSounds::stop(&sounds) and faded and restarted and audio_idle(session)
 
+        # Hot reload without audio: a changed asset swaps its moods in, the
+        # same bytes reload nothing, and a rejected or missing file leaves the
+        # loaded asset alone.
+        def reload_test() -> bool:
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return false if not CourseSounds::define_assets(&sounds)
+            original: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED)
+            same: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::UNCHANGED
+            swapped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED
+            ducked: AudioMixer::Snapshot = CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED)
+            bad: bool = CourseSounds::reload_events(&sounds, "sounds/events_bad.sfx") == CourseSounds::REJECTED and CourseSounds::reload_events(&sounds, "sounds/missing.sfx") == CourseSounds::REJECTED
+            kept: bool = gains_near(CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED), ducked)
+            back: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::RELOADED and gains_near(CourseSounds::mood_snapshot(&sounds, CourseSounds::MOOD_PAUSED), original)
+            same and swapped and ducked.music < original.music and bad and kept and back
+
+        # Live audio: a reload keeps the firing history and live voices of
+        # surviving events, so a re-run tick still does not double-fire, and
+        # stops the voice of an event the new asset removes. Polling is
+        # throttled and reloads nothing while the file is unchanged.
+        def reload_live_test(session: mutable RuntimeServices::Session&) -> bool:
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+            fired: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::PLAYED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 5) == CourseSounds::PLAYED
+            reloaded: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED
+            kept: bool = CourseSounds::event_voices(&sounds) == 1 and CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::DUPLICATE
+            removed: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::FIRE_FAILED
+            restored: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::RELOADED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::PLAYED
+            throttled: bool = CourseSounds::poll_reload(&sounds, 100) == CourseSounds::UNCHANGED and CourseSounds::poll_reload(&sounds, 700) == CourseSounds::UNCHANGED
+            CourseSounds::stop(&sounds) and fired and reloaded and kept and removed and restored and throttled and audio_idle(session)
+
         def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32:
             return 166 if not moods_test()
             return 167 if not ramp_test()
             return 196 if not crossfade_test()
             return 197 if not music_stream_test(session)
+            return 198 if not reload_test()
+            return 199 if not reload_live_test(session)
             weighted_jump_test(session)
