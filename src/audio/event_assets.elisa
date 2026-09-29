@@ -3,57 +3,80 @@
 #   # comment
 #   seed 20260928
 #   event <id> <group> <limit> <variants> <cooldown> [weight ...]
+#   footstep <event> <stride_mm>
+#   impact <event> <threshold_mm> <full_mm>
 #
 # Fields are unsigned decimal numbers separated by spaces or tabs, and `#`
 # starts a comment anywhere. Up to four weights follow the cooldown; weights
-# left out are zero. `define_from` checks the whole asset against a scratch
-# board before it writes anything to the caller's board, so a malformed asset
+# left out are zero. A footstep or impact record binds a movement trigger to
+# an event defined on an earlier line; an asset has at most one of each.
+# `define_from` checks the whole asset against a scratch board before it
+# writes anything to the caller's board and triggers, so a malformed asset
 # never leaves a partial event set behind.
 include "./events.elisa"
 include "./event_asset_text.elisa"
+include "./triggers.elisa"
 
 extend SoundEventAssets:
     public:
-        def define_from(board: mutable AudioEvents::Board&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+        # The movement triggers an asset binds; event 0 means none.
+        struct Triggers:
+            footfalls: mutable AudioTriggers::Footfalls
+            impacts: mutable AudioTriggers::Impacts
+
+        def Triggers() -> Triggers:
+            Triggers{footfalls: AudioTriggers::Footfalls(), impacts: AudioTriggers::Impacts()}
+
+        # Replaces `triggers` with the asset's, or leaves them untouched when
+        # the asset is rejected.
+        def define_from(board: mutable AudioEvents::Board&, triggers: mutable Triggers&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
             raise SoundAssetError.Oversize if source.length > MAX_BYTES
             scratch: mutable AudioEvents::Board = AudioEvents::Board()
-            try define_lines(&scratch, source)
-            try define_lines(board, source)
+            scratch_triggers: mutable Triggers = Triggers()
+            try define_lines(&scratch, &scratch_triggers, source)
+            triggers.footfalls <- AudioTriggers::Footfalls()
+            triggers.impacts <- AudioTriggers::Impacts()
+            try define_lines(board, triggers, source)
 
         # The 1-based line of the first record `define_from` rejects, or 0.
         def failing_line(source: Source&) -> usize:
             return 1 if source.length > MAX_BYTES
             scratch: mutable AudioEvents::Board = AudioEvents::Board()
-            for line in 0..<MAX_BYTES |start: usize = 0, failed: usize = 0, scratch| -> failed:
+            scratch_triggers: mutable Triggers = Triggers()
+            for line in 0..<MAX_BYTES |start: usize = 0, failed: usize = 0, scratch, scratch_triggers| -> failed:
                 if failed == 0 and start < source.length:
                     stop: usize = line_end(source, start)
-                    rejected: bool = catch define_line(&scratch, source, start, stop):
+                    rejected: bool = catch define_line(&scratch, &scratch_triggers, source, start, stop):
                         ok: false
                         error failure: true
                     failed <- line + 1 if rejected
                     start <- stop + 1
 
     private:
-        def define_lines(board: mutable AudioEvents::Board&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+        def define_lines(board: mutable AudioEvents::Board&, triggers: mutable Triggers&, source: Source&) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
             requires source.length <= MAX_BYTES
-            for line in 0..<MAX_BYTES |start: usize = 0, board|:
+            for line in 0..<MAX_BYTES |start: usize = 0, board, triggers|:
                 if start < source.length:
                     stop: usize = line_end(source, start)
-                    try define_line(board, source, start, stop)
+                    try define_line(board, triggers, source, start, stop)
                     start <- stop + 1
 
         # One line: an empty or comment line defines nothing.
-        def define_line(board: mutable AudioEvents::Board&, source: Source&, start: usize, stop: usize) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+        def define_line(board: mutable AudioEvents::Board&, triggers: mutable Triggers&, source: Source&, start: usize, stop: usize) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             word_start: usize = skip_spaces(source, start, stop)
             return if word_start == stop or source.bytes[word_start] == HASH
             word_stop: usize = token_end(source, word_start, stop)
             seed: bool = is_seed(source, word_start, word_stop)
-            raise SoundAssetError.UnknownRecord if not seed and not is_event(source, word_start, word_stop)
+            footstep: bool = is_footstep(source, word_start, word_stop)
+            impact: bool = is_impact(source, word_start, word_stop)
+            raise SoundAssetError.UnknownRecord if not seed and not footstep and not impact and not is_event(source, word_start, word_stop)
             record: Fields = try read_fields(source, word_stop, stop)
             fields: u64[SoundEventAssets::MAX_FIELDS] = record.values
             count: usize = record.count
-            if seed:
+            if footstep or impact:
+                try define_trigger(board, triggers, impact, fields, count)
+            elif seed:
                 raise SoundAssetError.FieldCount if count != 1
                 AudioEvents::set_seed(board, fields[0])
             else:
@@ -70,3 +93,19 @@ extend SoundEventAssets:
                 })
                 if count > 5:
                     try AudioEvents::set_weights(board, id, fields[5].u32(), fields[6].u32(), fields[7].u32(), fields[8].u32())
+
+        # A footstep takes an event and a stride; an impact takes an event, the
+        # drop first heard and the drop heard at full gain.
+        def define_trigger(board: AudioEvents::Board&, triggers: mutable Triggers&, impact: bool, fields: u64[SoundEventAssets::MAX_FIELDS], count: usize) -> void error[SoundAssetError, AudioEvents::SoundEventError]:
+            raise SoundAssetError.FieldCount if count != (3 if impact else 2)
+            raise SoundAssetError.NumberTooLarge if fields[0] > MAX_U32
+            event: u32 = fields[0].u32()
+            raise AudioEvents::SoundEventError.UnknownEvent if event == 0 or not AudioEvents::defined(board, event)
+            if impact:
+                raise SoundAssetError.DuplicateTrigger if triggers.impacts.event != 0
+                raise SoundAssetError.InvalidTrigger if not AudioTriggers::impacts_valid(event, fields[1], fields[2])
+                triggers.impacts <- AudioTriggers::impacts(event, fields[1], fields[2])
+            else:
+                raise SoundAssetError.DuplicateTrigger if triggers.footfalls.event != 0
+                raise SoundAssetError.InvalidTrigger if not AudioTriggers::footfalls_valid(event, fields[1])
+                triggers.footfalls <- AudioTriggers::footfalls(event, fields[1])

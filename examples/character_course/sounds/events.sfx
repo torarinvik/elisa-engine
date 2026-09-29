@@ -1,5 +1,7 @@
 # Character course sound events, read by SoundEventAssets at start.
 # event <id> <group> <limit> <variants> <cooldown ticks> [weights]
+# footstep <event> <stride mm>
+# impact <event> <drop first heard mm> <drop at full gain mm>
 # Ids match the CourseSounds::EVENT_* constants.
 
 # Weighted jump variants replay the same pick on a replayed tick.
@@ -12,3 +14,10 @@ event 2 1 1 1 6        # land
 event 3 2 1 1 0        # win
 event 4 2 1 1 0        # fall
 event 5 2 1 1 0        # save
+# Footsteps keep one voice of their own, so a step never cuts off a jump.
+event 6 3 1 1 0        # footstep
+
+# A step sounds every 0.65 m walked; a landing is heard from a 0.3 m drop
+# and at full gain from 2.4 m.
+footstep 6 650
+impact 2 300 2400
