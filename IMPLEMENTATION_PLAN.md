@@ -519,6 +519,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `src/net/download.elisa` decides staging, ordered receive, resume offsets, size/checksum verification and version-guarded install so failure, cancellation or corruption keeps the last usable package (see `docs/validation/net-download.md`). The libcurl transport, cryptographic digest, timeouts and on-disk atomic install remain.
 - [ ] **T08 · P2 · Network operations and session UI** — After: T01, I07, Q02.
   Expose connection status, host/join workflow, errors, player roster, diagnostics, and configurable service discovery. Done: a packaged two-player sample is usable without editing source paths; hosted matchmaking/relay integrations remain explicit adapters with external prerequisites.
+  Progress on 2026-09-29: `src/net/session_ui.elisa` decides the host/join screen flow, explained failure reasons with bounded retry, and a bounded unique player roster with readiness (see `docs/validation/net-session-ui.md`). Widgets, service discovery, a diagnostics view and a packaged two-player sample remain.
 
 ## E — editor, gameplay authoring, and iteration
 
