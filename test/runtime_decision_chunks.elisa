@@ -1,0 +1,51 @@
+include "../src/runtime/decision_chunks.elisa"
+
+# 600 draws over ticks 0..599 across chunks; chunk k holds draws
+# 256k..256k+255.
+def main() -> i32:
+    mutable chunks: RuntimeDecisionLog::Log[3] = zeroed
+    mutable sealed: i64 = 0
+    mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    mutable single: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(42)
+    mutable same: bool = true
+    for t in 0..<600 |chunks, sealed, rec, single, same|:
+        if RuntimeDecisionChunks::full(&rec):
+            chunks[sealed.usize()] <- rec
+            sealed <- sealed + 1
+            rec <- RuntimeDecisionChunks::continue_after(&chunks[(sealed - 1).usize()])
+        a: i64 = RuntimeDecisionLog::draw(&rec, t.i64(), 3, 1000)
+        b: i64 = RuntimeDecisionLog::draw(&single, t.i64(), 3, 1000)
+        same <- same and a == b
+    chunks[sealed.usize()] <- rec
+    return 1 if sealed != 2 or chunks[2].count != 88
+    # Draws match one continuous generator, and no chunk overflowed.
+    return 2 if not same or chunks[0].overflow or chunks[1].overflow or chunks[2].overflow
+    # Replay across all three chunks consumes every draw.
+    mutable rep: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&chunks[0])
+    mutable chunk: i64 = 0
+    mutable ok: bool = true
+    for t in 0..<600 |rep, chunk, ok|:
+        if rep.cursor == rep.count and chunk < 2:
+            chunk <- chunk + 1
+            rep <- RuntimeDecisionChunks::advance(&rep, &chunks[chunk.usize()])
+        ok <- ok and RuntimeDecisionLog::draw(&rep, t.i64(), 3, 1000) >= 0
+    return 3 if not ok or chunk != 2 or not RuntimeDecisionLog::complete(&rep)
+    # Advancing before a chunk is consumed is refused.
+    early: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&chunks[0])
+    held: RuntimeDecisionLog::Log = RuntimeDecisionChunks::advance(&early, &chunks[1])
+    return 4 if held.entries[0].tick != 0 or held.count != 256
+    # A tampered second chunk diverges at its tick, and that divergence is
+    # not cleared by moving on.
+    mutable bad: RuntimeDecisionLog::Log = chunks[1]
+    bad.entries[10].site <- 9
+    mutable rep2: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&chunks[0])
+    mutable at: i64 = 0
+    for t in 0..<600 |rep2, at|:
+        if rep2.cursor == rep2.count and at == 0:
+            at <- 1
+            rep2 <- RuntimeDecisionChunks::advance(&rep2, &bad)
+        RuntimeDecisionLog::draw(&rep2, t.i64(), 3, 1000)
+    return 5 if rep2.diverged_at != 266
+    after: RuntimeDecisionLog::Log = RuntimeDecisionChunks::advance(&rep2, &chunks[2])
+    return 6 if after.diverged_at != 266
+    return 0
