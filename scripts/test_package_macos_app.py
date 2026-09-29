@@ -84,6 +84,7 @@ class PackageMacosAppTests(unittest.TestCase):
         executable = self.project / "build/game"
         executable.write_bytes(b"built payload")
         source_provenance = {
+            "build_identity": "0011223344556677",
             "project_root": str(self.project),
             "main_source": str(self.project / "src/main.elisa"),
             "repositories": {"game": {"root": str(self.project), "commit": "abc"}},
@@ -102,6 +103,7 @@ class PackageMacosAppTests(unittest.TestCase):
         record_path = resource_root / "build-provenance.json"
         self.assertTrue(record_path.is_file())
         record = json.loads(record_path.read_text(encoding="utf-8"))
+        self.assertEqual(record["build_identity"], "0011223344556677")
         self.assertEqual(record["repositories"]["game"]["commit"], "abc")
         self.assertEqual(record["repositories"]["game"]["root"], "<game>")
         self.assertEqual(record["tools"]["elisa_compiler"]["resolved"], "elisac")
@@ -127,6 +129,9 @@ class PackageMacosAppTests(unittest.TestCase):
             "shaders/elisa.shader-manifest.json"})
 
     def test_launcher_runs_from_relocated_resources(self) -> None:
+        executable = self.project / "build" / "game"
+        sidecar = executable.with_name(executable.name + ".provenance.json")
+        sidecar.write_text(json.dumps({"build_identity": "0011223344556677"}), encoding="utf-8")
         app = self.package(self.write_manifest({"package": {"resources": ["assets/audio"]},
             "application": {"title": "Game", "width": 1100, "height": 820}}))
         binary = app / "Contents" / "Resources" / "Game.bin"
@@ -135,19 +140,79 @@ class PackageMacosAppTests(unittest.TestCase):
             "echo \"$ELISA_ENGINE_SHADER_MANIFEST\"\n"
             "echo \"$ELISA_PROJECT_TITLE $ELISA_PROJECT_WIDTH $ELISA_PROJECT_HEIGHT\"\n",
             encoding="utf-8")
+        os.chmod(binary, 0o755)
+        environment = {**os.environ, "HOME": self.tempdir.name}
         result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
-            capture_output=True, text=True, check=True, cwd=self.tempdir.name)
+            capture_output=True, text=True, check=True, cwd=self.tempdir.name,
+            env=environment)
         resources = (app / "Contents" / "Resources").resolve()
-        self.assertEqual(result.stdout.splitlines(),
-            [str(resources), "found", str(resources / "shaders"),
-             str(resources / "shaders" / "elisa.shader-manifest.json"), "Game 1100 820"])
+        self.assertEqual(result.stdout, "")
+        log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
+        log_lines = log.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(all(expected in log_lines for expected in (
+            str(resources), "found", str(resources / "shaders"),
+            str(resources / "shaders" / "elisa.shader-manifest.json"), "Game 1100 820")))
+        self.assertIn("build_identity=0011223344556677", log_lines)
+        self.assertIn("process_exit_status=0", log_lines)
         executable_hash = hashlib.sha256((self.project / "build" / "game").read_bytes()).hexdigest()
-        self.assertEqual(result.stderr.splitlines(), [
-            f"Elisa package: Game 1.2.3 (org.elisa.game) executable-sha256={executable_hash} source=unknown"])
+        self.assertIn(f"executable-sha256={executable_hash}", result.stderr)
+        self.assertIn("build-identity=0011223344556677", result.stderr)
+        self.assertIn(f"launcher_log={log}", result.stderr)
+        self.assertIn("Elisa process exit status: 0", result.stderr)
+        prior_log = log.read_text(encoding="utf-8")
         override = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
             capture_output=True, text=True, check=True, cwd=self.tempdir.name,
-            env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
-        self.assertEqual(override.stdout.splitlines()[-1], "Game 640 820")
+            env={**environment, "ELISA_PROJECT_WIDTH": "640"})
+        current_log = log.read_text(encoding="utf-8")
+        previous_log = log.with_name("previous.log").read_text(encoding="utf-8")
+        self.assertIn("Game 640 820", current_log.splitlines())
+        self.assertIn("Game 1100 820", previous_log.splitlines())
+        self.assertEqual(previous_log, prior_log)
+
+    def test_launcher_preserves_nonzero_exit_and_records_failure_output(self) -> None:
+        binary = self.project / "build" / "game"
+        binary.write_text("#!/bin/sh\nprintf 'runtime failure\\n' >&2\nexit 37\n", encoding="utf-8")
+        os.chmod(binary, 0o755)
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        env = {**os.environ, "HOME": self.tempdir.name}
+        result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=False, cwd=self.tempdir.name, env=env)
+        log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
+        self.assertEqual(result.returncode, 37)
+        self.assertIn("runtime failure", log.read_text(encoding="utf-8"))
+        self.assertIn("process_exit_status=37", log.read_text(encoding="utf-8"))
+        self.assertIn("Elisa process exit status: 37", result.stderr)
+
+    def test_launcher_still_runs_when_log_directory_is_unavailable(self) -> None:
+        binary = self.project / "build" / "game"
+        binary.write_text("#!/bin/sh\nexit 37\n", encoding="utf-8")
+        os.chmod(binary, 0o755)
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        home_file = Path(self.tempdir.name) / "home-file"
+        home_file.write_text("not a directory", encoding="utf-8")
+        result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=False, cwd=self.tempdir.name,
+            env={**os.environ, "HOME": str(home_file)})
+        self.assertEqual(result.returncode, 37)
+        self.assertIn("Elisa process exit status: 37", result.stderr)
+
+    def test_launcher_records_signal_style_termination_status(self) -> None:
+        binary = self.project / "build" / "game"
+        binary.write_text("#!/bin/sh\nkill -TERM $$\n", encoding="utf-8")
+        os.chmod(binary, 0o755)
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        env = {**os.environ, "HOME": self.tempdir.name}
+        result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=False, cwd=self.tempdir.name, env=env)
+        log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
+        self.assertEqual(result.returncode, 143)
+        self.assertIn("process_exit_status=143", log.read_text(encoding="utf-8"))
+        self.assertIn("Elisa process exit status: 143", result.stderr)
+
+    def test_unsafe_bundle_identifier_is_rejected(self) -> None:
+        with self.assertRaises(packager.PackageError):
+            packager.package_app(self.project, self.project / "build/game", self.output,
+                "Game", "org.elisa;touch", "1.0")
 
     def test_external_shader_library_and_asset_local_cooks(self) -> None:
         shutil.rmtree(self.project / "build/cooked")
@@ -304,9 +369,12 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertIn("@rpath/libtiny.1.dylib", packager.linked_libraries(binary))
         self.assertIn("@rpath/libdeep.1.dylib", packager.linked_libraries(frameworks / "libtiny.1.dylib"))
         shutil.rmtree(prefix)
+        env = {**os.environ, "HOME": self.tempdir.name}
         result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
-            capture_output=True, text=True, check=True, cwd=self.tempdir.name)
-        self.assertEqual(result.stdout.strip(), "7")
+            capture_output=True, text=True, check=True, cwd=self.tempdir.name, env=env)
+        self.assertEqual(result.stdout, "")
+        log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
+        self.assertIn("7", log.read_text(encoding="utf-8").splitlines())
 
     def test_symlinked_resource_is_rejected(self) -> None:
         os.symlink(self.project / "assets" / "source", self.project / "assets" / "link")
