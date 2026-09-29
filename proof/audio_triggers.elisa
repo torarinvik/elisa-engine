@@ -1,0 +1,26 @@
+include "../src/audio/triggers.elisa"
+
+extend AudioTriggers:
+    # A landing is never louder than full gain, whatever the drop.
+    def prove_gain_bounded(threshold_mm: u64, full_mm: u64, drop: u64) -> u64:
+        requires threshold_mm < full_mm and full_mm <= MAX_DROP_MM
+        ensure result <= FULL_PERMILLE
+        gain(threshold_mm, full_mm, drop)
+
+    # Any peak above any landing gives a drop within the clamp.
+    def prove_drop_bounded(peak: i64, height: i64) -> u64:
+        requires peak > height
+        ensure result <= MAX_DROP_MM
+        drop_mm(peak, height)
+
+    # An authored stride is always usable as one.
+    def prove_stride_bounded(stride_mm: u64) -> u64:
+        ensure result >= MIN_STRIDE_MM and result <= MAX_STRIDE_MM
+        stride_or_minimum(stride_mm)
+
+    # A tick's travel stays below two strides, so one footfall at most and
+    # the carried remainder stays below a stride.
+    def prove_travel_bounded(travelled_mm: u64, moved_mm: u64, stride_mm: u64) -> u64:
+        ensure result < MAX_STRIDE_MM + MAX_STRIDE_MM
+        stride: u64 = stride_or_minimum(stride_mm)
+        travel_after(travelled_mm, moved_mm, stride)
