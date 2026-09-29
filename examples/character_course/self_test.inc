@@ -234,6 +234,7 @@
             REUSE: i32 = 98
             MUSIC_REWIND: i32 = 193
             VIRTUAL: i32 = 194
+            TRIGGERS: i32 = 195
             # 100 ms at 48 kHz: the realized ambience must land this close.
             DRIFT_FRAMES: u64 = 4800
             # 0.25 s at 48 kHz: more than one device period, well under 1.5 s.
@@ -279,6 +280,15 @@
             return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 5) != CourseSounds::COOLING
             return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_WIN, 5) != CourseSounds::PLAYED
             return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_FALL, 6) != CourseSounds::REPLACED
+            # The authored triggers: a step per 0.65 m walked, and a landing
+            # only after a drop of 0.3 m or more.
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 20) != 0
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.4, y: 0.0, z: 0.0}, 21) != 0
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 22) != CourseSounds::TRACKED_STEP
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 0.2, z: 0.0}, 23) != 0
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 24) != 0
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 2.0, z: 0.0}, 25) != 0
+            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 40) != CourseSounds::TRACKED_LANDING
             return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, true)
             before: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
             started_at: u64 = Application::uptime_nanos()

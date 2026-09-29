@@ -9,6 +9,10 @@ module CourseSounds:
         const EVENT_WIN: u32 = 3
         const EVENT_FALL: u32 = 4
         const EVENT_SAVE: u32 = 5
+        const EVENT_STEP: u32 = 6
+        # `track` results, as bits.
+        const TRACKED_STEP: u32 = 1
+        const TRACKED_LANDING: u32 = 2
 
         # `start` results. Inactive means the session has no audio route.
         const STARTED: i32 = 0
@@ -33,13 +37,13 @@ module CourseSounds:
         const SILENT: i32 = 4
         const FIRE_FAILED: i32 = 5
 
-        # Mix moods: pause ducks the music, the controls menu ducks it
-        # further. `mix` ramps between them over RAMP_MS on a millisecond
-        # clock that keeps running while the game is paused.
+        # Mix moods, authored as `mood` records in sounds/events.sfx: pause
+        # ducks the music and the controls menu ducks it further. `mix`
+        # ramps to each over its authored time on a millisecond clock that
+        # keeps running while the game is paused. The ids are the records'.
         const MOOD_PLAY: i32 = 0
         const MOOD_PAUSED: i32 = 1
         const MOOD_MENU: i32 = 2
-        const RAMP_MS: u64 = 250
         # The ambience keeps a virtual clock: when an event voice steals its
         # native voice, `update` brings it back at the frame it would have
         # reached. RATE matches the course's 48 kHz audio device.
@@ -55,6 +59,7 @@ module CourseSounds:
                 win: mutable AudioRuntime::ClipHandle
                 fall: mutable AudioRuntime::ClipHandle
                 save: mutable AudioRuntime::ClipHandle
+                footstep: mutable AudioRuntime::ClipHandle
                 wind: mutable AudioRuntime::ClipHandle
                 ambience: mutable AudioRuntime::VoiceHandle
                 ambience_sound: mutable usize
@@ -63,6 +68,11 @@ module CourseSounds:
                 music: mutable AudioRuntime::StreamHandle
                 voices: mutable AudioRuntime::VoiceHandles::Pool
                 board: mutable AudioEvents::Board
+                triggers: mutable SoundEventAssets::Triggers
+                # The last tracked position, for the ground distance walked.
+                last_x: mutable f32
+                last_z: mutable f32
+                tracked: mutable bool
                 mix: mutable AudioMixer::Mix
                 mood: mutable i32
                 last_variant: mutable u32
@@ -76,6 +86,7 @@ module CourseSounds:
                 win: AudioRuntime::empty_clip(),
                 fall: AudioRuntime::empty_clip(),
                 save: AudioRuntime::empty_clip(),
+                footstep: AudioRuntime::empty_clip(),
                 wind: AudioRuntime::empty_clip(),
                 ambience: AudioRuntime::empty_voice(),
                 ambience_sound: AudioVirtual::MAX_SOUNDS,
@@ -84,6 +95,10 @@ module CourseSounds:
                 music: AudioRuntime::empty_stream(),
                 voices: AudioRuntime::VoiceHandles::Pool(),
                 board: AudioEvents::Board(),
+                triggers: SoundEventAssets::Triggers(),
+                last_x: 0.0,
+                last_z: 0.0,
+                tracked: false,
                 mix: settled_mix(),
                 mood: MOOD_PLAY,
                 last_variant: 0,
@@ -154,6 +169,27 @@ module CourseSounds:
         # At most one sound per event per `tick`; the caller passes a counter
         # that only moves forward within one scene.
         def fire(sounds: mutable Sounds&, event: u32, tick: u64) -> i32:
+            fire_scaled(sounds, event, tick, AudioTriggers::FULL_PERMILLE)
+
+        # Once per frame after physics: walking on the ground sounds the
+        # asset's footstep event and a fall sounds its impact event, louder
+        # the further it dropped. Returns TRACKED_* bits for what was heard.
+        def track(sounds: mutable Sounds&, grounded: bool, position: Geometry::Vec3, tick: u64) -> u32:
+            return 0 if not sounds.live
+            dx: f32 = position.x - sounds.last_x
+            dz: f32 = position.z - sounds.last_z
+            walked: f32 = ElisaMath::sqrtf(dx * dx + dz * dz) if sounds.tracked else 0.0
+            sounds.last_x <- position.x
+            sounds.last_z <- position.z
+            sounds.tracked <- true
+            stepped: bool = AudioTriggers::step(&sounds.triggers.footfalls, grounded, AudioTriggers::millimetres(walked))
+            gain: u64 = AudioTriggers::land(&sounds.triggers.impacts, grounded, AudioTriggers::height_millimetres(position.y))
+            step_heard: bool = stepped and heard_outcome(fire(sounds, sounds.triggers.footfalls.event, tick))
+            landing_heard: bool = gain > 0 and heard_outcome(fire_scaled(sounds, sounds.triggers.impacts.event, tick, gain))
+            (TRACKED_STEP if step_heard else 0) + (TRACKED_LANDING if landing_heard else 0)
+
+        # `gain_permille` scales the event's volume; 1000 is full.
+        def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
             return SILENT if not sounds.live
             trigger: AudioEvents::Trigger = catch AudioEvents::trigger(&sounds.board, event, tick):
                 value: value
@@ -164,7 +200,9 @@ module CourseSounds:
             stop_slot(sounds, trigger.slot)
             # Saving happens from the pause menu too, so its chime uses the Ui bus.
             bus: AudioRuntime::Bus = AudioRuntime::Bus.Ui if event == CourseSounds::EVENT_SAVE else AudioRuntime::Bus.Effects
-            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(event_clip(sounds, event, trigger.variant), false, bus, 0.8, 2):
+            gain: u64 = gain_permille if gain_permille < AudioTriggers::FULL_PERMILLE else AudioTriggers::FULL_PERMILLE
+            volume: f32 = 0.8 * gain.f32() / 1000.0
+            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(event_clip(sounds, event, trigger.variant), false, bus, volume, 2):
                 value: value
                 error failure: AudioRuntime::empty_voice()
             return FIRE_FAILED if AudioRuntime::voice_is_empty(voice)
@@ -184,21 +222,26 @@ module CourseSounds:
             else:
                 MOOD_PLAY
 
-        def mood_snapshot(mood: i32) -> AudioMixer::Snapshot:
-            if mood == MOOD_MENU:
-                AudioMixer::snapshot(0.2, 0.3, 1.0)
-            elif mood == MOOD_PAUSED:
-                AudioMixer::snapshot(0.45, 0.3, 1.0)
-            else:
-                AudioMixer::snapshot(1.0, 1.0, 1.0)
+        # The authored gains for `mood`; full gain before the asset loads.
+        def mood_snapshot(sounds: Sounds&, mood: i32) -> AudioMixer::Snapshot:
+            value: AudioMoods::Mood = AudioMoods::get(&sounds.triggers.moods, mood_id(mood))
+            AudioMixer::snapshot(permille_gain(value.music_permille), permille_gain(value.effects_permille), permille_gain(value.ui_permille))
+
+        # Reads sounds/events.sfx without starting audio, so the mix can be
+        # checked on a session without an audio route.
+        def define_assets(sounds: mutable Sounds&) -> bool:
+            define_events(sounds, "sounds/events.sfx")
+
+        def mood_ramp_ms(sounds: Sounds&, mood: i32) -> u64:
+            AudioMoods::heard_ramp_ms(AudioMoods::get(&sounds.triggers.moods, mood_id(mood)))
 
         # Called every frame. A new mood starts a ramp from the gains heard
         # now; an unchanged mood keeps the running ramp. The heard gains go to
         # the buses when audio is live. Returns false if a bus rejected them.
         def mix(sounds: mutable Sounds&, mood: i32, now_ms: u64) -> bool:
             if mood != sounds.mood:
-                goal: AudioMixer::Snapshot = mood_snapshot(mood)
-                sounds.mix <- catch AudioMixer::transition(sounds.mix, goal, now_ms, RAMP_MS):
+                goal: AudioMixer::Snapshot = mood_snapshot(sounds, mood)
+                sounds.mix <- catch AudioMixer::transition(sounds.mix, goal, now_ms, mood_ramp_ms(sounds, mood)):
                     value: value
                     error failure: sounds.mix
                 sounds.mood <- mood
@@ -222,6 +265,8 @@ module CourseSounds:
             for slot in 0..<AudioEvents::MAX_INSTANCES |sounds|:
                 stop_slot(sounds, slot)
             AudioEvents::reset(&sounds.board)
+            AudioTriggers::reset(&sounds.triggers.footfalls, &sounds.triggers.impacts)
+            sounds.tracked <- false
 
         def event_voices(sounds: Sounds&) -> usize:
             AudioEvents::live_count(&sounds.board)
@@ -277,6 +322,7 @@ module CourseSounds:
             released <- release(sounds.win) and released
             released <- release(sounds.fall) and released
             released <- release(sounds.save) and released
+            released <- release(sounds.footstep) and released
             released <- release(sounds.wind) and released
             sounds.jump_a <- AudioRuntime::empty_clip()
             sounds.jump_b <- AudioRuntime::empty_clip()
@@ -284,16 +330,24 @@ module CourseSounds:
             sounds.win <- AudioRuntime::empty_clip()
             sounds.fall <- AudioRuntime::empty_clip()
             sounds.save <- AudioRuntime::empty_clip()
+            sounds.footstep <- AudioRuntime::empty_clip()
             sounds.wind <- AudioRuntime::empty_clip()
             sounds.board <- AudioEvents::Board()
+            sounds.triggers <- SoundEventAssets::Triggers()
             sounds.mix <- settled_mix()
             sounds.mood <- MOOD_PLAY
-            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            full: AudioMixer::Snapshot = mood_snapshot(sounds, MOOD_PLAY)
             apply_gains(full) and released
 
     private:
+        def mood_id(mood: i32) -> u64:
+            mood.u64() if mood >= 0 else AudioMoods::MAX_MOODS
+
+        def permille_gain(permille: u64) -> f32:
+            AudioMoods::heard_permille(permille).f32() / 1000.0
+
         def settled_mix() -> AudioMixer::Mix:
-            full: AudioMixer::Snapshot = mood_snapshot(MOOD_PLAY)
+            full: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
             AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}
 
         def apply_gains(gains: AudioMixer::Snapshot) -> bool:
@@ -310,13 +364,14 @@ module CourseSounds:
         # malformed file fails the start instead of falling back to code.
         def define_events(sounds: mutable Sounds&, path: cstr) -> bool:
             sounds.board <- AudioEvents::Board()
+            sounds.triggers <- SoundEventAssets::Triggers()
             source: mutable SoundEventAssets::Source = SoundEventAssets::Source()
             length: usize = catch AudioRuntime::read_asset(path, &source.bytes[0], SoundEventAssets::MAX_BYTES):
                 value: value
                 error failure: SoundEventAssets::MAX_BYTES + 1
             return false if length > SoundEventAssets::MAX_BYTES
             source.length <- length
-            catch SoundEventAssets::define_from(&sounds.board, &source):
+            catch SoundEventAssets::define_from(&sounds.board, &sounds.triggers, &source):
                 ok: true
                 error failure: false
 
@@ -327,6 +382,7 @@ module CourseSounds:
             sounds.win <- try AudioRuntime::decode_file("sounds/win.wav")
             sounds.fall <- try AudioRuntime::decode_file("sounds/fall.wav")
             sounds.save <- try AudioRuntime::decode_file("sounds/save.wav")
+            sounds.footstep <- try AudioRuntime::decode_file("sounds/footstep.wav")
             sounds.wind <- try AudioRuntime::decode_file(wind_path)
 
         def now_ms() -> u64:
@@ -363,10 +419,15 @@ module CourseSounds:
                 sounds.win
             elif event == CourseSounds::EVENT_FALL:
                 sounds.fall
+            elif event == CourseSounds::EVENT_STEP:
+                sounds.footstep
             else:
                 sounds.save
 
         # A one-shot voice may already have ended; its stale handle is fine.
+        def heard_outcome(outcome: i32) -> bool:
+            outcome == PLAYED or outcome == REPLACED
+
         def stop_slot(sounds: mutable Sounds&, slot: usize) -> void:
             voice: AudioRuntime::VoiceHandle = catch AudioRuntime::VoiceHandles::get(&sounds.voices, slot):
                 value: value

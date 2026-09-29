@@ -1,0 +1,21 @@
+include "../src/audio/moods.elisa"
+
+extend AudioMoods:
+    # An asset's mood record passes `valid` before it reaches `mood`
+    # (SoundEventAssets::define_mood), so the constructor's requires hold
+    # and the authored id names a slot.
+    def prove_guarded_mood(id: u64, music: u64, effects: u64, ui: u64, ramp_ms: u64) -> u64:
+        ensure result < MAX_MOODS
+        return 0 if not valid(id, music, effects, ui, ramp_ms)
+        mood(music, effects, ui, ramp_ms)
+        id
+
+    # Whatever a hand-built mood holds, the mixer hears a unit gain and a
+    # ramp it accepts.
+    def prove_heard_gain(permille: u64) -> u64:
+        ensure result <= FULL_PERMILLE
+        heard_permille(permille)
+
+    def prove_heard_ramp(value: Mood) -> u64:
+        ensure result <= MAX_RAMP_MS
+        heard_ramp_ms(value)

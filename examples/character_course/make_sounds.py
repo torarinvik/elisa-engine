@@ -101,6 +101,8 @@ def sounds() -> dict[str, list[float]]:
         "win.wav": tone([523.25], 0.12, 0.4) + tone([659.25], 0.12, 0.4) + tone([783.99], 0.4, 0.4, release=0.3),
         "fall.wav": tone([392.0], 0.5, 0.4, release=0.2, glide=-0.5),
         "save.wav": tone([880.0, 1318.5], 0.16, 0.35, release=0.1),
+        "footstep.wav": [a + b for a, b in zip(tone([140.0], 0.06, 0.25, release=0.04),
+            noise(0.06, 0.25, 0.5, 13))],
     }
 
 

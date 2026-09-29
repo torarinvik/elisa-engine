@@ -48,10 +48,17 @@ def comment(source: mutable SoundEventAssets::Source&) -> void:
     put(source, 120)
 
 # 0 ok, 1 Syntax, 2 UnknownRecord, 3 FieldCount, 4 NumberTooLarge,
-# 5 Oversize, 6 InvalidDefinition, 7 DuplicateEvent, 8 Capacity, 9 other.
-def load_status(board: mutable AudioEvents::Board&, source: SoundEventAssets::Source&) -> i32:
-    catch SoundEventAssets::define_from(board, source):
+# 5 Oversize, 6 InvalidDefinition, 7 DuplicateEvent, 8 Capacity,
+# 10 InvalidTrigger, 11 DuplicateTrigger, 12 UnknownEvent, 13 InvalidMood,
+# 14 DuplicateMood, 9 other.
+def load_triggers(board: mutable AudioEvents::Board&, triggers: mutable SoundEventAssets::Triggers&, source: SoundEventAssets::Source&) -> i32:
+    catch SoundEventAssets::define_from(board, triggers, source):
         ok: 0
+        SoundEventAssets::SoundAssetError.InvalidTrigger: 10
+        SoundEventAssets::SoundAssetError.DuplicateTrigger: 11
+        AudioEvents::SoundEventError.UnknownEvent: 12
+        SoundEventAssets::SoundAssetError.InvalidMood: 13
+        SoundEventAssets::SoundAssetError.DuplicateMood: 14
         SoundEventAssets::SoundAssetError.Syntax: 1
         SoundEventAssets::SoundAssetError.UnknownRecord: 2
         SoundEventAssets::SoundAssetError.FieldCount: 3
@@ -61,6 +68,10 @@ def load_status(board: mutable AudioEvents::Board&, source: SoundEventAssets::So
         AudioEvents::SoundEventError.DuplicateEvent: 7
         AudioEvents::SoundEventError.Capacity: 8
         error failure: 9
+
+def load_status(board: mutable AudioEvents::Board&, source: SoundEventAssets::Source&) -> i32:
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    load_triggers(board, &triggers, source)
 
 # 0 fired (Play or Replace), 1 held back (Duplicate or Cooling), 2 error.
 def outcome(board: mutable AudioEvents::Board&, id: u32, tick: u64) -> i32:
@@ -179,9 +190,158 @@ def atomic_test() -> i32:
     return 32 if outcome(&board, 9, 10) != 2 or outcome(&board, 1, 10) != 0
     0
 
+# `footstep` or `impact` in ASCII.
+def trigger_word(source: mutable SoundEventAssets::Source&, impact: bool) -> void:
+    if impact:
+        put(source, 105)
+        put(source, 109)
+        put(source, 112)
+        put(source, 97)
+        put(source, 99)
+        put(source, 116)
+    else:
+        put(source, 102)
+        put(source, 111)
+        put(source, 111)
+        put(source, 116)
+        put(source, 115)
+        put(source, 116)
+        put(source, 101)
+        put(source, 112)
+
+def footstep(source: mutable SoundEventAssets::Source&, event_id: u64, stride: u64) -> void:
+    trigger_word(source, false)
+    field(source, event_id)
+    field(source, stride)
+    newline(source)
+
+def impact(source: mutable SoundEventAssets::Source&, event_id: u64, threshold: u64, full: u64) -> void:
+    trigger_word(source, true)
+    field(source, event_id)
+    field(source, threshold)
+    field(source, full)
+    newline(source)
+
+def trigger_status(source: SoundEventAssets::Source&) -> i32:
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    load_triggers(&board, &triggers, source)
+
+# Footstep and impact records bind movement triggers to defined events.
+def trigger_test() -> i32:
+    bound: mutable SoundEventAssets::Source = course_asset()
+    footstep(&bound, 1, 650)
+    impact(&bound, 2, 300, 2400)
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    return 40 if load_triggers(&board, &triggers, &bound) != 0
+    return 41 if triggers.footfalls.event != 1 or triggers.footfalls.stride_mm != 650
+    return 42 if triggers.impacts.event != 2 or triggers.impacts.threshold_mm != 300 or triggers.impacts.full_mm != 2400
+    return 43 if SoundEventAssets::failing_line(&bound) != 0
+
+    early: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    footstep(&early, 1, 650)
+    event(&early, 1, 0, 1, 1, 0)
+    return 44 if trigger_status(&early) != 12 or SoundEventAssets::failing_line(&early) != 1
+
+    short: mutable SoundEventAssets::Source = course_asset()
+    footstep(&short, 1, 99)
+    return 45 if trigger_status(&short) != 10
+
+    flat: mutable SoundEventAssets::Source = course_asset()
+    impact(&flat, 2, 300, 300)
+    return 46 if trigger_status(&flat) != 10
+
+    twice: mutable SoundEventAssets::Source = course_asset()
+    impact(&twice, 2, 300, 2400)
+    impact(&twice, 1, 100, 200)
+    return 47 if trigger_status(&twice) != 11 or SoundEventAssets::failing_line(&twice) != 7
+
+    missing: mutable SoundEventAssets::Source = course_asset()
+    trigger_word(&missing, true)
+    field(&missing, 2)
+    field(&missing, 300)
+    return 48 if trigger_status(&missing) != 3
+
+    # A rejected asset leaves the caller's triggers as they were.
+    broken: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+    footstep(&broken, 1, 650)
+    return 49 if load_triggers(&board, &triggers, &broken) != 12
+    return 50 if triggers.footfalls.event != 1 or triggers.impacts.event != 2
+
+    # A new asset without trigger records turns both triggers off.
+    plain: SoundEventAssets::Source = course_asset()
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 51 if load_triggers(&fresh, &triggers, &plain) != 0
+    return 52 if triggers.footfalls.event != 0 or triggers.impacts.event != 0
+    0
+
+# `mood <id> <music> <effects> <ui> <ramp>` without the newline.
+def mood_fields(source: mutable SoundEventAssets::Source&, id: u64, music: u64, effects: u64, ui: u64) -> void:
+    put(source, 109)
+    put(source, 111)
+    put(source, 111)
+    put(source, 100)
+    field(source, id)
+    field(source, music)
+    field(source, effects)
+    field(source, ui)
+
+def mood(source: mutable SoundEventAssets::Source&, id: u64, music: u64, effects: u64, ui: u64, ramp: u64) -> void:
+    mood_fields(source, id, music, effects, ui)
+    field(source, ramp)
+    newline(source)
+
+def moods_near(moods: AudioMoods::Moods&, id: u64, music: u64, ramp: u64) -> bool:
+    value: AudioMoods::Mood = AudioMoods::get(moods, id)
+    value.defined and value.music_permille == music and value.effects_permille == 300 and value.ui_permille == 1000 and value.ramp_ms == ramp
+
+# Mood records set mix moods by id; a mood left out is full gain.
+def mood_test() -> i32:
+    bound: mutable SoundEventAssets::Source = course_asset()
+    mood(&bound, 1, 450, 300, 1000, 250)
+    mood(&bound, 2, 200, 300, 1000, 400)
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    return 60 if load_triggers(&board, &triggers, &bound) != 0 or SoundEventAssets::failing_line(&bound) != 0
+    return 61 if not moods_near(&triggers.moods, 1, 450, 250) or not moods_near(&triggers.moods, 2, 200, 400)
+    unset: AudioMoods::Mood = AudioMoods::get(&triggers.moods, 0)
+    past: AudioMoods::Mood = AudioMoods::get(&triggers.moods, 9)
+    return 62 if unset.defined or unset.music_permille != 1000 or unset.ramp_ms != AudioMoods::DEFAULT_RAMP_MS or past.defined
+
+    beyond: mutable SoundEventAssets::Source = course_asset()
+    mood(&beyond, 4, 450, 300, 1000, 250)
+    return 63 if trigger_status(&beyond) != 13
+    loud: mutable SoundEventAssets::Source = course_asset()
+    mood(&loud, 1, 1001, 300, 1000, 250)
+    return 64 if trigger_status(&loud) != 13
+    slow: mutable SoundEventAssets::Source = course_asset()
+    mood(&slow, 1, 450, 300, 1000, 3601)
+    return 65 if trigger_status(&slow) != 13
+
+    twice: mutable SoundEventAssets::Source = course_asset()
+    mood(&twice, 1, 450, 300, 1000, 250)
+    mood(&twice, 1, 200, 300, 1000, 250)
+    return 66 if trigger_status(&twice) != 14 or SoundEventAssets::failing_line(&twice) != 7
+
+    short: mutable SoundEventAssets::Source = course_asset()
+    mood_fields(&short, 1, 450, 300, 1000)
+    return 67 if trigger_status(&short) != 3
+
+    # A rejected asset keeps the moods; a plain one clears them.
+    return 68 if load_triggers(&board, &triggers, &twice) != 14 or not moods_near(&triggers.moods, 2, 200, 400)
+    plain: SoundEventAssets::Source = course_asset()
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 69 if load_triggers(&fresh, &triggers, &plain) != 0 or AudioMoods::defined(&triggers.moods, 1) or AudioMoods::defined(&triggers.moods, 2)
+    0
+
 def main() -> i32:
     accepted: i32 = accepted_test()
     return accepted if accepted != 0
     rejected: i32 = rejected_test()
     return rejected if rejected != 0
-    atomic_test()
+    atomic: i32 = atomic_test()
+    return atomic if atomic != 0
+    triggered: i32 = trigger_test()
+    return triggered if triggered != 0
+    mood_test()

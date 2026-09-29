@@ -24,3 +24,18 @@ extend AudioTriggers:
         ensure result < MAX_STRIDE_MM + MAX_STRIDE_MM
         stride: u64 = stride_or_minimum(stride_mm)
         travel_after(travelled_mm, moved_mm, stride)
+
+    # An asset's trigger records pass these guards before they reach the
+    # constructors (SoundEventAssets::define_trigger), so a guarded call
+    # always meets the constructors' requires.
+    def prove_guarded_footfalls(event: u32, stride_mm: u64) -> u64:
+        ensure result <= MAX_STRIDE_MM
+        return 0 if not footfalls_valid(event, stride_mm)
+        footfalls(event, stride_mm)
+        stride_mm
+
+    def prove_guarded_impacts(event: u32, threshold_mm: u64, full_mm: u64) -> u64:
+        ensure result <= MAX_DROP_MM
+        return 0 if not impacts_valid(event, threshold_mm, full_mm)
+        impacts(event, threshold_mm, full_mm)
+        full_mm

@@ -13,6 +13,10 @@ module SoundEventAssets:
             UnknownRecord
             FieldCount
             NumberTooLarge
+            InvalidTrigger
+            DuplicateTrigger
+            InvalidMood
+            DuplicateMood
 
         struct Source:
             bytes: mutable u8[SoundEventAssets::MAX_BYTES]
@@ -126,3 +130,16 @@ module SoundEventAssets:
         def is_event(source: Source&, start: usize, stop: usize) -> bool:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             stop - start == 5 and source.bytes[start] == 101 and source.bytes[start + 1] == 118 and source.bytes[start + 2] == 101 and source.bytes[start + 3] == 110 and source.bytes[start + 4] == 116
+
+        # "footstep" and "impact" in ASCII.
+        def is_footstep(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 8 and source.bytes[start] == 102 and source.bytes[start + 1] == 111 and source.bytes[start + 2] == 111 and source.bytes[start + 3] == 116 and source.bytes[start + 4] == 115 and source.bytes[start + 5] == 116 and source.bytes[start + 6] == 101 and source.bytes[start + 7] == 112
+
+        def is_impact(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 6 and source.bytes[start] == 105 and source.bytes[start + 1] == 109 and source.bytes[start + 2] == 112 and source.bytes[start + 3] == 97 and source.bytes[start + 4] == 99 and source.bytes[start + 5] == 116
+
+        def is_mood(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 4 and source.bytes[start] == 109 and source.bytes[start + 1] == 111 and source.bytes[start + 2] == 111 and source.bytes[start + 3] == 100

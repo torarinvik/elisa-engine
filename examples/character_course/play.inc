@@ -419,8 +419,10 @@
                                     beacon_message(CourseBeacons::lit_count(beacons)))
                             ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
                             now_grounded: bool = ground.state == PhysicsRuntime::CharacterGroundState.OnGround
+                            # Footsteps and landings come from the authored triggers; the
+                            # landing caption shows for every touchdown, heard or not.
+                            _ = CourseSounds::track(&sounds, now_grounded, pose.position, sound_tick)
                             if now_grounded and not grounded:
-                                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, sound_tick)
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_LAND, frame.elapsed_nanos)
                             grounded <- now_grounded
                             if state.phase == Phase.Won or state.phase == Phase.Failed:

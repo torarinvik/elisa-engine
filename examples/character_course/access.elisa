@@ -122,6 +122,8 @@ module CourseAccess:
                 "[Sound: victory fanfare]"
             elif event == CourseSounds::EVENT_FALL:
                 "[Sound: falling]"
+            elif event == CourseSounds::EVENT_STEP:
+                "[Sound: footstep]"
             else:
                 "[Sound: chime]"
 

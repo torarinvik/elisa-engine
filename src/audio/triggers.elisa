@@ -34,10 +34,14 @@ module AudioTriggers:
         def Impacts() -> Impacts:
             Impacts{event: 0, threshold_mm: 0, full_mm: 1, peak_mm: 0, airborne: false}
 
+        # The explicit ensures let a caller's guard discharge the
+        # constructors' requires.
         def footfalls_valid(event: u32, stride_mm: u64) -> bool:
+            ensure not result or (stride_mm >= MIN_STRIDE_MM and stride_mm <= MAX_STRIDE_MM)
             event != 0 and stride_mm >= MIN_STRIDE_MM and stride_mm <= MAX_STRIDE_MM
 
         def impacts_valid(event: u32, threshold_mm: u64, full_mm: u64) -> bool:
+            ensure not result or (threshold_mm < full_mm and full_mm <= MAX_DROP_MM)
             event != 0 and threshold_mm < full_mm and full_mm <= MAX_DROP_MM
 
         def footfalls(event: u32, stride_mm: u64) -> Footfalls:

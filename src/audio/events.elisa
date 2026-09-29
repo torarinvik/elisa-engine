@@ -131,6 +131,9 @@ module AudioEvents:
             raise SoundEventError.UnknownInstance if slot >= MAX_INSTANCES or not board.instance_live[slot]
             board.instance_live[slot] <- false
 
+        def defined(board: Board&, id: u32) -> bool:
+            event_index(board, id) < board.definition_count
+
         def live(board: Board&, slot: usize) -> bool:
             slot < MAX_INSTANCES and board.instance_live[slot]
 
