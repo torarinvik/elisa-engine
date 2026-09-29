@@ -1,0 +1,79 @@
+# A whole session's chunked decision log on disk. Each sealed chunk (see
+# RuntimeDecisionChunks) is saved through RuntimeDecisionLogStore under its
+# own key, and a manifest records how many chunks the session wrote, so a
+# replay tool reloads exactly the chunks that exist, in order. A missing or
+# corrupt chunk fails the whole load rather than replaying a partial session.
+include "./decision_log_store.elisa"
+include "./decision_chunks.elisa"
+
+module RuntimeDecisionSessionStore:
+    public:
+        const MAX_CHUNKS: i64 = 8
+        const MANIFEST_VERSION: i64 = 1
+
+        struct Manifest:
+            stored: RuntimeDecisionLogStore::Stored
+            chunks: i64
+
+        def chunk_key(index: i64) -> cstr:
+            return "decisions-0" if index == 0
+            return "decisions-1" if index == 1
+            return "decisions-2" if index == 2
+            return "decisions-3" if index == 3
+            return "decisions-4" if index == 4
+            return "decisions-5" if index == 5
+            return "decisions-6" if index == 6
+            "decisions-7"
+
+        # Saves chunk `index` and then a manifest naming index + 1 chunks, so
+        # the manifest never points past a chunk that was not written.
+        def save_chunk(index: i64, log: RuntimeDecisionLog::Log&) -> RuntimeDecisionLogStore::Stored:
+            return RuntimeDecisionLogStore::Stored.StorageFailure if index < 0 or index >= MAX_CHUNKS
+            saved: RuntimeDecisionLogStore::Stored = RuntimeDecisionLogStore::save(chunk_key(index), log)
+            return saved if saved != RuntimeDecisionLogStore::Stored.Ok
+            mutable bytes: u8[8] = zeroed
+            bytes[0] <- (index + 1).u8()
+            status: i32 = catch UserData::write_payload("decisions-manifest", MANIFEST_VERSION, &bytes[0], 1):
+                ok: 0
+                error failure: 1
+            return RuntimeDecisionLogStore::Stored.StorageFailure if status != 0
+            RuntimeDecisionLogStore::Stored.Ok
+
+        def manifest() -> Manifest:
+            mutable bytes: u8[8] = zeroed
+            mutable version: i64 = 0
+            mutable length: usize = 0
+            status: i32 = catch UserData::read_payload("decisions-manifest", &version, &bytes[0], 8, &length):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                UserData::UserDataError.WrongVersion: 2
+                error failure: 3
+            return Manifest{stored: RuntimeDecisionLogStore::Stored.NotFound, chunks: 0} if status == 1
+            return Manifest{stored: RuntimeDecisionLogStore::Stored.WrongVersion, chunks: 0} if status == 2 or (status == 0 and version != MANIFEST_VERSION)
+            return Manifest{stored: RuntimeDecisionLogStore::Stored.StorageFailure, chunks: 0} if status != 0
+            chunks: i64 = bytes[0].i64()
+            return Manifest{stored: RuntimeDecisionLogStore::Stored.Corrupt, chunks: 0} if length != 1 or chunks < 1 or chunks > MAX_CHUNKS
+            Manifest{stored: RuntimeDecisionLogStore::Stored.Ok, chunks: chunks}
+
+        # Replayer for chunk `index` of the saved session; anything but Ok
+        # (including an index past the manifest) must stop the replay.
+        def load_chunk(index: i64) -> RuntimeDecisionLogStore::Read:
+            m: Manifest = manifest()
+            return RuntimeDecisionLogStore::failed(m.stored) if m.stored != RuntimeDecisionLogStore::Stored.Ok
+            return RuntimeDecisionLogStore::failed(RuntimeDecisionLogStore::Stored.NotFound) if index < 0 or index >= m.chunks
+            RuntimeDecisionLogStore::load(chunk_key(index))
+
+        # Removes every chunk the manifest names, then the manifest.
+        def clear() -> bool:
+            m: Manifest = manifest()
+            mutable ok: bool = true
+            for i in 0..<8 |ok|:
+                if m.stored == RuntimeDecisionLogStore::Stored.Ok and i.i64() < m.chunks:
+                    removed: bool = catch UserData::remove_payload(chunk_key(i.i64())):
+                        ok: true
+                        error failure: false
+                    ok <- ok and removed
+            gone: bool = catch UserData::remove_payload("decisions-manifest"):
+                ok: true
+                error failure: false
+            ok and gone

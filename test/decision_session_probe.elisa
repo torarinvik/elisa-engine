@@ -1,0 +1,41 @@
+# A 600-draw session spans three decision chunks; every sealed chunk and the
+# live one are saved, reloaded through the manifest and replayed in order.
+include "../src/runtime/decision_session_store.elisa"
+
+module DecisionSessionProbe:
+    public:
+        def run() -> i32:
+            mutable log: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(7)
+            mutable chunk: i64 = 0
+            mutable drawn: i64 = 0
+            mutable saves: i64 = 0
+            for t in 0..<600 |log, chunk, drawn, saves|:
+                if RuntimeDecisionChunks::full(&log):
+                    saves <- saves + 1 if RuntimeDecisionSessionStore::save_chunk(chunk, &log) == RuntimeDecisionLogStore::Stored.Ok else saves
+                    log <- RuntimeDecisionChunks::continue_after(&log)
+                    chunk <- chunk + 1
+                drawn <- drawn * 7 % 1000000007 + RuntimeDecisionLog::draw(&log, t.i64(), 4, 1000)
+            saves <- saves + 1 if RuntimeDecisionSessionStore::save_chunk(chunk, &log) == RuntimeDecisionLogStore::Stored.Ok else saves
+            return 60 if saves != 3
+            m: RuntimeDecisionSessionStore::Manifest = RuntimeDecisionSessionStore::manifest()
+            return 61 if m.stored != RuntimeDecisionLogStore::Stored.Ok or m.chunks != 3
+            return 62 if RuntimeDecisionSessionStore::load_chunk(3).stored != RuntimeDecisionLogStore::Stored.NotFound
+            first: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(0)
+            return 63 if first.stored != RuntimeDecisionLogStore::Stored.Ok
+            mutable replay: RuntimeDecisionLog::Log = first.loaded.log
+            mutable at: i64 = 0
+            mutable redrawn: i64 = 0
+            mutable missing: bool = false
+            for t in 0..<600 |replay, at, redrawn, missing|:
+                if RuntimeDecisionChunks::finished(&replay) and replay.count == RuntimeDecisionLog::CAP:
+                    next: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(at + 1)
+                    missing <- missing or next.stored != RuntimeDecisionLogStore::Stored.Ok
+                    replay <- RuntimeDecisionChunks::advance(&replay, &next.loaded.log)
+                    at <- at + 1
+                redrawn <- redrawn * 7 % 1000000007 + RuntimeDecisionLog::draw(&replay, t.i64(), 4, 1000)
+            return 64 if missing or at != 2
+            return 65 if redrawn != drawn or not RuntimeDecisionLog::complete(&replay)
+            return 66 if not RuntimeDecisionSessionStore::clear()
+            return 67 if RuntimeDecisionSessionStore::manifest().stored != RuntimeDecisionLogStore::Stored.NotFound
+            return 68 if RuntimeDecisionSessionStore::load_chunk(0).stored != RuntimeDecisionLogStore::Stored.NotFound
+            0
