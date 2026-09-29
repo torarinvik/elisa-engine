@@ -99,6 +99,29 @@
                 settings <- CourseAccess::adjust(settings, CourseAccess::ROW_TEXT_SIZE, 1)
             fits
 
+        def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:
+            _ = try row_semantics(keymap, settings, CourseControls::MENU_ROWS, 0)
+            true
+
+        def semantics_refused(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool:
+            catch semantics_describes(keymap, settings):
+                value: false
+                error failure: true
+
+        def semantics_test(settings: CourseAccess::Settings&) -> bool:
+            keymap: CourseControls::Keymap = CourseControls::defaults()
+            first: UiSemantics::Control = catch row_semantics(&keymap, settings, 0, 7):
+                value: value
+                error failure: return false
+            size: UiSemantics::Control = catch row_semantics(&keymap, settings, CourseControls::SLOT_COUNT, 6):
+                value: value
+                error failure: return false
+            toggle: UiSemantics::Control = catch row_semantics(&keymap, settings, CourseControls::MENU_ROWS - 1, CourseControls::MENU_ROWS - 1):
+                value: value
+                error failure: return false
+            outside: bool = semantics_refused(&keymap, settings)
+            first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::MENU_ROWS and outside and size.value == "< 100% >"
+
         def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError]:
             return 153 if not adjust_test()
             large: CourseAccess::Settings = handoff_access()
@@ -114,6 +137,7 @@
             return 158 if not captions_test()
             fits: bool = try layout_fits(session)
             return 159 if not fits
+            return 201 if not semantics_test(&plain_settings)
             # The live HUD takes every setting and releases every handle.
             keymap: CourseControls::Keymap = CourseControls::defaults()
             legend: Legend = try create_legend(&keymap, &large)

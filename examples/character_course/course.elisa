@@ -4,6 +4,7 @@ include "./controls.elisa"
 include "./sounds.elisa"
 include "./beacons.elisa"
 include "./access.elisa"
+include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
 

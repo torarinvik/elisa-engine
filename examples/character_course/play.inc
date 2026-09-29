@@ -56,6 +56,14 @@
         def row_key(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&, row: i64) -> cstr:
             CourseControls::key_name(CourseControls::slot_code(keymap, row)) if row < CourseControls::SLOT_COUNT else CourseAccess::row_value(settings, row - CourseControls::SLOT_COUNT)
 
+        # Every menu row as a semantic control: six key bindings, then the
+        # text-size slider and the two toggles.
+        def row_semantics(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&, row: i64, selected: i64) -> UiSemantics::Control error[UiSemantics::SemanticsError]:
+            role: mutable UiSemantics::Role = UiSemantics::Role.KeyBinding
+            if row >= CourseControls::SLOT_COUNT:
+                role <- UiSemantics::Role.Slider if row - CourseControls::SLOT_COUNT == CourseAccess::ROW_TEXT_SIZE else UiSemantics::Role.Toggle
+            try UiSemantics::Control(role, row_label(row), row_key(keymap, settings, row), row, CourseControls::MENU_ROWS, row == selected)
+
         def legend_row_y(settings: CourseAccess::Settings&, row: i64) -> f32:
             Tune::HUD_Y + CourseAccess::scaled(settings, Tune::LEGEND_Y - Tune::HUD_Y + (row + 1).f32() * Tune::LEGEND_ROW_HEIGHT)
 

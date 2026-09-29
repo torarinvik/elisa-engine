@@ -1,0 +1,56 @@
+# Semantic metadata for game UI controls. A visual menu says nothing to a
+# screen reader or a controller-only player, so each row also carries a role,
+# a label, a current value and its place in the list. A platform bridge would
+# read these; none is connected here.
+module UiSemantics:
+    private:
+        const module Limits:
+            MAX_CONTROLS: i64 = 64
+
+    public:
+        enum Role:
+            Button
+            Slider
+            Toggle
+            KeyBinding
+            Label
+
+        enum SemanticsError:
+            Invalid
+
+        struct Control:
+            role: Role
+            label: cstr
+            value: cstr
+            index: i64
+            count: i64
+            selected: bool
+            enabled: bool
+
+        # `index` is zero-based within a list of `count` controls.
+        def Control(role: Role, label: cstr, value: cstr, index: i64, count: i64, selected: bool) -> Control error[SemanticsError]:
+            raise SemanticsError.Invalid if count < 1 or count > Limits::MAX_CONTROLS
+            raise SemanticsError.Invalid if index < 0 or index >= count
+            Control{role: role, label: label, value: value, index: index, count: count, selected: selected, enabled: true}
+
+        def position(control: Control&) -> i64:
+            control.index + 1
+
+        # Only value-bearing roles can be adjusted with Left/Right.
+        def adjustable(control: Control&) -> bool:
+            control.enabled and (control.role == Role.Slider or control.role == Role.Toggle)
+
+        def focusable(control: Control&) -> bool:
+            control.enabled and control.role != Role.Label
+
+        def role_name(role: Role) -> cstr:
+            if role == Role.Button:
+                "button"
+            elif role == Role.Slider:
+                "slider"
+            elif role == Role.Toggle:
+                "toggle"
+            elif role == Role.KeyBinding:
+                "key binding"
+            else:
+                "label"
