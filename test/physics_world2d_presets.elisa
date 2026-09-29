@@ -25,13 +25,13 @@ def main() -> i32:
     balanced: i64[3] = settle(Physics2dPresets::balanced())
     stable: i64[3] = settle(Physics2dPresets::stable())
     return 1 if fast[2] != 188 or balanced[2] != 376 or stable[2] != 752
-    # Measured worst settled overlaps (118, 64, 17 mm) as regression budgets.
-    return 2 if fast[0] > 130000
-    return 3 if balanced[0] > 70000
-    return 4 if stable[0] > 20000
+    # Measured worst settled overlaps (23, 10, 4 mm) as regression budgets.
+    return 2 if fast[0] > 30000
+    return 3 if balanced[0] > 12000
+    return 4 if stable[0] > 6000
     return 5 if not (stable[0] < balanced[0] and balanced[0] < fast[0])
-    # The stable tower stands near its ideal 0.9 m top.
-    return 6 if stable[1] < 840000
+    # Every tower stands near its ideal 0.9 m top.
+    return 6 if fast[1] < 840000 or stable[1] < 860000
     # A 100 ms hitch is clamped to the budget and the rest reported dropped.
     open_scene: Physics2dRamp::Statics = Physics2dRamp::open()
     mutable b: Physics2dCircles::Circle[32] = tower()
@@ -40,4 +40,12 @@ def main() -> i32:
     # A 10 ms frame under balanced runs 8 + 2.
     short: Physics2dPresets::FrameReport = Physics2dPresets::step_frame(&b, 5, Physics2dPresets::balanced(), 10, 9810000, 0, 200, &open_scene)
     return 8 if short.substeps != 2 or short.dropped_ms != 0
+    # Relaxation separates an overlapping pair and lifts it out of the ground
+    # without touching velocity; zero passes move nothing.
+    mutable pair: Physics2dCircles::Circle[32] = zeroed
+    pair[0] <- Physics2dCircles::Circle{x_um: 0, y_um: 50000, vx: 0, vy: 7, radius_um: 100000, mass_g: 100}
+    pair[1] <- Physics2dCircles::Circle{x_um: 0, y_um: 150000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    return 9 if Physics2dPresets::relax(&pair, 2, 0, 0) != 0 or pair[0].y_um != 50000
+    Physics2dPresets::relax(&pair, 2, 0, 8)
+    return 10 if Physics2dPresets::max_overlap_um(&pair, 2, 0) > 1000 or pair[0].y_um < 100000 or pair[0].vy != 7
     return 0
