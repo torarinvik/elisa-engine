@@ -1,0 +1,16 @@
+include "../src/audio/music.elisa"
+
+extend AudioMusic:
+    # An asset's music record passes `valid` before it reaches `cue`
+    # (SoundEventAssets::define_music), so the constructor's requires hold
+    # and the authored id names a slot.
+    def prove_guarded_cue(id: u64, fade_out_ms: u64, fade_in_ms: u64) -> u64:
+        ensure result < MAX_CUES
+        return 0 if not valid(id, fade_out_ms, fade_in_ms)
+        cue(fade_out_ms, fade_in_ms)
+        id
+
+    # Whatever a transition holds, every stream plays at a unit gain.
+    def prove_heard_gain(music: Transition&, id: u64) -> u64:
+        ensure result <= FULL_PERMILLE
+        gain_permille(music, id)

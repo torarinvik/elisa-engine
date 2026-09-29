@@ -6,12 +6,14 @@
 #   footstep <event> <stride_mm>
 #   impact <event> <threshold_mm> <full_mm>
 #   mood <id> <music> <effects> <ui> <ramp_ms>
+#   music <cue> <fade_out_ms> <fade_in_ms>
 #
 # Fields are unsigned decimal numbers separated by spaces or tabs, and `#`
 # starts a comment anywhere. Up to four weights follow the cooldown; weights
 # left out are zero. A footstep or impact record binds a movement trigger to
 # an event defined on an earlier line; an asset has at most one of each.
-# A mood record sets one mix mood's bus gains in permille and its ramp.
+# A mood record sets one mix mood's bus gains in permille and its ramp; a
+# music record sets how long one music cue takes to fade out and in.
 # `define_from` checks the whole asset against a scratch board before it
 # writes anything to the caller's board and triggers, so a malformed asset
 # never leaves a partial event set behind.
@@ -19,18 +21,20 @@ include "./events.elisa"
 include "./event_asset_text.elisa"
 include "./triggers.elisa"
 include "./moods.elisa"
+include "./music.elisa"
 
 extend SoundEventAssets:
     public:
         # What an asset binds besides its events: the movement triggers
-        # (event 0 means none) and the mix moods.
+        # (event 0 means none), the mix moods and the music cues.
         struct Triggers:
             footfalls: mutable AudioTriggers::Footfalls
             impacts: mutable AudioTriggers::Impacts
             moods: mutable AudioMoods::Moods
+            cues: mutable AudioMusic::Cues
 
         def Triggers() -> Triggers:
-            Triggers{footfalls: AudioTriggers::Footfalls(), impacts: AudioTriggers::Impacts(), moods: AudioMoods::Moods()}
+            Triggers{footfalls: AudioTriggers::Footfalls(), impacts: AudioTriggers::Impacts(), moods: AudioMoods::Moods(), cues: AudioMusic::Cues()}
 
         # Replaces `triggers` with the asset's, or leaves them untouched when
         # the asset is rejected.
@@ -42,6 +46,7 @@ extend SoundEventAssets:
             triggers.footfalls <- AudioTriggers::Footfalls()
             triggers.impacts <- AudioTriggers::Impacts()
             triggers.moods <- AudioMoods::Moods()
+            triggers.cues <- AudioMusic::Cues()
             try define_lines(board, triggers, source)
 
         # The 1-based line of the first record `define_from` rejects, or 0.
@@ -77,7 +82,8 @@ extend SoundEventAssets:
             footstep: bool = is_footstep(source, word_start, word_stop)
             impact: bool = is_impact(source, word_start, word_stop)
             mood: bool = is_mood(source, word_start, word_stop)
-            raise SoundAssetError.UnknownRecord if not seed and not footstep and not impact and not mood and not is_event(source, word_start, word_stop)
+            music: bool = is_music(source, word_start, word_stop)
+            raise SoundAssetError.UnknownRecord if not seed and not footstep and not impact and not mood and not music and not is_event(source, word_start, word_stop)
             record: Fields = try read_fields(source, word_stop, stop)
             fields: u64[SoundEventAssets::MAX_FIELDS] = record.values
             count: usize = record.count
@@ -85,6 +91,8 @@ extend SoundEventAssets:
                 try define_trigger(board, triggers, impact, fields, count)
             elif mood:
                 try define_mood(triggers, fields, count)
+            elif music:
+                try define_music(triggers, fields, count)
             elif seed:
                 raise SoundAssetError.FieldCount if count != 1
                 AudioEvents::set_seed(board, fields[0])
@@ -127,3 +135,12 @@ extend SoundEventAssets:
             raise SoundAssetError.DuplicateMood if AudioMoods::defined(&triggers.moods, fields[0])
             value: AudioMoods::Mood = AudioMoods::mood(fields[1], fields[2], fields[3], fields[4])
             triggers.moods <- AudioMoods::with_mood(triggers.moods, fields[0], value)
+
+        # A music record takes a cue id and its fade-out and fade-in in
+        # milliseconds.
+        def define_music(triggers: mutable Triggers&, fields: u64[SoundEventAssets::MAX_FIELDS], count: usize) -> void error[SoundAssetError]:
+            raise SoundAssetError.FieldCount if count != 3
+            raise SoundAssetError.InvalidMusic if not AudioMusic::valid(fields[0], fields[1], fields[2])
+            raise SoundAssetError.DuplicateMusic if AudioMusic::defined(&triggers.cues, fields[0])
+            value: AudioMusic::Cue = AudioMusic::cue(fields[1], fields[2])
+            triggers.cues <- AudioMusic::with_cue(triggers.cues, fields[0], value)

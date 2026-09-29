@@ -58,7 +58,37 @@
             return 171 if not CourseSounds::stop(&sounds) or not audio_idle(session)
             0
 
+        def cue_gains(sounds: CourseSounds::Sounds&, course: u64, victory: u64) -> bool:
+            CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_COURSE) == course and CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_VICTORY) == victory
+
+        # Without audio the authored crossfade still runs: a win at 1000 ms
+        # fades the course loop out over 600 ms while victory swells in over
+        # 1500 ms, repeating the cue keeps the fade, and restart cuts back.
+        def crossfade_test() -> bool:
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return false if not CourseSounds::define_assets(&sounds) or not CourseSounds::restart_music(&sounds)
+            _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(false), 1000)
+            steady: bool = cue_gains(&sounds, 1000, 0)
+            _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(true), 1000)
+            _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(true), 1300)
+            halfway: bool = cue_gains(&sounds, 500, 200)
+            _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(true), 2500)
+            won: bool = cue_gains(&sounds, 0, 1000)
+            restarted: bool = CourseSounds::restart_music(&sounds) and cue_gains(&sounds, 1000, 0)
+            steady and halfway and won and restarted
+
+        # Live audio: both loops stream at once, the crossfade reaches their
+        # gains, and stop releases both streams.
+        def music_stream_test(session: mutable RuntimeServices::Session&) -> bool:
+            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+            faded: bool = CourseSounds::play_music(&sounds, CourseSounds::MUSIC_VICTORY, 10) and CourseSounds::play_music(&sounds, CourseSounds::MUSIC_VICTORY, 700)
+            restarted: bool = CourseSounds::restart_music(&sounds) and CourseSounds::music_position(&sounds) < 22050
+            CourseSounds::stop(&sounds) and faded and restarted and audio_idle(session)
+
         def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32:
             return 166 if not moods_test()
             return 167 if not ramp_test()
+            return 196 if not crossfade_test()
+            return 197 if not music_stream_test(session)
             weighted_jump_test(session)

@@ -262,6 +262,7 @@
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
                     _ = CourseSounds::mix(&sounds, mood, frame.elapsed_nanos / 1000000)
+                    _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(state.phase == Phase.Won), frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::update(&sounds)
                     if menu_open:
                         # Keys first; pointer presses when no key acted.
@@ -321,7 +322,7 @@
                             character <- try restart_character(session, character)
                             restart(&state)
                             CourseSounds::reset_scene(&sounds)
-                            _ = CourseSounds::rewind_music(&sounds)
+                            _ = CourseSounds::restart_music(&sounds)
                             _ = CourseSounds::set_paused(&sounds, false)
                             _ = try CourseBeacons::reset(&beacons)
                             grounded <- true

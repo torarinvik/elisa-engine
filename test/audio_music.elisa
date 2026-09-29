@@ -1,0 +1,72 @@
+include "../src/audio/music.elisa"
+
+# The gains the cue ids 0 and 1 play at now, as music * 10000 + other.
+def gains(music: AudioMusic::Transition&) -> u64:
+    AudioMusic::gain_permille(music, 0) * 10000 + AudioMusic::gain_permille(music, 1)
+
+def main() -> i32:
+    # Validation of authored values.
+    return 1 if not AudioMusic::valid(0, 0, 10000) or AudioMusic::valid(4, 500, 500)
+    return 2 if AudioMusic::valid(1, 10001, 0) or AudioMusic::valid(1, 0, 10001)
+
+    cues: mutable AudioMusic::Cues = AudioMusic::Cues()
+    return 3 if AudioMusic::defined(&cues, 0) or AudioMusic::get(&cues, 2).fade_in_ms != AudioMusic::DEFAULT_FADE_MS
+    cues <- AudioMusic::with_cue(cues, 0, AudioMusic::cue(1000, 200))
+    cues <- AudioMusic::with_cue(cues, 1, AudioMusic::cue(400, 800))
+    cues <- AudioMusic::with_cue(cues, 7, AudioMusic::cue(0, 0))
+    return 4 if not AudioMusic::defined(&cues, 0) or not AudioMusic::defined(&cues, 1) or AudioMusic::defined(&cues, 2)
+
+    # From silence the first cue fades in over its own fade-in.
+    music: mutable AudioMusic::Transition = AudioMusic::Transition()
+    return 10 if gains(&music) != 0 or AudioMusic::fading(&music)
+    return 11 if not AudioMusic::request(&music, &cues, 0)
+    return 12 if gains(&music) != 0 or not AudioMusic::fading(&music)
+    AudioMusic::advance(&music, 100)
+    return 13 if gains(&music) != 5000000
+    AudioMusic::advance(&music, 100)
+    return 14 if gains(&music) != 10000000 or AudioMusic::fading(&music)
+    # Asking again for the cue heard changes nothing.
+    return 15 if AudioMusic::request(&music, &cues, 0) or gains(&music) != 10000000
+
+    # Cue 0 fades out over its 1000 ms while cue 1 fades in over its 800 ms.
+    return 20 if not AudioMusic::request(&music, &cues, 1)
+    return 21 if gains(&music) != 10000000
+    AudioMusic::advance(&music, 400)
+    return 22 if gains(&music) != 6000500
+    return 23 if AudioMusic::request(&music, &cues, 1) or gains(&music) != 6000500
+    AudioMusic::advance(&music, 400)
+    return 24 if gains(&music) != 2001000 or not AudioMusic::fading(&music)
+    AudioMusic::advance(&music, 200)
+    return 25 if gains(&music) != 1000 or AudioMusic::fading(&music) or music.leaving != AudioMusic::NO_CUE
+    # A huge step saturates rather than wrapping.
+    AudioMusic::advance(&music, 18446744073709551615)
+    return 26 if gains(&music) != 1000 or music.elapsed_ms != AudioMusic::MAX_FADE_MS
+
+    # Turning a fade around continues from the gains heard; a third cue
+    # still fading out is cut off.
+    return 30 if not AudioMusic::request(&music, &cues, 0)
+    AudioMusic::advance(&music, 100)
+    return 31 if gains(&music) != 5000750
+    return 32 if not AudioMusic::request(&music, &cues, 1)
+    return 33 if music.leaving != 0 or gains(&music) != 5000750
+    # Silence fades the heard cue out; an id past the last slot is silence.
+    return 34 if not AudioMusic::request(&music, &cues, 9) or music.playing != AudioMusic::NO_CUE
+    AudioMusic::advance(&music, 200)
+    return 35 if gains(&music) != 375
+    return 36 if AudioMusic::request(&music, &cues, AudioMusic::NO_CUE)
+
+    # Reset jumps straight to a cue at full gain.
+    AudioMusic::reset(&music, 0)
+    return 40 if gains(&music) != 10000000 or AudioMusic::fading(&music)
+    AudioMusic::reset(&music, 12)
+    return 41 if gains(&music) != 0 or music.playing != AudioMusic::NO_CUE
+    # A zero-length fade switches at once.
+    quick: mutable AudioMusic::Cues = AudioMusic::with_cue(AudioMusic::Cues(), 1, AudioMusic::cue(0, 0))
+    AudioMusic::reset(&music, 1)
+    return 42 if not AudioMusic::request(&music, &quick, 0)
+    return 43 if AudioMusic::gain_permille(&music, 1) != 0 or AudioMusic::gain_permille(&music, 0) != 0
+    AudioMusic::advance(&music, 0)
+    return 44 if music.leaving != AudioMusic::NO_CUE
+    AudioMusic::advance(&music, 250)
+    return 45 if AudioMusic::gain_permille(&music, 0) != 500 or AudioMusic::gain_permille(&music, 1) != 0
+    0
