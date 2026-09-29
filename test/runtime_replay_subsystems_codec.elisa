@@ -1,0 +1,44 @@
+include "../src/runtime/replay_subsystems_codec.elisa"
+
+def sample() -> ReplaySubsystems::Trace:
+    t: mutable ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    for tick in 0..<3 |t|:
+        _ = ReplaySubsystems::begin_tick(&t)
+        _ = ReplaySubsystems::record(&t, 0, tick + 1)
+        _ = ReplaySubsystems::record(&t, 2, 0 - 9000000000000 + tick)
+    t
+
+def round_trip(s: ReplaySubsystemsCodec::Stream&) -> ReplaySubsystemsCodec::Loaded:
+    bytes: ReplaySubsystemsCodec::Bytes = ReplaySubsystemsCodec::pack_trace(s)
+    back: ReplaySubsystemsCodec::Stream = ReplaySubsystemsCodec::unpack_trace(&bytes)
+    ReplaySubsystemsCodec::decode_trace(&back)
+
+def main() -> i32:
+    original: ReplaySubsystems::Trace = sample()
+    stream: ReplaySubsystemsCodec::Stream = ReplaySubsystemsCodec::encode_trace(&original)
+    return 1 if stream.len != 22
+    loaded: ReplaySubsystemsCodec::Loaded = round_trip(&stream)
+    return 2 if loaded.status != ReplaySubsystemsCodec::Decode.Ok or loaded.trace.ticks != 3
+    return 3 if ReplaySubsystems::judge(&original, &loaded.trace, true) != ReplaySubsystems::Verdict.Match or loaded.trace.digests[14] != 0 - 8999999999998
+    corrupt: mutable ReplaySubsystemsCodec::Stream = stream
+    corrupt.words[5] <- corrupt.words[5] + 1
+    return 4 if ReplaySubsystemsCodec::decode_trace(&corrupt).status != ReplaySubsystemsCodec::Decode.BadChecksum
+    short: mutable ReplaySubsystemsCodec::Stream = stream
+    short.len <- 21
+    return 5 if ReplaySubsystemsCodec::decode_trace(&short).status != ReplaySubsystemsCodec::Decode.Truncated
+    foreign: mutable ReplaySubsystemsCodec::Stream = stream
+    foreign.words[0] <- 7
+    return 6 if ReplaySubsystemsCodec::decode_trace(&foreign).status != ReplaySubsystemsCodec::Decode.BadMagic
+    newer: mutable ReplaySubsystemsCodec::Stream = stream
+    newer.words[1] <- 2
+    return 7 if ReplaySubsystemsCodec::decode_trace(&newer).status != ReplaySubsystemsCodec::Decode.BadVersion
+    long: mutable ReplaySubsystemsCodec::Stream = stream
+    long.words[2] <- 17
+    return 8 if ReplaySubsystemsCodec::decode_trace(&long).status != ReplaySubsystemsCodec::Decode.BadTicks
+    ragged: mutable ReplaySubsystemsCodec::Bytes = ReplaySubsystemsCodec::pack_trace(&stream)
+    ragged.len <- ragged.len - 3
+    return 9 if ReplaySubsystemsCodec::decode_trace(&ReplaySubsystemsCodec::unpack_trace(&ragged)).status != ReplaySubsystemsCodec::Decode.Truncated
+    empty: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    blank: ReplaySubsystemsCodec::Stream = ReplaySubsystemsCodec::encode_trace(&empty)
+    return 10 if round_trip(&blank).status != ReplaySubsystemsCodec::Decode.Ok or round_trip(&blank).trace.ticks != 0
+    0
