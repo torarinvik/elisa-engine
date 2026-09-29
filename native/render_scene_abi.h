@@ -300,6 +300,8 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
 int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low);
 int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
+int32_t elisa_render_scene_v1_has_animation_clip(
+    int64_t handle, const char* clip_name, int32_t* found);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_play_animation_blended(
