@@ -1,0 +1,119 @@
+# Screen-error level-of-detail choice with hysteresis and a draw distance.
+# Each level of an object has a geometric error in millimetres; at a distance
+# `d` with focal length `f` (pixels) that error covers error * f / d pixels.
+# The coarsest level whose error stays under the pixel threshold is chosen, so
+# a farther object drops detail. Switching back to finer detail happens at a
+# smaller distance than switching to coarser, so an object hovering at a
+# boundary does not flicker. Beyond the draw distance nothing is drawn.
+module BackendLod:
+    private:
+        const module Tune:
+            LEVELS: i64 = 4
+            LIMIT: i64 = 1000000000
+            HIDDEN: i64 = -1
+
+    public:
+        struct Levels:
+            count: i64
+            error_mm: i64[4]
+
+        struct View:
+            focal_px: i64
+            max_error_px: i64
+            draw_distance_mm: i64
+            hysteresis_permille: i64
+
+        def hidden() -> i64:
+            -1
+
+        def valid(l: Levels&, v: View&) -> bool:
+            return false if l.count < 1 or l.count > 4 or v.focal_px <= 0 or v.max_error_px <= 0
+            return false if v.draw_distance_mm <= 0 or v.hysteresis_permille < 0 or v.hysteresis_permille > 500
+            return false if l.error_mm[0] != 0 or v.focal_px >= 100000 or v.draw_distance_mm >= 1000000000
+            l.error_mm[1] >= 0 and l.error_mm[2] >= l.error_mm[1] and l.error_mm[3] >= l.error_mm[2] and l.error_mm[3] < 1000000
+
+        def error_px(l: Levels&, v: View&, level: i64, distance_mm: i64) -> i64:
+            requires level >= 0
+            requires level < 4
+            requires distance_mm > 0
+            requires distance_mm < 1000000000
+            requires v.focal_px > 0
+            requires v.focal_px < 100000
+            requires l.error_mm[level] >= 0
+            requires l.error_mm[level] < 1000000
+            l.error_mm[level] * v.focal_px / distance_mm
+
+        def fits(l: Levels&, v: View&, level: i64, distance_mm: i64) -> bool:
+            requires level >= 0
+            requires level < 4
+            requires distance_mm > 0
+            requires distance_mm < 1000000000
+            requires v.focal_px > 0
+            requires v.focal_px < 100000
+            requires l.error_mm[level] >= 0
+            requires l.error_mm[level] < 1000000
+            error_px(l, v, level, distance_mm) <= v.max_error_px
+
+        def coarsest(l: Levels&, v: View&, distance_mm: i64) -> i64:
+            requires distance_mm > 0
+            requires distance_mm < 1000000000
+            requires l.count >= 1
+            requires l.count <= 4
+            requires v.focal_px > 0
+            requires v.focal_px < 100000
+            requires l.error_mm[0] >= 0
+            requires l.error_mm[0] < 1000000
+            requires l.error_mm[1] >= 0
+            requires l.error_mm[1] < 1000000
+            requires l.error_mm[2] >= 0
+            requires l.error_mm[2] < 1000000
+            requires l.error_mm[3] >= 0
+            requires l.error_mm[3] < 1000000
+            best: mutable i64 = 0
+            for k in 0..<4:
+                t: i64 = k.i64()
+                best <- t if t < l.count and fits(l, v, t, distance_mm)
+            best
+
+        # Level for an object at `distance_mm`, or hidden. `current` is the
+        # level used last frame (or -1). Detail changes only once the distance
+        # has moved a hysteresis margin past the boundary, so the object keeps
+        # its level while it hovers near a switch.
+        def choose(l: Levels&, v: View&, current: i64, distance_mm: i64) -> i64:
+            return Tune::HIDDEN if not valid(l, v) or distance_mm < 0 or distance_mm > v.draw_distance_mm
+            d: i64 = 1 if distance_mm < 1 else distance_mm
+            fresh: i64 = coarsest(l, v, d)
+            return fresh if current < 0 or current >= l.count or fresh == current
+            return fresh if fresh > current and moves_coarser(l, v, fresh, d)
+            return fresh if fresh < current and moves_finer(l, v, current, d)
+            current
+
+        # Coarser wanted: switch only once the coarser level would still fit
+        # a margin nearer than now, i.e. the boundary is clearly behind us.
+        def moves_coarser(l: Levels&, v: View&, target: i64, d: i64) -> bool:
+            requires target >= 0
+            requires target < 4
+            requires d > 0
+            requires d < 1000000000
+            requires l.error_mm[target] >= 0
+            requires l.error_mm[target] < 1000000
+            requires v.focal_px > 0
+            requires v.focal_px < 100000
+            near: i64 = d * (1000 - v.hysteresis_permille) / 1000
+            return false if near < 1
+            fits(l, v, target, near)
+
+        # Finer wanted: switch only once the current level no longer fits a
+        # margin farther than now.
+        def moves_finer(l: Levels&, v: View&, current: i64, d: i64) -> bool:
+            requires current >= 0
+            requires current < 4
+            requires d > 0
+            requires d < 1000000000
+            requires l.error_mm[current] >= 0
+            requires l.error_mm[current] < 1000000
+            requires v.focal_px > 0
+            requires v.focal_px < 100000
+            far: i64 = d * (1000 + v.hysteresis_permille) / 1000
+            return true if far >= 1000000000
+            not fits(l, v, current, far)
