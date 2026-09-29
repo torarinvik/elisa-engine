@@ -491,6 +491,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Add multi-pointer actions, gestures, controller vibration, and capability-based haptic output through SDL3. Done: touch/controller-specific examples handle cancellation and disconnect; unsupported devices preserve gameplay and disclose unavailable feedback.
 - [ ] **I10 · P2 · Localization pipeline** — After: I04, E04.
   Define stable message keys, plural/locale formatting, extraction, translations, and live language switching. Done: a long-text and right-to-left locale exercise layout, missing-key fallbacks, and packaged locale data without rebuilding gameplay code.
+  Progress: `src/ui/locale.elisa` and `locale_catalogue.elisa` provide plural rules, fallback resolution, live switching, RTL mirroring and expansion reserve (see `docs/validation/ui-locale.md`); message text/formatting, extraction, packaged locale data and a real layout exercise remain.
 
 ## T — networking and online runtime
 

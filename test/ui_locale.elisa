@@ -1,0 +1,31 @@
+include "../src/ui/locale_catalogue.elisa"
+
+def main() -> i32:
+    # Plural rules: English, Russian, Arabic and a language without plurals.
+    return 1 if UiLocale::plural(UiLocale::EN, 1) != UiLocale::ONE or UiLocale::plural(UiLocale::EN, 2) != UiLocale::OTHER or UiLocale::plural(UiLocale::EN, 0) != UiLocale::OTHER
+    return 2 if UiLocale::plural(UiLocale::RU, 1) != UiLocale::ONE or UiLocale::plural(UiLocale::RU, 21) != UiLocale::ONE or UiLocale::plural(UiLocale::RU, 11) != UiLocale::MANY
+    return 3 if UiLocale::plural(UiLocale::RU, 3) != UiLocale::FEW or UiLocale::plural(UiLocale::RU, 13) != UiLocale::MANY or UiLocale::plural(UiLocale::RU, 25) != UiLocale::MANY
+    return 4 if UiLocale::plural(UiLocale::AR, 0) != UiLocale::ZERO or UiLocale::plural(UiLocale::AR, 2) != UiLocale::TWO or UiLocale::plural(UiLocale::AR, 7) != UiLocale::FEW or UiLocale::plural(UiLocale::AR, 111) != UiLocale::MANY or UiLocale::plural(UiLocale::AR, 100) != UiLocale::OTHER
+    return 5 if UiLocale::plural(UiLocale::JA, 1) != UiLocale::OTHER or UiLocale::plural(UiLocale::EN, -3) != UiLocale::OTHER
+    # Missing keys fall back to English; a key nobody has is reported missing.
+    catalogue: mutable UiLocaleCatalogue::Catalogue = UiLocaleCatalogue::Catalogue()
+    return 6 if not UiLocaleCatalogue::translate(&catalogue, UiLocale::EN, 3) or not UiLocaleCatalogue::translate(&catalogue, UiLocale::EN, 4) or not UiLocaleCatalogue::translate(&catalogue, UiLocale::RU, 3)
+    ru: UiLocaleCatalogue::Found = UiLocaleCatalogue::resolve(&catalogue, UiLocale::RU, 3)
+    return 7 if ru.locale != UiLocale::RU or ru.missing or ru.fell_back
+    ru_fall: UiLocaleCatalogue::Found = UiLocaleCatalogue::resolve(&catalogue, UiLocale::RU, 4)
+    return 8 if ru_fall.locale != UiLocale::EN or ru_fall.missing or not ru_fall.fell_back
+    none: UiLocaleCatalogue::Found = UiLocaleCatalogue::resolve(&catalogue, UiLocale::AR, 9)
+    return 9 if not none.missing or none.locale != UiLocale::EN
+    unknown: UiLocaleCatalogue::Found = UiLocaleCatalogue::resolve(&catalogue, 99, 3)
+    return 10 if unknown.locale != UiLocale::EN or unknown.missing
+    return 11 if UiLocaleCatalogue::translate(&catalogue, 99, 1) or UiLocaleCatalogue::translate(&catalogue, UiLocale::EN, 32) or UiLocaleCatalogue::has_key(&catalogue, UiLocale::EN, -1)
+    # Live switching bumps the generation only for a real change.
+    state: UiLocaleCatalogue::Selection = UiLocaleCatalogue::Selection{locale: UiLocale::EN, generation: 0}
+    ru_state: UiLocaleCatalogue::Selection = UiLocaleCatalogue::switch_to(state, UiLocale::RU)
+    return 12 if ru_state.locale != UiLocale::RU or ru_state.generation != 1
+    return 13 if UiLocaleCatalogue::switch_to(ru_state, UiLocale::RU).generation != 1 or UiLocaleCatalogue::switch_to(ru_state, 42).locale != UiLocale::RU
+    # Right-to-left mirrors layout, and long text gets room.
+    return 14 if not UiLocale::is_rtl(UiLocale::AR) or UiLocale::is_rtl(UiLocale::EN)
+    return 15 if UiLocaleCatalogue::mirror_x(10, 30, 100) != 60 or UiLocaleCatalogue::mirror_x(0, 100, 100) != 0
+    return 16 if UiLocaleCatalogue::reserve_width(200, UiLocale::RU) != 250 or UiLocaleCatalogue::reserve_width(200, UiLocale::JA) != 200
+    0
