@@ -411,6 +411,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: 2D circles sweep one-sided slanted segments with normal-only restitution, resting contact and ppm placement ([ccd-2d-ramps](docs/validation/ccd-2d-ramps.md)); not yet in the worlds' step.
   Progress on 2026-09-29: both 2D worlds step against bundled walls, platforms and ramps with multi-pass contact continuation, so resting bodies slide ([ccd-2d-world-statics](docs/validation/ccd-2d-world-statics.md)); end caps and 3D CCD remain.
   Progress on 2026-09-29: ramp end caps swept as rounded points with contact-normal bounce ([ccd-2d-end-caps](docs/validation/ccd-2d-end-caps.md)); 3D CCD and solver budgets remain.
+  Progress on 2026-09-29: 2D world solver presets (fast/balanced/stable substeps, frame budget with dropped-time report, overlap diagnostic) with measured stack regression budgets; see docs/validation/world2d-presets.md.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.

@@ -1,0 +1,73 @@
+# Solver presets for the plain 2D world: how a frame is split into fixed
+# substeps and how much frame time a step may consume. A frame longer than
+# the preset's budget is clamped and the dropped time reported rather than
+# run as one huge step (which tunnels and explodes) or as unbounded
+# catch-up steps (the spiral of death). `max_overlap_um` is the diagnostic
+# the presets are measured with: the deepest circle-circle or ground
+# penetration in the world.
+include "world2d.elisa"
+
+module Physics2dPresets:
+    public:
+        struct Preset:
+            substep_ms: i64
+            max_substeps: i64
+
+        # One 16 ms step a frame: cheapest, loosest stacks.
+        def fast() -> Preset:
+            Preset{substep_ms: 16, max_substeps: 1}
+
+        def balanced() -> Preset:
+            Preset{substep_ms: 8, max_substeps: 4}
+
+        # 4 ms substeps: tightest stacks at four times the cost of fast.
+        def stable() -> Preset:
+            Preset{substep_ms: 4, max_substeps: 8}
+
+        struct FrameReport:
+            substeps: i64
+            dropped_ms: i64
+            resolved: i64
+            wall_hits: i64
+            overflowed: bool
+
+        # Runs `frame_ms` of simulation as whole substeps (a remainder shorter
+        # than one substep is carried as a final shorter step).
+        def step_frame(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, preset: Preset, frame_ms: i64, gravity_um_s2: i64, ground_um: i64, restitution_permille: i64, statics: Physics2dRamp::Statics&) -> FrameReport:
+            sub: i64 = preset.substep_ms if preset.substep_ms > 0 else 1
+            budget: i64 = sub * preset.max_substeps
+            run: i64 = frame_ms if frame_ms < budget else budget
+            dropped: i64 = frame_ms - run if frame_ms > run else 0
+            mutable left: i64 = run
+            mutable steps: i64 = 0
+            mutable resolved: i64 = 0
+            mutable wall_hits: i64 = 0
+            mutable overflowed: bool = false
+            for _ in 0..<64 |left, steps, resolved, wall_hits, overflowed|:
+                if left > 0:
+                    dt: i64 = sub if left >= sub else left
+                    r: Physics2dWorld::Report = Physics2dWorld::step(bodies, count, gravity_um_s2, dt, ground_um, restitution_permille, statics)
+                    left <- left - dt
+                    steps <- steps + 1
+                    resolved <- resolved + r.resolved
+                    wall_hits <- wall_hits + r.wall_hits
+                    overflowed <- overflowed or r.overflowed
+            FrameReport{substeps: steps, dropped_ms: dropped, resolved: resolved, wall_hits: wall_hits, overflowed: overflowed}
+
+        # Deepest penetration between any two circles or into the ground.
+        def max_overlap_um(bodies: Physics2dCircles::Circle[32]&, count: i64, ground_um: i64) -> i64:
+            n: i64 = 32 if count > 32 else count
+            mutable worst: i64 = 0
+            for i in 0..<32 |worst|:
+                if i.i64() < n:
+                    a: Physics2dCircles::Circle = bodies[i]
+                    sink: i64 = ground_um - (a.y_um - a.radius_um)
+                    worst <- sink if sink > worst else worst
+                    for j in 0..<32 |worst|:
+                        if j > i and j.i64() < n:
+                            b: Physics2dCircles::Circle = bodies[j]
+                            dx: i64 = b.x_um - a.x_um
+                            dy: i64 = b.y_um - a.y_um
+                            gap: i64 = a.radius_um + b.radius_um - Physics2dCircles::isqrt(dx * dx + dy * dy)
+                            worst <- gap if gap > worst else worst
+            worst
