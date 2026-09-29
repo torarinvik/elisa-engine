@@ -1,0 +1,120 @@
+# Host/join workflow and roster state behind a session screen. It decides which
+# screen is showing, what an error means for the player, and who is in the
+# session; drawing and the actual connection live elsewhere. Errors keep a
+# stable reason so the UI can explain them, and retry is bounded so a dead
+# server is not hammered forever.
+module NetSessionUi:
+    private:
+        const module Tune:
+            PLAYERS: usize = 8
+            MAX_RETRIES: i64 = 3
+
+    public:
+        enum Screen:
+            Menu
+            Hosting
+            Joining
+            Connected
+            Failed
+
+        enum Reason:
+            None
+            BadAddress
+            Unreachable
+            Refused
+            Timeout
+            Full
+
+        struct Session:
+            screen: mutable Screen
+            reason: mutable Reason
+            retries: mutable i64
+            ids: mutable i64[8]
+            ready: mutable bool[8]
+            count: mutable i64
+
+        def Session() -> Session:
+            Session{screen: Screen.Menu, reason: Reason.None, retries: 0, ids: [0, 0, 0, 0, 0, 0, 0, 0], ready: [false, false, false, false, false, false, false, false], count: 0}
+
+        def clear_roster(s: mutable Session&):
+            s.ids <- [0, 0, 0, 0, 0, 0, 0, 0]
+            s.ready <- [false, false, false, false, false, false, false, false]
+            s.count <- 0
+
+        def host(s: mutable Session&, port: i64) -> bool:
+            return false if s.screen != Screen.Menu or port <= 0 or port > 65535
+            s.screen <- Screen.Hosting
+            s.reason <- Reason.None
+            true
+
+        # Starts a join; an empty or out-of-range address is refused before any
+        # connection attempt and shown as BadAddress. Retrying from Failed keeps the
+        # retry count; starting from the menu resets it.
+        def join(s: mutable Session&, address_len: i64, port: i64) -> bool:
+            return false if s.screen != Screen.Menu and s.screen != Screen.Failed
+            fresh: bool = s.screen == Screen.Menu
+            valid: bool = address_len > 0 and address_len <= 253 and port > 0 and port <= 65535
+            s.screen <- Screen.Joining if valid else Screen.Failed
+            s.reason <- Reason.None if valid else Reason.BadAddress
+            s.retries <- 0 if valid and fresh else s.retries
+            valid
+
+        def connected(s: mutable Session&) -> bool:
+            return false if s.screen != Screen.Joining and s.screen != Screen.Hosting
+            s.screen <- Screen.Connected
+            s.reason <- Reason.None
+            s.retries <- 0
+            true
+
+        # Records a failed attempt. Returns true when the UI may offer another
+        # try (bounded); Full and Refused are final for this address.
+        def failed(s: mutable Session&, reason: Reason) -> bool:
+            return false if s.screen != Screen.Joining and s.screen != Screen.Hosting and s.screen != Screen.Connected
+            s.screen <- Screen.Failed
+            s.reason <- reason
+            s.retries <- s.retries + 1
+            clear_roster(s)
+            retryable: bool = reason == Reason.Unreachable or reason == Reason.Timeout
+            retryable and s.retries < Tune::MAX_RETRIES
+
+        def leave(s: mutable Session&):
+            s.screen <- Screen.Menu
+            s.reason <- Reason.None
+            s.retries <- 0
+            clear_roster(s)
+
+        def slot_of(s: Session&, id: i64) -> i64:
+            for index in 0..<Tune::PLAYERS |found: i64 = -1| -> found:
+                found <- index.i64() if found < 0 and s.ids[index] == id and id > 0
+
+        def add_player(s: mutable Session&, id: i64) -> bool:
+            return false if s.screen != Screen.Connected and s.screen != Screen.Hosting
+            return false if id <= 0 or slot_of(s, id) >= 0 or s.count >= Tune::PLAYERS.i64()
+            free: i64 = s.count
+            s.ids[free.usize()] <- id
+            s.ready[free.usize()] <- false
+            s.count <- s.count + 1
+            true
+
+        def set_ready(s: mutable Session&, id: i64, value: bool) -> bool:
+            slot: i64 = slot_of(s, id)
+            return false if slot < 0
+            s.ready[slot.usize()] <- value
+            true
+
+        # Removes a player by swapping the last one into the gap.
+        def remove_player(s: mutable Session&, id: i64) -> bool:
+            slot: i64 = slot_of(s, id)
+            return false if slot < 0
+            last: i64 = s.count - 1
+            s.ids[slot.usize()] <- s.ids[last.usize()]
+            s.ready[slot.usize()] <- s.ready[last.usize()]
+            s.ids[last.usize()] <- 0
+            s.ready[last.usize()] <- false
+            s.count <- last
+            true
+
+        def all_ready(s: Session&) -> bool:
+            return false if s.count < 2
+            for index in 0..<Tune::PLAYERS |ok: bool = true| -> ok:
+                ok <- false if index.i64() < s.count and not s.ready[index]

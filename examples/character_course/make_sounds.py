@@ -78,6 +78,19 @@ def music() -> list[float]:
     return samples
 
 
+def victory() -> list[float]:
+    # A bright major fanfare loop: 4 bars of eighth notes at 120 BPM (8 s).
+    chords = [[261.63, 329.63, 392.0], [349.23, 440.0, 523.25],
+        [392.0, 493.88, 587.33], [261.63, 329.63, 392.0]]
+    step_seconds = 60.0 / 120.0 / 2.0
+    samples: list[float] = []
+    for chord in chords:
+        for step in range(8):
+            note = chord[step % 3] * (2.0 if step >= 6 else 1.0)
+            samples += tone([note, chord[0] / 2.0], step_seconds, 0.2, attack=0.01, release=0.15)
+    return samples
+
+
 def wav_bytes(samples: list[float]) -> bytes:
     buffer = io.BytesIO()
     with wave.open(buffer, "wb") as output:
@@ -93,6 +106,7 @@ def wav_bytes(samples: list[float]) -> bytes:
 def sounds() -> dict[str, list[float]]:
     return {
         "music.wav": music(),
+        "music_win.wav": victory(),
         "ambience.wav": seamless(noise(4.5, 0.35, 0.02, 7), 0.5),
         "jump_a.wav": tone([440.0], 0.14, 0.45, glide=0.6),
         "jump_b.wav": tone([494.0], 0.14, 0.45, glide=0.6),

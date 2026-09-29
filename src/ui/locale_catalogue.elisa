@@ -1,0 +1,62 @@
+# Message catalogue over the locale codes in locale.elisa: which keys each
+# locale has translated, fallback resolution, and live language switching.
+include "./locale.elisa"
+
+module UiLocaleCatalogue:
+    public:
+        struct Found:
+            locale: i64
+            missing: bool
+            fell_back: bool
+
+        # Catalogue: one bitmask of translated keys per locale.
+        struct Catalogue:
+            has: mutable u32[5]
+
+        struct Selection:
+            locale: i64
+            generation: i64
+
+        def Catalogue() -> Catalogue:
+            Catalogue{has: zeroed}
+
+        def translate(catalogue: mutable Catalogue&, locale: i64, key: i64) -> bool:
+            return false if not UiLocale::locale_valid(locale) or key < 0 or key >= UiLocale::KEYS
+            catalogue.has[locale.usize()] <- catalogue.has[locale.usize()] | (1u32 << key.u32())
+            true
+
+        def has_key(catalogue: Catalogue&, locale: i64, key: i64) -> bool:
+            return false if not UiLocale::locale_valid(locale) or key < 0 or key >= UiLocale::KEYS
+            (catalogue.has[locale.usize()] >> key.u32()) & 1u32 == 1u32
+
+        # The locale whose text is used for `key`, walking at most UiLocale::LOCALES steps.
+        # `missing` is true only when not even UiLocale::EN has it.
+        def resolve(catalogue: Catalogue&, locale: i64, key: i64) -> Found:
+            start: i64 = locale if UiLocale::locale_valid(locale) else UiLocale::EN
+            return Found{locale: start, missing: false, fell_back: false} if has_key(catalogue, start, key)
+            current: mutable i64 = start
+            for _ in 0..<UiLocale::LOCALES |current|:
+                current <- UiLocale::fallback(current) if not has_key(catalogue, current, key)
+            found: bool = has_key(catalogue, current, key)
+            Found{locale: current, missing: not found, fell_back: true}
+
+        # Live switch: only a known locale is accepted, and the generation
+        # changes so cached text and layout rebuild.
+        def switch_to(state: Selection, locale: i64) -> Selection:
+            return state if not UiLocale::locale_valid(locale) or locale == state.locale
+            Selection{locale: locale, generation: state.generation + 1}
+
+        # Mirrors a box's left edge inside its container for right-to-left text.
+        def mirror_x(x: i64, width: i64, container: i64) -> i64:
+            requires x >= 0
+            requires width >= 0
+            requires x + width <= container
+            ensure result >= 0
+            ensure result + width <= container
+            container - width - x
+
+        # Width to reserve for a label authored at `base` in this locale.
+        def reserve_width(base: i64, locale: i64) -> i64:
+            requires base >= 0
+            requires base <= 100000
+            base * UiLocale::expansion_permille(locale) / 1000

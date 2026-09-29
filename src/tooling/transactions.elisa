@@ -1,0 +1,169 @@
+# Transactional undo/redo over an authored entity hierarchy. `Doc` holds up
+# to 15 nodes as two packed integers (a liveness mask and 4-bit parent
+# links), so a failed command can never leave a half-edited document: every
+# operation is a pure function of the document that either returns the new
+# one or reports failure with nothing changed. Operations are recorded in a
+# bounded history, tagged with a group so one user action that edits several
+# entities undoes and redoes as a unit. Ids are authored slots, never runtime
+# handles, so saved documents cannot leak runtime IDs.
+include "./transaction_math.elisa"
+
+module EditTransactions:
+    private:
+        const module Limits:
+            NONE: i64 = 15
+            NODES: i64 = 15
+            CAPACITY: usize = 24
+
+    public:
+        enum Kind:
+            Create
+            Delete
+            Reparent
+
+        struct Doc:
+            alive: u64
+            parents: u64
+
+        struct Op:
+            kind: Kind
+            id: i64
+            parent: i64
+            old_parent: i64
+            group: i64
+
+        struct Applied:
+            doc: Doc
+            ok: bool
+
+        struct History:
+            ops: mutable Op[24]
+            length: mutable i64
+            position: mutable i64
+
+        def Doc() -> Doc:
+            Doc{alive: 0, parents: 0}
+
+        def History() -> History:
+            History{ops: zeroed, length: 0, position: 0}
+
+        def is_alive(doc: Doc&, id: i64) -> bool:
+            return false if id < 0 or id >= Limits::NODES
+            ((doc.alive >> id.u64()) & 1) == 1
+
+        # The parent of a live node, or NONE for a root or an unknown id.
+        def parent_of(doc: Doc&, id: i64) -> i64:
+            return Limits::NONE if not is_alive(doc, id)
+            EditTransactionMath::link_at(doc.parents, id.u64() * 4).i64()
+
+        def with_parent(doc: Doc, id: i64, parent: i64) -> Doc:
+            shift: u64 = id.u64() * 4
+            cleared: u64 = doc.parents & ~(15 << shift)
+            Doc{alive: doc.alive, parents: cleared | (parent.u64() << shift)}
+
+        def has_children(doc: Doc&, id: i64) -> bool:
+            found: mutable bool = false
+            for other in 0..<Limits::NODES |found, doc, id|:
+                found <- true if is_alive(doc, other) and parent_of(doc, other) == id
+            found
+
+        # Whether making `parent` the parent of `id` would loop back to it.
+        def creates_cycle(doc: Doc&, id: i64, parent: i64) -> bool:
+            cursor: mutable i64 = parent
+            hit: mutable bool = false
+            for _ in 0..<16 |cursor, hit, doc, id|:
+                hit <- true if cursor == id
+                cursor <- parent_of(doc, cursor) if cursor != Limits::NONE else Limits::NONE
+            hit
+
+        def failed(doc: Doc) -> Applied:
+            Applied{doc: doc, ok: false}
+
+        def perform(doc: Doc, op: Op) -> Applied:
+            in_range: bool = op.id >= 0 and op.id < Limits::NODES
+            parent_ok: bool = op.parent == Limits::NONE or is_alive(&doc, op.parent)
+            if not in_range:
+                failed(doc)
+            elif op.kind == Kind.Create:
+                if is_alive(&doc, op.id) or not parent_ok:
+                    failed(doc)
+                else:
+                    made: Doc = Doc{alive: doc.alive | (1 << op.id.u64()), parents: doc.parents}
+                    Applied{doc: with_parent(made, op.id, op.parent), ok: true}
+            elif op.kind == Kind.Delete:
+                if not is_alive(&doc, op.id) or has_children(&doc, op.id):
+                    failed(doc)
+                else:
+                    Applied{doc: Doc{alive: doc.alive & ~(1 << op.id.u64()), parents: doc.parents}, ok: true}
+            else:
+                if not is_alive(&doc, op.id) or not parent_ok or op.parent == op.id or creates_cycle(&doc, op.id, op.parent):
+                    failed(doc)
+                else:
+                    Applied{doc: with_parent(doc, op.id, op.parent), ok: true}
+
+        def invert(op: Op) -> Op:
+            if op.kind == Kind.Create:
+                Op{kind: Kind.Delete, id: op.id, parent: op.parent, old_parent: op.old_parent, group: op.group}
+            elif op.kind == Kind.Delete:
+                Op{kind: Kind.Create, id: op.id, parent: op.parent, old_parent: op.old_parent, group: op.group}
+            else:
+                Op{kind: Kind.Reparent, id: op.id, parent: op.old_parent, old_parent: op.parent, group: op.group}
+
+        # Applies one operation and records it under `group`. A failed
+        # operation, or a full history, changes neither the document nor the
+        # history. Recording drops any redo tail.
+        def apply(doc: Doc, history: mutable History&, kind: Kind, id: i64, parent: i64, group: i64) -> Applied:
+            return failed(doc) if history.position >= Limits::CAPACITY.i64()
+            # Deletes and reparents remember the parent they replace.
+            previous: i64 = parent_of(&doc, id)
+            op: Op = Op{kind: kind, id: id, parent: parent, old_parent: previous, group: group}
+            recorded: Op = Op{kind: kind, id: id, parent: previous if kind == Kind.Delete else parent, old_parent: previous, group: group}
+            result: Applied = perform(doc, op)
+            return result if not result.ok
+            history.ops[history.position.usize()] <- recorded
+            history.position <- history.position + 1
+            history.length <- history.position
+            result
+
+        def undoable(history: History&) -> bool:
+            history.position > 0
+
+        def redoable(history: History&) -> bool:
+            history.position < history.length
+
+        # Reverts the latest group as a unit. If any step cannot be
+        # reverted (the document was changed outside the history), nothing
+        # changes.
+        def undo(doc: Doc, history: mutable History&) -> Applied:
+            return failed(doc) if history.position < 1
+            ops: Op[24] = history.ops
+            group: i64 = ops[(history.position - 1).usize()].group
+            position: mutable i64 = history.position
+            current: mutable Doc = doc
+            ok: mutable bool = true
+            for _ in 0..<Limits::CAPACITY |position, current, ok, ops, group|:
+                if ok and position > 0 and ops[(position - 1).usize()].group == group:
+                    step: Applied = perform(current, invert(ops[(position - 1).usize()]))
+                    ok <- step.ok
+                    current <- step.doc
+                    position <- position - 1
+            return failed(doc) if not ok
+            history.position <- position
+            Applied{doc: current, ok: true}
+
+        def redo(doc: Doc, history: mutable History&) -> Applied:
+            return failed(doc) if history.position >= history.length
+            ops: Op[24] = history.ops
+            group: i64 = ops[history.position.usize()].group
+            position: mutable i64 = history.position
+            current: mutable Doc = doc
+            ok: mutable bool = true
+            for _ in 0..<Limits::CAPACITY |position, current, ok, ops, group|:
+                if ok and position < history.length and ops[position.usize()].group == group:
+                    step: Applied = perform(current, ops[position.usize()])
+                    ok <- step.ok
+                    current <- step.doc
+                    position <- position + 1
+            return failed(doc) if not ok
+            history.position <- position
+            Applied{doc: current, ok: true}

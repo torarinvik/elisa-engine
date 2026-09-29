@@ -1,0 +1,30 @@
+include "../src/runtime/ui_semantics.elisa"
+
+def rejects(index: i64, count: i64) -> bool:
+    caught: bool = catch UiSemantics::Control(UiSemantics::Role.Button, "a", "", index, count, false):
+        value: false
+        UiSemantics::SemanticsError.Invalid: true
+    caught
+
+def main() -> i32:
+    slider: UiSemantics::Control = catch UiSemantics::Control(UiSemantics::Role.Slider, "Text size", "125%", 6, 9, true):
+        value: value
+        error failure: return 1
+    return 2 if UiSemantics::position(&slider) != 7
+    return 3 if not UiSemantics::adjustable(&slider)
+    return 4 if not UiSemantics::focusable(&slider)
+    return 5 if not slider.selected
+    key: UiSemantics::Control = catch UiSemantics::Control(UiSemantics::Role.KeyBinding, "Jump", "Space", 0, 9, false):
+        value: value
+        error failure: return 6
+    return 7 if UiSemantics::adjustable(&key)
+    label: UiSemantics::Control = catch UiSemantics::Control(UiSemantics::Role.Label, "Legend", "", 1, 9, false):
+        value: value
+        error failure: return 8
+    return 9 if UiSemantics::focusable(&label)
+    return 10 if not rejects(0, 0)
+    return 11 if not rejects(9, 9)
+    return 12 if not rejects(-1, 3)
+    return 13 if not rejects(0, 65)
+    return 14 if UiSemantics::role_name(UiSemantics::Role.Toggle) != "toggle"
+    0

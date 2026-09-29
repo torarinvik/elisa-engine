@@ -154,7 +154,33 @@ module AudioEvents:
             for index in 0..<MAX_DEFINITIONS |board|:
                 board.fired[index] <- false
 
+        # Hot reload: `next` was just built from a changed asset. Events that
+        # survive (matched by id) keep their firing history, rotation and live
+        # instances, so a reloaded tick cannot fire twice and playing voices
+        # keep their slots. Instances of removed events are dropped; the
+        # caller stops the voices in slots live in `previous` but not `next`.
+        def carry_over(next: mutable Board&, previous: Board&) -> void:
+            next.sequence <- previous.sequence
+            for index in 0..<next.definition_count |next|:
+                old: usize = event_index(previous, next.definitions[index].id)
+                kept: bool = old < previous.definition_count
+                next.fired[index] <- previous.fired[old] if kept else next.fired[index]
+                next.last_tick[index] <- previous.last_tick[old] if kept else next.last_tick[index]
+                next.next_variant[index] <- previous.next_variant[old] % next.definitions[index].variants if kept else next.next_variant[index]
+            for slot in 0..<MAX_INSTANCES |next|:
+                index: usize = surviving_index(next, previous, slot)
+                kept: bool = index < next.definition_count
+                next.instance_live[slot] <- kept
+                next.instance_event[slot] <- index if kept else next.instance_event[slot]
+                next.instance_started[slot] <- previous.instance_started[slot] if kept else next.instance_started[slot]
+
     private:
+        # The slot's event in `next`, or MAX_DEFINITIONS when the slot is idle
+        # or its event was removed.
+        def surviving_index(next: Board&, previous: Board&, slot: usize) -> usize:
+            return MAX_DEFINITIONS if not previous.instance_live[slot]
+            event_index(next, previous.definitions[previous.instance_event[slot]].id)
+
         const MODULUS: u64 = 2147483647
         const MULTIPLIER: u64 = 48271
 

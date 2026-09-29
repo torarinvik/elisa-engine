@@ -1,0 +1,9 @@
+# Bit helpers for the edit-transaction document, kept separate so their
+# contracts are proved (proof/edit_transactions.elisa).
+module EditTransactionMath:
+    public:
+        # The 4-bit link stored at `shift`: at most 15, so it names a node
+        # slot (0..14) or the NONE sentinel (15), never an out-of-range index.
+        def link_at(parents: u64, shift: u64) -> u64:
+            ensure result <= 15
+            (parents >> shift) & 15

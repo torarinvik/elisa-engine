@@ -233,10 +233,69 @@ int main() {
     if (!expect(elisa_user_data_v1_read_blob("future", &loaded_version,
             loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_WRONG_VERSION,
             "report unsupported format version")) return 25;
+    // Crash recovery: the previous intact record survives as a backup, and a
+    // damaged or missing primary falls back to it.
+    const int64_t first_generation[1] = {111};
+    const int64_t second_generation[1] = {222};
+    if (!expect(elisa_user_data_v1_write_blob("recover", 1, first_generation, 1) == ELISA_USER_DATA_OK &&
+            elisa_user_data_v1_write_blob("recover", 2, second_generation, 1) == ELISA_USER_DATA_OK,
+            "write two generations")) return 70;
+    if (!expect(elisa_user_data_v1_read_blob("recover", &loaded_version,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK &&
+            loaded_version == 2 && loaded_fields[0] == 222, "read newest generation")) return 71;
+    {
+        std::fstream file(expected_root / "recover.save", std::ios::binary | std::ios::in | std::ios::out);
+        const char damaged = 0x55;
+        file.seekp(30);
+        file.write(&damaged, 1);
+        if (!expect(static_cast<bool>(file), "damage primary")) return 72;
+    }
+    if (!expect(elisa_user_data_v1_read_blob("recover", &loaded_version,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK &&
+            loaded_version == 1 && loaded_fields[0] == 111, "recover last good generation")) return 73;
+    std::filesystem::remove(expected_root / "recover.save", error);
+    if (!expect(elisa_user_data_v1_read_blob("recover", &loaded_version,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_OK &&
+            loaded_fields[0] == 111, "recover when the primary is missing")) return 74;
+    {
+        std::fstream file(expected_root / "recover.save.bak", std::ios::binary | std::ios::in | std::ios::out);
+        const char damaged = 0x55;
+        file.seekp(30);
+        file.write(&damaged, 1);
+    }
+    if (!expect(elisa_user_data_v1_read_blob("recover", &loaded_version,
+            loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_NOT_FOUND,
+            "a damaged backup is never used")) return 75;
+    if (!expect(elisa_user_data_v1_write_blob("recover", 3, second_generation, 1) == ELISA_USER_DATA_OK &&
+            elisa_user_data_v1_remove_blob("recover") == ELISA_USER_DATA_OK &&
+            elisa_user_data_v1_read_blob("recover", &loaded_version,
+                loaded_fields, ELISA_USER_DATA_MAX_FIELDS, &loaded_count) == ELISA_USER_DATA_NOT_FOUND &&
+            !std::filesystem::exists(expected_root / "recover.save.bak", error),
+            "remove deletes the recovery copy")) return 76;
+    if (!expect(elisa_user_data_v1_write_payload("recover-bytes", 1, payload_bytes, 6) == ELISA_USER_DATA_OK &&
+            elisa_user_data_v1_write_payload("recover-bytes", 2, payload_bytes, 5) == ELISA_USER_DATA_OK,
+            "write two payload generations")) return 77;
+    std::filesystem::resize_file(expected_root / "recover-bytes.data", 30, error);
+    if (!expect(!error && elisa_user_data_v1_read_payload("recover-bytes", &loaded_version,
+            loaded_payload, sizeof(loaded_payload), &loaded_length) == ELISA_USER_DATA_OK &&
+            loaded_version == 1 && loaded_length == 6, "recover a truncated payload")) return 78;
     if (!expect(elisa_user_data_v1_remove_blob("absent") == ELISA_USER_DATA_NOT_FOUND,
             "remove absent file")) return 26;
     if (!expect(elisa_user_data_v1_remove_blob("settings") == ELISA_USER_DATA_OK,
             "remove settings")) return 27;
+
+    // Orphaned staging files from a crash are swept at initialise once stale.
+    {
+        std::ofstream(expected_root / "crashed.tmp-1-1") << "x";
+        std::ofstream(expected_root / "live.tmp-2-2") << "y";
+        std::filesystem::last_write_time(expected_root / "crashed.tmp-1-1",
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours(3), error);
+        if (!expect(!error, "age the orphan")) return 79;
+    }
+    if (!expect(elisa_user_data_v1_initialize("test.wall-game") == ELISA_USER_DATA_OK &&
+            !std::filesystem::exists(expected_root / "crashed.tmp-1-1", error) &&
+            std::filesystem::exists(expected_root / "live.tmp-2-2", error),
+            "sweep stale staging files only")) return 80;
 
     const std::filesystem::path blocked = scratch / "not-a-directory";
     {

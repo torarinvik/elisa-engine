@@ -1,0 +1,39 @@
+# Integer helpers for touch gestures and haptics, enum-free so their contracts
+# are proved (proof/ui_touch.elisa). Distances are Manhattan, so they need no
+# square roots and stay linear.
+module UiTouchMath:
+    public:
+        def magnitude(value: i64) -> i64:
+            requires value > -1000000000000
+            ensure result >= 0
+            return 0 - value if value < 0
+            value
+
+        def manhattan(dx: i64, dy: i64) -> i64:
+            requires dx > 0 - 1000000000
+            requires dx < 1000000000
+            requires dy > 0 - 1000000000
+            requires dy < 1000000000
+            ensure result >= 0
+            horizontal: i64 = dx if dx >= 0 else 0 - dx
+            vertical: i64 = dy if dy >= 0 else 0 - dy
+            horizontal + vertical
+
+        # A press is a tap when it moved within the slop and was short.
+        def is_tap(moved: i64, slop: i64, held_ms: i64, max_ms: i64) -> bool:
+            moved <= slop and held_ms <= max_ms and moved >= 0 and held_ms >= 0
+
+        def clamp_strength(strength: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1000
+            return 0 if strength < 0
+            return 1000 if strength > 1000
+            strength
+
+        def clamp_duration(duration_ms: i64, max_ms: i64) -> i64:
+            requires max_ms >= 0
+            ensure result >= 0
+            ensure result <= max_ms
+            return 0 if duration_ms < 0
+            return max_ms if duration_ms > max_ms
+            duration_ms

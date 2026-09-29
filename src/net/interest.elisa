@@ -1,0 +1,87 @@
+# Interest management. For each client and entity the server decides what
+# to send: nothing, a full record (entering range, or a lost baseline), a
+# delta against an acknowledged baseline, or a leave so the client drops the
+# reference. Every send is charged to the client's byte budget, and one that
+# does not fit is deferred, so queues stay bounded. A late joiner knows
+# nothing, so every relevant entity arrives as a full record.
+include "./interest_math.elisa"
+
+module NetInterest:
+    private:
+        const module Cost:
+            FULL: i64 = 33
+            DELTA: i64 = 12
+            LEAVE: i64 = 9
+
+    public:
+        enum Action:
+            Skip
+            Enter
+            Resend
+            Delta
+            Leave
+
+        # What this client already holds of one entity.
+        struct Known:
+            known: bool
+            acked: bool
+
+        struct Plan:
+            action: Action
+            cost: i64
+
+        struct Sent:
+            action: Action
+            budget: i64
+
+        # Squared distance between two grid points; no square root and no
+        # overflow for coordinates within one million. The prover cannot
+        # bound a product of variables, so this one is tested, not proved.
+        def distance_squared(ax: i64, ay: i64, bx: i64, by: i64) -> i64:
+            requires ax >= -1000000 and ax <= 1000000
+            requires ay >= -1000000 and ay <= 1000000
+            requires bx >= -1000000 and bx <= 1000000
+            requires by >= -1000000 and by <= 1000000
+            ensure result >= 0
+            dx: i64 = ax - bx
+            dy: i64 = ay - by
+            dx * dx + dy * dy
+
+        def relevant(client_x: i64, client_y: i64, entity_x: i64, entity_y: i64, radius: i64) -> bool:
+            return false if radius < 0 or radius > 1000000
+            return false if client_x < -1000000 or client_x > 1000000 or client_y < -1000000 or client_y > 1000000
+            return false if entity_x < -1000000 or entity_x > 1000000 or entity_y < -1000000 or entity_y > 1000000
+            distance_squared(client_x, client_y, entity_x, entity_y) <= radius * radius
+
+        def plan_for(state: Known&, in_range: bool) -> Plan:
+            if not in_range:
+                Plan{action: Action.Leave, cost: Cost::LEAVE} if state.known else Plan{action: Action.Skip, cost: 0}
+            elif not state.known:
+                Plan{action: Action.Enter, cost: Cost::FULL}
+            elif not state.acked:
+                Plan{action: Action.Resend, cost: Cost::FULL}
+            else:
+                Plan{action: Action.Delta, cost: Cost::DELTA}
+
+        # Charges a plan to the budget. A plan that does not fit is deferred
+        # (Skip) and the budget is left unchanged.
+        def charge(plan: Plan, budget: i64) -> Sent:
+            return Sent{action: Action.Skip, budget: budget} if plan.action == Action.Skip or not NetInterestMath::fits(budget, plan.cost)
+            Sent{action: plan.action, budget: NetInterestMath::remaining_after(budget, plan.cost)}
+
+        # The state after a send: a leave forgets the entity; anything else
+        # is known but unacknowledged until the client acks it.
+        def after_send(state: Known, action: Action) -> Known:
+            if action == Action.Leave:
+                Known{known: false, acked: false}
+            elif action == Action.Skip:
+                state
+            else:
+                Known{known: true, acked: false}
+
+        def acknowledge(state: Known) -> Known:
+            Known{known: state.known, acked: state.known}
+
+        # Packet loss: the baseline is not trusted, so the next send is full.
+        def lost(state: Known) -> Known:
+            Known{known: state.known, acked: false}

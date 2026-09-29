@@ -1,0 +1,163 @@
+# Music transitions: which music cue is heard and how the last one fades
+# out while the next fades in. A game gives each cue its own stream and sets
+# every stream's gain from `gain_permille` each frame. This is pure integer
+# policy over milliseconds, so a replayed or paused game hears the same fade,
+# proved in proof/audio_music.elisa. Asking for the cue already heard does
+# nothing, so a state that re-requests its music every tick never restarts it.
+module AudioMusic:
+    public:
+        const MAX_CUES: u64 = 4
+        # The cue id that stands for silence.
+        const NO_CUE: u64 = 4
+        const FULL_PERMILLE: u64 = 1000
+        const MAX_FADE_MS: u64 = 10000
+        const DEFAULT_FADE_MS: u64 = 500
+
+        struct Cue:
+            defined: bool
+            fade_out_ms: u64
+            fade_in_ms: u64
+
+        struct Cues:
+            first: Cue
+            second: Cue
+            third: Cue
+            fourth: Cue
+
+        struct Transition:
+            # The cue heard, or fading in; NO_CUE for silence.
+            playing: mutable u64
+            # The cue fading out; NO_CUE when nothing is.
+            leaving: mutable u64
+            fade_out_ms: mutable u64
+            fade_in_ms: mutable u64
+            elapsed_ms: mutable u64
+            # The gains each cue had when the fade began, so a fade turned
+            # around midway continues from where it was instead of jumping.
+            playing_from: mutable u64
+            leaving_from: mutable u64
+
+        def Cue() -> Cue:
+            Cue{defined: false, fade_out_ms: DEFAULT_FADE_MS, fade_in_ms: DEFAULT_FADE_MS}
+
+        def Cues() -> Cues:
+            Cues{first: Cue(), second: Cue(), third: Cue(), fourth: Cue()}
+
+        # Silence with no fade in progress.
+        def Transition() -> Transition:
+            Transition{playing: NO_CUE, leaving: NO_CUE, fade_out_ms: 0, fade_in_ms: 0, elapsed_ms: 0, playing_from: 0, leaving_from: 0}
+
+        def valid(id: u64, fade_out_ms: u64, fade_in_ms: u64) -> bool:
+            ensure not result or (id < MAX_CUES and fade_out_ms <= MAX_FADE_MS and fade_in_ms <= MAX_FADE_MS)
+            id < MAX_CUES and fade_out_ms <= MAX_FADE_MS and fade_in_ms <= MAX_FADE_MS
+
+        def cue(fade_out_ms: u64, fade_in_ms: u64) -> Cue:
+            requires fade_out_ms <= MAX_FADE_MS and fade_in_ms <= MAX_FADE_MS
+            Cue{defined: true, fade_out_ms: fade_out_ms, fade_in_ms: fade_in_ms}
+
+        # The cue for `id`, or the default past the last slot.
+        def get(cues: Cues&, id: u64) -> Cue:
+            if id == 0:
+                cues.first
+            elif id == 1:
+                cues.second
+            elif id == 2:
+                cues.third
+            elif id == 3:
+                cues.fourth
+            else:
+                Cue()
+
+        def defined(cues: Cues&, id: u64) -> bool:
+            get(cues, id).defined
+
+        # `cues` with `id` replaced; an id past the last slot changes nothing.
+        def with_cue(cues: Cues, id: u64, value: Cue) -> Cues:
+            Cues{
+                first: value if id == 0 else cues.first,
+                second: value if id == 1 else cues.second,
+                third: value if id == 2 else cues.third,
+                fourth: value if id == 3 else cues.fourth,
+            }
+
+        # Starts fading to `id`, using the outgoing cue's fade-out and the
+        # incoming cue's fade-in. Returns true when a transition starts, so the
+        # caller rewinds that cue's stream. Asking for the cue already heard
+        # returns false. Each fade starts from the gain its cue has now, and
+        # a third cue still fading out is cut off.
+        def request(music: mutable Transition&, cues: Cues&, id: u64) -> bool:
+            target: u64 = id if id < MAX_CUES else NO_CUE
+            return false if target == music.playing
+            outgoing: u64 = gain_permille(music, music.playing)
+            incoming: u64 = gain_permille(music, target)
+            music.leaving_from <- outgoing
+            music.playing_from <- incoming
+            music.leaving <- music.playing
+            music.fade_out_ms <- fade_ms(get(cues, music.playing).fade_out_ms)
+            music.fade_in_ms <- fade_ms(get(cues, target).fade_in_ms)
+            music.playing <- target
+            music.elapsed_ms <- 0
+            true
+
+        # Jumps straight to `id` at full gain, as on a restart or reload.
+        def reset(music: mutable Transition&, id: u64) -> void:
+            music.playing <- id if id < MAX_CUES else NO_CUE
+            music.leaving <- NO_CUE
+            music.fade_out_ms <- 0
+            music.fade_in_ms <- 0
+            music.elapsed_ms <- 0
+            music.playing_from <- FULL_PERMILLE
+            music.leaving_from <- 0
+
+        # Moves the fade on by `dt_ms`, saturating once both fades finish; a
+        # paused game simply stops calling this.
+        def advance(music: mutable Transition&, dt_ms: u64) -> void:
+            step: u64 = dt_ms if dt_ms < MAX_FADE_MS else MAX_FADE_MS
+            elapsed: u64 = music.elapsed_ms if music.elapsed_ms < MAX_FADE_MS else MAX_FADE_MS
+            total: u64 = elapsed + step
+            music.elapsed_ms <- total if total < MAX_FADE_MS else MAX_FADE_MS
+            music.leaving <- NO_CUE if music.elapsed_ms >= fade_ms(music.fade_out_ms)
+
+        def fading(music: Transition&) -> bool:
+            music.leaving != NO_CUE or music.elapsed_ms < fade_ms(music.fade_in_ms)
+
+        # The gain `id`'s stream should play at now: rising for the cue
+        # fading in, falling for the one fading out, and 0 for the rest.
+        def gain_permille(music: Transition&, id: u64) -> u64:
+            ensure result <= FULL_PERMILLE
+            return 0 if id >= MAX_CUES
+            elapsed: u64 = fade_ms(music.elapsed_ms)
+            fade_in: u64 = fade_ms(music.fade_in_ms)
+            fade_out: u64 = fade_ms(music.fade_out_ms)
+            return towards_full(music.playing_from, rising(elapsed, fade_in)) if id == music.playing
+            return towards_zero(music.leaving_from, rising(elapsed, fade_out)) if id == music.leaving
+            0
+
+    private:
+        def fade_ms(ms: u64) -> u64:
+            ensure result <= MAX_FADE_MS
+            ms if ms < MAX_FADE_MS else MAX_FADE_MS
+
+        # How far through a fade of `span` ms `elapsed` is, in permille.
+        def rising(elapsed: u64, span: u64) -> u64:
+            requires elapsed <= MAX_FADE_MS and span <= MAX_FADE_MS
+            ensure result <= FULL_PERMILLE
+            return FULL_PERMILLE if elapsed >= span
+            elapsed * FULL_PERMILLE / span
+
+        # `from` moved `progress` permille of the way to full or to silence.
+        # The clamps only guard a hand-built transition; the blends already
+        # stay within full gain.
+        def towards_full(from: u64, progress: u64) -> u64:
+            ensure result <= FULL_PERMILLE
+            start: u64 = from if from < FULL_PERMILLE else FULL_PERMILLE
+            share: u64 = progress if progress < FULL_PERMILLE else FULL_PERMILLE
+            blended: u64 = (start * (FULL_PERMILLE - share) + FULL_PERMILLE * share) / FULL_PERMILLE
+            blended if blended < FULL_PERMILLE else FULL_PERMILLE
+
+        def towards_zero(from: u64, progress: u64) -> u64:
+            ensure result <= FULL_PERMILLE
+            start: u64 = from if from < FULL_PERMILLE else FULL_PERMILLE
+            share: u64 = progress if progress < FULL_PERMILLE else FULL_PERMILLE
+            blended: u64 = start * (FULL_PERMILLE - share) / FULL_PERMILLE
+            blended if blended < FULL_PERMILLE else FULL_PERMILLE

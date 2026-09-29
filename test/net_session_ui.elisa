@@ -1,0 +1,41 @@
+include "../src/net/session_ui.elisa"
+
+def main() -> i32:
+    s: mutable NetSessionUi::Session = NetSessionUi::Session()
+    # Bad addresses and ports are refused before any attempt.
+    return 1 if NetSessionUi::join(&s, 0, 7777) or s.reason != NetSessionUi::Reason.BadAddress
+    return 2 if NetSessionUi::join(&s, 9, 70000) or s.screen != NetSessionUi::Screen.Failed
+    return 3 if not NetSessionUi::join(&s, 9, 7777) or s.screen != NetSessionUi::Screen.Joining
+    # Timeouts are retryable a bounded number of times; refusal is final.
+    return 4 if not NetSessionUi::failed(&s, NetSessionUi::Reason.Timeout) or s.reason != NetSessionUi::Reason.Timeout
+    NetSessionUi::join(&s, 9, 7777)
+    return 5 if NetSessionUi::failed(&s, NetSessionUi::Reason.Refused)
+    NetSessionUi::join(&s, 9, 7777)
+    NetSessionUi::failed(&s, NetSessionUi::Reason.Timeout)
+    NetSessionUi::join(&s, 9, 7777)
+    NetSessionUi::failed(&s, NetSessionUi::Reason.Timeout)
+    NetSessionUi::join(&s, 9, 7777)
+    return 6 if NetSessionUi::failed(&s, NetSessionUi::Reason.Timeout) or s.retries != 5
+    # Hosting needs a valid port from the menu and then a connection.
+    NetSessionUi::leave(&s)
+    return 7 if NetSessionUi::host(&s, 0) or not NetSessionUi::host(&s, 7777)
+    return 8 if NetSessionUi::host(&s, 7777) or not NetSessionUi::connected(&s)
+    # Roster: bounded, unique, swap-remove.
+    return 9 if not NetSessionUi::add_player(&s, 11) or not NetSessionUi::add_player(&s, 12) or not NetSessionUi::add_player(&s, 13)
+    return 10 if NetSessionUi::add_player(&s, 12) or NetSessionUi::add_player(&s, 0) or s.count != 3
+    return 11 if NetSessionUi::all_ready(&s)
+    NetSessionUi::set_ready(&s, 11, true)
+    NetSessionUi::set_ready(&s, 12, true)
+    NetSessionUi::set_ready(&s, 13, true)
+    return 12 if not NetSessionUi::all_ready(&s) or NetSessionUi::set_ready(&s, 99, true)
+    return 13 if not NetSessionUi::remove_player(&s, 11) or s.count != 2 or NetSessionUi::slot_of(&s, 13) != 0
+    return 14 if NetSessionUi::remove_player(&s, 11) or not NetSessionUi::all_ready(&s)
+    for n in 0..<8:
+        NetSessionUi::add_player(&s, 100 + n.i64())
+    return 15 if s.count != 8 or NetSessionUi::add_player(&s, 200)
+    # A lost connection clears the roster and is explained.
+    NetSessionUi::failed(&s, NetSessionUi::Reason.Unreachable)
+    return 16 if s.count != 0 or s.screen != NetSessionUi::Screen.Failed or NetSessionUi::add_player(&s, 5)
+    NetSessionUi::leave(&s)
+    return 17 if s.screen != NetSessionUi::Screen.Menu or s.reason != NetSessionUi::Reason.None
+    return 0

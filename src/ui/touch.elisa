@@ -1,0 +1,148 @@
+# Multi-pointer touch tracking and capability-based haptics. Pointers are
+# bounded slots keyed by the device's finger id. A press ends as a tap, a drag
+# or a cancellation; a device disconnect or a system cancel drops every contact
+# without producing a gesture, so a game never keeps a finger that is gone.
+# Haptic output states whether it played: an unsupported device keeps gameplay
+# running and the result says feedback was unavailable instead of failing.
+include "./touch_math.elisa"
+
+module UiTouch:
+    private:
+        const module Tune:
+            SLOTS: usize = 4
+            SLOP: i64 = 24
+            TAP_MS: i64 = 300
+            MAX_HAPTIC_MS: i64 = 2000
+
+    public:
+        enum Gesture:
+            None
+            Tap
+            Drag
+            Cancelled
+
+        struct Pointer:
+            id: i64
+            x: i64
+            y: i64
+            start_x: i64
+            start_y: i64
+            start_ms: i64
+
+        struct Touches:
+            slots: mutable Pointer[4]
+            count: mutable i64
+
+        struct Ended:
+            gesture: Gesture
+            moved: i64
+            held_ms: i64
+
+        struct Capability:
+            rumble: bool
+            touch_feedback: bool
+
+        struct Haptic:
+            played: bool
+            unavailable: bool
+            strength: i64
+            duration_ms: i64
+
+        def Touches() -> Touches:
+            empty: Pointer = Pointer{id: 0, x: 0, y: 0, start_x: 0, start_y: 0, start_ms: 0}
+            Touches{slots: [empty, empty, empty, empty], count: 0}
+
+        def find(touches: Touches&, id: i64) -> i64:
+            for index in 0..<Tune::SLOTS |found: i64 = -1| -> found:
+                found <- index.i64() if found < 0 and touches.slots[index].id == id and id != 0
+
+        def free_slot(touches: Touches&) -> i64:
+            for index in 0..<Tune::SLOTS |found: i64 = -1| -> found:
+                found <- index.i64() if found < 0 and touches.slots[index].id == 0
+
+        # Starts tracking a finger; false when the id is invalid, already down,
+        # or every slot is used (the extra finger is ignored, not queued).
+        def down(touches: mutable Touches&, id: i64, x: i64, y: i64, now_ms: i64) -> bool:
+            return false if id <= 0 or find(touches, id) >= 0
+            slot: i64 = free_slot(touches)
+            return false if slot < 0
+            touches.slots[slot.usize()] <- Pointer{id: id, x: x, y: y, start_x: x, start_y: y, start_ms: now_ms}
+            touches.count <- touches.count + 1
+            true
+
+        def move(touches: mutable Touches&, id: i64, x: i64, y: i64) -> bool:
+            slot: i64 = find(touches, id)
+            return false if slot < 0
+            began: Pointer = touches.slots[slot.usize()]
+            touches.slots[slot.usize()] <- Pointer{id: id, x: x, y: y, start_x: began.start_x, start_y: began.start_y, start_ms: began.start_ms}
+            true
+
+        def gesture_of(began: Pointer&, now_ms: i64) -> Ended:
+            moved: i64 = UiTouchMath::manhattan(began.x - began.start_x, began.y - began.start_y)
+            held: i64 = now_ms - began.start_ms
+            return Ended{gesture: Gesture.Tap, moved: moved, held_ms: held} if UiTouchMath::is_tap(moved, Tune::SLOP, held, Tune::TAP_MS)
+            Ended{gesture: Gesture.Drag, moved: moved, held_ms: held}
+
+        # Lifts a finger and classifies the press; an unknown id gives None.
+        def up(touches: mutable Touches&, id: i64, now_ms: i64) -> Ended:
+            slot: i64 = find(touches, id)
+            none: Ended = Ended{gesture: Gesture.None, moved: 0, held_ms: 0}
+            return none if slot < 0
+            began: Pointer = touches.slots[slot.usize()]
+            release(touches, slot)
+            gesture_of(&began, now_ms)
+
+        # A system cancel of one finger: the slot is freed and the result is
+        # Cancelled, never a tap or drag.
+        def cancel(touches: mutable Touches&, id: i64) -> Ended:
+            slot: i64 = find(touches, id)
+            none: Ended = Ended{gesture: Gesture.None, moved: 0, held_ms: 0}
+            return none if slot < 0
+            release(touches, slot)
+            Ended{gesture: Gesture.Cancelled, moved: 0, held_ms: 0}
+
+        # Device lost or app suspended: every contact is dropped; returns how
+        # many were cancelled.
+        def disconnect(touches: mutable Touches&) -> i64:
+            dropped: i64 = touches.count
+            for index in 0..<Tune::SLOTS |touches|:
+                release(touches, index.i64())
+            dropped
+
+        def release(touches: mutable Touches&, slot: i64) -> void:
+            return if slot < 0 or slot >= 4 or touches.slots[slot.usize()].id == 0
+            touches.slots[slot.usize()] <- Pointer{id: 0, x: 0, y: 0, start_x: 0, start_y: 0, start_ms: 0}
+            touches.count <- touches.count - 1
+
+        # Spread between the first two active fingers, or -1 with fewer than two.
+        def spread(touches: Touches&) -> i64:
+            return -1 if touches.count < 2
+            first: mutable i64 = -1
+            second: mutable i64 = -1
+            for index in 0..<Tune::SLOTS |first, second|:
+                first <- index.i64() if first < 0 and touches.slots[index].id != 0
+                second <- index.i64() if first >= 0 and first != index.i64() and second < 0 and touches.slots[index].id != 0
+            a: Pointer = touches.slots[first.usize()]
+            b: Pointer = touches.slots[second.usize()]
+            UiTouchMath::manhattan(a.x - b.x, a.y - b.y)
+
+        # Feedback request: clamps to safe values, and reports unavailable when
+        # the device cannot rumble, without raising.
+        def haptic(cap: Capability&, strength: i64, duration_ms: i64, on_touch: bool) -> Haptic:
+            supported: bool = cap.touch_feedback if on_touch else cap.rumble
+            level: i64 = UiTouchMath::clamp_strength(strength)
+            span: i64 = UiTouchMath::clamp_duration(duration_ms, Tune::MAX_HAPTIC_MS)
+            return Haptic{played: false, unavailable: true, strength: 0, duration_ms: 0} if not supported
+            Haptic{played: level > 0 and span > 0, unavailable: false, strength: level, duration_ms: span}
+
+        # Pinch scale in permille of the starting spread, kept within 250..4000
+        # so a glitchy contact cannot explode zoom.
+        def pinch_permille(start_spread: i64, now_spread: i64) -> i64:
+            requires start_spread >= 0
+            requires now_spread >= 0
+            ensure result >= 250
+            ensure result <= 4000
+            return 1000 if start_spread == 0
+            return 4000 if now_spread >= start_spread * 4
+            return 250 if now_spread * 4 <= start_spread
+            now_spread * 1000 / start_spread

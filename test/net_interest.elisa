@@ -1,0 +1,44 @@
+include "../src/net/interest.elisa"
+
+def sent(state: NetInterest::Known, in_range: bool, budget: i64) -> NetInterest::Sent:
+    NetInterest::charge(NetInterest::plan_for(&state, in_range), budget)
+
+def main() -> i32:
+    unknown: NetInterest::Known = NetInterest::Known{known: false, acked: false}
+    return 1 if not NetInterest::relevant(0, 0, 3, 4, 5) or NetInterest::relevant(0, 0, 4, 4, 5)
+    return 2 if NetInterest::relevant(0, 0, 0, 0, -1) or NetInterest::relevant(2000000, 0, 0, 0, 5)
+    # A late joiner receives every relevant entity in full and none beyond range.
+    join: NetInterest::Sent = sent(unknown, true, 100)
+    far: NetInterest::Sent = sent(unknown, false, 100)
+    return 3 if join.action != NetInterest::Action.Enter or join.budget != 67
+    return 4 if far.action != NetInterest::Action.Skip or far.budget != 100
+    # Until acknowledged the baseline is untrusted, so the send repeats in full.
+    held: NetInterest::Known = NetInterest::after_send(unknown, join.action)
+    return 5 if not held.known or held.acked
+    again: NetInterest::Sent = sent(held, true, 100)
+    return 6 if again.action != NetInterest::Action.Resend
+    acked: NetInterest::Known = NetInterest::acknowledge(held)
+    delta: NetInterest::Sent = sent(acked, true, 100)
+    return 7 if delta.action != NetInterest::Action.Delta or delta.budget != 88
+    # Loss demotes an acknowledged entity back to a full resend.
+    lost: NetInterest::Known = NetInterest::lost(acked)
+    return 8 if sent(lost, true, 100).action != NetInterest::Action.Resend
+    # Leaving range sends one leave, then the reference is gone.
+    leave: NetInterest::Sent = sent(acked, false, 100)
+    return 9 if leave.action != NetInterest::Action.Leave or leave.budget != 91
+    gone: NetInterest::Known = NetInterest::after_send(acked, leave.action)
+    return 10 if gone.known or sent(gone, false, 100).action != NetInterest::Action.Skip
+    # A send over budget is deferred, leaving the budget and state alone.
+    tight: NetInterest::Sent = sent(unknown, true, 20)
+    return 11 if tight.action != NetInterest::Action.Skip or tight.budget != 20
+    deferred: NetInterest::Known = NetInterest::after_send(unknown, tight.action)
+    return 12 if deferred.known
+    # Budget is spent across entities in order and never goes negative.
+    budget: mutable i64 = 70
+    entered: mutable i64 = 0
+    for _ in 0..<5 |budget, entered|:
+        result: NetInterest::Sent = sent(unknown, true, budget)
+        budget <- result.budget
+        entered <- entered + 1 if result.action == NetInterest::Action.Enter else entered
+    return 13 if entered != 2 or budget != 4
+    0

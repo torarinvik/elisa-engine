@@ -5,7 +5,10 @@ module CourseProgress:
     private:
         const module Limits:
             KEY: cstr = "course-checkpoint"
-            FIELD_COUNT: usize = 6
+            FIELD_COUNT: usize = 8
+            LEGACY_FIELD_COUNT: usize = 6
+            CHECK_MODULUS: i64 = 1000000007
+            CHECK_FACTOR: i64 = 131
             MILLIMETRES: f64 = 1000.0
             MAX_ABS_X_MM: i64 = 16000
             MIN_Y_MM: i64 = -8000
@@ -19,10 +22,14 @@ module CourseProgress:
         def from_millimetres(value: i64) -> f32:
             (value.f64() / Limits::MILLIMETRES).f32()
 
+        def mix(acc: i64, value: i64) -> i64:
+            ((acc * Limits::CHECK_FACTOR + value) % Limits::CHECK_MODULUS + Limits::CHECK_MODULUS) % Limits::CHECK_MODULUS
+
         def within(value: i64, low: i64, high: i64) -> bool:
             value >= low and value <= high
 
     public:
+        const SCHEMA: i64 = 2
         const PHASE_PLAYING: i64 = 1
         const PHASE_PAUSED: i64 = 2
         const PHASE_WON: i64 = 3
@@ -42,14 +49,35 @@ module CourseProgress:
 
         struct LoadResult:
             status: LoadStatus
+            migrated: bool
             checkpoint: Checkpoint
+
+        def checksum(phase: i64, x: i64, y: i64, z: i64, crouched: i64, attempts: i64) -> i64:
+            first: i64 = mix(SCHEMA, phase)
+            second: i64 = mix(mix(first, x), y)
+            mix(mix(mix(second, z), crouched), attempts)
 
         def key() -> cstr:
             Limits::KEY
 
-        # Encodes without judging the values so tests can persist records a
-        # live game could never produce.
+        # Writes the current schema (2): a schema marker, the six fields and a
+        # checksum over them. Encodes without judging the values so tests can
+        # persist records a live game could never produce.
         def encode(checkpoint: Checkpoint&) -> Save::Blob error[Save::SaveError]:
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- SCHEMA
+            values[1] <- checkpoint.phase
+            values[2] <- to_millimetres(checkpoint.position.x)
+            values[3] <- to_millimetres(checkpoint.position.y)
+            values[4] <- to_millimetres(checkpoint.position.z)
+            values[5] <- 1 if checkpoint.crouched else 0
+            values[6] <- checkpoint.attempts
+            values[7] <- checksum(values[1], values[2], values[3], values[4], values[5], values[6])
+            try Save::save_write(values, Limits::FIELD_COUNT)
+
+        # Schema 1 had no marker or checksum: six bare fields. Kept so tests
+        # can persist what an older release wrote.
+        def encode_legacy(checkpoint: Checkpoint&) -> Save::Blob error[Save::SaveError]:
             values: mutable i64[Save::MAX_FIELDS] = zeroed
             values[0] <- checkpoint.phase
             values[1] <- to_millimetres(checkpoint.position.x)
@@ -57,32 +85,41 @@ module CourseProgress:
             values[3] <- to_millimetres(checkpoint.position.z)
             values[4] <- 1 if checkpoint.crouched else 0
             values[5] <- checkpoint.attempts
-            try Save::save_write(values, Limits::FIELD_COUNT)
+            try Save::save_write(values, Limits::LEGACY_FIELD_COUNT)
 
-        # Accepts only this version's exact field count with a known phase, a
-        # position inside the course volume, a boolean crouch flag and a
-        # bounded attempt counter.
-        def decode(blob: Save::Blob&) -> LoadResult:
-            rejected: LoadResult = LoadResult{status: LoadStatus.Rejected,
+        def rejected() -> LoadResult:
+            LoadResult{status: LoadStatus.Rejected, migrated: false,
                 checkpoint: Checkpoint{phase: PHASE_PLAYING,
                     position: Geometry::vec3_zero(), crouched: false, attempts: 0}}
-            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+
+        # Accepts a schema-2 record whose checksum matches, or a schema-1
+        # record that migrates on load (`migrated`). Either way the values
+        # need a known phase, a position inside the course volume, a boolean
+        # crouch flag and a bounded attempt counter.
+        def decode(blob: Save::Blob&) -> LoadResult:
+            current: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
                 value: value
                 error failure: false
-            return rejected if not readable
-            phase: i64 = Save::save_value_or(blob, 0, 0)
-            x: i64 = Save::save_value_or(blob, 1, 0)
-            y: i64 = Save::save_value_or(blob, 2, 0)
-            z: i64 = Save::save_value_or(blob, 3, 0)
-            crouched: i64 = Save::save_value_or(blob, 4, -1)
-            attempts: i64 = Save::save_value_or(blob, 5, -1)
-            return rejected if not within(phase, PHASE_PLAYING, PHASE_FAILED)
-            return rejected if not within(x, -Limits::MAX_ABS_X_MM, Limits::MAX_ABS_X_MM)
-            return rejected if not within(y, Limits::MIN_Y_MM, Limits::MAX_Y_MM)
-            return rejected if not within(z, -Limits::MAX_ABS_Z_MM, Limits::MAX_ABS_Z_MM)
-            return rejected if not within(crouched, 0, 1)
-            return rejected if not within(attempts, 0, Limits::MAX_ATTEMPTS)
-            LoadResult{status: LoadStatus.Loaded, checkpoint: Checkpoint{
+            legacy: bool = catch Save::save_read(blob, Limits::LEGACY_FIELD_COUNT):
+                value: value
+                error failure: false
+            return rejected() if not current and not legacy
+            base: usize = 1 if current else 0
+            phase: i64 = Save::save_value_or(blob, base, 0)
+            x: i64 = Save::save_value_or(blob, base + 1, 0)
+            y: i64 = Save::save_value_or(blob, base + 2, 0)
+            z: i64 = Save::save_value_or(blob, base + 3, 0)
+            crouched: i64 = Save::save_value_or(blob, base + 4, -1)
+            attempts: i64 = Save::save_value_or(blob, base + 5, -1)
+            return rejected() if current and Save::save_value_or(blob, 0, 0) != SCHEMA
+            return rejected() if current and Save::save_value_or(blob, 7, -1) != checksum(phase, x, y, z, crouched, attempts)
+            return rejected() if not within(phase, PHASE_PLAYING, PHASE_FAILED)
+            return rejected() if not within(x, -Limits::MAX_ABS_X_MM, Limits::MAX_ABS_X_MM)
+            return rejected() if not within(y, Limits::MIN_Y_MM, Limits::MAX_Y_MM)
+            return rejected() if not within(z, -Limits::MAX_ABS_Z_MM, Limits::MAX_ABS_Z_MM)
+            return rejected() if not within(crouched, 0, 1)
+            return rejected() if not within(attempts, 0, Limits::MAX_ATTEMPTS)
+            LoadResult{status: LoadStatus.Loaded, migrated: not current, checkpoint: Checkpoint{
                 phase: phase,
                 position: Geometry::Vec3{x: from_millimetres(x),
                     y: from_millimetres(y), z: from_millimetres(z)},
@@ -101,12 +138,12 @@ module CourseProgress:
                 ok: 0
                 UserData::UserDataError.NotFound: 1
                 error failure: 2
-            missing: LoadResult = LoadResult{status: LoadStatus.Missing,
+            missing: LoadResult = LoadResult{status: LoadStatus.Missing, migrated: false,
                 checkpoint: Checkpoint{phase: PHASE_PLAYING,
                     position: Geometry::vec3_zero(), crouched: false, attempts: 0}}
             if read_status == 1:
                 missing
             elif read_status == 2:
-                LoadResult{status: LoadStatus.Unreadable, checkpoint: missing.checkpoint}
+                LoadResult{status: LoadStatus.Unreadable, migrated: false, checkpoint: missing.checkpoint}
             else:
                 decode(&blob)

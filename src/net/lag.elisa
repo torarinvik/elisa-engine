@@ -1,0 +1,150 @@
+# Deterministic lag scenarios for client prediction. A client moves a body one
+# step per tick and sends each input; the server applies inputs `delay` ticks
+# later, occasionally bumps the body, and sends a snapshot every tick. Snapshots
+# arrive `delay` ticks later, some are lost, and with `reorder` every odd one
+# arrives a tick late. The client rejects stale snapshots, acknowledges applied
+# inputs and reconciles. The report measures how far the guess strayed from the
+# truth and how large the buffers grew, so a scenario is replayable evidence.
+include "./prediction.elisa"
+
+module NetLag:
+    private:
+        const module Tune:
+            RING: i64 = 64
+            MAX_DELAY: i64 = 20
+
+    public:
+        struct Conditions:
+            delay: i64
+            loss_every: i64
+            reorder: bool
+            step: i64
+            bump: i64
+            bump_every: i64
+            bump_until: i64
+
+        struct Report:
+            valid: bool
+            max_error: mutable i64
+            max_pending: mutable i64
+            corrections: mutable i64
+            blocked: mutable i64
+            stale: mutable i64
+            lost: mutable i64
+            final_error: mutable i64
+
+        struct World:
+            client: mutable Predict::Prediction
+            sent_count: mutable i64
+            last_seq: mutable i64
+            last_applied: mutable i64
+            sent_at: mutable i64[64]
+            snap_x: mutable i64[64]
+            snap_applied: mutable i64[64]
+            report: mutable Report
+
+        def conditions_valid(c: Conditions&) -> bool:
+            return false if c.delay < 0 or c.delay > Tune::MAX_DELAY
+            return false if c.loss_every < 0 or c.bump_every < 0 or c.step < 0 or c.bump < 0
+            true
+
+        def magnitude(value: i64) -> i64:
+            return 0 - value if value < 0
+            value
+
+        def World() -> World:
+            report: Report = Report{valid: true, max_error: 0, max_pending: 0, corrections: 0, blocked: 0, stale: 0, lost: 0, final_error: 0}
+            World{
+                client: Predict::Prediction(Net::Owner.Client),
+                sent_count: 0,
+                last_seq: -1,
+                last_applied: 0,
+                sent_at: zeroed,
+                snap_x: zeroed,
+                snap_applied: zeroed,
+                report: report
+            }
+
+        def bump_total(c: Conditions&, tick: i64) -> i64:
+            return 0 if c.bump_every == 0
+            last: i64 = tick if tick < c.bump_until else c.bump_until
+            c.bump * (last / c.bump_every)
+
+        def snapshot_lost(c: Conditions&, sequence: i64) -> bool:
+            return false if c.loss_every == 0
+            sequence % c.loss_every == c.loss_every - 1
+
+        # Applies one authority snapshot unless it is older than one already
+        # applied; returns whether it counted.
+        def deliver(world: mutable World&, sequence: i64) -> void:
+            slot: i64 = sequence % Tune::RING
+            applied: i64 = world.snap_applied[slot]
+            server: Net::ReplRecord = Net::ReplRecord{persistent: 99, x: world.snap_x[slot], y: 0, revision: sequence + 1, owner: Net::Owner.Server}
+            acked: bool = catch Predict::predict_ack(&world.client, (applied - world.last_applied).usize()):
+                ok: true
+                error failure: false
+            reconciled: bool = catch Predict::predict_reconcile(&world.client, server):
+                ok: true
+                error failure: false
+            world.last_seq <- sequence
+            world.last_applied <- applied
+            world.report.corrections <- world.client.corrections.i64() if acked and reconciled
+
+        def arrive(world: mutable World&, c: Conditions&, sequence: i64) -> void:
+            return if sequence < 0
+            if snapshot_lost(c, sequence):
+                world.report.lost <- world.report.lost + 1
+                return
+            if sequence <= world.last_seq:
+                world.report.stale <- world.report.stale + 1
+                return
+            deliver(world, sequence)
+
+        def send_input(world: mutable World&, c: Conditions&, moving: bool) -> void:
+            return if not moving
+            if world.client.pending_count.i64() >= 16:
+                world.report.blocked <- world.report.blocked + 1
+                return
+            moved: bool = catch Predict::predict_input(&world.client, c.step):
+                ok: true
+                error failure: false
+            world.sent_count <- world.sent_count + 1 if moved
+
+        def applied_at(world: World&, c: Conditions&, now: i64) -> i64:
+            return 0 if now < c.delay
+            world.sent_at[(now - c.delay) % Tune::RING]
+
+        def deliver_due(world: mutable World&, c: Conditions&, now: i64) -> void:
+            normal: i64 = now - c.delay
+            late: i64 = normal - 1
+            jitter_normal: bool = c.reorder and normal % 2 == 1
+            arrive(world, c, normal) if not jitter_normal
+            arrive(world, c, late) if c.reorder and late % 2 == 1
+
+        def measure(world: mutable World&, c: Conditions&, now: i64) -> void:
+            truth: i64 = world.sent_count * c.step + bump_total(c, now)
+            off: i64 = magnitude(world.client.predicted.x - truth)
+            world.report.max_error <- off if off > world.report.max_error
+            pending: i64 = world.client.pending_count.i64()
+            world.report.max_pending <- pending if pending > world.report.max_pending
+            world.report.final_error <- off
+
+        # One tick: client input, server step and snapshot, then delivery.
+        def tick(world: mutable World&, c: Conditions&, now: i64, moving: bool) -> void:
+            slot: i64 = now % Tune::RING
+            send_input(world, c, moving)
+            world.sent_at[slot] <- world.sent_count
+            applied: i64 = applied_at(world, c, now)
+            world.snap_x[slot] <- applied * c.step + bump_total(c, now)
+            world.snap_applied[slot] <- applied
+            deliver_due(world, c, now)
+            measure(world, c, now)
+
+        # Moves for `moving` ticks, then idles until `total`, and reports.
+        def run(c: Conditions, moving: i64, total: i64) -> Report:
+            invalid: Report = Report{valid: false, max_error: 0, max_pending: 0, corrections: 0, blocked: 0, stale: 0, lost: 0, final_error: 0}
+            return invalid if not conditions_valid(&c) or moving < 0 or total < moving
+            world: mutable World = World()
+            for now in 0..<total |world, c, moving|:
+                tick(&world, &c, now, now < moving)
+            world.report

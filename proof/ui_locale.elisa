@@ -1,0 +1,19 @@
+include "../src/ui/locale.elisa"
+
+extend UiLocale:
+    # Every plural rule answers with a known category, for any count.
+    def prove_plural(locale: i64, count: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 5
+        plural(locale, count)
+
+    # Every locale falls back to a valid locale, and text never shrinks.
+    def prove_fallback(locale: i64) -> i64:
+        ensure result >= 0
+        ensure result < 5
+        fallback(locale)
+
+    def prove_expansion(locale: i64) -> i64:
+        ensure result >= 1000
+        ensure result <= 1500
+        expansion_permille(locale)

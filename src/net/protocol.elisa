@@ -1,0 +1,100 @@
+# Versioned multiplayer protocol policy. A peer first agrees a version and
+# limits with `negotiate`, then every incoming message passes `admit` before
+# it may touch the world. A rejected message returns the peer state
+# unchanged, so a duplicate, oversized, unowned or over-budget message fails
+# safely without a partial update.
+include "./protocol_math.elisa"
+
+module NetProtocol:
+    private:
+        const module Limits:
+            MAX_MESSAGE_BYTES: i64 = 1024
+            MAX_VERSION: i64 = 1000
+
+    public:
+        enum Kind:
+            Spawn
+            Despawn
+            Rpc
+            Event
+
+        enum Verdict:
+            Accepted
+            Duplicate
+            Oversized
+            Unauthorized
+            OverBudget
+            Malformed
+
+        # The versions a peer speaks, its largest accepted message and the
+        # RPC/event messages it will take per window.
+        struct Hello:
+            version_min: i64
+            version_max: i64
+            max_message: i64
+            budget: i64
+
+        struct Agreement:
+            compatible: bool
+            version: i64
+            max_message: i64
+            budget: i64
+
+        # Per-peer admission state: the negotiated limits, the highest
+        # sequence accepted, and RPC/event messages left in this window.
+        struct Peer:
+            agreement: Agreement
+            owner: i64
+            last_sequence: i64
+            remaining: i64
+
+        struct Message:
+            kind: Kind
+            sequence: i64
+            entity_owner: i64
+            size: i64
+
+        struct Admission:
+            peer: Peer
+            verdict: Verdict
+
+        def hello_valid(hello: Hello&) -> bool:
+            hello.version_min >= 1 and hello.version_min <= hello.version_max and hello.version_max <= Limits::MAX_VERSION and hello.max_message >= 1 and hello.max_message <= Limits::MAX_MESSAGE_BYTES and hello.budget >= 0
+
+        # The highest version both peers speak, with the smaller message size
+        # and budget. No overlap or a malformed hello is incompatible.
+        def negotiate(local: Hello&, remote: Hello&) -> Agreement:
+            refused: Agreement = Agreement{compatible: false, version: 0, max_message: 0, budget: 0}
+            return refused if not hello_valid(local) or not hello_valid(remote)
+            low: i64 = NetProtocolMath::larger(local.version_min, remote.version_min)
+            high: i64 = NetProtocolMath::smaller(local.version_max, remote.version_max)
+            return refused if low > high
+            Agreement{compatible: true, version: high,
+                max_message: NetProtocolMath::smaller(local.max_message, remote.max_message),
+                budget: NetProtocolMath::smaller(local.budget, remote.budget)}
+
+        def Peer(agreement: Agreement, owner: i64) -> Peer:
+            Peer{agreement: agreement, owner: owner, last_sequence: 0, remaining: agreement.budget}
+
+        # A new window restores the RPC/event budget.
+        def next_window(peer: Peer) -> Peer:
+            Peer{agreement: peer.agreement, owner: peer.owner, last_sequence: peer.last_sequence, remaining: peer.agreement.budget}
+
+        def reject(peer: Peer, verdict: Verdict) -> Admission:
+            Admission{peer: peer, verdict: verdict}
+
+        # Sequences must strictly increase: a replayed or reordered message
+        # is a duplicate. Spawn and despawn need the sender to own the entity;
+        # RPCs and events spend the window budget.
+        def admit(peer: Peer, message: Message) -> Admission:
+            return reject(peer, Verdict.Malformed) if not peer.agreement.compatible or message.sequence < 1 or message.size < 1
+            return reject(peer, Verdict.Oversized) if message.size > peer.agreement.max_message
+            return reject(peer, Verdict.Duplicate) if message.sequence <= peer.last_sequence
+            owned: bool = message.entity_owner == peer.owner
+            needs_owner: bool = message.kind == Kind.Spawn or message.kind == Kind.Despawn
+            return reject(peer, Verdict.Unauthorized) if needs_owner and not owned
+            metered: bool = message.kind == Kind.Rpc or message.kind == Kind.Event
+            return reject(peer, Verdict.OverBudget) if metered and peer.remaining < 1
+            left: i64 = NetProtocolMath::spend(peer.remaining, metered)
+            Admission{peer: Peer{agreement: peer.agreement, owner: peer.owner, last_sequence: message.sequence, remaining: left},
+                verdict: Verdict.Accepted}

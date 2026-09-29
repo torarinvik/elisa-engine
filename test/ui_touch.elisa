@@ -1,0 +1,47 @@
+include "../src/ui/touch.elisa"
+
+def main() -> i32:
+    t: mutable UiTouch::Touches = UiTouch::Touches()
+    # A short, still press is a tap.
+    return 1 if not UiTouch::down(&t, 1, 100, 100, 1000) or t.count != 1
+    tap: UiTouch::Ended = UiTouch::up(&t, 1, 1150)
+    return 2 if tap.gesture != UiTouch::Gesture.Tap or t.count != 0
+    # Moving past the slop, or holding too long, is a drag.
+    UiTouch::down(&t, 2, 0, 0, 0)
+    UiTouch::move(&t, 2, 30, 20)
+    return 3 if UiTouch::up(&t, 2, 100).gesture != UiTouch::Gesture.Drag
+    UiTouch::down(&t, 3, 5, 5, 0)
+    return 4 if UiTouch::up(&t, 3, 900).gesture != UiTouch::Gesture.Drag
+    # Duplicate, invalid and excess fingers are ignored; unknown ids do nothing.
+    return 5 if UiTouch::down(&t, 0, 1, 1, 0) or UiTouch::down(&t, -3, 1, 1, 0)
+    UiTouch::down(&t, 10, 0, 0, 0)
+    return 6 if UiTouch::down(&t, 10, 5, 5, 0)
+    UiTouch::down(&t, 11, 0, 0, 0)
+    UiTouch::down(&t, 12, 0, 0, 0)
+    UiTouch::down(&t, 13, 0, 0, 0)
+    return 7 if UiTouch::down(&t, 14, 0, 0, 0) or t.count != 4
+    return 8 if UiTouch::up(&t, 99, 0).gesture != UiTouch::Gesture.None or UiTouch::move(&t, 99, 1, 1)
+    # A system cancel frees the slot and never reports a tap.
+    return 9 if UiTouch::cancel(&t, 10).gesture != UiTouch::Gesture.Cancelled or t.count != 3
+    # A disconnect drops everything at once and reports how many.
+    return 10 if UiTouch::disconnect(&t) != 3 or t.count != 0
+    return 11 if UiTouch::up(&t, 11, 10).gesture != UiTouch::Gesture.None
+    # Two fingers give a pinch spread and scale.
+    UiTouch::down(&t, 20, 0, 0, 0)
+    return 12 if UiTouch::spread(&t) != -1
+    UiTouch::down(&t, 21, 100, 0, 0)
+    return 13 if UiTouch::spread(&t) != 100
+    UiTouch::move(&t, 21, 200, 0)
+    return 14 if UiTouch::pinch_permille(100, UiTouch::spread(&t)) != 2000
+    return 15 if UiTouch::pinch_permille(100, 100000) != 4000 or UiTouch::pinch_permille(100, 1) != 250 or UiTouch::pinch_permille(0, 50) != 1000
+    # Haptics: clamped, and honest when the device has none.
+    both: UiTouch::Capability = UiTouch::Capability{rumble: true, touch_feedback: false}
+    strong: UiTouch::Haptic = UiTouch::haptic(&both, 5000, 9000, false)
+    return 16 if not strong.played or strong.strength != 1000 or strong.duration_ms != 2000
+    none: UiTouch::Capability = UiTouch::Capability{rumble: false, touch_feedback: false}
+    missing: UiTouch::Haptic = UiTouch::haptic(&none, 500, 100, false)
+    return 17 if missing.played or not missing.unavailable
+    on_touch: UiTouch::Haptic = UiTouch::haptic(&both, 500, 100, true)
+    return 18 if on_touch.played or not on_touch.unavailable
+    return 19 if UiTouch::haptic(&both, -5, 100, false).played
+    0

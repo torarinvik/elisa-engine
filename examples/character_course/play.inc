@@ -5,8 +5,8 @@
         struct Legend:
             panel: mutable RenderScene::OverlayPanelHandle
             header: mutable RenderScene::OverlayTextHandle
-            labels: mutable RenderScene::OverlayTextHandle[9]
-            keys: mutable RenderScene::OverlayTextHandle[9]
+            labels: mutable RenderScene::OverlayTextHandle[12]
+            keys: mutable RenderScene::OverlayTextHandle[12]
             caption: mutable RenderScene::OverlayTextHandle
 
         def status_text(state: GameState&, crouched: bool) -> cstr:
@@ -51,10 +51,30 @@
             CourseAccess::scaled(settings, Tune::LEGEND_KEY_X - Tune::LEGEND_X)
 
         def row_label(row: i64) -> cstr:
-            CourseControls::slot_name(row) if row < CourseControls::SLOT_COUNT else CourseAccess::row_name(row - CourseControls::SLOT_COUNT)
+            if row < CourseControls::SLOT_COUNT:
+                CourseControls::slot_name(row)
+            elif row < CourseControls::PAD_FIRST:
+                CourseAccess::row_name(row - CourseControls::SLOT_COUNT)
+            else:
+                CoursePad::slot_name(row - CourseControls::PAD_FIRST)
 
-        def row_key(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&, row: i64) -> cstr:
-            CourseControls::key_name(CourseControls::slot_code(keymap, row)) if row < CourseControls::SLOT_COUNT else CourseAccess::row_value(settings, row - CourseControls::SLOT_COUNT)
+        def row_key(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64) -> cstr:
+            if row < CourseControls::SLOT_COUNT:
+                CourseControls::key_name(CourseControls::slot_code(keymap, row))
+            elif row < CourseControls::PAD_FIRST:
+                CourseAccess::row_value(settings, row - CourseControls::SLOT_COUNT)
+            else:
+                CoursePad::button_name(CoursePad::slot_code(pads, row - CourseControls::PAD_FIRST))
+
+        # Every menu row as a semantic control: six key bindings, then the
+        # text-size slider and the two toggles.
+        def row_semantics(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64, selected: i64) -> UiSemantics::Control error[UiSemantics::SemanticsError]:
+            role: mutable UiSemantics::Role = UiSemantics::Role.KeyBinding
+            if row >= CourseControls::PAD_FIRST:
+                role <- UiSemantics::Role.Slider
+            elif row >= CourseControls::SLOT_COUNT:
+                role <- UiSemantics::Role.Slider if row - CourseControls::SLOT_COUNT == CourseAccess::ROW_TEXT_SIZE else UiSemantics::Role.Toggle
+            try UiSemantics::Control(role, row_label(row), row_key(keymap, pads, settings, row), row, CourseControls::MENU_ROWS, row == selected)
 
         def legend_row_y(settings: CourseAccess::Settings&, row: i64) -> f32:
             Tune::HUD_Y + CourseAccess::scaled(settings, Tune::LEGEND_Y - Tune::HUD_Y + (row + 1).f32() * Tune::LEGEND_ROW_HEIGHT)
@@ -98,21 +118,22 @@
         # The panel is created first so the text draws over it. Handles are
         # gathered in locals; element writes into a struct field inside a
         # captured loop were lost.
-        def create_legend(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> Legend error[RenderScene::RenderSceneError]:
+        def create_legend(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&) -> Legend error[RenderScene::RenderSceneError]:
             panel: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(Tune::LEGEND_X, Tune::LEGEND_Y, 1.0, 1.0, CourseAccess::panel_color(settings))
             header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
                 box_color(0.78, 0.84, 0.9))
-            labels: mutable RenderScene::OverlayTextHandle[9] = zeroed
-            keys: mutable RenderScene::OverlayTextHandle[9] = zeroed
+            labels: mutable RenderScene::OverlayTextHandle[12] = zeroed
+            keys: mutable RenderScene::OverlayTextHandle[12] = zeroed
             map: CourseControls::Keymap = keymap
+            pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
-            for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, values|:
+            for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, pad_map, values|:
                 label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
                     row_label(row), Tune::LEGEND_X, Tune::LEGEND_Y,
                     Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
                 key: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                    row_key(&map, &values, row), Tune::LEGEND_KEY_X, Tune::LEGEND_Y,
+                    row_key(&map, &pad_map, &values, row), Tune::LEGEND_KEY_X, Tune::LEGEND_Y,
                     Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
                 labels[row.usize()] <- label
                 keys[row.usize()] <- key
@@ -121,7 +142,7 @@
             try RenderScene::set_overlay_text_visible(caption, false)
             legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption}
             try layout_legend(&legend, settings)
-            try refresh_legend(&legend, keymap, settings, -1)
+            try refresh_legend(&legend, keymap, pads, settings, -1)
             legend
 
         # Text size moves every row and the key column; high contrast shows
@@ -133,8 +154,8 @@
             try RenderScene::set_overlay_text_position(legend.header, Tune::LEGEND_X, legend_row_y(settings, -1))
             try RenderScene::set_overlay_text_color(legend.header, CourseAccess::header_color(settings))
             # Fields of a forwarded `Legend&` are copied out before the loop.
-            labels: RenderScene::OverlayTextHandle[9] = legend.labels
-            keys: RenderScene::OverlayTextHandle[9] = legend.keys
+            labels: RenderScene::OverlayTextHandle[12] = legend.labels
+            keys: RenderScene::OverlayTextHandle[12] = legend.keys
             scale: CourseAccess::Settings = settings
             for row in 0..<CourseControls::MENU_ROWS |labels, keys, scale, size, key_x|:
                 row_y: f32 = legend_row_y(&scale, row)
@@ -161,20 +182,21 @@
             try layout_legend(legend, settings)
 
         # `selected` is the highlighted row, or -1 outside the menu.
-        def refresh_legend(legend: Legend&, keymap: CourseControls::Keymap&,
+        def refresh_legend(legend: Legend&, keymap: CourseControls::Keymap&, pads: CoursePad::Pad&,
             settings: CourseAccess::Settings&, selected: i64) -> void error[RenderScene::RenderSceneError]:
             try RenderScene::set_overlay_text(legend.header, legend_header(selected >= 0))
             highlight: RenderScene::Color = CourseAccess::highlight_color(settings)
             plain: RenderScene::Color = CourseAccess::text_color(settings)
-            labels: RenderScene::OverlayTextHandle[9] = legend.labels
-            keys: RenderScene::OverlayTextHandle[9] = legend.keys
+            labels: RenderScene::OverlayTextHandle[12] = legend.labels
+            keys: RenderScene::OverlayTextHandle[12] = legend.keys
             map: CourseControls::Keymap = keymap
+            pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
-            for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, values, selected, highlight, plain|:
+            for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, pad_map, values, selected, highlight, plain|:
                 color: RenderScene::Color = highlight if row == selected else plain
                 label: RenderScene::OverlayTextHandle = labels[row.usize()]
                 key: RenderScene::OverlayTextHandle = keys[row.usize()]
-                try RenderScene::set_overlay_text(key, row_key(&map, &values, row))
+                try RenderScene::set_overlay_text(key, row_key(&map, &pad_map, &values, row))
                 try RenderScene::set_overlay_text_color(label, color)
                 try RenderScene::set_overlay_text_color(key, color)
 
@@ -190,8 +212,8 @@
             wanted
 
         def release_legend(legend: Legend&) -> void error[RenderScene::RenderSceneError]:
-            labels: RenderScene::OverlayTextHandle[9] = legend.labels
-            keys: RenderScene::OverlayTextHandle[9] = legend.keys
+            labels: RenderScene::OverlayTextHandle[12] = legend.labels
+            keys: RenderScene::OverlayTextHandle[12] = legend.keys
             for row in 0..<CourseControls::MENU_ROWS |labels, keys|:
                 label: RenderScene::OverlayTextHandle = labels[row.usize()]
                 key: RenderScene::OverlayTextHandle = keys[row.usize()]
@@ -217,13 +239,15 @@
             # replaced when the player closes the rebind menu.
             saved_controls: CourseControls::LoadResult = CourseControls::load()
             keymap: mutable CourseControls::Keymap = saved_controls.keymap
+            saved_pad: CoursePad::LoadResult = CoursePad::load()
+            pads: mutable CoursePad::Pad = saved_pad.pad
             input: mutable ActionInput::Input = ActionInput::Input()
-            return 33 if not CourseControls::bind(&input, &keymap)
+            return 33 if not CourseControls::bind(&input, &keymap, &pads)
             # Accessibility settings load the same way and apply before the
             # first frame; they are saved with the controls on menu close.
             saved_access: CourseAccess::LoadResult = CourseAccess::load()
             settings: mutable CourseAccess::Settings = saved_access.settings
-            legend: Legend = try create_legend(&keymap, &settings)
+            legend: Legend = try create_legend(&keymap, &pads, &settings)
             try layout_hud(&legend, instruction, &settings)
             captions: mutable CourseAccess::Captions = CourseAccess::Captions()
             caption_shown: mutable u32 = 0
@@ -252,7 +276,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -262,6 +286,8 @@
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
                     _ = CourseSounds::mix(&sounds, mood, frame.elapsed_nanos / 1000000)
+                    _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(state.phase == Phase.Won), frame.elapsed_nanos / 1000000)
+                    _ = CourseSounds::poll_reload(&sounds, frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::update(&sounds)
                     if menu_open:
                         # Keys first; pointer presses when no key acted.
@@ -276,7 +302,7 @@
                             menu_open <- false
                             keymap <- menu.keymap
                             rebound: mutable ActionInput::Input = ActionInput::Input()
-                            return 33 if not CourseControls::bind(&rebound, &keymap)
+                            return 33 if not CourseControls::bind(&rebound, &keymap, &pads)
                             input <- rebound
                             keys_stored: bool = catch CourseControls::save(&keymap):
                                 ok: true
@@ -284,20 +310,26 @@
                             access_stored: bool = catch CourseAccess::save(&settings):
                                 ok: true
                                 error failure: false
-                            stored: bool = keys_stored and access_stored
-                            _ = try refresh_legend(legend, keymap, settings, -1)
+                            pad_stored: bool = catch CoursePad::save(&pads):
+                                ok: true
+                                error failure: false
+                            stored: bool = keys_stored and access_stored and pad_stored
+                            _ = try refresh_legend(legend, keymap, pads, settings, -1)
                             _ = try RenderScene::set_overlay_text(instruction,
                                 "Controls saved | P resume" if stored else "Controls not saved; kept until quit | P resume")
                         elif step.result == CourseControls::MenuResult.Reserved:
                             _ = try RenderScene::set_overlay_text(instruction,
                                 "Reserved key | Esc P R Q L Tab and arrows stay fixed")
                         elif step.result == CourseControls::MenuResult.Adjusted:
-                            settings <- CourseAccess::adjust(settings, menu.selected - CourseControls::SLOT_COUNT, step.delta)
+                            if menu.selected >= CourseControls::PAD_FIRST:
+                                pads <- CoursePad::cycle(pads, menu.selected - CourseControls::PAD_FIRST, step.delta)
+                            else:
+                                settings <- CourseAccess::adjust(settings, menu.selected - CourseControls::SLOT_COUNT, step.delta)
                             _ = try layout_hud(legend, instruction, settings)
-                            _ = try refresh_legend(legend, menu.keymap, settings, menu.selected)
+                            _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, caption_shown)
                         elif step.result != CourseControls::MenuResult.Ignored:
-                            _ = try refresh_legend(legend, menu.keymap, settings, menu.selected)
+                            _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
                         _ = CourseControls::discard_pointer()
@@ -315,13 +347,13 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_CONTROLS) and state.phase == Phase.Paused:
                             menu_open <- true
                             menu <- CourseControls::Menu(keymap)
-                            _ = try refresh_legend(legend, keymap, settings, menu.selected)
+                            _ = try refresh_legend(legend, keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_RESTART):
                             character <- try restart_character(session, character)
                             restart(&state)
                             CourseSounds::reset_scene(&sounds)
-                            _ = CourseSounds::rewind_music(&sounds)
+                            _ = CourseSounds::restart_music(&sounds)
                             _ = CourseSounds::set_paused(&sounds, false)
                             _ = try CourseBeacons::reset(&beacons)
                             grounded <- true
@@ -436,7 +468,9 @@
                             _ = try update_camera(pose)
                             _ = try show_guide(session, guide)
                             guide_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, guide.character)
+                            cycles_before: u64 = AudioTriggers::millimetres(walker.cycles)
                             _ = try update_walker(&walker, guide_pose, NavAgent::state(&guide_agent) == NavAgent::State.Moving)
+                            _ = CourseSounds::animation_markers(&sounds, cycles_before, AudioTriggers::millimetres(walker.cycles), sound_tick)
                             _ = try advance_rigs(rigs, elapsed_delta.f32() / 1000000.0)
                         else:
                             previous_elapsed_nanos <- frame.elapsed_nanos

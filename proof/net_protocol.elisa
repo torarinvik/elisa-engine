@@ -1,0 +1,14 @@
+include "../src/net/protocol_math.elisa"
+
+extend NetProtocolMath:
+    # A negotiated size is at most either peer's limit, so a message that
+    # passes the agreed size also passes both peers' own limits.
+    def prove_shared_limit(local: i64, remote: i64) -> i64:
+        ensure result <= local and result <= remote
+        smaller(local, remote)
+
+    # Spending a metered message keeps the budget non-negative.
+    def prove_budget(remaining: i64, metered: bool) -> i64:
+        ensure result >= 0
+        return 0 if remaining < 0
+        spend(remaining, metered)

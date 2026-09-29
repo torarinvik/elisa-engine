@@ -1,0 +1,25 @@
+# Integer helpers for the multiplayer protocol policy, kept enum-free so
+# their contracts are proved (proof/net_protocol.elisa).
+module NetProtocolMath:
+    public:
+        # The smaller of two limits: a negotiated size never exceeds either
+        # peer's.
+        def smaller(left: i64, right: i64) -> i64:
+            ensure result <= left
+            ensure result <= right
+            return left if left < right
+            right
+
+        def larger(left: i64, right: i64) -> i64:
+            ensure result >= left
+            ensure result >= right
+            return left if left > right
+            right
+
+        # One metered message spends one unit; the budget never goes below 0.
+        def spend(remaining: i64, metered: bool) -> i64:
+            requires remaining >= 0
+            ensure result >= 0
+            ensure result <= remaining
+            return remaining if not metered or remaining < 1
+            remaining - 1

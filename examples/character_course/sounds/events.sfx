@@ -3,7 +3,9 @@
 # footstep <event> <stride mm>
 # impact <event> <drop first heard mm> <drop at full gain mm>
 # mood <id> <music> <effects> <ui> <ramp ms>, gains in permille
-# Ids match the CourseSounds::EVENT_* and MOOD_* constants.
+# music <cue> <fade out ms> <fade in ms>
+# anim <animation event> <sound event> <gain permille>
+# Ids match the CourseSounds::EVENT_*, MOOD_* and MUSIC_* constants.
 
 # Weighted jump variants replay the same pick on a replayed tick.
 seed 20260928
@@ -17,6 +19,8 @@ event 4 2 1 1 0        # fall
 event 5 2 1 1 0        # save
 # Footsteps keep one voice of their own, so a step never cuts off a jump.
 event 6 3 1 1 0        # footstep
+# The guide's foot plants get their own voice, so they never cut a step.
+event 7 4 1 1 0        # guide footstep
 
 # A step sounds every 0.65 m walked; a landing is heard from a 0.3 m drop
 # and at full gain from 2.4 m.
@@ -28,3 +32,13 @@ impact 2 300 2400
 mood 0 1000 1000 1000 250   # play
 mood 1 450 300 1000 250     # paused
 mood 2 200 300 1000 250     # menu
+
+# Music cues: a win fades the course loop out over 0.6 s while the victory
+# loop swells in over 1.5 s. A restart cuts straight back to the course loop.
+music 0 600 800    # course
+music 1 400 1500   # victory
+
+# The guide's walk clip plants a foot at the start of a cycle (animation
+# event 100) and half-way through (101); both sound event 7, quietly.
+anim 100 7 500
+anim 101 7 500

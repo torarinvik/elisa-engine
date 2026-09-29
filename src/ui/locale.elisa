@@ -1,0 +1,76 @@
+# Localization policy over integers, so it is provable and independent of any
+# string storage. Locales, plural categories and message keys are small stable
+# codes; a catalogue records which keys each locale has translated, and lookup
+# walks an explicit fallback chain to the default locale so a missing key never
+# leaves a hole. Right-to-left locales mirror layout, and each locale carries a
+# text expansion allowance so long translations are laid out, not clipped.
+module UiLocale:
+    public:
+        const EN: i64 = 0
+        const NB: i64 = 1
+        const RU: i64 = 2
+        const AR: i64 = 3
+        const JA: i64 = 4
+        const LOCALES: i64 = 5
+        const KEYS: i64 = 32
+
+        const ZERO: i64 = 0
+        const ONE: i64 = 1
+        const TWO: i64 = 2
+        const FEW: i64 = 3
+        const MANY: i64 = 4
+        const OTHER: i64 = 5
+
+        def locale_valid(locale: i64) -> bool:
+            locale >= 0 and locale < LOCALES
+
+        def is_rtl(locale: i64) -> bool:
+            locale == AR
+
+        # Next locale to try when a key is missing; every chain ends at EN.
+        def fallback(locale: i64) -> i64:
+            ensure result >= 0
+            ensure result < LOCALES
+            return EN if locale <= 0 or locale >= LOCALES
+            EN
+
+        # Text growth to plan for, in permille of the source width.
+        def expansion_permille(locale: i64) -> i64:
+            ensure result >= 1000
+            ensure result <= 1500
+            return 1300 if locale == NB
+            return 1250 if locale == RU
+            return 1250 if locale == AR
+            return 1000 if locale == JA
+            1000
+
+        # Plural category of a count for a locale (CLDR-style subsets).
+        def plural(locale: i64, count: i64) -> i64:
+            ensure result >= ZERO
+            ensure result <= OTHER
+            return OTHER if locale == JA or count < 0
+            return russian(count) if locale == RU
+            return arabic(count) if locale == AR
+            return ONE if count == 1
+            OTHER
+
+        def russian(count: i64) -> i64:
+            ensure result >= ZERO
+            ensure result <= OTHER
+            tens: i64 = count % 100
+            units: i64 = count % 10
+            return MANY if tens >= 11 and tens <= 14
+            return ONE if units == 1
+            return FEW if units >= 2 and units <= 4
+            MANY
+
+        def arabic(count: i64) -> i64:
+            ensure result >= ZERO
+            ensure result <= OTHER
+            return ZERO if count == 0
+            return ONE if count == 1
+            return TWO if count == 2
+            tens: i64 = count % 100
+            return FEW if tens >= 3 and tens <= 10
+            return MANY if tens >= 11
+            OTHER

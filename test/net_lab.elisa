@@ -1,0 +1,31 @@
+include "../src/net/lab.elisa"
+
+def main() -> i32:
+    bounds: NetLab::Bounds = NetLab::Bounds{max_error: 40, max_pending: 16, final_error: 0}
+    # The same seed replays to the same trace and identity.
+    one: NetLab::Verdict = NetLab::run_seed(42, bounds)
+    two: NetLab::Verdict = NetLab::run_seed(42, bounds)
+    return 1 if one.trace != two.trace or one.seed != 42 or one.build != NetLab::BUILD
+    # Different seeds explore different faults.
+    other: NetLab::Verdict = NetLab::run_seed(43, bounds)
+    return 2 if NetLab::conditions_for(42).delay == NetLab::conditions_for(43).delay and NetLab::conditions_for(42).loss_every == NetLab::conditions_for(43).loss_every and NetLab::conditions_for(42).bump == NetLab::conditions_for(43).bump
+    return 3 if not other.passed
+    # Derived conditions always stay inside what the lag model accepts.
+    for seed in 1..<200:
+        c: NetLag::Conditions = NetLab::conditions_for(seed)
+        return 4 if not NetLag::conditions_valid(&c)
+    # A long sweep converges within the explicit bounds.
+    return 5 if NetLab::first_failure(1, 300, bounds) != 0
+    # An impossibly tight bound is reported with the failing seed.
+    tight: NetLab::Bounds = NetLab::Bounds{max_error: 0, max_pending: 16, final_error: 0}
+    fail: i64 = NetLab::first_failure(1, 300, tight)
+    return 6 if fail == 0
+    verdict: NetLab::Verdict = NetLab::run_seed(fail, tight)
+    return 7 if verdict.passed or verdict.seed != fail
+    # Seeds at or below zero fold to a valid stream.
+    return 8 if not NetLag::conditions_valid(&NetLab::conditions_for(0)) or not NetLag::conditions_valid(&NetLab::conditions_for(-5))
+    # A dead link is not survivable, and the lab reports it as a failure.
+    dead: NetLag::Conditions = NetLag::Conditions{delay: 2, loss_every: 1, reorder: false, step: 2, bump: 5, bump_every: 10, bump_until: 60}
+    dead_report: NetLag::Report = NetLag::run(dead, 60, 140)
+    return 9 if NetLab::within(&dead_report, &bounds) or NetLab::survivable_loss(1) != 2
+    0

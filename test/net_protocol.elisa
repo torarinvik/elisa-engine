@@ -1,0 +1,43 @@
+include "../src/net/protocol.elisa"
+
+def hello(low: i64, high: i64, size: i64, budget: i64) -> NetProtocol::Hello:
+    NetProtocol::Hello{version_min: low, version_max: high, max_message: size, budget: budget}
+
+def message(kind: NetProtocol::Kind, sequence: i64, owner: i64, size: i64) -> NetProtocol::Message:
+    NetProtocol::Message{kind: kind, sequence: sequence, entity_owner: owner, size: size}
+
+def main() -> i32:
+    local: NetProtocol::Hello = hello(1, 3, 512, 2)
+    remote: NetProtocol::Hello = hello(2, 5, 1024, 4)
+    agreed: NetProtocol::Agreement = NetProtocol::negotiate(&local, &remote)
+    return 1 if not agreed.compatible or agreed.version != 3 or agreed.max_message != 512 or agreed.budget != 2
+    future: NetProtocol::Hello = hello(4, 6, 512, 2)
+    return 2 if NetProtocol::negotiate(&local, &future).compatible
+    broken: NetProtocol::Hello = hello(3, 1, 512, 2)
+    return 3 if NetProtocol::negotiate(&local, &broken).compatible
+    huge: NetProtocol::Hello = hello(1, 3, 4096, 2)
+    return 4 if NetProtocol::negotiate(&local, &huge).compatible
+    refused: NetProtocol::Peer = NetProtocol::Peer(NetProtocol::negotiate(&local, &future), 7)
+    return 5 if NetProtocol::admit(refused, message(NetProtocol::Kind.Rpc, 1, 7, 10)).verdict != NetProtocol::Verdict.Malformed
+    peer: NetProtocol::Peer = NetProtocol::Peer(agreed, 7)
+    spawn: NetProtocol::Admission = NetProtocol::admit(peer, message(NetProtocol::Kind.Spawn, 1, 7, 64))
+    return 6 if spawn.verdict != NetProtocol::Verdict.Accepted or spawn.peer.last_sequence != 1 or spawn.peer.remaining != 2
+    replay: NetProtocol::Admission = NetProtocol::admit(spawn.peer, message(NetProtocol::Kind.Spawn, 1, 7, 64))
+    return 7 if replay.verdict != NetProtocol::Verdict.Duplicate or replay.peer.last_sequence != 1
+    older: NetProtocol::Admission = NetProtocol::admit(spawn.peer, message(NetProtocol::Kind.Event, 0, 7, 8))
+    return 8 if older.verdict != NetProtocol::Verdict.Malformed
+    big: NetProtocol::Admission = NetProtocol::admit(spawn.peer, message(NetProtocol::Kind.Rpc, 2, 7, 513))
+    return 9 if big.verdict != NetProtocol::Verdict.Oversized or big.peer.last_sequence != 1
+    stolen: NetProtocol::Admission = NetProtocol::admit(spawn.peer, message(NetProtocol::Kind.Despawn, 2, 9, 16))
+    return 10 if stolen.verdict != NetProtocol::Verdict.Unauthorized or stolen.peer.last_sequence != 1
+    first: NetProtocol::Admission = NetProtocol::admit(spawn.peer, message(NetProtocol::Kind.Rpc, 2, 9, 16))
+    second: NetProtocol::Admission = NetProtocol::admit(first.peer, message(NetProtocol::Kind.Event, 3, 9, 16))
+    third: NetProtocol::Admission = NetProtocol::admit(second.peer, message(NetProtocol::Kind.Rpc, 4, 9, 16))
+    return 11 if first.verdict != NetProtocol::Verdict.Accepted or second.verdict != NetProtocol::Verdict.Accepted or second.peer.remaining != 0
+    return 12 if third.verdict != NetProtocol::Verdict.OverBudget or third.peer.last_sequence != 3
+    fresh: NetProtocol::Peer = NetProtocol::next_window(second.peer)
+    again: NetProtocol::Admission = NetProtocol::admit(fresh, message(NetProtocol::Kind.Rpc, 4, 9, 16))
+    return 13 if again.verdict != NetProtocol::Verdict.Accepted or again.peer.remaining != 1
+    zero: NetProtocol::Admission = NetProtocol::admit(peer, message(NetProtocol::Kind.Rpc, 1, 7, 0))
+    return 14 if zero.verdict != NetProtocol::Verdict.Malformed
+    0

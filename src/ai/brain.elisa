@@ -1,0 +1,164 @@
+# A small, deterministic decision model for one agent: patrol, chase a
+# target it can see or hear, search the last place it saw it, and interact
+# when it gets close. Perception and decision are pure functions of plain
+# numbers, so a recorded run replays to the same modes and the same
+# transition digest. The caller moves the body (for example with NavAgent)
+# toward the goal the brain asks for; the brain never touches the world.
+include "./patrol.elisa"
+
+module AiBrain:
+    private:
+        const module Digest:
+            OFFSET: i64 = 1469598103
+            PRIME: i64 = 16777619
+            MODULUS: i64 = 1000000007
+
+        def fold(digest: i64, value: i64) -> i64:
+            (digest * Digest::PRIME + value + 1) % Digest::MODULUS
+
+        def mode_code(mode: Mode) -> i64:
+            if mode == Mode.Patrol:
+                0
+            elif mode == Mode.Chase:
+                1
+            elif mode == Mode.Search:
+                2
+            else:
+                3
+
+        def enter(brain: Brain, next: Mode, tick: u64) -> Brain:
+            transitions: u32 = brain.transitions + 1
+            digest: i64 = fold(fold(brain.digest, mode_code(next)), tick.i64())
+            Brain{mode: next, previous: brain.mode, ticks_in_mode: 0, transitions: transitions,
+                digest: digest, last_seen_x: brain.last_seen_x, last_seen_z: brain.last_seen_z,
+                has_last_seen: brain.has_last_seen, patrol_index: brain.patrol_index}
+
+        def stay(brain: Brain) -> Brain:
+            Brain{mode: brain.mode, previous: brain.previous, ticks_in_mode: brain.ticks_in_mode + 1,
+                transitions: brain.transitions, digest: brain.digest,
+                last_seen_x: brain.last_seen_x, last_seen_z: brain.last_seen_z,
+                has_last_seen: brain.has_last_seen, patrol_index: brain.patrol_index}
+
+        def remember(brain: Brain, x: f32, z: f32) -> Brain:
+            Brain{mode: brain.mode, previous: brain.previous, ticks_in_mode: brain.ticks_in_mode,
+                transitions: brain.transitions, digest: brain.digest, last_seen_x: x, last_seen_z: z,
+                has_last_seen: true, patrol_index: brain.patrol_index}
+
+    public:
+        enum Mode:
+            Patrol
+            Chase
+            Search
+            Interact
+
+        struct Tuning:
+            # Sight: range in metres and the cosine of the half field of view.
+            sight_range: f32
+            sight_cos: f32
+            # Noise at or above `hear_loudness` is heard within `hear_range`.
+            hear_range: f32
+            hear_loudness: f32
+            # The target is close enough to interact with within this range.
+            interact_range: f32
+            # Ticks spent interacting, and ticks spent searching before the
+            # agent gives up and resumes its patrol.
+            interact_ticks: u32
+            search_ticks: u32
+            # Patrol route length; the brain cycles waypoint indices 0..<n.
+            patrol_points: u32
+
+        struct Percept:
+            seen: bool
+            heard: bool
+            target_x: f32
+            target_z: f32
+            distance_squared: f32
+
+        struct Brain:
+            mode: Mode
+            previous: Mode
+            ticks_in_mode: u32
+            transitions: u32
+            # Deterministic digest over every (mode, tick) transition.
+            digest: i64
+            last_seen_x: f32
+            last_seen_z: f32
+            has_last_seen: bool
+            patrol_index: u32
+
+        # What the caller should do this tick. `goal_index` names the patrol
+        # waypoint while patrolling and is otherwise unused.
+        struct Decision:
+            brain: Brain
+            move: bool
+            goal_x: f32
+            goal_z: f32
+            goal_index: u32
+
+        def default_tuning() -> Tuning:
+            Tuning{sight_range: 12.0, sight_cos: 0.5, hear_range: 6.0, hear_loudness: 0.3,
+                interact_range: 1.5, interact_ticks: 30, search_ticks: 120, patrol_points: 4}
+
+        def Brain() -> Brain:
+            Brain{mode: Mode.Patrol, previous: Mode.Patrol, ticks_in_mode: 0, transitions: 0,
+                digest: Digest::OFFSET, last_seen_x: 0.0, last_seen_z: 0.0, has_last_seen: false,
+                patrol_index: 0}
+
+        def mode_name(mode: Mode) -> cstr:
+            if mode == Mode.Patrol:
+                "patrol"
+            elif mode == Mode.Chase:
+                "chase"
+            elif mode == Mode.Search:
+                "search"
+            else:
+                "interact"
+
+        # Perception in the horizontal plane. `facing_x/z` must be a unit
+        # vector. Sight needs range, the field-of-view cone and no occluder
+        # (`line_clear`, supplied by the caller's own ray test); hearing needs
+        # only range and loudness.
+        def perceive(tuning: Tuning&, self_x: f32, self_z: f32, facing_x: f32, facing_z: f32,
+            target_x: f32, target_z: f32, noise: f32, line_clear: bool) -> Percept:
+            dx: f32 = target_x - self_x
+            dz: f32 = target_z - self_z
+            distance_squared: f32 = dx * dx + dz * dz
+            forward: f32 = dx * facing_x + dz * facing_z
+            in_range: bool = distance_squared <= tuning.sight_range * tuning.sight_range
+            in_cone: bool = forward > 0.0 and forward * forward >= tuning.sight_cos * tuning.sight_cos * distance_squared
+            seen: bool = in_range and in_cone and line_clear
+            heard: bool = noise >= tuning.hear_loudness and distance_squared <= tuning.hear_range * tuning.hear_range
+            Percept{seen: seen, heard: heard, target_x: target_x, target_z: target_z, distance_squared: distance_squared}
+
+        # One decision tick. `arrived` reports that the body reached the goal
+        # it was last given (a patrol waypoint or the last-seen point).
+        def think(brain: Brain, percept: Percept&, tuning: Tuning&, arrived: bool, tick: u64) -> Decision:
+            aware: bool = percept.seen or percept.heard
+            close: bool = percept.distance_squared <= tuning.interact_range * tuning.interact_range
+            current: Brain = remember(brain, percept.target_x, percept.target_z) if aware else brain
+            if current.mode == Mode.Interact:
+                if current.ticks_in_mode + 1 >= tuning.interact_ticks:
+                    Decision{brain: enter(current, Mode.Patrol, tick), move: false, goal_x: 0.0, goal_z: 0.0, goal_index: current.patrol_index}
+                else:
+                    Decision{brain: stay(current), move: false, goal_x: percept.target_x, goal_z: percept.target_z, goal_index: current.patrol_index}
+            elif aware and close and percept.seen:
+                Decision{brain: enter(current, Mode.Interact, tick), move: false, goal_x: percept.target_x, goal_z: percept.target_z, goal_index: current.patrol_index}
+            elif aware:
+                next: Brain = stay(current) if current.mode == Mode.Chase else enter(current, Mode.Chase, tick)
+                Decision{brain: next, move: true, goal_x: percept.target_x, goal_z: percept.target_z, goal_index: current.patrol_index}
+            elif current.mode == Mode.Chase:
+                Decision{brain: enter(current, Mode.Search, tick), move: current.has_last_seen, goal_x: current.last_seen_x, goal_z: current.last_seen_z, goal_index: current.patrol_index}
+            elif current.mode == Mode.Search:
+                if current.ticks_in_mode + 1 >= tuning.search_ticks:
+                    Decision{brain: enter(current, Mode.Patrol, tick), move: false, goal_x: 0.0, goal_z: 0.0, goal_index: current.patrol_index}
+                else:
+                    Decision{brain: stay(current), move: not arrived, goal_x: current.last_seen_x, goal_z: current.last_seen_z, goal_index: current.patrol_index}
+            else:
+                # Patrol: advance to the next waypoint once the last is reached.
+                index: u32 = AiPatrol::guarded_next(current.patrol_index, tuning.patrol_points, arrived)
+                walked: Brain = Brain{mode: current.mode, previous: current.previous,
+                    ticks_in_mode: current.ticks_in_mode + 1, transitions: current.transitions,
+                    digest: current.digest, last_seen_x: current.last_seen_x,
+                    last_seen_z: current.last_seen_z, has_last_seen: current.has_last_seen,
+                    patrol_index: index}
+                Decision{brain: walked, move: true, goal_x: 0.0, goal_z: 0.0, goal_index: index}

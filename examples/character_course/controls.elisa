@@ -164,8 +164,10 @@ module CourseControls:
         const SLOT_JUMP: i64 = 4
         const SLOT_CROUCH: i64 = 5
         const SLOT_COUNT: i64 = 6
-        # Three CourseAccess settings rows follow the six key slots.
-        const MENU_ROWS: i64 = 9
+        # Three CourseAccess settings rows follow the six key slots, then
+        # three gamepad rows (jump, crouch, restart) cycled with Left/Right.
+        const PAD_FIRST: i64 = 9
+        const MENU_ROWS: i64 = 12
 
         struct Keymap:
             forward: i64
@@ -293,9 +295,10 @@ module CourseControls:
                 AssignOutcome{result: AssignResult.Assigned, keymap: updated}
 
         # Arrow keys stay fixed movement aliases, and the gamepad mapping is
-        # fixed; only the keyboard slots come from the keymap.
-        def bind(input: mutable ActionInput::Input&, keymap: Keymap&) -> bool:
-            return false if not valid(keymap)
+        # fixed except jump, crouch and restart, which come from the pad map;
+        # the keyboard slots come from the keymap.
+        def bind(input: mutable ActionInput::Input&, keymap: Keymap&, pads: CoursePad::Pad&) -> bool:
+            return false if not valid(keymap) or not CoursePad::valid(pads)
             return false if not bind_key(input, ACTION_FORWARD, keymap.forward)
             return false if not bind_key(input, ACTION_BACKWARD, keymap.backward)
             return false if not bind_key(input, ACTION_LEFT, keymap.left)
@@ -320,10 +323,10 @@ module CourseControls:
             return false if not bind_pad(input, ACTION_BACKWARD, pad(Application::GamepadButtonCode.DpadDown))
             return false if not bind_pad(input, ACTION_LEFT, pad(Application::GamepadButtonCode.DpadLeft))
             return false if not bind_pad(input, ACTION_RIGHT, pad(Application::GamepadButtonCode.DpadRight))
-            return false if not bind_pad(input, ACTION_JUMP, pad(Application::GamepadButtonCode.South))
-            return false if not bind_pad(input, ACTION_CROUCH, pad(Application::GamepadButtonCode.East))
+            return false if not bind_pad(input, ACTION_JUMP, pads.jump)
+            return false if not bind_pad(input, ACTION_CROUCH, pads.crouch)
             return false if not bind_pad(input, ACTION_PAUSE, pad(Application::GamepadButtonCode.Start))
-            return false if not bind_pad(input, ACTION_RESTART, pad(Application::GamepadButtonCode.West))
+            return false if not bind_pad(input, ACTION_RESTART, pads.restart)
             bind_pad(input, ACTION_CONTROLS, pad(Application::GamepadButtonCode.Back))
 
         def encode(keymap: Keymap&) -> Save::Blob error[Save::SaveError]:

@@ -1,0 +1,81 @@
+# Multiplayer test laboratory. A seed deterministically picks link faults
+# (delay, loss, reordering, bump size), the lag model runs them, and the result
+# is checked against explicit convergence bounds. A failing seed reports its
+# identity: the seed, a trace checksum of the run, and the lab build, so the
+# same failure can be replayed exactly.
+include "./lag.elisa"
+
+module NetLab:
+    private:
+        const module Tune:
+            MODULUS: i64 = 2147483647
+            MULTIPLIER: i64 = 48271
+
+    public:
+        const BUILD: i64 = 1
+
+        struct Bounds:
+            max_error: i64
+            max_pending: i64
+            final_error: i64
+
+        struct Verdict:
+            seed: i64
+            build: i64
+            trace: i64
+            passed: bool
+            report: NetLag::Report
+
+        # Park-Miller step: fits in i64 and never returns 0 for a nonzero seed.
+        def next(state: i64) -> i64:
+            requires state > 0
+            requires state < 2147483647
+            (state * Tune::MULTIPLIER) % Tune::MODULUS
+
+        def fold(seed: i64) -> i64:
+            return 1 if seed <= 0
+            return seed % Tune::MODULUS if seed % Tune::MODULUS > 0
+            1
+
+        # Loss of every snapshot (`loss_every` 1) is a dead link, outside the
+        # convergence contract, so generated faults never pick it.
+        def survivable_loss(loss_every: i64) -> i64:
+            return 2 if loss_every == 1
+            loss_every
+
+        def conditions_for(seed: i64) -> NetLag::Conditions:
+            a: i64 = next(fold(seed))
+            b: i64 = next(a)
+            c: i64 = next(b)
+            d: i64 = next(c)
+            NetLag::Conditions{delay: a % 9, loss_every: survivable_loss(b % 6), reorder: c % 2 == 1, step: 2, bump: 1 + d % 7, bump_every: 10, bump_until: 60}
+
+        # A checksum of the whole report, so two runs of one seed are comparable
+        # and a divergence shows up as a different trace.
+        def trace_of(r: NetLag::Report&) -> i64:
+            t: mutable i64 = 17
+            t <- (t * 31 + r.max_error) % Tune::MODULUS
+            t <- (t * 31 + r.max_pending) % Tune::MODULUS
+            t <- (t * 31 + r.corrections) % Tune::MODULUS
+            t <- (t * 31 + r.blocked) % Tune::MODULUS
+            t <- (t * 31 + r.stale) % Tune::MODULUS
+            t <- (t * 31 + r.lost) % Tune::MODULUS
+            (t * 31 + r.final_error) % Tune::MODULUS
+
+        def within(r: NetLag::Report&, b: Bounds&) -> bool:
+            return false if not r.valid
+            return false if r.max_error > b.max_error or r.max_pending > b.max_pending
+            r.final_error <= b.final_error
+
+        def run_seed(seed: i64, b: Bounds) -> Verdict:
+            report: NetLag::Report = NetLag::run(conditions_for(seed), 60, 140)
+            Verdict{seed: seed, build: BUILD, trace: trace_of(&report), passed: within(&report, &b), report: report}
+
+        # Runs seeds first..first+count-1 and returns the first failing seed,
+        # or 0 when every seed converged within the bounds.
+        def first_failure(first: i64, count: i64, b: Bounds) -> i64:
+            found: mutable i64 = 0
+            for offset in 0..<count |found, b, first|:
+                verdict: Verdict = run_seed(first + offset, b)
+                found <- verdict.seed if found == 0 and not verdict.passed
+            found

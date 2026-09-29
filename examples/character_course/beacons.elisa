@@ -4,6 +4,8 @@
 # a failed load leaves the running beacons untouched.
 include "../../src/world/prefab_scene_codec.elisa"
 include "../../src/world/events.elisa"
+include "../../src/assets/visual_shelf.elisa"
+using AssetCatalogue
 
 module CourseBeacons:
     private:
@@ -54,25 +56,38 @@ module CourseBeacons:
         def link_id(index: usize) -> i64:
             Layout::FIRST_LINK + index.i64()
 
-        def on_shelf(id: Assets::AssetId) -> bool:
-            id.high == Shelf::ID and id.low >= Shelf::POST_MESH and id.low <= Shelf::LAMP_LIT
+        # The shelf resolves every stable asset ID the beacons can show. The
+        # shape code is the game's own: 0 box, 1 sphere.
+        def stock_shelf() -> VisualShelf::Shelf:
+            shelf: mutable VisualShelf::Shelf = VisualShelf::Shelf()
+            _ = catch VisualShelf::add_mesh(&shelf, asset(Shelf::POST_MESH), SHAPE_BOX):
+                ok: true
+                error failure: false
+            _ = catch VisualShelf::add_mesh(&shelf, asset(Shelf::LAMP_MESH), SHAPE_SPHERE):
+                ok: true
+                error failure: false
+            _ = catch VisualShelf::add_material(&shelf, asset(Shelf::POST_MATERIAL), VisualShelf::Colour{red: 0.55, green: 0.5, blue: 0.44}):
+                ok: true
+                error failure: false
+            _ = catch VisualShelf::add_material(&shelf, asset(Shelf::LAMP_UNLIT), VisualShelf::Colour{red: 0.3, green: 0.34, blue: 0.42}):
+                ok: true
+                error failure: false
+            _ = catch VisualShelf::add_material(&shelf, asset(Shelf::LAMP_LIT), VisualShelf::Colour{red: 1.0, green: 0.82, blue: 0.25}):
+                ok: true
+                error failure: false
+            shelf
 
-        def mesh_known(id: Assets::AssetId) -> bool:
-            on_shelf(id) and (id.low == Shelf::POST_MESH or id.low == Shelf::LAMP_MESH)
+        def primitive_of(shelf: VisualShelf::Shelf&, id: Assets::AssetId) -> RenderScene::Primitive:
+            shape: i32 = catch VisualShelf::mesh_shape(shelf, id):
+                value: value
+                error failure: SHAPE_BOX
+            RenderScene::Primitive.Sphere if shape == SHAPE_SPHERE else RenderScene::Primitive.Box
 
-        def material_known(id: Assets::AssetId) -> bool:
-            on_shelf(id) and id.low >= Shelf::POST_MATERIAL
-
-        def primitive_of(id: Assets::AssetId) -> RenderScene::Primitive:
-            RenderScene::Primitive.Sphere if id.low == Shelf::LAMP_MESH else RenderScene::Primitive.Box
-
-        def color_of(id: Assets::AssetId) -> RenderScene::Color:
-            if id.low == Shelf::LAMP_LIT:
-                RenderScene::Color{red: 1.0, green: 0.82, blue: 0.25, alpha: 1.0}
-            elif id.low == Shelf::LAMP_UNLIT:
-                RenderScene::Color{red: 0.3, green: 0.34, blue: 0.42, alpha: 1.0}
-            else:
-                RenderScene::Color{red: 0.55, green: 0.5, blue: 0.44, alpha: 1.0}
+        def color_of(shelf: VisualShelf::Shelf&, id: Assets::AssetId) -> RenderScene::Color:
+            found: VisualShelf::Colour = catch VisualShelf::material_colour(shelf, id):
+                value: value
+                error failure: VisualShelf::Colour{red: 0.55, green: 0.5, blue: 0.44}
+            RenderScene::Color{red: found.red, green: found.green, blue: found.blue, alpha: 1.0}
 
         def build_scene() -> PrefabScene::Scene:
             definition: mutable Prefab::Definition = Prefab::Definition()
@@ -94,12 +109,12 @@ module CourseBeacons:
                     parent_authoring_id: 0, local: at(anchor(index).x, 0.0, anchor(index).z, 1.0)})
             scene
 
-        def snapshot_on_shelf(snapshot: PrefabScene::SceneSnapshot&) -> bool:
+        def snapshot_on_shelf(shelf: VisualShelf::Shelf&, snapshot: PrefabScene::SceneSnapshot&) -> bool:
             for index in 0..<snapshot.link_count |known: bool = true| -> known:
                 overrides: PrefabPersistence::Snapshot = snapshot.links[index].overrides
                 for record in 0..<overrides.count |known|:
                     entry: PrefabPersistence::OverrideRecord = overrides.records[record]
-                    known <- false if entry.has_visual and not (mesh_known(entry.visual.mesh) and material_known(entry.visual.material))
+                    known <- false if entry.has_visual and not VisualShelf::visual_known(shelf, &entry.visual)
 
         def node_pose(beacons: Beacons&, index: usize, node: i64) -> Geometry::Transform:
             reference: World::EntityRef = PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), node)
@@ -112,8 +127,8 @@ module CourseBeacons:
                 for part in 0..<2 |beacons, index|:
                     node: i64 = Layout::POST_NODE if part == 0 else Layout::LAMP_NODE
                     shown: Assets::VisualAsset = PrefabScene::instance_visual(beacons.instance, beacons.scene, link_id(index), node)
-                    handle: RenderScene::InstanceHandle = try RenderScene::create(primitive_of(shown.mesh),
-                        node_pose(beacons, index, node), color_of(shown.material))
+                    handle: RenderScene::InstanceHandle = try RenderScene::create(primitive_of(&beacons.shelf, shown.mesh),
+                        node_pose(beacons, index, node), color_of(&beacons.shelf, shown.material))
                     try RenderScene::batch_append(&beacons.renders, handle)
 
         def release_renders(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
@@ -156,6 +171,8 @@ module CourseBeacons:
 
     public:
         const COUNT: usize = 3
+        const SHAPE_BOX: i32 = 0
+        const SHAPE_SPHERE: i32 = 1
         const KEY: cstr = "course-beacons"
         const LOAD_MISSING: i32 = 1
         const LOAD_WRONG_VERSION: i32 = 2
@@ -166,6 +183,7 @@ module CourseBeacons:
 
         affine struct Beacons:
             scene: mutable PrefabScene::Scene
+            shelf: VisualShelf::Shelf
             world: mutable World::World
             instance: mutable PrefabScene::Instance
             renders: mutable RenderScene::InstanceBatch
@@ -196,7 +214,7 @@ module CourseBeacons:
 
         def create() -> Beacons error[World::WorldError, RenderScene::RenderSceneError]:
             world: World::World = try World::World()
-            beacons: mutable Beacons = Beacons{scene: build_scene(), world: world, instance: PrefabScene::Instance(),
+            beacons: mutable Beacons = Beacons{scene: build_scene(), shelf: stock_shelf(), world: world, instance: PrefabScene::Instance(),
                 renders: RenderScene::InstanceBatch(), announced: 0, ready: false}
             empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
             _ = try replace(&beacons, &empty, false)
@@ -232,7 +250,7 @@ module CourseBeacons:
                     changed: bool = PrefabScene::override_visual(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, true, shown)
                     if moved and changed:
                         handle: RenderScene::InstanceHandle = try RenderScene::batch_get(beacons.renders, index * 2 + 1)
-                        try RenderScene::set_color(handle, color_of(shown.material))
+                        try RenderScene::set_color(handle, color_of(&beacons.shelf, shown.material))
                         try RenderScene::update_transform(handle, node_pose(beacons, index, Layout::LAMP_NODE))
                         delivered: usize = catch announce(beacons.world, lamp_reference(beacons, index), index):
                             value: value
@@ -257,7 +275,7 @@ module CourseBeacons:
             return status if status != 0
             snapshot: PrefabScene::SceneSnapshot = read_saved(beacons)
             return LOAD_FAILED if snapshot.link_count != COUNT
-            return LOAD_UNKNOWN_ASSET if not snapshot_on_shelf(&snapshot)
+            return LOAD_UNKNOWN_ASSET if not snapshot_on_shelf(&beacons.shelf, &snapshot)
             try replace(beacons, &snapshot, true)
 
         # Back to all lamps unlit in a fresh World.

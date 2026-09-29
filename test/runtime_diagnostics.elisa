@@ -1,0 +1,33 @@
+include "../src/runtime/diagnostics.elisa"
+
+def main() -> i32:
+    log: mutable RuntimeDiagnostics::Log = RuntimeDiagnostics::Log(RuntimeDiagnostics::Level.Info)
+    # Below the level filter nothing is stored, but it is counted.
+    return 1 if RuntimeDiagnostics::append(&log, RuntimeDiagnostics::Level.Debug, 1, 1, 0)
+    return 2 if log.filtered != 1 or RuntimeDiagnostics::kept(&log) != 0
+    return 3 if RuntimeDiagnostics::recent(&log, 0).seq != 0
+    RuntimeDiagnostics::append(&log, RuntimeDiagnostics::Level.Info, 2, 10, 100)
+    RuntimeDiagnostics::append(&log, RuntimeDiagnostics::Level.Fault, 3, 11, 101)
+    newest: RuntimeDiagnostics::Entry = RuntimeDiagnostics::recent(&log, 0)
+    return 4 if newest.seq != 2 or newest.code != 11 or newest.level != 3
+    return 5 if RuntimeDiagnostics::recent(&log, 1).code != 10 or RuntimeDiagnostics::recent(&log, 2).seq != 0
+    return 6 if log.dropped != 0
+    # Filling past the ring overwrites the oldest and counts it dropped.
+    for n in 0..<8:
+        RuntimeDiagnostics::append(&log, RuntimeDiagnostics::Level.Warn, 4, 100 + n.i64(), 0)
+    return 7 if RuntimeDiagnostics::kept(&log) != 8 or log.total != 10 or log.dropped != 2
+    return 8 if RuntimeDiagnostics::recent(&log, 0).code != 107 or RuntimeDiagnostics::recent(&log, 0).seq != 10
+    return 9 if RuntimeDiagnostics::recent(&log, 7).code != 100 or RuntimeDiagnostics::recent(&log, 8).seq != 0
+    return 10 if RuntimeDiagnostics::recent(&log, -1).seq != 0
+    # Telemetry is off by default; private classes need their own opt-in.
+    t: RuntimeDiagnostics::Telemetry = RuntimeDiagnostics::Telemetry()
+    return 11 if RuntimeDiagnostics::allows(&t, RuntimeDiagnostics::Class.Crash)
+    on: RuntimeDiagnostics::Telemetry = RuntimeDiagnostics::Telemetry{configured: true, private_opt_in: false}
+    return 12 if not RuntimeDiagnostics::allows(&on, RuntimeDiagnostics::Class.Crash)
+    return 13 if RuntimeDiagnostics::allows(&on, RuntimeDiagnostics::Class.ProjectPath) or RuntimeDiagnostics::allows(&on, RuntimeDiagnostics::Class.UserContent)
+    full: RuntimeDiagnostics::Telemetry = RuntimeDiagnostics::Telemetry{configured: true, private_opt_in: true}
+    return 14 if not RuntimeDiagnostics::allows(&full, RuntimeDiagnostics::Class.UserContent)
+    # An opt-in without configuration still sends nothing.
+    stray: RuntimeDiagnostics::Telemetry = RuntimeDiagnostics::Telemetry{configured: false, private_opt_in: true}
+    return 15 if RuntimeDiagnostics::allows(&stray, RuntimeDiagnostics::Class.Crash) or RuntimeDiagnostics::allows(&stray, RuntimeDiagnostics::Class.UserContent)
+    return 0

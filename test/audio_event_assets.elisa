@@ -50,7 +50,8 @@ def comment(source: mutable SoundEventAssets::Source&) -> void:
 # 0 ok, 1 Syntax, 2 UnknownRecord, 3 FieldCount, 4 NumberTooLarge,
 # 5 Oversize, 6 InvalidDefinition, 7 DuplicateEvent, 8 Capacity,
 # 10 InvalidTrigger, 11 DuplicateTrigger, 12 UnknownEvent, 13 InvalidMood,
-# 14 DuplicateMood, 9 other.
+# 14 DuplicateMood, 15 InvalidMusic, 16 DuplicateMusic, 17 InvalidAnim,
+# 18 DuplicateAnim, 9 other.
 def load_triggers(board: mutable AudioEvents::Board&, triggers: mutable SoundEventAssets::Triggers&, source: SoundEventAssets::Source&) -> i32:
     catch SoundEventAssets::define_from(board, triggers, source):
         ok: 0
@@ -59,6 +60,10 @@ def load_triggers(board: mutable AudioEvents::Board&, triggers: mutable SoundEve
         AudioEvents::SoundEventError.UnknownEvent: 12
         SoundEventAssets::SoundAssetError.InvalidMood: 13
         SoundEventAssets::SoundAssetError.DuplicateMood: 14
+        SoundEventAssets::SoundAssetError.InvalidMusic: 15
+        SoundEventAssets::SoundAssetError.DuplicateMusic: 16
+        SoundEventAssets::SoundAssetError.InvalidAnim: 17
+        SoundEventAssets::SoundAssetError.DuplicateAnim: 18
         SoundEventAssets::SoundAssetError.Syntax: 1
         SoundEventAssets::SoundAssetError.UnknownRecord: 2
         SoundEventAssets::SoundAssetError.FieldCount: 3
@@ -335,6 +340,124 @@ def mood_test() -> i32:
     return 69 if load_triggers(&fresh, &triggers, &plain) != 0 or AudioMoods::defined(&triggers.moods, 1) or AudioMoods::defined(&triggers.moods, 2)
     0
 
+# `music <cue> <fade_out_ms>` without the fade-in and newline.
+def music_fields(source: mutable SoundEventAssets::Source&, id: u64, fade_out: u64) -> void:
+    put(source, 109)
+    put(source, 117)
+    put(source, 115)
+    put(source, 105)
+    put(source, 99)
+    field(source, id)
+    field(source, fade_out)
+
+def music(source: mutable SoundEventAssets::Source&, id: u64, fade_out: u64, fade_in: u64) -> void:
+    music_fields(source, id, fade_out)
+    field(source, fade_in)
+    newline(source)
+
+def cue_is(cues: AudioMusic::Cues&, id: u64, fade_out: u64, fade_in: u64) -> bool:
+    value: AudioMusic::Cue = AudioMusic::get(cues, id)
+    value.defined and value.fade_out_ms == fade_out and value.fade_in_ms == fade_in
+
+# Music records set cue fades by id; a cue left out fades in the default time.
+def music_test() -> i32:
+    bound: mutable SoundEventAssets::Source = course_asset()
+    music(&bound, 0, 800, 300)
+    music(&bound, 1, 1500, 2000)
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    return 70 if load_triggers(&board, &triggers, &bound) != 0 or SoundEventAssets::failing_line(&bound) != 0
+    return 71 if not cue_is(&triggers.cues, 0, 800, 300) or not cue_is(&triggers.cues, 1, 1500, 2000)
+    unset: AudioMusic::Cue = AudioMusic::get(&triggers.cues, 2)
+    return 72 if unset.defined or unset.fade_in_ms != AudioMusic::DEFAULT_FADE_MS or AudioMusic::defined(&triggers.cues, 9)
+
+    beyond: mutable SoundEventAssets::Source = course_asset()
+    music(&beyond, 4, 800, 300)
+    return 73 if trigger_status(&beyond) != 15
+    slow: mutable SoundEventAssets::Source = course_asset()
+    music(&slow, 1, 800, 10001)
+    return 74 if trigger_status(&slow) != 15
+
+    twice: mutable SoundEventAssets::Source = course_asset()
+    music(&twice, 1, 800, 300)
+    music(&twice, 1, 900, 300)
+    return 75 if trigger_status(&twice) != 16 or SoundEventAssets::failing_line(&twice) != 7
+
+    short: mutable SoundEventAssets::Source = course_asset()
+    music_fields(&short, 1, 800)
+    newline(&short)
+    return 76 if trigger_status(&short) != 3
+
+    # A rejected asset keeps the cues; a plain one clears them.
+    return 77 if load_triggers(&board, &triggers, &twice) != 16 or not cue_is(&triggers.cues, 1, 1500, 2000)
+    plain: SoundEventAssets::Source = course_asset()
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 78 if load_triggers(&fresh, &triggers, &plain) != 0 or AudioMusic::defined(&triggers.cues, 0) or AudioMusic::defined(&triggers.cues, 1)
+    0
+
+def anim_fields(source: mutable SoundEventAssets::Source&, id: u64, sound: u64) -> void:
+    put(source, 97)
+    put(source, 110)
+    put(source, 105)
+    put(source, 109)
+    field(source, id)
+    field(source, sound)
+
+def anim(source: mutable SoundEventAssets::Source&, id: u64, sound: u64, gain: u64) -> void:
+    anim_fields(source, id, sound)
+    field(source, gain)
+    newline(source)
+
+def anim_is(bindings: AudioAnimEvents::Bindings&, id: u64, sound: u32, gain: u64) -> bool:
+    value: AudioAnimEvents::Binding = AudioAnimEvents::get(bindings, id)
+    value.defined and value.sound_event == sound and value.gain_permille == gain
+
+# Anim records bind animation events to defined sound events at a gain.
+def anim_test() -> i32:
+    bound: mutable SoundEventAssets::Source = course_asset()
+    anim(&bound, 100, 1, 600)
+    anim(&bound, 101, 2, 1000)
+    board: mutable AudioEvents::Board = AudioEvents::Board()
+    triggers: mutable SoundEventAssets::Triggers = SoundEventAssets::Triggers()
+    return 80 if load_triggers(&board, &triggers, &bound) != 0 or SoundEventAssets::failing_line(&bound) != 0
+    return 81 if not anim_is(&triggers.anims, 100, 1, 600) or not anim_is(&triggers.anims, 101, 2, 1000)
+    return 82 if AudioAnimEvents::defined(&triggers.anims, 102) or AudioAnimEvents::defined(&triggers.anims, 0)
+
+    zero: mutable SoundEventAssets::Source = course_asset()
+    anim(&zero, 0, 1, 600)
+    return 83 if trigger_status(&zero) != 17
+    loud: mutable SoundEventAssets::Source = course_asset()
+    anim(&loud, 100, 1, 1001)
+    return 84 if trigger_status(&loud) != 17
+    silent: mutable SoundEventAssets::Source = course_asset()
+    anim(&silent, 100, 0, 600)
+    return 85 if trigger_status(&silent) != 17
+    unknown: mutable SoundEventAssets::Source = course_asset()
+    anim(&unknown, 100, 99, 600)
+    return 86 if trigger_status(&unknown) != 12
+
+    twice: mutable SoundEventAssets::Source = course_asset()
+    anim(&twice, 100, 1, 600)
+    anim(&twice, 100, 2, 500)
+    return 87 if trigger_status(&twice) != 18 or SoundEventAssets::failing_line(&twice) != 7
+
+    crowded: mutable SoundEventAssets::Source = course_asset()
+    for id in 100..<105 |crowded|:
+        anim(&crowded, id.u64(), 1, 500)
+    return 88 if trigger_status(&crowded) != 17
+
+    short: mutable SoundEventAssets::Source = course_asset()
+    anim_fields(&short, 100, 1)
+    newline(&short)
+    return 89 if trigger_status(&short) != 3
+
+    # A rejected asset keeps the bindings; a plain one clears them.
+    return 90 if load_triggers(&board, &triggers, &twice) != 18 or not anim_is(&triggers.anims, 101, 2, 1000)
+    plain: SoundEventAssets::Source = course_asset()
+    fresh: mutable AudioEvents::Board = AudioEvents::Board()
+    return 91 if load_triggers(&fresh, &triggers, &plain) != 0 or AudioAnimEvents::defined(&triggers.anims, 100)
+    0
+
 def main() -> i32:
     accepted: i32 = accepted_test()
     return accepted if accepted != 0
@@ -344,4 +467,8 @@ def main() -> i32:
     return atomic if atomic != 0
     triggered: i32 = trigger_test()
     return triggered if triggered != 0
-    mood_test()
+    moods: i32 = mood_test()
+    return moods if moods != 0
+    music: i32 = music_test()
+    return music if music != 0
+    anim_test()

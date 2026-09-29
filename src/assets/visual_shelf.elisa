@@ -1,0 +1,111 @@
+# Visual asset shelf: resolves stable authored mesh and material IDs to what a
+# game can create. A saved scene names assets only by ID, so a load asks the
+# shelf whether each ID exists, and of which kind, before any world is built.
+# Every entry is also registered in the asset catalogue, so its cooked
+# generation follows the catalogue's recook counter.
+include "./database.elisa"
+
+module VisualShelf:
+    private:
+        const module Tune:
+            MAX_SLOTS: usize = 16
+            NONE: i32 = 0
+            MESH: i32 = 1
+            MATERIAL: i32 = 2
+
+        def slot_of(shelf: Shelf&, id: Assets::AssetId) -> usize:
+            for index in 0..<shelf.count |found: usize = Tune::MAX_SLOTS| -> found:
+                found <- index if Assets::same_asset_id(shelf.slots[index].id, id)
+
+        def kind_of(shelf: Shelf&, id: Assets::AssetId) -> i32:
+            slot: usize = slot_of(shelf, id)
+            return Tune::NONE if slot >= shelf.count
+            shelf.slots[slot].kind
+
+        def append(shelf: mutable Shelf&, slot: Slot) -> void error[ShelfError]:
+            raise ShelfError.Invalid if not Assets::asset_id_valid(slot.id)
+            raise ShelfError.Duplicate if slot_of(shelf, slot.id) < shelf.count
+            raise ShelfError.Capacity if shelf.count >= Tune::MAX_SLOTS
+            registered: bool = catch AssetCatalogue::catalogue_register(&shelf.catalogue, slot.id, slot.id, 0):
+                ok: true
+                error failure: false
+            raise ShelfError.Capacity if not registered
+            shelf.slots[shelf.count] <- slot
+            shelf.count <- shelf.count + 1
+
+    public:
+        error ShelfError:
+            Capacity
+            Duplicate
+            Invalid
+            Unknown
+
+        struct Slot:
+            id: Assets::AssetId
+            kind: i32
+            shape: i32
+            red: f32
+            green: f32
+            blue: f32
+
+        struct Shelf:
+            catalogue: mutable AssetCatalogue::Catalogue
+            slots: mutable Slot[Tune::MAX_SLOTS]
+            count: mutable usize
+
+        struct Colour:
+            red: f32
+            green: f32
+            blue: f32
+
+        def Shelf() -> Shelf:
+            Shelf{catalogue: AssetCatalogue::Catalogue(), slots: zeroed, count: 0}
+
+        def count(shelf: Shelf&) -> usize:
+            shelf.count
+
+        # `shape` is the game's own code for the mesh (for example a
+        # primitive); the shelf never interprets it.
+        def add_mesh(shelf: mutable Shelf&, id: Assets::AssetId, shape: i32) -> void error[ShelfError]:
+            try append(shelf, Slot{id: id, kind: Tune::MESH, shape: shape, red: 0.0, green: 0.0, blue: 0.0})
+
+        def add_material(shelf: mutable Shelf&, id: Assets::AssetId, colour: Colour) -> void error[ShelfError]:
+            try append(shelf, Slot{id: id, kind: Tune::MATERIAL, shape: 0,
+                red: colour.red, green: colour.green, blue: colour.blue})
+
+        def has_mesh(shelf: Shelf&, id: Assets::AssetId) -> bool:
+            kind_of(shelf, id) == Tune::MESH
+
+        def has_material(shelf: Shelf&, id: Assets::AssetId) -> bool:
+            kind_of(shelf, id) == Tune::MATERIAL
+
+        # True only when both halves of the visual resolve to the right kind.
+        def visual_known(shelf: Shelf&, visual: Assets::VisualAsset&) -> bool:
+            has_mesh(shelf, visual.mesh) and has_material(shelf, visual.material)
+
+        def mesh_shape(shelf: Shelf&, id: Assets::AssetId) -> i32 error[ShelfError]:
+            slot: usize = slot_of(shelf, id)
+            raise ShelfError.Unknown if slot >= shelf.count or shelf.slots[slot].kind != Tune::MESH
+            shelf.slots[slot].shape
+
+        def material_colour(shelf: Shelf&, id: Assets::AssetId) -> Colour error[ShelfError]:
+            slot: usize = slot_of(shelf, id)
+            raise ShelfError.Unknown if slot >= shelf.count or shelf.slots[slot].kind != Tune::MATERIAL
+            Colour{red: shelf.slots[slot].red, green: shelf.slots[slot].green, blue: shelf.slots[slot].blue}
+
+        # Replaces a material's colour and bumps its catalogue generation, as a
+        # recook would; -1 for an ID the shelf does not hold.
+        def recolour(shelf: mutable Shelf&, id: Assets::AssetId, colour: Colour) -> i64 error[ShelfError]:
+            slot: usize = slot_of(shelf, id)
+            raise ShelfError.Unknown if slot >= shelf.count or shelf.slots[slot].kind != Tune::MATERIAL
+            shelf.slots[slot].red <- colour.red
+            shelf.slots[slot].green <- colour.green
+            shelf.slots[slot].blue <- colour.blue
+            recooked: bool = catch AssetCatalogue::catalogue_recook(&shelf.catalogue, id, id):
+                ok: true
+                error failure: false
+            raise ShelfError.Unknown if not recooked
+            AssetCatalogue::lookup_generation(&shelf.catalogue, id)
+
+        def generation(shelf: Shelf&, id: Assets::AssetId) -> i64:
+            AssetCatalogue::lookup_generation(&shelf.catalogue, id)
