@@ -1,0 +1,104 @@
+# C03 animation graph policy: an authored state machine of up to 8 states and
+# 16 transitions over integer parameters. `validate` rejects missing nodes and
+# cycles of zero-length (instant) transitions, which would spin forever in one
+# tick. `step` takes the first enabled transition out of the current state; a
+# transition taken mid-blend is an interruption and starts from the weight the
+# old blend had reached, so the pose never pops.
+module AnimGraph:
+    public:
+        const module Limits:
+            STATES: i64 = 8
+            TRANSITIONS: i64 = 16
+            PARAMS: i64 = 4
+
+        enum Check:
+            Ok
+            NoStates
+            BadEntry
+            MissingNode
+            BadParam
+            InstantCycle
+
+        # Transition k goes from `origin[k]` to `target[k]` when
+        # params[param[k]] >= at_least[k], blending over blend_ms[k].
+        struct Graph:
+            state_count: i64
+            entry: i64
+            count: i64
+            origin: i64[16]
+            target: i64[16]
+            param: i64[16]
+            at_least: i64[16]
+            blend_ms: i64[16]
+
+        struct Runtime:
+            current: mutable i64
+            previous: mutable i64
+            elapsed_ms: mutable i64
+            blend_total_ms: mutable i64
+            start_permille: mutable i64
+            interruptions: mutable i64
+
+        def start(g: Graph&) -> Runtime:
+            Runtime{current: g.entry, previous: g.entry, elapsed_ms: 0, blend_total_ms: 0, start_permille: 1000, interruptions: 0}
+
+        def validate(g: Graph&) -> Check:
+            return Check.NoStates if g.state_count <= 0 or g.state_count > 8 or g.count < 0 or g.count > 16
+            return Check.BadEntry if g.entry < 0 or g.entry >= g.state_count
+            for k in 0..<g.count:
+                return Check.MissingNode if g.origin[k] < 0 or g.origin[k] >= g.state_count or g.target[k] < 0 or g.target[k] >= g.state_count
+                return Check.BadParam if g.param[k] < 0 or g.param[k] >= 4 or g.blend_ms[k] < 0
+            for s in 0..<g.state_count:
+                return Check.InstantCycle if instant_walk(g, s) >= 0
+            Check.Ok
+
+        # Follows the first instant transition out of each state for up to
+        # `state_count` hops from `s`; returning to `s` is a cycle (returns
+        # the state), otherwise -1.
+        def instant_walk(g: Graph&, s: i64) -> i64:
+            mutable at: i64 = s
+            mutable result: i64 = 0 - 1
+            for hop in 0..<g.state_count:
+                nxt: i64 = first_instant(g, at)
+                if nxt < 0:
+                    return 0 - 1
+                if nxt == s:
+                    result <- s
+                    return result
+                at <- nxt
+            result
+
+        def first_instant(g: Graph&, s: i64) -> i64:
+            for k in 0..<g.count:
+                return g.target[k] if g.origin[k] == s and g.blend_ms[k] == 0
+            0 - 1
+
+        # Weight of the current state, 0..1000.
+        def weight(r: Runtime&) -> i64:
+            return 1000 if r.blend_total_ms <= 0 or r.elapsed_ms >= r.blend_total_ms
+            r.start_permille + (1000 - r.start_permille) * r.elapsed_ms / r.blend_total_ms
+
+        def blending(r: Runtime&) -> bool:
+            r.blend_total_ms > 0 and r.elapsed_ms < r.blend_total_ms
+
+        # Advance `dt_ms` and take at most one transition. Returns the
+        # transition index taken, or -1.
+        def step(g: Graph&, r: mutable Runtime&, params: i64[4]&, dt_ms: i64) -> i64:
+            r.elapsed_ms <- r.elapsed_ms + dt_ms if dt_ms > 0
+            k: i64 = enabled(g, r.current, params)
+            return 0 - 1 if k < 0
+            mid: bool = blending(r)
+            # An interrupted blend hands over whatever the outgoing state had.
+            reached: i64 = weight(r)
+            r.interruptions <- r.interruptions + 1 if mid
+            r.previous <- r.current
+            r.current <- g.target[k]
+            r.start_permille <- 1000 - reached if mid else 0
+            r.elapsed_ms <- 0
+            r.blend_total_ms <- g.blend_ms[k]
+            k
+
+        def enabled(g: Graph&, s: i64, params: i64[4]&) -> i64:
+            for k in 0..<g.count:
+                return k if g.origin[k] == s and params[g.param[k]] >= g.at_least[k]
+            0 - 1

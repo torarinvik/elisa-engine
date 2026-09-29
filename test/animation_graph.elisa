@@ -1,0 +1,37 @@
+include "../src/animation/graph.elisa"
+
+# States: 0 idle, 1 walk, 2 run, 3 attack. Params: 0 speed, 1 attack, 2 slow (1000 - speed).
+def locomotion() -> AnimGraph::Graph:
+    AnimGraph::Graph{state_count: 4, entry: 0, count: 5, origin: [0, 1, 1, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [1, 2, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [100, 600, 950, 500, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [200, 300, 200, 300, 100, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+
+def main() -> i32:
+    g: AnimGraph::Graph = locomotion()
+    return 1 if AnimGraph::validate(&g) != AnimGraph::Check.Ok
+    mutable r: AnimGraph::Runtime = AnimGraph::start(&g)
+    idle: i64[4] = [0, 0, 1000, 0]
+    return 2 if AnimGraph::step(&g, &r, &idle, 16) != 0 - 1 or r.current != 0 or AnimGraph::weight(&r) != 1000
+    walk: i64[4] = [300, 0, 700, 0]
+    return 3 if AnimGraph::step(&g, &r, &walk, 16) != 0 or r.current != 1 or AnimGraph::weight(&r) != 0
+    AnimGraph::step(&g, &r, &walk, 100)
+    return 4 if AnimGraph::weight(&r) != 500 or not AnimGraph::blending(&r)
+    # Interrupted at 50%: run starts at 500 (1000 minus the 500 walk had reached), not 0.
+    run: i64[4] = [800, 0, 200, 0]
+    return 5 if AnimGraph::step(&g, &r, &run, 0) != 1 or r.current != 2 or r.previous != 1
+    return 6 if AnimGraph::weight(&r) != 500 or r.interruptions != 1
+    AnimGraph::step(&g, &r, &run, 150)
+    return 7 if AnimGraph::weight(&r) != 750
+    AnimGraph::step(&g, &r, &run, 200)
+    return 8 if AnimGraph::weight(&r) != 1000 or AnimGraph::blending(&r)
+    # A completed blend is not an interruption.
+    return 9 if AnimGraph::step(&g, &r, &walk, 16) != 3 or r.interruptions != 1 or AnimGraph::weight(&r) != 0
+    # Validation failures.
+    mutable bad: AnimGraph::Graph = locomotion()
+    missing: AnimGraph::Graph = AnimGraph::Graph{state_count: 4, entry: 0, count: 1, origin: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    return 10 if AnimGraph::validate(&missing) != AnimGraph::Check.MissingNode
+    cyc: AnimGraph::Graph = AnimGraph::Graph{state_count: 3, entry: 0, count: 3, origin: [0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    return 11 if AnimGraph::validate(&cyc) != AnimGraph::Check.InstantCycle
+    noentry: AnimGraph::Graph = AnimGraph::Graph{state_count: 2, entry: 5, count: 0, origin: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    return 12 if AnimGraph::validate(&noentry) != AnimGraph::Check.BadEntry
+    badparam: AnimGraph::Graph = AnimGraph::Graph{state_count: 2, entry: 0, count: 1, origin: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+    return 13 if AnimGraph::validate(&badparam) != AnimGraph::Check.BadParam
+    0
