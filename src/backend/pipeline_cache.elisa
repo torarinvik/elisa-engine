@@ -1,0 +1,135 @@
+# Pipeline cache keyed by everything that changes compiled output: shader
+# package version, permutation bits, backend family and driver id. Entries are
+# compared field by field (no hashing, so no collisions), which makes
+# invalidation exact: bumping any field misses the old entries. Missing
+# pipelines are queued for warm-up (deduplicated) and compiled at a bounded
+# count per frame; a pipeline needed before it is warm is a cold hit and is
+# counted separately from warm hits so hitches can be attributed.
+module BackendPipelineCache:
+    private:
+        const module Tune:
+            SLOTS: i64 = 8
+            QUEUE: i64 = 8
+
+    public:
+        struct Key:
+            version: i64
+            permutation: i64
+            backend: i64
+            driver: i64
+
+        struct Cache:
+            ready: mutable bool[8]
+            version: mutable i64[8]
+            permutation: mutable i64[8]
+            backend: mutable i64[8]
+            driver: mutable i64[8]
+            queued: mutable i64
+            queue_version: mutable i64[8]
+            queue_permutation: mutable i64[8]
+            queue_backend: mutable i64[8]
+            queue_driver: mutable i64[8]
+            warm_hits: mutable i64
+            cold_misses: mutable i64
+            evictions: mutable i64
+            next_victim: mutable i64
+
+        def make() -> Cache:
+            zero: i64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+            Cache{ready: [false, false, false, false, false, false, false, false], version: zero, permutation: zero, backend: zero, driver: zero, queued: 0, queue_version: zero, queue_permutation: zero, queue_backend: zero, queue_driver: zero, warm_hits: 0, cold_misses: 0, evictions: 0, next_victim: 0}
+
+        def key(version: i64, permutation: i64, backend: i64, driver: i64) -> Key:
+            Key{version: version, permutation: permutation, backend: backend, driver: driver}
+
+        def key_ok(k: Key&) -> bool:
+            k.version > 0 and k.permutation >= 0 and k.backend >= 0 and k.driver >= 0
+
+        def find(c: Cache&, k: Key&) -> i64:
+            found: mutable i64 = -1
+            for n in 0..<8:
+                s: i64 = n.i64()
+                same: bool = c.ready[s] and c.version[s] == k.version and c.permutation[s] == k.permutation and c.backend[s] == k.backend and c.driver[s] == k.driver
+                found <- s if found < 0 and same
+            found
+
+        def queue_find(c: Cache&, k: Key&) -> i64:
+            found: mutable i64 = -1
+            for n in 0..<8:
+                s: i64 = n.i64()
+                inside: bool = s < c.queued
+                same: bool = inside and c.queue_version[s] == k.version and c.queue_permutation[s] == k.permutation and c.queue_backend[s] == k.backend and c.queue_driver[s] == k.driver
+                found <- s if found < 0 and same
+            found
+
+        # Asks for warm-up; false when invalid, already warm, already queued,
+        # or the queue is full.
+        def request(c: mutable Cache&, k: Key&) -> bool:
+            return false if not key_ok(k) or c.queued >= 8 or find(c, k) >= 0 or queue_find(c, k) >= 0
+            q: i64 = c.queued
+            c.queue_version[q] <- k.version
+            c.queue_permutation[q] <- k.permutation
+            c.queue_backend[q] <- k.backend
+            c.queue_driver[q] <- k.driver
+            c.queued <- q + 1
+            true
+
+        # The draw path: true for a warm hit. A miss is counted cold and
+        # queues the pipeline so the next frame is warm.
+        def acquire(c: mutable Cache&, k: Key&) -> bool:
+            return false if not key_ok(k)
+            if find(c, k) >= 0:
+                c.warm_hits <- c.warm_hits + 1
+                return true
+            c.cold_misses <- c.cold_misses + 1
+            request(c, k)
+            false
+
+        def free_slot(c: Cache&) -> i64:
+            found: mutable i64 = -1
+            for n in 0..<8:
+                s: i64 = n.i64()
+                found <- s if found < 0 and not c.ready[s]
+            found
+
+        def install(c: mutable Cache&, s: i64, version: i64, permutation: i64, backend: i64, driver: i64):
+            c.ready[s] <- true
+            c.version[s] <- version
+            c.permutation[s] <- permutation
+            c.backend[s] <- backend
+            c.driver[s] <- driver
+
+        # Compiles the oldest queued pipeline into a free slot, or evicts the
+        # next victim round-robin when the cache is full.
+        def compile_one(c: mutable Cache&):
+            slot: mutable i64 = free_slot(c)
+            if slot < 0:
+                slot <- c.next_victim
+                c.next_victim <- (c.next_victim + 1) % 8
+                c.evictions <- c.evictions + 1
+            install(c, slot, c.queue_version[0], c.queue_permutation[0], c.queue_backend[0], c.queue_driver[0])
+            for n in 0..<7:
+                s: i64 = n.i64()
+                c.queue_version[s] <- c.queue_version[s + 1]
+                c.queue_permutation[s] <- c.queue_permutation[s + 1]
+                c.queue_backend[s] <- c.queue_backend[s + 1]
+                c.queue_driver[s] <- c.queue_driver[s + 1]
+            c.queued <- c.queued - 1
+
+        # One frame of warm-up, at most `budget` compiles. Returns how many ran.
+        def warm_step(c: mutable Cache&, budget: i64) -> i64:
+            done: mutable i64 = 0
+            for n in 0..<8:
+                if done < budget and c.queued > 0:
+                    compile_one(c)
+                    done <- done + 1
+            done
+
+        # Drops every entry and queued request from an older shader version.
+        def invalidate_before(c: mutable Cache&, version: i64) -> i64:
+            dropped: mutable i64 = 0
+            for n in 0..<8:
+                s: i64 = n.i64()
+                if c.ready[s] and c.version[s] < version:
+                    c.ready[s] <- false
+                    dropped <- dropped + 1
+            dropped

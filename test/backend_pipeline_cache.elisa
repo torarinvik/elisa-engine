@@ -1,0 +1,45 @@
+include "../src/backend/pipeline_cache.elisa"
+
+def main() -> i32:
+    c: BackendPipelineCache::Cache = BackendPipelineCache::make()
+    k: BackendPipelineCache::Key = BackendPipelineCache::key(3, 5, 1, 7)
+    # First use is a cold miss and queues the pipeline; a duplicate request is refused.
+    return 1 if BackendPipelineCache::acquire(&c, &k) or c.cold_misses != 1 or c.queued != 1
+    return 2 if BackendPipelineCache::request(&c, &k)
+    return 3 if BackendPipelineCache::warm_step(&c, 4) != 1 or c.queued != 0
+    return 4 if not BackendPipelineCache::acquire(&c, &k) or c.warm_hits != 1
+    # Any field change misses: version, permutation, backend, driver.
+    v: BackendPipelineCache::Key = BackendPipelineCache::key(4, 5, 1, 7)
+    p: BackendPipelineCache::Key = BackendPipelineCache::key(3, 6, 1, 7)
+    b: BackendPipelineCache::Key = BackendPipelineCache::key(3, 5, 2, 7)
+    d: BackendPipelineCache::Key = BackendPipelineCache::key(3, 5, 1, 8)
+    return 5 if BackendPipelineCache::find(&c, &v) >= 0 or BackendPipelineCache::find(&c, &p) >= 0 or BackendPipelineCache::find(&c, &b) >= 0 or BackendPipelineCache::find(&c, &d) >= 0
+    # Invalid keys are ignored, not counted.
+    bad: BackendPipelineCache::Key = BackendPipelineCache::key(0, 1, 1, 1)
+    return 6 if BackendPipelineCache::acquire(&c, &bad) or BackendPipelineCache::request(&c, &bad) or c.cold_misses != 1
+    # Warm-up is bounded per frame.
+    BackendPipelineCache::request(&c, &v)
+    BackendPipelineCache::request(&c, &p)
+    BackendPipelineCache::request(&c, &b)
+    return 7 if BackendPipelineCache::warm_step(&c, 2) != 2 or c.queued != 1
+    return 8 if BackendPipelineCache::warm_step(&c, 0) != 0 or c.queued != 1
+    return 9 if BackendPipelineCache::warm_step(&c, 5) != 1 or BackendPipelineCache::find(&c, &b) < 0
+    # Bumping the shader version invalidates older pipelines exactly.
+    return 10 if BackendPipelineCache::invalidate_before(&c, 4) != 3
+    return 11 if BackendPipelineCache::find(&c, &k) >= 0 or BackendPipelineCache::find(&c, &v) < 0
+    # A full cache evicts round-robin instead of failing.
+    for n in 0..<10:
+        e: BackendPipelineCache::Key = BackendPipelineCache::key(9, n.i64(), 1, 1)
+        BackendPipelineCache::request(&c, &e)
+        BackendPipelineCache::warm_step(&c, 8)
+    return 12 if c.evictions == 0
+    last: BackendPipelineCache::Key = BackendPipelineCache::key(9, 9, 1, 1)
+    return 13 if BackendPipelineCache::find(&c, &last) < 0
+    # The queue holds 8 requests.
+    q: BackendPipelineCache::Cache = BackendPipelineCache::make()
+    for n in 0..<8:
+        e: BackendPipelineCache::Key = BackendPipelineCache::key(1, n.i64(), 0, 0)
+        BackendPipelineCache::request(&q, &e)
+    over: BackendPipelineCache::Key = BackendPipelineCache::key(1, 99, 0, 0)
+    return 14 if q.queued != 8 or BackendPipelineCache::request(&q, &over)
+    return 0
