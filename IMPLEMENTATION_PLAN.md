@@ -501,6 +501,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress (2026-09-29): `NetProtocol` negotiation and message admission (version, size, duplicate, ownership, budget) with proved integer limits; see [`docs/validation/net-protocol.md`](docs/validation/net-protocol.md). Remaining: wire it to `Wire` and the session service, entity spawn/despawn messages and real authorization.
 - [ ] **T03 · P2 · Replication and interest management** — After: T02, W05.
   Implement subscriptions, relevance, baselines, deltas, acknowledgments, and per-client bandwidth budgets from Elisa world data. Done: separate clients receive only relevant entities; loss and late joining recover full state without stale references or unbounded queues.
+  Progress (2026-09-29): `NetInterest` per-client relevance, full/delta/resend/leave planning and byte-budget charging with a proved bound; see [`docs/validation/net-interest.md`](docs/validation/net-interest.md). Remaining: connect to world data and the wire/session path, prioritised deferral, and a real multi-client run.
 - [ ] **T04 · P2 · Prediction, reconciliation, lag handling** — After: T03, P04, W09.
   Extend existing prediction/interpolation/recovery models to the real transport and character loop, defining solver determinism limits. Done: a two-process game tolerates configured delay/loss/reordering with measured correction error and bounded input/history buffers.
 - [ ] **T05 · P2 · Dedicated headless server** — After: T02, P01, W07.

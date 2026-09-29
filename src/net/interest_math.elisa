@@ -1,0 +1,16 @@
+# Integer helpers for interest management, kept enum-free so their
+# contracts are proved (proof/net_interest.elisa).
+module NetInterestMath:
+    public:
+        # Spends `cost` from a per-client byte budget only when it fits, so
+        # a client's queue can never exceed what its budget allows.
+        def remaining_after(budget: i64, cost: i64) -> i64:
+            requires budget >= 0
+            requires cost >= 0
+            ensure result >= 0
+            ensure result <= budget
+            return budget if cost > budget
+            budget - cost
+
+        def fits(budget: i64, cost: i64) -> bool:
+            cost >= 0 and cost <= budget
