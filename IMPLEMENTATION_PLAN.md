@@ -490,6 +490,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Add typed model bindings, lists/tree views, sliders, inspectors, validation/error states, and virtualized large collections. Done: editor and game settings reuse the widgets; removal/reordering cannot leave stale focus or callbacks, and large lists remain bounded.
 - [ ] **I08 · P2 · Vector graphics** — After: I02, A04.
   Integrate ThorVG for a concrete SVG/Lottie UI asset path with scale, animation, clipping, and cache lifetime policy. Done: a real HUD/editor panel consumes vector assets with validated rendering cost and graceful unsupported-format diagnostics.
+  Progress on 2026-09-29: `src/ui/vector.elisa` gives integer quadratic flattening by pixel tolerance, exact curve points and a nonzero-winding polygon fill test (see `docs/validation/ui-vector.md`). Cubics, strokes, gradients, anti-aliased rasterisation and rendering remain.
 - [ ] **I09 · P2 · Touch and haptics** — After: I01, I03.
   Add multi-pointer actions, gestures, controller vibration, and capability-based haptic output through SDL3. Done: touch/controller-specific examples handle cancellation and disconnect; unsupported devices preserve gameplay and disclose unavailable feedback.
   Progress: `src/ui/touch.elisa` tracks bounded multi-pointer contacts with tap/drag/pinch, cancel and disconnect handling, and clamped capability-aware haptics that disclose unavailable output (see `docs/validation/ui-touch.md`); the SDL3 event/vibration binding and a device example remain.

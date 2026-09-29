@@ -1,0 +1,87 @@
+# Integer vector-shape helpers for UI graphics: how finely to flatten a
+# quadratic curve for a pixel tolerance, exact curve points, and a nonzero
+# winding test so filled shapes agree at any scale. Coordinates are whole
+# device units; a shape holds at most eight vertices.
+module UiVector:
+    private:
+        const module Tune:
+            MAX_STEPS: i64 = 32
+            VERTICES: usize = 8
+            LIMIT: i64 = 1000000
+
+    public:
+        struct Point:
+            x: i64
+            y: i64
+
+        struct Polygon:
+            xs: i64[8]
+            ys: i64[8]
+            count: i64
+
+        def near(value: i64) -> bool:
+            value > 0 - Tune::LIMIT and value < Tune::LIMIT
+
+        def inside_range(p: Point&) -> bool:
+            near(p.x) and near(p.y)
+
+        # Integer square root (floor) for small non-negative values.
+        def isqrt(value: i64) -> i64:
+            return 0 if value <= 0
+            for n in 0..<64 |root: i64 = 0| -> root:
+                root <- n.i64() if (n.i64() * n.i64()) <= value and n.i64() <= 60
+
+        def bigger(a: i64, b: i64) -> i64:
+            return a if a > b
+            b
+
+        # Segments needed to keep a quadratic within `tolerance` device units of
+        # its true curve. Flatness error scales with the control point's
+        # deviation, so steps grow with its square root; bounded 1..32.
+        def steps_for(p0: Point&, p1: Point&, p2: Point&, tolerance: i64) -> i64:
+            return 1 if tolerance <= 0 or not inside_range(p0) or not inside_range(p1) or not inside_range(p2)
+            dx: i64 = p0.x - 2 * p1.x + p2.x
+            dy: i64 = p0.y - 2 * p1.y + p2.y
+            deviation: i64 = (dx if dx >= 0 else 0 - dx) + (dy if dy >= 0 else 0 - dy)
+            wanted: i64 = isqrt(deviation / (4 * tolerance)) + 1
+            return Tune::MAX_STEPS if wanted > Tune::MAX_STEPS
+            wanted
+
+        # Point at t = k/n on the quadratic, rounded toward zero. n > 0, 0 <= k <= n.
+        def point_at(p0: Point&, p1: Point&, p2: Point&, k: i64, n: i64) -> Point:
+            return Point{x: p0.x, y: p0.y} if n <= 0 or k <= 0 or not inside_range(p0) or not inside_range(p1) or not inside_range(p2)
+            return Point{x: p2.x, y: p2.y} if k >= n
+            a: i64 = (n - k) * (n - k)
+            b: i64 = 2 * k * (n - k)
+            c: i64 = k * k
+            total: i64 = n * n
+            Point{x: (a * p0.x + b * p1.x + c * p2.x) / total, y: (a * p0.y + b * p1.y + c * p2.y) / total}
+
+        def Polygon() -> Polygon:
+            Polygon{xs: [0, 0, 0, 0, 0, 0, 0, 0], ys: [0, 0, 0, 0, 0, 0, 0, 0], count: 0}
+
+        # Signed side of the edge a->b that `p` lies on (>0 left, <0 right).
+        def side(ax: i64, ay: i64, bx: i64, by: i64, px: i64, py: i64) -> i64:
+            (bx - ax) * (py - ay) - (px - ax) * (by - ay)
+
+        # Winding number contribution of edge i (nonzero rule).
+        def edge_winding(poly: Polygon&, i: i64, px: i64, py: i64) -> i64:
+            j: i64 = 0 if i + 1 >= poly.count else i + 1
+            ax: i64 = poly.xs[i.usize()]
+            ay: i64 = poly.ys[i.usize()]
+            bx: i64 = poly.xs[j.usize()]
+            by: i64 = poly.ys[j.usize()]
+            s: i64 = side(ax, ay, bx, by, px, py)
+            upward: bool = ay <= py and by > py and s > 0
+            downward: bool = ay > py and by <= py and s < 0
+            return 1 if upward
+            return 0 - 1 if downward
+            0
+
+        def winding(poly: Polygon&, px: i64, py: i64) -> i64:
+            return 0 if poly.count < 3 or poly.count > Tune::VERTICES.i64() or not near(px) or not near(py)
+            for i in 0..<Tune::VERTICES |total: i64 = 0| -> total:
+                total <- total + edge_winding(poly, i.i64(), px, py) if i.i64() < poly.count
+
+        def filled(poly: Polygon&, px: i64, py: i64) -> bool:
+            winding(poly, px, py) != 0
