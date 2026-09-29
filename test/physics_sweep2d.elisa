@@ -1,0 +1,50 @@
+include "../src/physics/sweep2d.elisa"
+
+def main() -> i32:
+    # Bodies 0..3: 0 and 2 overlap, 1 is far away, 3 touches 2's edge but not in y.
+    mutable minx: i64[32] = zeroed
+    mutable maxx: i64[32] = zeroed
+    mutable miny: i64[32] = zeroed
+    mutable maxy: i64[32] = zeroed
+    minx[0] <- 10
+    maxx[0] <- 30
+    maxy[0] <- 10
+    minx[1] <- 500
+    maxx[1] <- 520
+    maxy[1] <- 10
+    minx[2] <- 0
+    maxx[2] <- 20
+    maxy[2] <- 10
+    minx[3] <- 20
+    maxx[3] <- 40
+    miny[3] <- 50
+    maxy[3] <- 60
+    mutable p: Physics2dSweep::Pairs = Physics2dSweep::empty()
+    return 1 if Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, 4, &p) != 1
+    return 2 if p.first[0] != 0 or p.second[0] != 2 or p.overflowed
+    # Brute force agrees for a dense row of 12 overlapping boxes: 11+10+9 = 30 pairs of
+    # neighbours within 3 steps.
+    for i in 0..<12:
+        minx[i] <- (11 - i) * 10
+        maxx[i] <- (11 - i) * 10 + 30
+        miny[i] <- 0
+        maxy[i] <- 10
+    return 3 if Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, 12, &p) != 30
+    mutable brute: i64 = 0
+    for a in 0..<12:
+        for b in 0..<12:
+            brute <- brute + 1 if a < b and Physics2dSweep::overlap(a, b, &minx, &maxx, &miny, &maxy)
+    return 4 if brute != 30
+    # Deterministic order: the same input gives the same first pair.
+    f: i64 = p.first[0]
+    s: i64 = p.second[0]
+    Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, 12, &p)
+    return 5 if p.first[0] != f or p.second[0] != s or f >= s
+    # 32 stacked boxes give 496 pairs: the buffer reports overflow at 64.
+    for i in 0..<32:
+        minx[i] <- 0
+        maxx[i] <- 10
+        miny[i] <- 0
+        maxy[i] <- 10
+    return 6 if Physics2dSweep::sweep(&minx, &maxx, &miny, &maxy, 32, &p) != 64 or not p.overflowed
+    0

@@ -1,0 +1,61 @@
+# P10 broadphase for 2D bodies: sort-and-sweep over x intervals (up to 32
+# bodies) that reports overlapping pairs in a deterministic order, ties
+# broken by body index, so the narrowphase resolves contacts identically on
+# every run and platform. A full pair buffer is reported, not truncated
+# silently.
+module Physics2dSweep:
+    public:
+        const module Limits:
+            BODIES: i64 = 32
+            PAIRS: i64 = 64
+
+        struct Pairs:
+            first: mutable i64[64]
+            second: mutable i64[64]
+            count: mutable i64
+            overflowed: mutable bool
+
+        def empty() -> Pairs:
+            Pairs{first: zeroed, second: zeroed, count: 0, overflowed: false}
+
+        # Insertion sort of body indices by (min_x, index); stable and exact.
+        def order(min_x: i64[32]&, count: i64, out: mutable i64[32]&) -> i64:
+            n: i64 = 32 if count > 32 else count
+            for i in 0..<n:
+                out[i] <- i
+            for i in 1..<n:
+                mutable j: i64 = i
+                while j > 0 and min_x[out[j - 1]] > min_x[out[j]]:
+                    t: i64 = out[j]
+                    out[j] <- out[j - 1]
+                    out[j - 1] <- t
+                    j <- j - 1
+            n
+
+        def overlap(a: i64, b: i64, min_x: i64[32]&, max_x: i64[32]&, min_y: i64[32]&, max_y: i64[32]&) -> bool:
+            min_x[b] <= max_x[a] and min_x[a] <= max_x[b] and min_y[b] <= max_y[a] and min_y[a] <= max_y[b]
+
+        # Pairs are stored lower index first, in sweep order.
+        def sweep(min_x: i64[32]&, max_x: i64[32]&, min_y: i64[32]&, max_y: i64[32]&, count: i64, pairs: mutable Pairs&) -> i64:
+            mutable sorted: i64[32] = zeroed
+            n: i64 = order(min_x, count, &sorted)
+            pairs.count <- 0
+            pairs.overflowed <- false
+            for i in 0..<n:
+                a: i64 = sorted[i]
+                mutable j: i64 = i + 1
+                while j < n and min_x[sorted[j]] <= max_x[a]:
+                    b: i64 = sorted[j]
+                    if overlap(a, b, min_x, max_x, min_y, max_y):
+                        add(pairs, a, b)
+                    j <- j + 1
+            pairs.count
+
+        def add(pairs: mutable Pairs&, a: i64, b: i64) -> bool:
+            if pairs.count >= 64:
+                pairs.overflowed <- true
+                return false
+            pairs.first[pairs.count] <- a if a < b else b
+            pairs.second[pairs.count] <- b if a < b else a
+            pairs.count <- pairs.count + 1
+            true
