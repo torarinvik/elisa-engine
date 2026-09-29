@@ -44,9 +44,12 @@ it exit 8. The earlier sleeping and friction cases still pass. Built with
 `ELISA_ALLOW_STALE_STAGE1=1`, because another session had newer compiler
 sources than the binary.
 
+`Physics2dWorld::step`, the world without sleeping, now does the same.
+Code 9 of `test/physics_world2d.elisa` bounces a 500 m/s body off a 1 mm
+wall. Negative control: passing zero walls to the sweep makes it exit 9.
+
 ## Gaps
 
 - Only axis-aligned vertical walls; there are no general segments or
   circle-circle CCD.
-- `world2d` (the non-sleeping world) does not call it yet.
 - Jolt CCD for 3D, solver budgets and measured presets remain.
