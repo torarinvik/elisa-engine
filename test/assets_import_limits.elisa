@@ -1,0 +1,27 @@
+include "../src/assets/import_limits.elisa"
+
+def main() -> i32:
+    l: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 1000, max_elements: 100, max_depth: 3, max_work: 500}
+    b: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 1 if AssetImportLimits::charge_alloc(&b, &l, 10, 16) != AssetImportLimits::Verdict.Ok or b.bytes != 160 or b.elements != 10
+    # A hostile count is refused before any arithmetic can overflow, and nothing is charged.
+    return 2 if AssetImportLimits::charge_alloc(&b, &l, 9000000000000000000, 16) != AssetImportLimits::Verdict.TooMany or b.bytes != 160
+    return 3 if AssetImportLimits::charge_alloc(&b, &l, 50, 100) != AssetImportLimits::Verdict.TooLarge or b.elements != 10
+    return 4 if AssetImportLimits::charge_alloc(&b, &l, 91, 1) != AssetImportLimits::Verdict.TooMany
+    # Exactly the remaining allowance is accepted.
+    return 5 if AssetImportLimits::charge_alloc(&b, &l, 90, 9) != AssetImportLimits::Verdict.Ok or b.bytes != 970
+    return 6 if AssetImportLimits::charge_alloc(&b, &l, 1, 31) != AssetImportLimits::Verdict.TooMany or AssetImportLimits::charge_alloc(&b, &l, -1, 4) != AssetImportLimits::Verdict.Invalid
+    # Nesting is capped and balanced.
+    d: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 7 if AssetImportLimits::enter(&d, &l) != AssetImportLimits::Verdict.Ok or AssetImportLimits::enter(&d, &l) != AssetImportLimits::Verdict.Ok or AssetImportLimits::enter(&d, &l) != AssetImportLimits::Verdict.Ok
+    return 8 if AssetImportLimits::enter(&d, &l) != AssetImportLimits::Verdict.TooDeep or d.depth != 3
+    return 9 if not AssetImportLimits::leave(&d) or d.depth != 2
+    e: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 10 if AssetImportLimits::leave(&e)
+    # Work is bounded.
+    w: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 11 if AssetImportLimits::charge_work(&w, &l, 500) != AssetImportLimits::Verdict.Ok or AssetImportLimits::charge_work(&w, &l, 1) != AssetImportLimits::Verdict.OutOfWork
+    return 12 if AssetImportLimits::charge_work(&w, &l, -5) != AssetImportLimits::Verdict.Invalid
+    bad: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 0, max_elements: 1, max_depth: 1, max_work: 1}
+    return 13 if AssetImportLimits::charge_alloc(&w, &bad, 1, 1) != AssetImportLimits::Verdict.Invalid or AssetImportLimits::enter(&w, &bad) != AssetImportLimits::Verdict.Invalid
+    return 0

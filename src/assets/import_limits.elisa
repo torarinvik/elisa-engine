@@ -1,0 +1,61 @@
+# Resource limits for untrusted asset import. Every declared count in an
+# incoming file is checked against a limit before anything is allocated, and
+# the running totals (bytes, elements, nesting depth, work units) are charged
+# as the importer goes, so a hostile file fails early with a named reason
+# instead of exhausting memory or time. Arithmetic on declared sizes is
+# overflow-checked by comparing against the remaining allowance rather than
+# adding first.
+module AssetImportLimits:
+    public:
+        enum Verdict:
+            Ok
+            TooLarge
+            TooMany
+            TooDeep
+            OutOfWork
+            Invalid
+
+        struct Limits:
+            max_bytes: i64
+            max_elements: i64
+            max_depth: i64
+            max_work: i64
+
+        struct Budget:
+            bytes: mutable i64
+            elements: mutable i64
+            depth: mutable i64
+            work: mutable i64
+
+        def limits_ok(l: Limits&) -> bool:
+            l.max_bytes > 0 and l.max_elements > 0 and l.max_depth > 0 and l.max_work > 0
+
+        def start() -> Budget:
+            Budget{bytes: 0, elements: 0, depth: 0, work: 0}
+
+        # Charges a declared allocation of `count` elements of `each` bytes.
+        # Nothing is charged when the request is refused.
+        def charge_alloc(b: mutable Budget&, l: Limits&, count: i64, each: i64) -> Verdict:
+            return Verdict.Invalid if not limits_ok(l) or count < 0 or each <= 0
+            return Verdict.TooMany if count > l.max_elements - b.elements
+            return Verdict.TooLarge if count > (l.max_bytes - b.bytes) / each
+            b.elements <- b.elements + count
+            b.bytes <- b.bytes + count * each
+            Verdict.Ok
+
+        def enter(b: mutable Budget&, l: Limits&) -> Verdict:
+            return Verdict.Invalid if not limits_ok(l)
+            return Verdict.TooDeep if b.depth >= l.max_depth
+            b.depth <- b.depth + 1
+            Verdict.Ok
+
+        def leave(b: mutable Budget&) -> bool:
+            return false if b.depth <= 0
+            b.depth <- b.depth - 1
+            true
+
+        def charge_work(b: mutable Budget&, l: Limits&, units: i64) -> Verdict:
+            return Verdict.Invalid if not limits_ok(l) or units < 0
+            return Verdict.OutOfWork if units > l.max_work - b.work
+            b.work <- b.work + units
+            Verdict.Ok
