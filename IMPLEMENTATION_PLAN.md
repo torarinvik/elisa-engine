@@ -417,6 +417,8 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: 2D world solver presets (fast/balanced/stable substeps, frame budget with dropped-time report, overlap diagnostic) with measured stack regression budgets; see docs/validation/world2d-presets.md.
   Progress on 2026-09-29: position-only relaxation passes per preset cut fast-preset stack overlap from 118 mm to 23 mm (budgets 30/12/6 mm); see docs/validation/world2d-presets.md.
   Progress on 2026-09-29: preset relaxation now pushes bodies out of walls, platforms and ramp faces; see docs/validation/world2d-presets.md.
+  Progress on 2026-09-29: native 3D thin-wall projectile regression (5 cm sphere vs 2 cm wall at 50-600 m/s, LinearCast CCD, 30 mm penetration budget, measured 12 mm); see docs/validation/ccd-3d-thin-wall.md.
+  Progress on 2026-09-29: external CPU timing of the 2D presets (all ~32 us/frame on the five-ball tower, overhead-dominated; many-body timing still open); see docs/validation/world2d-preset-timing.md.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
