@@ -1,0 +1,52 @@
+# Update budgeting for many animated characters. Distant characters update
+# less often (a stride of 1, 2, 4 or 8 frames), updates are staggered by
+# character id so the load is even, and when the per-frame cost still exceeds
+# the budget the stride of the farthest characters grows until it fits or every
+# character is at the maximum stride. All decisions are integer and repeatable.
+module AnimationBudget:
+    private:
+        const module Tune:
+            MAX_STRIDE: i64 = 8
+
+    public:
+        struct Tiers:
+            near: i64
+            mid: i64
+            far: i64
+
+        def tiers_valid(t: Tiers&) -> bool:
+            t.near > 0 and t.mid > t.near and t.far > t.mid
+
+        # Stride by distance: within `near` every frame, then 2, 4 and 8.
+        def stride_for(distance: i64, t: Tiers&) -> i64:
+            return 1 if not tiers_valid(t) or distance < 0 or distance <= t.near
+            return 2 if distance <= t.mid
+            return 4 if distance <= t.far
+            Tune::MAX_STRIDE
+
+        # Staggers updates: a character is due on frames where
+        # (frame + id) is a multiple of its stride.
+        def due(frame: i64, id: i64, stride: i64) -> bool:
+            return true if stride <= 1
+            return false if frame < 0 or id < 0 or stride > Tune::MAX_STRIDE
+            total: i64 = frame + id
+            total - (total / stride) * stride == 0
+
+        # Relative cost of one frame for `count` characters at `stride`, in
+        # microseconds per frame (rounded up).
+        def frame_cost(count: i64, cost_us: i64, stride: i64) -> i64:
+            return 0 if count <= 0 or cost_us <= 0 or stride <= 0
+            (count * cost_us + stride - 1) / stride
+
+        # Stride to apply to a group so that its average per-frame cost fits a
+        # budget: the smallest stride in {1,2,4,8} that fits, else the maximum.
+        def stride_to_fit(count: i64, cost_us: i64, budget_us: i64, floor: i64) -> i64:
+            return Tune::MAX_STRIDE if budget_us <= 0 and count > 0 and cost_us > 0
+            start: i64 = 1 if floor < 1 else floor
+            return start if frame_cost(count, cost_us, start) <= budget_us
+            return 2 if start <= 2 and frame_cost(count, cost_us, 2) <= budget_us
+            return 4 if start <= 4 and frame_cost(count, cost_us, 4) <= budget_us
+            Tune::MAX_STRIDE
+
+        def fits(count: i64, cost_us: i64, budget_us: i64, stride: i64) -> bool:
+            frame_cost(count, cost_us, stride) <= budget_us

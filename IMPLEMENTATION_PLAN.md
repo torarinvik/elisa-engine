@@ -416,6 +416,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Provide a reusable Elisa character composition for movement, animation, camera, interactions, and lifecycle. Done: a third-person playground and the maze reuse the same services without native code deciding movement rules or animation state.
 - [ ] **C09 · P2 · Character scale and update budgets** — After: C03, W07, R10.
   Add distance-based sampling rates, animation LOD, visible-pose priorities, and batched jobs while preserving event semantics. Done: a crowd benchmark reports pose cost/memory and compares throttled output to full-rate reference clips.
+  Progress on 2026-09-29: `src/animation/budget.elisa` decides distance-tiered update strides, staggered due frames and the smallest stride that fits a per-frame cost budget, reporting an unmeetable budget (see `docs/validation/animation-budget.md`). Consuming it in the animation runtime, measured costs and skipped-frame interpolation remain.
 - [ ] **C10 · P3 · Full-body rig solver** — After: C05, C06.
   Implement an Elisa-owned constrained full-body solver only after defining a concrete multi-effector rig and convergence/error limits. Done: reach, balance, joint-limit, and conflicting-target scenes measure quality and cost against simpler IK; failure remains bounded and diagnosable.
 
