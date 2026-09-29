@@ -3,26 +3,30 @@ include "../src/physics/world2d_sleep.elisa"
 def ball(x: i64, y: i64, vx: i64) -> Physics2dCircles::Circle:
     Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: 0, radius_um: 100000, mass_g: 100}
 
+def no_walls() -> Physics2dCcd::Wall[4]:
+    w: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 0, thickness_um: 0, y_min_um: 0, y_max_um: 0}
+    [w, w, w, w]
+
 def main() -> i32:
     rule: Physics2dSleep::Rule = Physics2dSleep::Rule{speed_um_s: 20000, steps: 30}
     mutable b: Physics2dCircles::Circle[32] = zeroed
     mutable s: Physics2dSleep::State[32] = zeroed
     b[0] <- ball(0, 100000, 0)
-    mutable r: Physics2dSleepWorld::Report = Physics2dSleepWorld::Report{resolved: 0, woken: 0, asleep: 0}
+    mutable r: Physics2dSleepWorld::Report = Physics2dSleepWorld::Report{resolved: 0, woken: 0, asleep: 0, wall_hits: 0}
     for k in 0..<100:
-        r <- Physics2dSleepWorld::step(&b, &s, 1, &rule, 9810000, 5, 0, 500, 300)
+        r <- Physics2dSleepWorld::step(&b, &s, 1, &rule, 9810000, 5, 0, 500, 300, no_walls(), 0)
     return 1 if r.asleep != 1 or not s[0].asleep
     # A second ball rolls into the sleeper: the contact wakes it and it moves.
     b[1] <- ball(0 - 1000000, 100000, 3000000)
     mutable woke: i64 = 0
     for k in 0..<120:
-        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300)
+        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300, no_walls(), 0)
         woke <- woke + r.woken
     return 2 if woke < 1
     return 3 if b[0].x_um <= 0
     # Ground friction brings both to rest, and both fall asleep again.
     for k in 0..<4000:
-        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300)
+        r <- Physics2dSleepWorld::step(&b, &s, 2, &rule, 9810000, 5, 0, 500, 300, no_walls(), 0)
     return 4 if r.asleep != 2 or b[0].vx != 0 or b[1].vx != 0
     # Without friction the struck ball would still be rolling.
     mutable f: Physics2dCircles::Circle = ball(0, 100000, 1000000)
@@ -32,4 +36,13 @@ def main() -> i32:
     return 6 if g.vx != 0
     mutable air: Physics2dCircles::Circle = ball(0, 500000, 1000000)
     return 7 if Physics2dCircles::ground_friction(&air, 0, 300, 9810000, 5) or air.vx != 1000000
+    # A fast ball fired at a thin wall inside the world bounces off it
+    # instead of tunnelling, and the report counts the hit.
+    wall: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 1000000, thickness_um: 1000, y_min_um: 0, y_max_um: 3000000}
+    walls: Physics2dCcd::Wall[4] = [wall, wall, wall, wall]
+    mutable shot: Physics2dCircles::Circle[32] = zeroed
+    shot[0] <- ball(0, 1000000, 300000000)
+    mutable ss: Physics2dSleep::State[32] = zeroed
+    wr: Physics2dSleepWorld::Report = Physics2dSleepWorld::step(&shot, &ss, 1, &rule, 9810000, 16, 0, 500, 300, walls, 1)
+    return 8 if wr.wall_hits != 1 or shot[0].x_um + 100000 > 1000000 or shot[0].vx >= 0
     0

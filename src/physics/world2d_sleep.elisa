@@ -1,8 +1,11 @@
 # P10 2D world step with sleeping: like `Physics2dWorld::step`, but sleeping
 # bodies are not integrated, and a resolved contact wakes both bodies so a
-# body knocked by a moving one never stays frozen in the air.
+# body knocked by a moving one never stays frozen in the air. Awake bodies
+# move with continuous collision against up to four thin walls, so fast
+# bodies cannot tunnel through them.
 include "sleep2d.elisa"
 include "sweep2d.elisa"
+include "ccd2d.elisa"
 
 module Physics2dSleepWorld:
     public:
@@ -10,17 +13,20 @@ module Physics2dSleepWorld:
             resolved: i64
             woken: i64
             asleep: i64
+            wall_hits: i64
 
-        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64) -> Report:
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64, walls: Physics2dCcd::Wall[4], wall_count: i64) -> Report:
             n: i64 = 32 if count > 32 else count
             mutable minx: i64[32] = zeroed
             mutable maxx: i64[32] = zeroed
             mutable miny: i64[32] = zeroed
             mutable maxy: i64[32] = zeroed
+            mutable wall_hits: i64 = 0
             for i in 0..<n:
                 mutable c: Physics2dCircles::Circle = bodies[i]
                 s: Physics2dSleep::State = states[i]
-                Physics2dSleep::integrate(&c, &s, gravity_um_s2, dt_ms)
+                if not s.asleep:
+                    wall_hits <- wall_hits + 1 if Physics2dCcd::step(&c, walls, wall_count, gravity_um_s2, dt_ms, restitution_permille)
                 bodies[i] <- c
                 minx[i] <- c.x_um - c.radius_um
                 maxx[i] <- c.x_um + c.radius_um
@@ -55,4 +61,4 @@ module Physics2dSleepWorld:
                 asleep <- asleep + 1 if s.asleep
                 bodies[i] <- c
                 states[i] <- s
-            Report{resolved: resolved, woken: woken, asleep: asleep}
+            Report{resolved: resolved, woken: woken, asleep: asleep, wall_hits: wall_hits}

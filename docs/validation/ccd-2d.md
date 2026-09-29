@@ -34,9 +34,19 @@ against thin vertical walls within one step.
     failed code 3; that is why the fix exists.
 - Wired into `scripts/check.elisascript`.
 
+## World integration
+
+`Physics2dSleepWorld::step` now moves awake bodies with `Physics2dCcd::step`
+against up to four walls, and `Report.wall_hits` counts contacts. Code 8 of
+`test/physics_world2d_sleep.elisa` fires a 300 m/s ball at a 1 mm wall
+inside the world. Negative control: passing zero walls to the sweep makes
+it exit 8. The earlier sleeping and friction cases still pass. Built with
+`ELISA_ALLOW_STALE_STAGE1=1`, because another session had newer compiler
+sources than the binary.
+
 ## Gaps
 
 - Only axis-aligned vertical walls; there are no general segments or
   circle-circle CCD.
-- The 2D worlds (`world2d`, `world2d_sleep`) do not call it yet.
+- `world2d` (the non-sleeping world) does not call it yet.
 - Jolt CCD for 3D, solver budgets and measured presets remain.
