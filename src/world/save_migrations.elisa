@@ -1,0 +1,125 @@
+# Data-driven savegame migration chains. Each step upgrades one schema
+# version to the next with a single field operation (add a field with a
+# default, drop a field, or rescale a field). A chain is validated before use:
+# steps must be contiguous from version 1 to the current version with no gap,
+# repeat or out-of-range field. Applying a chain works on a copy and only
+# returns it when every step succeeded, so a failed migration never leaves a
+# half-upgraded record.
+module SaveMigrations:
+    public:
+        const MAX_STEPS: i64 = 16
+        const MAX_FIELDS: i64 = 8
+
+        enum Op:
+            AddField
+            DropField
+            Scale
+
+        enum Check:
+            Ok
+            Empty
+            Gap
+            BadField
+            BadScale
+
+        enum Outcome:
+            Migrated
+            Current
+            TooNew
+            TooOld
+            BadChain
+            Capacity
+            Overflow
+
+        struct Step:
+            op: Op
+            field: i64
+            value: i64
+
+        struct Chain:
+            steps: mutable Step[16]
+            count: mutable i64
+
+        struct Values:
+            version: i64
+            fields: i64[8]
+            count: i64
+
+        struct Result:
+            outcome: Outcome
+            values: Values
+
+        def Chain() -> Chain:
+            Chain{steps: zeroed, count: 0}
+
+        # Appends the step that upgrades version `count + 1` to `count + 2`.
+        def add(chain: mutable Chain&, op: Op, field: i64, value: i64) -> bool:
+            return false if chain.count >= MAX_STEPS
+            chain.steps[chain.count.usize()] <- Step{op: op, field: field, value: value}
+            chain.count <- chain.count + 1
+            true
+
+        def current(chain: Chain&) -> i64:
+            chain.count + 1
+
+        # Static check: every field index is possible for some record width and
+        # scale factors are positive and bounded.
+        def check(chain: Chain&) -> Check:
+            return Check.Empty if chain.count <= 0
+            return Check.Gap if chain.count > MAX_STEPS
+            mutable result: Check = Check.Ok
+            for i in 0..<16 |result|:
+                if i < chain.count and result == Check.Ok:
+                    s: Step = chain.steps[i]
+                    result <- Check.BadField if s.field < 0 or s.field >= MAX_FIELDS
+                    result <- Check.BadScale if s.op == Op.Scale and (s.value <= 0 or s.value > 1000000) and result == Check.Ok
+            result
+
+        def apply_step(v: Values, s: Step) -> Result:
+            mutable fields: i64[8] = v.fields
+            mutable count: i64 = v.count
+            mutable outcome: Outcome = Outcome.Migrated
+            if s.op == Op.AddField:
+                if count >= MAX_FIELDS or s.field > count:
+                    outcome <- Outcome.Capacity
+                else:
+                    for k in 0..<8 |fields|:
+                        j: i64 = 7 - k
+                        fields[j.usize()] <- fields[(j - 1).usize()] if j > s.field and j <= count else fields[j.usize()]
+                    fields[s.field.usize()] <- s.value
+                    count <- count + 1
+            elif s.op == Op.DropField:
+                if s.field >= count:
+                    outcome <- Outcome.Capacity
+                else:
+                    for j in 0..<7 |fields|:
+                        fields[j] <- fields[j + 1] if j.i64() >= s.field and j.i64() + 1 < count else fields[j]
+                    fields[(count - 1).usize()] <- 0
+                    count <- count - 1
+            else:
+                if s.field >= count:
+                    outcome <- Outcome.Capacity
+                else:
+                    x: i64 = fields[s.field.usize()]
+                    limit: i64 = 9000000000000 / s.value
+                    if x > limit or x < 0 - limit:
+                        outcome <- Outcome.Overflow
+                    else:
+                        fields[s.field.usize()] <- x * s.value
+            Result{outcome: outcome, values: Values{version: v.version + 1, fields: fields, count: count}}
+
+        # Upgrades `v` to the chain's current version, all or nothing.
+        def migrate(chain: Chain&, v: Values) -> Result:
+            return Result{outcome: Outcome.BadChain, values: v} if check(chain) != Check.Ok
+            return Result{outcome: Outcome.TooOld, values: v} if v.version < 1 or v.count < 0 or v.count > MAX_FIELDS
+            return Result{outcome: Outcome.TooNew, values: v} if v.version > current(chain)
+            return Result{outcome: Outcome.Current, values: v} if v.version == current(chain)
+            mutable work: Values = v
+            mutable outcome: Outcome = Outcome.Migrated
+            for i in 0..<16 |work, outcome|:
+                if outcome == Outcome.Migrated and work.version < current(chain) and i.i64() == work.version - 1:
+                    r: Result = apply_step(work, chain.steps[i])
+                    outcome <- r.outcome
+                    work <- r.values if r.outcome == Outcome.Migrated else work
+            return Result{outcome: outcome, values: v} if outcome != Outcome.Migrated
+            Result{outcome: Outcome.Migrated, values: work}
