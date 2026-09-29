@@ -51,6 +51,11 @@
             status: i32
             character: PhysicsRuntime::CharacterHandle
 
+        # The checkpoint chain is valid and upgrades to the schema it writes.
+        def chain_matches_schema() -> bool:
+            chain: SaveMigrations::Chain = CourseProgress::checkpoint_chain()
+            SaveMigrations::check_chain(&chain) == SaveMigrations::Check.Ok and SaveMigrations::chain_version(&chain) == CourseProgress::SCHEMA
+
         def near(first: Geometry::Vec3, second: Geometry::Vec3) -> bool:
             ElisaMath::fabsf(first.x - second.x) <= Tune::SELF_TEST_RESTART_TOLERANCE and ElisaMath::fabsf(first.y - second.y) <= Tune::SELF_TEST_RESTART_TOLERANCE and ElisaMath::fabsf(first.z - second.z) <= Tune::SELF_TEST_RESTART_TOLERANCE
 
@@ -97,7 +102,7 @@
             migrated: CourseProgress::LoadResult = CourseProgress::load()
             try CourseProgress::save(&saved)
             current_load: CourseProgress::LoadResult = CourseProgress::load()
-            return ProgressOutcome{status: Tune::PROGRESS_MIGRATE_CODE, character: current} if progress_status(migrated.status) != 0 or not migrated.migrated or migrated.checkpoint.attempts != Tune::SELF_TEST_ATTEMPTS or progress_status(current_load.status) != 0 or current_load.migrated
+            return ProgressOutcome{status: Tune::PROGRESS_MIGRATE_CODE, character: current} if not chain_matches_schema() or progress_status(migrated.status) != 0 or not migrated.migrated or migrated.checkpoint.attempts != Tune::SELF_TEST_ATTEMPTS or progress_status(current_load.status) != 0 or current_load.migrated
             tampered: mutable Save::Blob = try CourseProgress::encode(&saved)
             tampered.fields[7] <- tampered.fields[7] + 1
             try UserData::write_blob(CourseProgress::key(), &tampered)

@@ -17,7 +17,7 @@ def chain() -> SaveMigrations::Chain:
 
 def main() -> i32:
     c: SaveMigrations::Chain = chain()
-    return 1 if SaveMigrations::check(&c) != SaveMigrations::Check.Ok or SaveMigrations::current(&c) != 5
+    return 1 if SaveMigrations::check_chain(&c) != SaveMigrations::Check.Ok or SaveMigrations::chain_version(&c) != 5
     r: SaveMigrations::Result = SaveMigrations::migrate(&c, v1())
     return 2 if r.outcome != SaveMigrations::Outcome.Migrated or r.values.version != 5 or r.values.count != 3
     return 3 if r.values.fields[0] != 50 or r.values.fields[1] != 3000 or r.values.fields[2] != 4000 or r.values.fields[3] != 0
@@ -39,14 +39,14 @@ def main() -> i32:
     narrow: SaveMigrations::Values = SaveMigrations::Values{version: 1, fields: [1, 2, 0, 0, 0, 0, 0, 0], count: 2}
     return 9 if SaveMigrations::migrate(&c, narrow).outcome != SaveMigrations::Outcome.Capacity
     # Bad chains are rejected before any record is touched.
-    return 10 if SaveMigrations::check(&SaveMigrations::Chain()) != SaveMigrations::Check.Empty
+    return 10 if SaveMigrations::check_chain(&SaveMigrations::Chain()) != SaveMigrations::Check.Empty
     mutable bad: SaveMigrations::Chain = SaveMigrations::Chain()
     SaveMigrations::add(&bad, SaveMigrations::Op.Scale, 0, 0)
-    return 11 if SaveMigrations::check(&bad) != SaveMigrations::Check.BadScale
+    return 11 if SaveMigrations::check_chain(&bad) != SaveMigrations::Check.BadScale
     return 12 if SaveMigrations::migrate(&bad, v1()).outcome != SaveMigrations::Outcome.BadChain
     mutable wide: SaveMigrations::Chain = SaveMigrations::Chain()
     SaveMigrations::add(&wide, SaveMigrations::Op.DropField, 8, 0)
-    return 13 if SaveMigrations::check(&wide) != SaveMigrations::Check.BadField
+    return 13 if SaveMigrations::check_chain(&wide) != SaveMigrations::Check.BadField
     # A full record cannot gain a field.
     mutable grow: SaveMigrations::Chain = SaveMigrations::Chain()
     SaveMigrations::add(&grow, SaveMigrations::Op.AddField, 0, 1)

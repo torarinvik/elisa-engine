@@ -60,12 +60,12 @@ module SaveMigrations:
             chain.count <- chain.count + 1
             true
 
-        def current(chain: Chain&) -> i64:
+        def chain_version(chain: Chain&) -> i64:
             chain.count + 1
 
         # Static check: every field index is possible for some record width and
         # scale factors are positive and bounded.
-        def check(chain: Chain&) -> Check:
+        def check_chain(chain: Chain&) -> Check:
             return Check.Empty if chain.count <= 0
             return Check.Gap if chain.count > MAX_STEPS
             mutable result: Check = Check.Ok
@@ -76,7 +76,7 @@ module SaveMigrations:
                     result <- Check.BadScale if s.op == Op.Scale and (s.value <= 0 or s.value > 1000000) and result == Check.Ok
             result
 
-        def apply_step(v: Values, s: Step) -> Result:
+        def apply_migration_step(v: Values, s: Step) -> Result:
             mutable fields: i64[8] = v.fields
             mutable count: i64 = v.count
             mutable outcome: Outcome = Outcome.Migrated
@@ -117,15 +117,15 @@ module SaveMigrations:
 
         # Upgrades `v` to the chain's current version, all or nothing.
         def migrate(chain: Chain&, v: Values) -> Result:
-            return Result{outcome: Outcome.BadChain, values: v} if check(chain) != Check.Ok
+            return Result{outcome: Outcome.BadChain, values: v} if check_chain(chain) != Check.Ok
             return Result{outcome: Outcome.TooOld, values: v} if v.version < 1 or v.count < 0 or v.count > MAX_FIELDS
-            return Result{outcome: Outcome.TooNew, values: v} if v.version > current(chain)
-            return Result{outcome: Outcome.Current, values: v} if v.version == current(chain)
+            return Result{outcome: Outcome.TooNew, values: v} if v.version > chain_version(chain)
+            return Result{outcome: Outcome.Current, values: v} if v.version == chain_version(chain)
             mutable work: Values = v
             mutable outcome: Outcome = Outcome.Migrated
             for i in 0..<16 |work, outcome|:
-                if outcome == Outcome.Migrated and work.version < current(chain) and i.i64() == work.version - 1:
-                    r: Result = apply_step(work, chain.steps[i])
+                if outcome == Outcome.Migrated and work.version < chain_version(chain) and i.i64() == work.version - 1:
+                    r: Result = apply_migration_step(work, chain.steps[i])
                     outcome <- r.outcome
                     work <- r.values if r.outcome == Outcome.Migrated else work
             return Result{outcome: outcome, values: v} if outcome != Outcome.Migrated

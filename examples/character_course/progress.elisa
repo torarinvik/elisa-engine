@@ -1,3 +1,4 @@
+include "../../src/world/save_migrations.elisa"
 # Durable character-course checkpoints. Fields are explicit codes, whole
 # millimetres and counters rather than enum ordinals or native handles, and a
 # load is validated completely before the game touches its live character.
@@ -92,6 +93,14 @@ module CourseProgress:
                 checkpoint: Checkpoint{phase: PHASE_PLAYING,
                     position: Geometry::vec3_zero(), crouched: false, attempts: 0}}
 
+        # The checkpoint's migration chain. Schema 2 kept the six payload
+        # fields unchanged and added the marker and checksum around them, so
+        # its step is an identity rescale; later schemas append steps here.
+        def checkpoint_chain() -> SaveMigrations::Chain:
+            chain: mutable SaveMigrations::Chain = SaveMigrations::Chain()
+            _ = SaveMigrations::add(&chain, SaveMigrations::Op.Scale, 0, 1)
+            chain
+
         # Accepts a schema-2 record whose checksum matches, or a schema-1
         # record that migrates on load (`migrated`). Either way the values
         # need a known phase, a position inside the course volume, a boolean
@@ -105,13 +114,25 @@ module CourseProgress:
                 error failure: false
             return rejected() if not current and not legacy
             base: usize = 1 if current else 0
-            phase: i64 = Save::save_value_or(blob, base, 0)
-            x: i64 = Save::save_value_or(blob, base + 1, 0)
-            y: i64 = Save::save_value_or(blob, base + 2, 0)
-            z: i64 = Save::save_value_or(blob, base + 3, 0)
-            crouched: i64 = Save::save_value_or(blob, base + 4, -1)
-            attempts: i64 = Save::save_value_or(blob, base + 5, -1)
             return rejected() if current and Save::save_value_or(blob, 0, 0) != SCHEMA
+            fields: mutable i64[8] = zeroed
+            fields[0] <- Save::save_value_or(blob, base, 0)
+            fields[1] <- Save::save_value_or(blob, base + 1, 0)
+            fields[2] <- Save::save_value_or(blob, base + 2, 0)
+            fields[3] <- Save::save_value_or(blob, base + 3, 0)
+            fields[4] <- Save::save_value_or(blob, base + 4, -1)
+            fields[5] <- Save::save_value_or(blob, base + 5, -1)
+            stored: SaveMigrations::Values = SaveMigrations::Values{version: SCHEMA if current else 1, fields: fields, count: 6}
+            chain: SaveMigrations::Chain = checkpoint_chain()
+            upgraded: SaveMigrations::Result = SaveMigrations::migrate(&chain, stored)
+            accepted: bool = upgraded.outcome == SaveMigrations::Outcome.Migrated or upgraded.outcome == SaveMigrations::Outcome.Current
+            return rejected() if not accepted or upgraded.values.count != 6 or upgraded.values.version != SCHEMA
+            phase: i64 = upgraded.values.fields[0]
+            x: i64 = upgraded.values.fields[1]
+            y: i64 = upgraded.values.fields[2]
+            z: i64 = upgraded.values.fields[3]
+            crouched: i64 = upgraded.values.fields[4]
+            attempts: i64 = upgraded.values.fields[5]
             return rejected() if current and Save::save_value_or(blob, 7, -1) != checksum(phase, x, y, z, crouched, attempts)
             return rejected() if not within(phase, PHASE_PLAYING, PHASE_FAILED)
             return rejected() if not within(x, -Limits::MAX_ABS_X_MM, Limits::MAX_ABS_X_MM)
