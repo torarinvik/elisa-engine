@@ -92,6 +92,22 @@ module UiLocaleData:
 
         # The plural form for `count` in the resolved locale, or its `other`
         # form when that category was not authored.
+        # UTF-8 for display: 64 codepoints of at most 4 bytes each.
+        struct Utf8:
+            bytes: mutable u8[256]
+            length: mutable u32
+
+        def Utf8() -> Utf8:
+            Utf8{bytes: zeroed, length: 0}
+
+        # Encodes decoded text back to UTF-8; a codepoint that is not a
+        # scalar value (never produced by load) becomes U+FFFD.
+        def encode(text: UiMessageFormat::Text&) -> Utf8:
+            out: mutable Utf8 = Utf8()
+            for at in 0..<text.len:
+                append_utf8(&out, text.cp[at.usize()])
+            out
+
         def plural_text(pack: Pack&, locale: i64, key: i64, count: i64) -> Lookup:
             base: Lookup = text(pack, locale, key)
             category: i64 = UiLocale::plural(base.found.locale, count)
@@ -202,3 +218,25 @@ module UiLocaleData:
             pack.entries[pack.count.usize()] <- Entry{locale: locale, key: key, category: category, text: text}
             pack.count <- pack.count + 1
             Status.Ok
+
+        def append_utf8(out: mutable Utf8&, raw: i64) -> void:
+            cp: i64 = 65533 if raw < 1 or raw > 1114111 or (raw >= 55296 and raw <= 57343) else raw
+            at: usize = out.length.usize()
+            if cp < 128:
+                out.bytes[at] <- cp.u8()
+                out.length <- out.length + 1
+            elif cp < 2048:
+                out.bytes[at] <- (192 + cp / 64).u8()
+                out.bytes[at + 1] <- (128 + cp % 64).u8()
+                out.length <- out.length + 2
+            elif cp < 65536:
+                out.bytes[at] <- (224 + cp / 4096).u8()
+                out.bytes[at + 1] <- (128 + cp / 64 % 64).u8()
+                out.bytes[at + 2] <- (128 + cp % 64).u8()
+                out.length <- out.length + 3
+            else:
+                out.bytes[at] <- (240 + cp / 262144).u8()
+                out.bytes[at + 1] <- (128 + cp / 4096 % 64).u8()
+                out.bytes[at + 2] <- (128 + cp / 64 % 64).u8()
+                out.bytes[at + 3] <- (128 + cp % 64).u8()
+                out.length <- out.length + 4

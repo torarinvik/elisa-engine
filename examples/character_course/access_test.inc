@@ -61,6 +61,19 @@
             unchanged: bool = letter.result == CourseControls::MenuResult.Ignored and letter.menu.keymap.crouch == defaults.crouch and slot_side.result == CourseControls::MenuResult.Ignored
             last_row and adjusted and unchanged and wrapped.menu.selected == CourseControls::SLOT_FORWARD
 
+        # Captions come from the packaged text/course.loc: English matches the
+        # built-in text, Russian is real UTF-8, and a missing file refuses.
+        def localized_captions_test() -> bool:
+            english: CourseText::Captions = CourseText::load(CourseText::PATH, UiLocale::EN)
+            jump: UiLocaleData::Utf8 = english.lines[CourseText::MSG_CAPTION_JUMP.usize()]
+            plain: bool = english.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
+            russian: CourseText::Captions = CourseText::load(CourseText::PATH, UiLocale::RU)
+            ru_jump: UiLocaleData::Utf8 = russian.lines[CourseText::MSG_CAPTION_JUMP.usize()]
+            cyrillic: bool = russian.loaded and ru_jump.length == 24 and ru_jump.bytes[1] == 208u8
+            missing: CourseText::Captions = CourseText::load("text/missing.loc", UiLocale::RU)
+            keyed: bool = CourseText::key_of(CourseSounds::EVENT_SAVE) == CourseText::MSG_CAPTION_CHIME
+            plain and cyrillic and not missing.loaded and keyed
+
         def captions_test() -> bool:
             quiet: CourseAccess::Settings = CourseAccess::defaults()
             loud: CourseAccess::Settings = handoff_access()
@@ -140,6 +153,7 @@
             try UserData::remove_blob(CourseAccess::storage_key())
             return 157 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
             return 158 if not captions_test()
+            return 180 if not localized_captions_test()
             fits: bool = try layout_fits(session)
             return 159 if not fits
             return 201 if not semantics_test(&plain_settings)

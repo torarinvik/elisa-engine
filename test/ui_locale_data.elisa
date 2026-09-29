@@ -113,6 +113,13 @@ def main() -> i32:
     return 21 if UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 11).text.len != 9
     nb_plural: UiLocaleData::Lookup = UiLocaleData::plural_text(&pack, UiLocale::NB, 3, 1)
     return 22 if nb_plural.found.locale != UiLocale::EN or nb_plural.text.len != 8
+    # Round trip to UTF-8 for display: Russian "{0} монет" is 4 + 2*5 bytes.
+    ru_lookup: UiLocaleData::Lookup = UiLocaleData::plural_text(&pack, UiLocale::RU, 3, 5)
+    ru_many: UiLocaleData::Utf8 = UiLocaleData::encode(&ru_lookup.text)
+    return 25 if ru_many.length != 14 or ru_many.bytes[4] != 208u8 or ru_many.bytes[5] != 188u8
+    ja_lookup: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 0)
+    ja_text: UiLocaleData::Utf8 = UiLocaleData::encode(&ja_lookup.text)
+    return 26 if ja_text.length != 12 or ja_text.bytes[0] != 227u8
     c: UiLocaleData::Source = bad_category()
     return 23 if UiLocaleData::load(&pack, &c) != UiLocaleData::Status.Syntax
     pd: UiLocaleData::Source = plural_dup()

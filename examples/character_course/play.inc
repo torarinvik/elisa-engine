@@ -8,6 +8,7 @@
             labels: mutable RenderScene::OverlayTextHandle[12]
             keys: mutable RenderScene::OverlayTextHandle[12]
             caption: mutable RenderScene::OverlayTextHandle
+            words: CourseText::Captions
 
         def status_text(state: GameState&, crouched: bool) -> cstr:
             if state.phase == Phase.Paused:
@@ -140,7 +141,8 @@
             caption: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(CourseAccess::caption_text(0),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
             try RenderScene::set_overlay_text_visible(caption, false)
-            legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption}
+            legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption,
+                words: CourseText::load(CourseText::PATH, UiLocale::EN)}
             try layout_legend(&legend, settings)
             try refresh_legend(&legend, keymap, pads, settings, -1)
             legend
@@ -206,7 +208,10 @@
             now_nanos: u64, shown: u32) -> u32 error[RenderScene::RenderSceneError]:
             wanted: u32 = captions.event if CourseAccess::caption_visible(captions, settings, now_nanos) else 0
             return shown if wanted == shown
-            if wanted != 0:
+            if wanted != 0 and legend.words.loaded:
+                line: UiLocaleData::Utf8 = legend.words.lines[CourseText::key_of(wanted).usize()]
+                try RenderScene::set_overlay_text_utf8(legend.caption, &line.bytes[0], line.length)
+            elif wanted != 0:
                 try RenderScene::set_overlay_text(legend.caption, CourseAccess::caption_text(wanted))
             try RenderScene::set_overlay_text_visible(legend.caption, wanted != 0)
             wanted

@@ -567,6 +567,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: UiLocaleData loads packaged translations from a UTF-8 text asset (all-or-nothing with line-numbered errors, fallback lookup, formatting) ([locale-data](docs/validation/locale-data.md)); plural authoring, extraction, course loading and shaping remain.
   Progress on 2026-09-29: locale data files carry CLDR plural categories (`key:one`…) and `UiLocaleData::plural_text` picks them with other-form and locale fallback; see docs/validation/locale-data.md.
   Progress on 2026-09-29: `scripts/locale_keys.py` extracts MSG_ keys, checks .loc files (placeholders, orphans, missing English) and emits translator templates; gate self-test (docs/validation/locale-keys.md). Course loading of a .loc file and a real layout exercise remain.
+  Progress on 2026-09-30: the character course loads its captions from packaged `text/course.loc` (5 locales) and shows them through the new length-delimited `RenderScene::set_overlay_text_utf8` (docs/validation/course-localized-captions.md). Remaining: in-game language switching, a long-text/RTL layout exercise and font shaping.
 
 ## T — networking and online runtime
 

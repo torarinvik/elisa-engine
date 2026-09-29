@@ -200,6 +200,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_set_text(handle: i64, text: cstr) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_text_utf8(handle: i64, bytes: u8&, length: u32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_text_i64(handle: i64, prefix: cstr, value: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_text_position(handle: i64, x: f32, y: f32) -> i32

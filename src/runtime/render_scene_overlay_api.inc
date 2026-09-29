@@ -8,6 +8,9 @@
             OverlayTextHandle{id: native_value}
         def set_overlay_text(handle: OverlayTextHandle, text: cstr) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text(handle.id, text))
+        # Length-delimited UTF-8, e.g. localized text encoded by UiLocaleData.
+        def set_overlay_text_utf8(handle: OverlayTextHandle, bytes: u8&, length: u32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_text_utf8(handle.id, bytes, length))
         def set_overlay_text_i64(handle: OverlayTextHandle, prefix: cstr,
             value: i64) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_text_i64(handle.id, prefix, value))
