@@ -38,7 +38,8 @@ module BackendShadowCascades:
         # World size of one shadow-map texel for a cascade of the given radius,
         # in micrometres (at least 1).
         def texel_um(radius_mm: i64, resolution: i64) -> i64:
-            return 0 if radius_mm <= 0 or resolution <= 0
+            ensure result >= 0
+            return 0 if radius_mm <= 0 or resolution <= 0 or radius_mm > 1000000000000
             size: i64 = radius_mm * 2000 / resolution
             size if size > 0 else 1
 
@@ -54,6 +55,18 @@ module BackendShadowCascades:
         # Weight of the next cascade at `distance_mm`: 0 before the band that
         # ends at `split_mm`, rising to 1000 at the split.
         def blend_permille(distance_mm: i64, split_mm: i64, band_mm: i64) -> i64:
-            return 0 if band_mm <= 0 or distance_mm <= split_mm - band_mm
-            return 1000 if distance_mm >= split_mm
-            (distance_mm - (split_mm - band_mm)) * 1000 / band_mm
+            ensure result >= 0
+            ensure result <= 1000
+            return 0 if band_mm <= 0 or band_mm > 1000000000000
+            return 0 if distance_mm < 0 or distance_mm > 1000000000000 or split_mm < 0 or split_mm > 1000000000000
+            into: i64 = distance_mm - (split_mm - band_mm)
+            return 0 if into <= 0
+            ramp(into, band_mm)
+
+        # `into` of `band` as a per-mille, saturating at 1000.
+        def ramp(into: i64, band: i64) -> i64:
+            requires into >= 0 and into <= 2000000000000 and band > 0 and band <= 1000000000000
+            ensure result >= 0
+            ensure result <= 1000
+            return 1000 if into >= band
+            into * 1000 / band
