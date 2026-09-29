@@ -29,8 +29,8 @@ in-game editor as a gap.
   and that the map stays valid. Code 217 checks that Right on a gamepad row is
   `Adjusted` and a typed key is `Ignored`. Code 201 now also describes a gamepad
   row.
-- The `character-course-smoke` native smoke passed (the run moved on to the relaunch smoke with no failure);
-  the relaunch smoke result is recorded in the follow-up commit.
+- `character-course-smoke` and `character-course-relaunch-smoke` both passed with
+  the updated self-test.
 
 ## Gaps
 
