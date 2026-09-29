@@ -5,8 +5,8 @@
         struct Legend:
             panel: mutable RenderScene::OverlayPanelHandle
             header: mutable RenderScene::OverlayTextHandle
-            labels: mutable RenderScene::OverlayTextHandle[12]
-            keys: mutable RenderScene::OverlayTextHandle[12]
+            labels: mutable RenderScene::OverlayTextHandle[13]
+            keys: mutable RenderScene::OverlayTextHandle[13]
             caption: mutable RenderScene::OverlayTextHandle
             words: CourseText::Captions
 
@@ -67,14 +67,17 @@
             else:
                 CoursePad::button_name(CoursePad::slot_code(pads, row - CourseControls::PAD_FIRST))
 
-        # Every menu row as a semantic control: six key bindings, then the
-        # text-size slider and the two toggles.
+        # Every menu row as a semantic control: six key bindings, the
+        # text-size slider, two toggles, and the language and pad rows,
+        # which cycle like sliders.
         def row_semantics(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64, selected: i64) -> UiSemantics::Control error[UiSemantics::SemanticsError]:
             role: mutable UiSemantics::Role = UiSemantics::Role.KeyBinding
             if row >= CourseControls::PAD_FIRST:
                 role <- UiSemantics::Role.Slider
             elif row >= CourseControls::SLOT_COUNT:
-                role <- UiSemantics::Role.Slider if row - CourseControls::SLOT_COUNT == CourseAccess::ROW_TEXT_SIZE else UiSemantics::Role.Toggle
+                access_row: i64 = row - CourseControls::SLOT_COUNT
+                toggle: bool = access_row == CourseAccess::ROW_CONTRAST or access_row == CourseAccess::ROW_CAPTIONS
+                role <- UiSemantics::Role.Toggle if toggle else UiSemantics::Role.Slider
             try UiSemantics::Control(role, row_label(row), row_key(keymap, pads, settings, row), row, CourseControls::MENU_ROWS, row == selected)
 
         def legend_row_y(settings: CourseAccess::Settings&, row: i64) -> f32:
@@ -124,8 +127,8 @@
             header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
                 box_color(0.78, 0.84, 0.9))
-            labels: mutable RenderScene::OverlayTextHandle[12] = zeroed
-            keys: mutable RenderScene::OverlayTextHandle[12] = zeroed
+            labels: mutable RenderScene::OverlayTextHandle[13] = zeroed
+            keys: mutable RenderScene::OverlayTextHandle[13] = zeroed
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -142,7 +145,7 @@
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
             try RenderScene::set_overlay_text_visible(caption, false)
             legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption,
-                words: CourseText::load(CourseText::PATH, UiLocale::EN)}
+                words: CourseText::load(CourseText::PATH)}
             try layout_legend(&legend, settings)
             try refresh_legend(&legend, keymap, pads, settings, -1)
             legend
@@ -156,8 +159,8 @@
             try RenderScene::set_overlay_text_position(legend.header, Tune::LEGEND_X, legend_row_y(settings, -1))
             try RenderScene::set_overlay_text_color(legend.header, CourseAccess::header_color(settings))
             # Fields of a forwarded `Legend&` are copied out before the loop.
-            labels: RenderScene::OverlayTextHandle[12] = legend.labels
-            keys: RenderScene::OverlayTextHandle[12] = legend.keys
+            labels: RenderScene::OverlayTextHandle[13] = legend.labels
+            keys: RenderScene::OverlayTextHandle[13] = legend.keys
             scale: CourseAccess::Settings = settings
             for row in 0..<CourseControls::MENU_ROWS |labels, keys, scale, size, key_x|:
                 row_y: f32 = legend_row_y(&scale, row)
@@ -189,8 +192,8 @@
             try RenderScene::set_overlay_text(legend.header, legend_header(selected >= 0))
             highlight: RenderScene::Color = CourseAccess::highlight_color(settings)
             plain: RenderScene::Color = CourseAccess::text_color(settings)
-            labels: RenderScene::OverlayTextHandle[12] = legend.labels
-            keys: RenderScene::OverlayTextHandle[12] = legend.keys
+            labels: RenderScene::OverlayTextHandle[13] = legend.labels
+            keys: RenderScene::OverlayTextHandle[13] = legend.keys
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -203,13 +206,14 @@
                 try RenderScene::set_overlay_text_color(key, color)
 
         # Returns the event now on screen (0 when hidden), touching the text
-        # only when that changes.
+        # only when that changes; pass `shown` 0 to redraw the same
+        # event (the Language row changes its text, not its visibility).
         def show_caption(legend: Legend&, captions: CourseAccess::Captions&, settings: CourseAccess::Settings&,
             now_nanos: u64, shown: u32) -> u32 error[RenderScene::RenderSceneError]:
             wanted: u32 = captions.event if CourseAccess::caption_visible(captions, settings, now_nanos) else 0
             return shown if wanted == shown
             if wanted != 0 and legend.words.loaded:
-                line: UiLocaleData::Utf8 = legend.words.lines[CourseText::key_of(wanted).usize()]
+                line: UiLocaleData::Utf8 = CourseText::line(&legend.words, settings.locale, wanted)
                 try RenderScene::set_overlay_text_utf8(legend.caption, &line.bytes[0], line.length)
             elif wanted != 0:
                 try RenderScene::set_overlay_text(legend.caption, CourseAccess::caption_text(wanted))
@@ -217,8 +221,8 @@
             wanted
 
         def release_legend(legend: Legend&) -> void error[RenderScene::RenderSceneError]:
-            labels: RenderScene::OverlayTextHandle[12] = legend.labels
-            keys: RenderScene::OverlayTextHandle[12] = legend.keys
+            labels: RenderScene::OverlayTextHandle[13] = legend.labels
+            keys: RenderScene::OverlayTextHandle[13] = legend.keys
             for row in 0..<CourseControls::MENU_ROWS |labels, keys|:
                 label: RenderScene::OverlayTextHandle = labels[row.usize()]
                 key: RenderScene::OverlayTextHandle = keys[row.usize()]
@@ -332,7 +336,8 @@
                                 settings <- CourseAccess::adjust(settings, menu.selected - CourseControls::SLOT_COUNT, step.delta)
                             _ = try layout_hud(legend, instruction, settings)
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
-                            caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, caption_shown)
+                            language_row: bool = menu.selected == CourseControls::SLOT_COUNT + CourseAccess::ROW_LANGUAGE
+                            caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, 0 if language_row else caption_shown)
                         elif step.result != CourseControls::MenuResult.Ignored:
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())

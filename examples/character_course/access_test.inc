@@ -8,17 +8,18 @@
             CAPTION_NANOS: u64 = 2500000000
 
         def handoff_access() -> CourseAccess::Settings:
-            CourseAccess::Settings{text_scale: 150, high_contrast: true, captions: true}
+            CourseAccess::Settings{text_scale: 150, high_contrast: true, captions: true, locale: UiLocale::RU}
 
         def same_settings(left: CourseAccess::Settings&, right: CourseAccess::Settings&) -> bool:
-            left.text_scale == right.text_scale and left.high_contrast == right.high_contrast and left.captions == right.captions
+            left.text_scale == right.text_scale and left.high_contrast == right.high_contrast and left.captions == right.captions and left.locale == right.locale
 
-        def write_access_raw(version: i64, scale: i64, contrast: i64, captions: i64, count: usize) -> bool:
+        def write_access_raw(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool:
             values: mutable i64[Save::MAX_FIELDS] = zeroed
             values[0] <- version
             values[1] <- scale
             values[2] <- contrast
             values[3] <- captions
+            values[4] <- locale
             blob: Save::Blob = catch Save::save_write(values, count):
                 value: value
                 error failure: return false
@@ -27,7 +28,10 @@
                 error failure: false
 
         def access_refused(version: i64, scale: i64, contrast: i64, captions: i64, count: usize) -> bool:
-            return false if not write_access_raw(version, scale, contrast, captions, count)
+            locale_refused(version, scale, contrast, captions, UiLocale::EN, count)
+
+        def locale_refused(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool:
+            return false if not write_access_raw(version, scale, contrast, captions, locale, count)
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             defaults: CourseAccess::Settings = CourseAccess::defaults()
             loaded.status == CourseAccess::LoadStatus.Rejected and same_settings(&loaded.settings, &defaults)
@@ -61,18 +65,31 @@
             unchanged: bool = letter.result == CourseControls::MenuResult.Ignored and letter.menu.keymap.crouch == defaults.crouch and slot_side.result == CourseControls::MenuResult.Ignored
             last_row and adjusted and unchanged and wrapped.menu.selected == CourseControls::SLOT_FORWARD
 
+        # A version 1 save (no language) still loads, as English.
+        def version_one_loads() -> bool:
+            return false if not write_access_raw(1, 125, 1, 0, UiLocale::JA, 4)
+            loaded: CourseAccess::LoadResult = CourseAccess::load()
+            loaded.status == CourseAccess::LoadStatus.Loaded and loaded.settings.text_scale == 125 and loaded.settings.high_contrast and loaded.settings.locale == UiLocale::EN
+
         # Captions come from the packaged text/course.loc: English matches the
         # built-in text, Russian is real UTF-8, and a missing file refuses.
         def localized_captions_test() -> bool:
-            english: CourseText::Captions = CourseText::load(CourseText::PATH, UiLocale::EN)
-            jump: UiLocaleData::Utf8 = english.lines[CourseText::MSG_CAPTION_JUMP.usize()]
-            plain: bool = english.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
-            russian: CourseText::Captions = CourseText::load(CourseText::PATH, UiLocale::RU)
-            ru_jump: UiLocaleData::Utf8 = russian.lines[CourseText::MSG_CAPTION_JUMP.usize()]
-            cyrillic: bool = russian.loaded and ru_jump.length == 24 and ru_jump.bytes[1] == 208u8
-            missing: CourseText::Captions = CourseText::load("text/missing.loc", UiLocale::RU)
+            words: CourseText::Captions = CourseText::load(CourseText::PATH)
+            jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::EN, CourseSounds::EVENT_JUMP)
+            plain: bool = words.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
+            ru_jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::RU, CourseSounds::EVENT_JUMP)
+            cyrillic: bool = ru_jump.length == 24 and ru_jump.bytes[1] == 208u8
+            ja_step: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::JA, CourseSounds::EVENT_STEP)
+            japanese: bool = ja_step.length == 19 and ja_step.bytes[1] == 229u8
+            bad_locale: UiLocaleData::Utf8 = CourseText::line(&words, 9, CourseSounds::EVENT_JUMP)
+            missing: CourseText::Captions = CourseText::load("text/missing.loc")
             keyed: bool = CourseText::key_of(CourseSounds::EVENT_SAVE) == CourseText::MSG_CAPTION_CHIME
-            plain and cyrillic and not missing.loaded and keyed
+            # The Language row cycles all five and wraps both ways.
+            start: CourseAccess::Settings = CourseAccess::defaults()
+            back: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_LANGUAGE, -1)
+            on: CourseAccess::Settings = CourseAccess::adjust(back, CourseAccess::ROW_LANGUAGE, 1)
+            cycles: bool = back.locale == UiLocale::JA and on.locale == UiLocale::EN and CourseAccess::row_value(&back, CourseAccess::ROW_LANGUAGE) == "< 日本語 >"
+            plain and cyrillic and japanese and bad_locale.length == 13 and not missing.loaded and keyed and cycles
 
         def captions_test() -> bool:
             quiet: CourseAccess::Settings = CourseAccess::defaults()
@@ -131,14 +148,18 @@
             size: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::SLOT_COUNT, 6):
                 value: value
                 error failure: return false
-            toggle: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST - 1, CourseControls::PAD_FIRST - 1):
+            toggle: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST - 2, CourseControls::PAD_FIRST - 2):
                 value: value
                 error failure: return false
+            language: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST - 1, 0):
+                value: value
+                error failure: return false
+            cycling: bool = language.role == UiSemantics::Role.Slider and language.label == "Language" and language.value == "< English >" and UiSemantics::adjustable(&language)
             pad_row: UiSemantics::Control = catch row_semantics(&keymap, &pad_defaults, settings, CourseControls::PAD_FIRST, CourseControls::PAD_FIRST + 1):
                 value: value
                 error failure: return false
             outside: bool = semantics_refused(&keymap, settings)
-            first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::PAD_FIRST and pad_row.label == "Pad jump" and pad_row.value == "A / Cross" and UiSemantics::adjustable(&pad_row) and outside and size.value == "< 100% >"
+            first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::PAD_FIRST - 1 and cycling and pad_row.label == "Pad jump" and pad_row.value == "A / Cross" and UiSemantics::adjustable(&pad_row) and outside and size.value == "< 100% >"
 
         def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError]:
             return 153 if not adjust_test()
@@ -150,6 +171,8 @@
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             return 156 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &large)
             return 157 if not access_refused(2, 150, 1, 1, 4) or not access_refused(1, 110, 1, 1, 4) or not access_refused(1, 200, 0, 0, 4) or not access_refused(1, 125, 2, 0, 4) or not access_refused(1, 125, 1, 1, 3)
+            return 181 if not locale_refused(2, 125, 1, 1, 5, 5) or not locale_refused(2, 125, 1, 1, -1, 5) or not locale_refused(3, 125, 1, 1, 0, 5)
+            return 182 if not version_one_loads()
             try UserData::remove_blob(CourseAccess::storage_key())
             return 157 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
             return 158 if not captions_test()

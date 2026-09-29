@@ -1,7 +1,6 @@
 # Course captions from the packaged text/course.loc, pre-encoded to UTF-8
-# once per language so the frame loop only hands bytes to the overlay.
-# The play loop loads English; other locales are selected by `load`'s
-# locale argument (0 en, 1 nb, 2 ru, 3 ar, 4 ja). A missing or malformed file leaves `loaded` false and the built-in
+# for every language at load, so switching language in the access menu
+# only changes which line the overlay is handed. A missing or malformed file leaves `loaded` false and the built-in
 # English captions in access.elisa are used instead.
 include "../../src/ui/locale_data.elisa"
 include "../../src/audio/runtime.elisa"
@@ -18,17 +17,15 @@ module CourseText:
         const CAPTIONS: i64 = 6
 
         struct Captions:
-            lines: mutable UiLocaleData::Utf8[6]
-            locale: mutable i64
+            lines: mutable UiLocaleData::Utf8[30]
             loaded: mutable bool
             status: mutable UiLocaleData::Status
 
         def Captions() -> Captions:
-            Captions{lines: zeroed, locale: UiLocale::EN, loaded: false, status: UiLocaleData::Status.Ok}
+            Captions{lines: zeroed, loaded: false, status: UiLocaleData::Status.Ok}
 
-        def load(path: cstr, locale: i64) -> Captions:
+        def load(path: cstr) -> Captions:
             captions: mutable Captions = Captions()
-            captions.locale <- locale if UiLocale::locale_valid(locale) else UiLocale::EN
             source: mutable UiLocaleData::Source = UiLocaleData::Source()
             length: usize = catch AudioRuntime::read_asset(path, &source.bytes[0], UiLocaleData::MAX_BYTES):
                 value: value
@@ -42,6 +39,11 @@ module CourseText:
             return captions if captions.status != UiLocaleData::Status.Ok
             captions.loaded <- fill(&captions, &pack)
             captions
+
+        # The pre-encoded line for `event` in `locale` (English if invalid).
+        def line(captions: Captions&, locale: i64, event: u32) -> UiLocaleData::Utf8:
+            chosen: i64 = locale if UiLocale::locale_valid(locale) else UiLocale::EN
+            captions.lines[(chosen * CAPTIONS + key_of(event)).usize()]
 
         # The caption key for a sound event; unknown events use the chime.
         def key_of(event: u32) -> i64:
@@ -59,14 +61,20 @@ module CourseText:
                 MSG_CAPTION_CHIME
 
     private:
-        # Every caption must resolve, at worst through the English fallback.
+        # Every caption must resolve in every locale, at worst through the
+        # English fallback.
         def fill(captions: mutable Captions&, pack: UiLocaleData::Pack&) -> bool:
-            first: bool = put_line(captions, pack, MSG_CAPTION_CHIME) and put_line(captions, pack, MSG_CAPTION_JUMP)
-            second: bool = put_line(captions, pack, MSG_CAPTION_LAND) and put_line(captions, pack, MSG_CAPTION_WIN)
-            third: bool = put_line(captions, pack, MSG_CAPTION_FALL) and put_line(captions, pack, MSG_CAPTION_STEP)
+            north: bool = fill_locale(captions, pack, UiLocale::EN) and fill_locale(captions, pack, UiLocale::NB)
+            east: bool = fill_locale(captions, pack, UiLocale::RU) and fill_locale(captions, pack, UiLocale::AR)
+            north and east and fill_locale(captions, pack, UiLocale::JA)
+
+        def fill_locale(captions: mutable Captions&, pack: UiLocaleData::Pack&, locale: i64) -> bool:
+            first: bool = put_line(captions, pack, locale, MSG_CAPTION_CHIME) and put_line(captions, pack, locale, MSG_CAPTION_JUMP)
+            second: bool = put_line(captions, pack, locale, MSG_CAPTION_LAND) and put_line(captions, pack, locale, MSG_CAPTION_WIN)
+            third: bool = put_line(captions, pack, locale, MSG_CAPTION_FALL) and put_line(captions, pack, locale, MSG_CAPTION_STEP)
             first and second and third
 
-        def put_line(captions: mutable Captions&, pack: UiLocaleData::Pack&, key: i64) -> bool:
-            lookup: UiLocaleData::Lookup = UiLocaleData::text(pack, captions.locale, key)
-            captions.lines[key.usize()] <- UiLocaleData::encode(&lookup.text)
+        def put_line(captions: mutable Captions&, pack: UiLocaleData::Pack&, locale: i64, key: i64) -> bool:
+            lookup: UiLocaleData::Lookup = UiLocaleData::text(pack, locale, key)
+            captions.lines[(locale * CAPTIONS + key).usize()] <- UiLocaleData::encode(&lookup.text)
             not lookup.found.missing and lookup.text.len > 0
