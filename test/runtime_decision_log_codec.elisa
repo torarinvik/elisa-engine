@@ -1,0 +1,40 @@
+include "../src/runtime/decision_log_codec.elisa"
+
+def game(log: mutable RuntimeDecisionLog::Log&, ticks: i64) -> i64:
+    mutable total: i64 = 0
+    for t in 0..<ticks |total, log|:
+        total <- total + RuntimeDecisionLog::draw(log, t, 1, 100)
+        RuntimeDecisionLog::decide(log, t, 2, total % 4)
+    total
+
+def main() -> i32:
+    mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(7)
+    total: i64 = game(&rec, 40)
+    s: RuntimeDecisionLogCodec::Stream = RuntimeDecisionLogCodec::encode(&rec)
+    return 1 if s.len != 6 + 3 * 80
+    # Round trip: the decoded replayer reproduces the run completely.
+    l: RuntimeDecisionLogCodec::Loaded = RuntimeDecisionLogCodec::decode(&s)
+    return 2 if l.status != RuntimeDecisionLogCodec::Decode.Ok
+    mutable rep: RuntimeDecisionLog::Log = l.log
+    return 3 if game(&rep, 40) != total or not RuntimeDecisionLog::complete(&rep)
+    # Any flipped entry word fails the checksum.
+    mutable bent: RuntimeDecisionLogCodec::Stream = s
+    bent.words[100] <- bent.words[100] + 1
+    return 4 if RuntimeDecisionLogCodec::decode(&bent).status != RuntimeDecisionLogCodec::Decode.BadChecksum
+    mutable cut: RuntimeDecisionLogCodec::Stream = s
+    cut.len <- cut.len - 3
+    return 5 if RuntimeDecisionLogCodec::decode(&cut).status != RuntimeDecisionLogCodec::Decode.Truncated
+    mutable magic: RuntimeDecisionLogCodec::Stream = s
+    magic.words[0] <- 1
+    return 6 if RuntimeDecisionLogCodec::decode(&magic).status != RuntimeDecisionLogCodec::Decode.BadMagic
+    mutable ver: RuntimeDecisionLogCodec::Stream = s
+    ver.words[1] <- 2
+    return 7 if RuntimeDecisionLogCodec::decode(&ver).status != RuntimeDecisionLogCodec::Decode.BadVersion
+    mutable cnt: RuntimeDecisionLogCodec::Stream = s
+    cnt.words[3] <- 999
+    return 8 if RuntimeDecisionLogCodec::decode(&cnt).status != RuntimeDecisionLogCodec::Decode.BadCount
+    # An empty log round-trips too.
+    empty: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(1)
+    e: RuntimeDecisionLogCodec::Loaded = RuntimeDecisionLogCodec::decode(&RuntimeDecisionLogCodec::encode(&empty))
+    return 9 if e.status != RuntimeDecisionLogCodec::Decode.Ok or not RuntimeDecisionLog::complete(&e.log)
+    return 0

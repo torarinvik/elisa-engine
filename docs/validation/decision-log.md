@@ -32,8 +32,25 @@ decision recording that `replay-subsystems.md` listed as remaining.
 - Negative control: ignoring the site id makes it exit 5.
 - Wired into `scripts/check.elisascript`.
 
+## Durable form
+
+`src/runtime/decision_log_codec.elisa` (`RuntimeDecisionLogCodec`) encodes a
+log as a versioned word stream: magic, version, seed, count, overflow flag,
+entries, then a checksum. `decode` checks the length, magic, version, count,
+flag and checksum before it returns a replayer.
+
+`test/runtime_decision_log_codec.elisa` exits 0. It covers:
+- a 40-tick round trip that replays completely;
+- a flipped entry;
+- truncation;
+- a foreign magic number and an unknown version;
+- an impossible count;
+- an empty log.
+
+Negative control: skipping the checksum makes it exit 4.
+
 ## Gaps
 
-- Not yet wired into the runtime frame, `native/replay_trace.h`
-  persistence, or any game.
+- Not yet wired into the runtime frame or any game. The word stream is not
+  yet written to disk beside `native/replay_trace.h` traces.
 - There is no per-subsystem split of sites into `ReplaySubsystems` digests.

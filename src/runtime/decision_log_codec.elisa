@@ -1,0 +1,71 @@
+# Durable form of a recorded decision log: a versioned word stream
+# (magic, version, seed, count, overflow, entries as tick/site/value, then a
+# checksum) that a replay tool can store next to the native replay trace.
+# Decoding validates everything before producing a replayer, so a truncated,
+# corrupt or foreign stream never starts a replay.
+include "./decision_log.elisa"
+
+module RuntimeDecisionLogCodec:
+    public:
+        const MAGIC: i64 = 4475463
+        const VERSION: i64 = 1
+        const WORDS: i64 = 774
+
+        enum Decode:
+            Ok
+            Truncated
+            BadMagic
+            BadVersion
+            BadCount
+            BadChecksum
+
+        struct Stream:
+            words: mutable i64[774]
+            len: mutable i64
+
+        struct Loaded:
+            status: Decode
+            log: RuntimeDecisionLog::Log
+
+        def checksum(s: Stream&, upto: i64) -> i64:
+            mutable h: i64 = 1469598103
+            for i in 0..<774 |h|:
+                h <- (h * 31 + s.words[i]) % 1000000007 if i.i64() < upto else h
+            h
+
+        def encode(log: RuntimeDecisionLog::Log&) -> Stream:
+            mutable s: Stream = Stream{words: zeroed, len: 0}
+            s.words[0] <- MAGIC
+            s.words[1] <- VERSION
+            s.words[2] <- log.seed
+            s.words[3] <- log.count
+            s.words[4] <- 1 if log.overflow else 0
+            for i in 0..<256 |s|:
+                if i.i64() < log.count:
+                    e: RuntimeDecisionLog::Entry = log.entries[i]
+                    s.words[5 + 3 * i] <- e.tick
+                    s.words[6 + 3 * i] <- e.site
+                    s.words[7 + 3 * i] <- e.value
+            n: i64 = 5 + 3 * log.count
+            s.words[n.usize()] <- checksum(&s, n)
+            s.len <- n + 1
+            s
+
+        def fail(status: Decode) -> Loaded:
+            Loaded{status: status, log: RuntimeDecisionLog::recorder(0)}
+
+        def decode(s: Stream&) -> Loaded:
+            return fail(Decode.Truncated) if s.len < 6 or s.len > WORDS
+            return fail(Decode.BadMagic) if s.words[0] != MAGIC
+            return fail(Decode.BadVersion) if s.words[1] != VERSION
+            count: i64 = s.words[3]
+            return fail(Decode.BadCount) if count < 0 or count > RuntimeDecisionLog::CAP or s.words[4] < 0 or s.words[4] > 1
+            return fail(Decode.Truncated) if s.len != 6 + 3 * count
+            return fail(Decode.BadChecksum) if s.words[(5 + 3 * count).usize()] != checksum(s, 5 + 3 * count)
+            mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(s.words[2])
+            for i in 0..<256 |rec|:
+                if i.i64() < count:
+                    rec.entries[i] <- RuntimeDecisionLog::Entry{tick: s.words[5 + 3 * i], site: s.words[6 + 3 * i], value: s.words[7 + 3 * i]}
+            rec.count <- count
+            rec.overflow <- s.words[4] == 1
+            Loaded{status: Decode.Ok, log: RuntimeDecisionLog::replayer(&rec)}
