@@ -195,6 +195,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: RuntimeDecisionSessionStore saves sealed decision chunks with a manifest and replays a 600-draw, three-chunk session from disk in the native smoke ([decision-session-store](docs/validation/decision-session-store.md)); course wiring remains.
   Progress on 2026-09-29: the character course saves each sealed decision chunk to disk through RuntimeDecisionSessionStore::seal (course self-test 169 checks the manifest); final-chunk save and course replay remain ([decision-session-store](docs/validation/decision-session-store.md)).
   Progress on 2026-09-29: CourseSounds::stop saves the partial final decision chunk, so a whole course session is on disk (self-test 169); course replay mode remains ([decision-session-store](docs/validation/decision-session-store.md)).
+  Progress on 2026-09-29: the course replays a saved sound-event session from disk across chunks (CourseSounds::replay_saved; self-test 230-232 check identical variants and a shifted-tick divergence); other systems do not draw through the log yet ([decision-session-store](docs/validation/decision-session-store.md)).
 - [ ] **W10 · P2 · Storage scale and world proofs** — After: W03, W07.
   Benchmark hot iteration, spawn/despawn, lookup, and compaction; improve measured layouts and grow implementation-linked proofs where supported. Done: representative small/large worlds show before/after timings and memory, and proof claims name exact invariants rather than claiming whole-engine safety. Proofs of other subsystems now grow with each slice (contract item 8); W10 keeps the storage and world invariants.
 
@@ -564,6 +565,11 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress: `src/ui/locale.elisa` and `locale_catalogue.elisa` provide plural rules, fallback resolution, live switching, RTL mirroring and expansion reserve (see `docs/validation/ui-locale.md`); message text/formatting, extraction, packaged locale data and a real layout exercise remain.
   Progress on 2026-09-29: UiMessageFormat formats {0}..{3} placeholders and CLDR plural forms with bounded output and malformed-template errors (docs/validation/message-format.md); extraction, packaged locale data and a real layout exercise remain.
   Progress on 2026-09-29: formatted localized labels are measured, wrapped and RTL-mirrored in a reserved box, reporting overflow ([localized-label](docs/validation/localized-label.md)); real font metrics and shaping remain.
+  Progress on 2026-09-29: UiLocaleData loads packaged translations from a UTF-8 text asset (all-or-nothing with line-numbered errors, fallback lookup, formatting) ([locale-data](docs/validation/locale-data.md)); plural authoring, extraction, course loading and shaping remain.
+  Progress on 2026-09-29: locale data files carry CLDR plural categories (`key:one`…) and `UiLocaleData::plural_text` picks them with other-form and locale fallback; see docs/validation/locale-data.md.
+  Progress on 2026-09-29: `scripts/locale_keys.py` extracts MSG_ keys, checks .loc files (placeholders, orphans, missing English) and emits translator templates; gate self-test (docs/validation/locale-keys.md). Course loading of a .loc file and a real layout exercise remain.
+  Progress on 2026-09-30: the character course loads its captions from packaged `text/course.loc` (5 locales) and shows them through the new length-delimited `RenderScene::set_overlay_text_utf8` (docs/validation/course-localized-captions.md). Remaining: in-game language switching, a long-text/RTL layout exercise and font shaping.
+  Progress on 2026-09-30: live language switching in the course's access menu (saved as access version 2, v1 migrates as English), captions redraw in the chosen locale (docs/validation/course-language-switch.md). Remaining: a long-text/RTL layout exercise and font shaping.
 
 ## T — networking and online runtime
 

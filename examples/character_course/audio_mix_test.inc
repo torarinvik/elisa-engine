@@ -66,6 +66,31 @@
             return 169 if not RuntimeDecisionSessionStore::clear()
             0
 
+        # Fires 300 jumps from tick `first`; returns a hash of the variants.
+        def jump_run(sounds: mutable CourseSounds::Sounds&, first: u64) -> u64:
+            for tick in 0..<300 |hash: u64 = 17, sounds| -> hash:
+                _ = CourseSounds::fire(sounds, CourseSounds::EVENT_JUMP, first + tick.u64())
+                hash <- hash * 31u64 + CourseSounds::last_variant(sounds).u64()
+
+        # A recorded 300-jump session, saved on stop, replays from disk with
+        # the same variants and no divergence; a shifted replay diverges.
+        def replay_test(session: mutable RuntimeServices::Session&) -> i32:
+            recorded: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return 230 if CourseSounds::start(&recorded, session) != CourseSounds::STARTED
+            original: u64 = jump_run(&recorded, 1)
+            return 230 if not CourseSounds::stop(&recorded)
+            replayed: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return 231 if CourseSounds::start(&replayed, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&replayed)
+            again: u64 = jump_run(&replayed, 1)
+            return 231 if again != original or CourseSounds::replay_diverged_at(&replayed) != 0 - 1 or CourseSounds::decisions(&replayed) != 300
+            return 231 if not CourseSounds::stop(&replayed)
+            shifted: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+            return 232 if CourseSounds::start(&shifted, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&shifted)
+            _ = jump_run(&shifted, 2)
+            return 232 if CourseSounds::replay_diverged_at(&shifted) != 2
+            return 232 if not CourseSounds::stop(&shifted) or not RuntimeDecisionSessionStore::clear() or not audio_idle(session)
+            0
+
         def cue_gains(sounds: CourseSounds::Sounds&, course: u64, victory: u64) -> bool:
             CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_COURSE) == course and CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_VICTORY) == victory
 
@@ -148,4 +173,6 @@
             return 198 if not reload_test()
             return 199 if not reload_live_test(session)
             return 200 if not anim_marker_test(session)
-            weighted_jump_test(session)
+            weighted: i32 = weighted_jump_test(session)
+            return weighted if weighted != 0
+            replay_test(session)

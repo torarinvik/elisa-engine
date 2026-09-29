@@ -113,6 +113,28 @@ extern "C" int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* te
     return ELISA_RENDER_SCENE_OK;
 }
 
+// Sets text from a length-delimited UTF-8 buffer (no terminator), as
+// produced by localized message formatting. Rejects malformed UTF-8,
+// embedded NULs and anything longer than a terminated text may be.
+extern "C" int32_t elisa_render_scene_v1_set_text_utf8(int64_t handle,
+    const uint8_t* bytes, uint32_t length) {
+    if (bytes == nullptr || length > MAX_OVERLAY_TEXT_BYTES || !valid_utf8_text(bytes, length)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_text_handle(state, handle);
+    if (slot == MAX_OVERLAY_TEXTS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    try {
+        state.overlay_texts[slot].font.SetText(std::string(reinterpret_cast<const char*>(bytes), length));
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
 extern "C" int32_t elisa_render_scene_v1_set_text_i64(int64_t handle,
     const char* prefix, int64_t value) {
     if (!valid_overlay_text_prefix(prefix)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;

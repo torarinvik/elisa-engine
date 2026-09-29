@@ -250,8 +250,8 @@ module CourseSounds:
         # `gain_permille` scales the event's volume; 1000 is full.
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
             return SILENT if not sounds.live
-            if RuntimeDecisionChunks::full(&sounds.decisions):
-                sounds.decisions <- RuntimeDecisionSessionStore::seal(sounds.sealed_chunks, &sounds.decisions)
+            if RuntimeDecisionSessionStore::needs_roll(&sounds.decisions):
+                sounds.decisions <- RuntimeDecisionSessionStore::roll(sounds.sealed_chunks, &sounds.decisions)
                 sounds.sealed_chunks <- sounds.sealed_chunks + 1
             trigger: AudioEvents::Trigger = catch AudioEventsLogged::trigger(&sounds.board, event, tick, &sounds.decisions):
                 value: value.trigger
@@ -276,6 +276,19 @@ module CourseSounds:
         # Started events recorded through the decision log, across chunks.
         def decisions(sounds: Sounds&) -> i64:
             sounds.sealed_chunks * RuntimeDecisionLog::CAP + sounds.decisions.count
+
+        # Replays the session saved on disk: sound-event choices come from
+        # its chunks in order instead of the generator. False if none loads.
+        def replay_saved(sounds: mutable Sounds&) -> bool:
+            first: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(0)
+            return false if first.stored != RuntimeDecisionLogStore::Stored.Ok
+            sounds.decisions <- first.loaded.log
+            sounds.sealed_chunks <- 0
+            true
+
+        # Tick of the first replayed choice that differed, or -1.
+        def replay_diverged_at(sounds: Sounds&) -> i64:
+            sounds.decisions.diverged_at
 
         def last_variant(sounds: Sounds&) -> u32:
             sounds.last_variant
@@ -349,7 +362,7 @@ module CourseSounds:
                 sounds.mood <- mood
             return true if not sounds.live
             heard: AudioMixer::Snapshot = AudioMixer::current(sounds.mix, now_ms)
-            apply_gains(heard)
+            CourseSoundMix::apply_gains(heard)
 
         def heard(sounds: Sounds&, now_ms: u64) -> AudioMixer::Snapshot:
             AudioMixer::current(sounds.mix, now_ms)
@@ -434,7 +447,7 @@ module CourseSounds:
         # `start` reuses the freed slots. Returns false if a release failed.
         def stop(sounds: mutable Sounds&) -> bool:
             return true if not sounds.live
-            if sounds.decisions.count > 0:
+            if sounds.decisions.count > 0 and sounds.decisions.mode == RuntimeDecisionLog::Mode.Recording:
                 _ = RuntimeDecisionSessionStore::save_chunk(sounds.sealed_chunks, &sounds.decisions)
             reset_scene(sounds)
             _ = catch AudioRuntime::stop(sounds.ambience):
@@ -479,7 +492,7 @@ module CourseSounds:
             sounds.mix <- CourseSoundMix::settled_mix()
             sounds.mood <- MOOD_PLAY
             full: AudioMixer::Snapshot = mood_snapshot(sounds, MOOD_PLAY)
-            apply_gains(full) and released
+            CourseSoundMix::apply_gains(full) and released
 
     private:
         def cue_stream(sounds: Sounds&, cue: u64) -> AudioRuntime::StreamHandle:
@@ -501,16 +514,6 @@ module CourseSounds:
 
         def cue_volume(sounds: Sounds&, cue: u64) -> f32:
             MUSIC_VOLUME * AudioMusic::gain_permille(&sounds.score, cue).f32() / 1000.0
-
-        def apply_gains(gains: AudioMixer::Snapshot) -> bool:
-            catch set_gains(gains):
-                ok: true
-                error failure: false
-
-        def set_gains(gains: AudioMixer::Snapshot) -> void error[AudioRuntime::AudioError]:
-            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Music, gains.music)
-            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, gains.effects)
-            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Ui, gains.ui)
 
         # The events are authored in `sounds/events.sfx`; a missing or
         # malformed file fails the start instead of falling back to code.

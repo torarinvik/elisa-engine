@@ -1,5 +1,5 @@
 # Pure mixing helpers for CourseSounds: mood slots, heard gains and the
-# settled (full-gain) mix.
+# settled (full-gain) mix, and setting a snapshot's bus gains.
 
 module CourseSoundMix:
     public:
@@ -12,3 +12,13 @@ module CourseSoundMix:
         def settled_mix() -> AudioMixer::Mix:
             full: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
             AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}
+
+        def apply_gains(gains: AudioMixer::Snapshot) -> bool:
+            catch set_gains(gains):
+                ok: true
+                error failure: false
+
+        def set_gains(gains: AudioMixer::Snapshot) -> void error[AudioRuntime::AudioError]:
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Music, gains.music)
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Effects, gains.effects)
+            try AudioRuntime::set_bus_gain(AudioRuntime::Bus.Ui, gains.ui)

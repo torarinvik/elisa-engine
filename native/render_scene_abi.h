@@ -510,6 +510,7 @@ int32_t elisa_render_scene_v1_set_occlusion_culling(int32_t enabled);
 int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,
     int32_t font_size, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* text);
+int32_t elisa_render_scene_v1_set_text_utf8(int64_t handle, const uint8_t* bytes, uint32_t length);
 int32_t elisa_render_scene_v1_set_text_i64(int64_t handle, const char* prefix, int64_t value);
 int32_t elisa_render_scene_v1_set_text_position(int64_t handle, float x, float y);
 int32_t elisa_render_scene_v1_set_text_size(int64_t handle, int32_t font_size);

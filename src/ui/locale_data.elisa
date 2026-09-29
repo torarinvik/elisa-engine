@@ -1,0 +1,242 @@
+# Packaged locale data: translations ship as a text asset instead of code, so
+# a new language or a corrected string needs no gameplay rebuild. Each line is
+# `<locale> <key> <text>`: a two-letter code (en, nb, ru, ar, ja), a message
+# key below UiLocale::KEYS, one space, and the UTF-8 text to the end of the
+# line. A key may carry a plural category, `<key>:<zero|one|two|few|many|other>`;
+# a plain key is its `other` form. `#` starts a comment line. Loading is all or nothing: the first bad
+# line is reported by number and the pack stays empty, so a broken file never
+# ships half a language. Lookups resolve through the catalogue's fallback
+# chain, so a key missing in one locale shows the English text.
+include "./locale_catalogue.elisa"
+include "./message_format.elisa"
+
+module UiLocaleData:
+    public:
+        const MAX_BYTES: usize = 4096
+        const MAX_ENTRIES: i64 = 48
+
+        enum Status:
+            Ok
+            Oversize
+            Syntax
+            UnknownLocale
+            BadKey
+            Duplicate
+            BadUtf8
+            TooLong
+            TooMany
+
+        struct Source:
+            bytes: mutable u8[4096]
+            length: mutable usize
+
+        struct Entry:
+            locale: i64
+            key: i64
+            category: i64
+            text: UiMessageFormat::Text
+
+        struct Pack:
+            catalogue: mutable UiLocaleCatalogue::Catalogue
+            entries: mutable Entry[48]
+            count: mutable i64
+            status: mutable Status
+            line: mutable i64
+
+        struct Lookup:
+            found: UiLocaleCatalogue::Found
+            text: UiMessageFormat::Text
+
+        def Source() -> Source:
+            Source{bytes: zeroed, length: 0}
+
+        def append(source: mutable Source&, byte: u8) -> bool:
+            at: usize = source.length
+            return false if at >= MAX_BYTES
+            source.bytes[at] <- byte
+            source.length <- at + 1
+            true
+
+        def Pack() -> Pack:
+            Pack{catalogue: UiLocaleCatalogue::Catalogue(), entries: zeroed, count: 0, status: Status.Ok, line: 0}
+
+        # Parses every line into `pack`. On failure the pack is emptied and
+        # keeps the status and 1-based line of the first bad line.
+        def load(pack: mutable Pack&, source: Source&) -> Status:
+            pack.catalogue <- UiLocaleCatalogue::Catalogue()
+            pack.count <- 0
+            pack.status <- Status.Ok
+            pack.line <- 0
+            return fail(pack, Status.Oversize, 0) if source.length > MAX_BYTES
+            mutable start: usize = 0
+            mutable line: i64 = 0
+            mutable status: Status = Status.Ok
+            for i in 0..<4097 |start, line, status|:
+                at: usize = i.usize()
+                if status == Status.Ok and at <= source.length and (at == source.length or source.bytes[at] == 10u8):
+                    line <- line + 1
+                    status <- define_line(pack, source, start, at) if at > start else status
+                    start <- at + 1
+            return fail(pack, status, line) if status != Status.Ok
+            Status.Ok
+
+        # The text shown for `key` in `locale`, after fallback. `found.missing`
+        # is true, with empty text, when not even English has it.
+        def text(pack: Pack&, locale: i64, key: i64) -> Lookup:
+            found: UiLocaleCatalogue::Found = UiLocaleCatalogue::resolve(&pack.catalogue, locale, key)
+            mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
+            for i in 0..<48 |out|:
+                e: Entry = pack.entries[i]
+                out <- e.text if i.i64() < pack.count and not found.missing and e.locale == found.locale and e.key == key and e.category == UiLocale::OTHER else out
+            Lookup{found: found, text: out}
+
+        # The plural form for `count` in the resolved locale, or its `other`
+        # form when that category was not authored.
+        # UTF-8 for display: 64 codepoints of at most 4 bytes each.
+        struct Utf8:
+            bytes: mutable u8[256]
+            length: mutable u32
+
+        def Utf8() -> Utf8:
+            Utf8{bytes: zeroed, length: 0}
+
+        # Encodes decoded text back to UTF-8; a codepoint that is not a
+        # scalar value (never produced by load) becomes U+FFFD.
+        def encode(text: UiMessageFormat::Text&) -> Utf8:
+            out: mutable Utf8 = Utf8()
+            for at in 0..<text.len:
+                append_utf8(&out, text.cp[at.usize()])
+            out
+
+        def plural_text(pack: Pack&, locale: i64, key: i64, count: i64) -> Lookup:
+            base: Lookup = text(pack, locale, key)
+            category: i64 = UiLocale::plural(base.found.locale, count)
+            mutable out: UiMessageFormat::Text = base.text
+            for i in 0..<48 |out|:
+                e: Entry = pack.entries[i]
+                out <- e.text if i.i64() < pack.count and not base.found.missing and e.locale == base.found.locale and e.key == key and e.category == category else out
+            Lookup{found: base.found, text: out}
+
+    private:
+        struct Decoded:
+            cp: i64
+            size: usize
+
+        def fail(pack: mutable Pack&, status: Status, line: i64) -> Status:
+            pack.catalogue <- UiLocaleCatalogue::Catalogue()
+            pack.count <- 0
+            pack.status <- status
+            pack.line <- line
+            status
+
+        def locale_code(a: u8, b: u8) -> i64:
+            return UiLocale::EN if a == 101u8 and b == 110u8
+            return UiLocale::NB if a == 110u8 and b == 98u8
+            return UiLocale::RU if a == 114u8 and b == 117u8
+            return UiLocale::AR if a == 97u8 and b == 114u8
+            return UiLocale::JA if a == 106u8 and b == 97u8
+            0 - 1
+
+        # Plural category named by the two letters after `:`, or -1.
+        def category_code(a: u8, b: u8) -> i64:
+            return UiLocale::ZERO if a == 122u8 and b == 101u8
+            return UiLocale::ONE if a == 111u8 and b == 110u8
+            return UiLocale::TWO if a == 116u8 and b == 119u8
+            return UiLocale::FEW if a == 102u8 and b == 101u8
+            return UiLocale::MANY if a == 109u8 and b == 97u8
+            return UiLocale::OTHER if a == 111u8 and b == 116u8
+            0 - 1
+
+        # Length of the category word: zero/four-letter forms and `other`.
+        def category_length(category: i64) -> usize:
+            return 3 if category == UiLocale::ONE or category == UiLocale::TWO or category == UiLocale::FEW
+            return 5 if category == UiLocale::OTHER
+            4
+
+        def has_entry(pack: Pack&, locale: i64, key: i64, category: i64) -> bool:
+            for i in 0..<48 |found: bool = false| -> found:
+                e: Entry = pack.entries[i]
+                found <- found or (i.i64() < pack.count and e.locale == locale and e.key == key and e.category == category)
+
+        def is_digit(b: u8) -> bool:
+            b >= 48u8 and b <= 57u8
+
+        # One UTF-8 sequence at `at`; size 0 means malformed or cut off.
+        def decode(source: Source&, at: usize, stop: usize) -> Decoded:
+            b0: i64 = source.bytes[at].i64()
+            return Decoded{cp: b0, size: 1} if b0 < 128
+            size: usize = 2 if b0 >= 192 and b0 < 224 else (3 if b0 >= 224 and b0 < 240 else (4 if b0 >= 240 and b0 < 245 else 0))
+            return Decoded{cp: 0, size: 0} if size == 0 or at + size > stop
+            mutable cp: i64 = b0 & (31 if size == 2 else (15 if size == 3 else 7))
+            mutable ok: bool = true
+            for k in 1..<4 |cp, ok|:
+                if k.usize() < size:
+                    b: i64 = source.bytes[at + k.usize()].i64()
+                    ok <- ok and b >= 128 and b < 192
+                    cp <- cp * 64 + (b & 63)
+            minimum: i64 = 128 if size == 2 else (2048 if size == 3 else 65536)
+            return Decoded{cp: 0, size: 0} if not ok or cp < minimum or cp > 1114111 or (cp >= 55296 and cp < 57344)
+            Decoded{cp: cp, size: size}
+
+        def define_line(pack: mutable Pack&, source: Source&, start: usize, raw_stop: usize) -> Status:
+            stop: usize = raw_stop - 1 if source.bytes[raw_stop - 1] == 13u8 else raw_stop
+            return Status.Ok if stop == start or source.bytes[start] == 35u8
+            return Status.Syntax if stop < start + 5 or source.bytes[start + 2] != 32u8
+            locale: i64 = locale_code(source.bytes[start], source.bytes[start + 1])
+            return Status.UnknownLocale if locale < 0
+            mutable key: i64 = 0
+            mutable digits: usize = 0
+            for k in 0..<3 |key, digits|:
+                at: usize = start + 3 + k.usize()
+                if digits == k.usize() and at < stop and is_digit(source.bytes[at]):
+                    key <- key * 10 + (source.bytes[at].i64() - 48)
+                    digits <- digits + 1
+            after: usize = start + 3 + digits
+            return Status.Syntax if digits == 0 or after + 3 >= stop
+            mutable category: i64 = UiLocale::OTHER
+            mutable space: usize = after
+            if source.bytes[after] == 58u8:
+                category <- category_code(source.bytes[after + 1], source.bytes[after + 2])
+                return Status.Syntax if category < 0
+                space <- after + 1 + category_length(category)
+            return Status.Syntax if space >= stop or source.bytes[space] != 32u8
+            return Status.BadKey if key >= UiLocale::KEYS
+            return Status.Duplicate if has_entry(pack, locale, key, category)
+            return Status.TooMany if pack.count >= MAX_ENTRIES
+            mutable text: UiMessageFormat::Text = UiMessageFormat::Text()
+            mutable at: usize = space + 1
+            mutable status: Status = Status.Ok
+            for _ in 0..<4096 |text, at, status|:
+                if status == Status.Ok and at < stop:
+                    d: Decoded = decode(source, at, stop)
+                    status <- Status.BadUtf8 if d.size == 0 else status
+                    status <- Status.TooLong if d.size > 0 and not UiMessageFormat::push(&text, d.cp) else status
+                    at <- at + d.size
+            return status if status != Status.Ok
+            if category == UiLocale::OTHER:
+                _ = UiLocaleCatalogue::translate(&pack.catalogue, locale, key)
+            pack.entries[pack.count.usize()] <- Entry{locale: locale, key: key, category: category, text: text}
+            pack.count <- pack.count + 1
+            Status.Ok
+
+        def append_utf8(out: mutable Utf8&, raw: i64) -> void:
+            cp: i64 = 65533 if raw < 1 or raw > 1114111 or (raw >= 55296 and raw <= 57343) else raw
+            at: usize = out.length.usize()
+            if cp < 128:
+                out.bytes[at] <- cp.u8()
+                out.length <- out.length + 1
+            elif cp < 2048:
+                out.bytes[at] <- (192 + cp / 64).u8()
+                out.bytes[at + 1] <- (128 + cp % 64).u8()
+                out.length <- out.length + 2
+            elif cp < 65536:
+                out.bytes[at] <- (224 + cp / 4096).u8()
+                out.bytes[at + 1] <- (128 + cp / 64 % 64).u8()
+                out.bytes[at + 2] <- (128 + cp % 64).u8()
+                out.length <- out.length + 3
+            else:
+                out.bytes[at] <- (240 + cp / 262144).u8()
+                out.bytes[at + 1] <- (128 + cp / 4096 % 64).u8()
+                out.bytes[at + 2] <- (128 + cp / 64 % 64).u8()
+                out.bytes[at + 3] <- (128 + cp % 64).u8()
+                out.length <- out.length + 4

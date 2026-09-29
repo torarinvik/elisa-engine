@@ -17,6 +17,32 @@ bool valid_overlay_text_value(const char* text) {
     return false;
 }
 
+// Well-formed UTF-8 without NUL, overlongs, surrogates or values past U+10FFFF.
+bool valid_utf8_text(const uint8_t* bytes, size_t length) {
+    size_t at = 0;
+    while (at < length) {
+        const uint8_t lead = bytes[at];
+        if (lead == 0) return false;
+        size_t extra = 0;
+        uint32_t cp = 0;
+        if (lead < 0x80) { at += 1; continue; }
+        else if (lead >= 0xC2 && lead <= 0xDF) { extra = 1; cp = lead & 0x1F; }
+        else if (lead >= 0xE0 && lead <= 0xEF) { extra = 2; cp = lead & 0x0F; }
+        else if (lead >= 0xF0 && lead <= 0xF4) { extra = 3; cp = lead & 0x07; }
+        else return false;
+        if (length - at <= extra) return false;
+        for (size_t k = 1; k <= extra; ++k) {
+            const uint8_t next = bytes[at + k];
+            if ((next & 0xC0) != 0x80) return false;
+            cp = (cp << 6) | (next & 0x3F);
+        }
+        if ((extra == 2 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) ||
+            (extra == 3 && (cp < 0x10000 || cp > 0x10FFFF))) return false;
+        at += extra + 1;
+    }
+    return true;
+}
+
 bool valid_overlay_text_prefix(const char* prefix) {
     if (prefix == nullptr) return false;
     for (size_t index = 0; index <= MAX_OVERLAY_TEXT_PREFIX_BYTES; ++index) {

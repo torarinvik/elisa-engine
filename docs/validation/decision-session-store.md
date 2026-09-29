@@ -46,8 +46,11 @@ fails the smoke with status 168 (104 + probe code 64).
 
 - There is one session slot, and sessions longer than 8 chunks are not
   handled.
-- No course session has been replayed from disk. There is no replay mode
-  that feeds saved chunks back into the course.
+- Replay covers sound-event choices only. Other course systems do not draw
+  through the log, so the replayed run is not a full deterministic game
+  replay.
+- There is no player-facing way to start a replay; only the self-test calls
+  `replay_saved`.
 
 ## Course wiring
 
@@ -68,3 +71,28 @@ fails the smoke with status 168 (104 + probe code 64).
   loads with at least 44 entries.
 - Negative control: disabling the save in `stop` fails
   `character-course-smoke` with status 169.
+
+## Course replay
+
+- `RuntimeDecisionSessionStore::needs_roll` and `roll` handle both modes.
+  - A full recorder is sealed to disk.
+  - A replay that has consumed a full chunk loads chunk index + 1 through
+    `RuntimeDecisionChunks::advance`.
+  - If the next chunk is missing, the replay stays where it is, so its next
+    draw reports the divergence.
+- `CourseSounds::replay_saved` starts a replay from chunk 0 on disk.
+  `replay_diverged_at` reports the tick of the first choice that differed.
+- `stop` saves only while recording, so a replay never overwrites the
+  session it plays.
+- To stay under the 600-line limit, the bus-gain setters moved to
+  `CourseSoundMix`.
+- The course self-test runs three checks:
+  - Code 230 records 300 jumps and saves them on stop.
+  - Code 231 replays them from disk in a fresh `Sounds`. The variant hash
+    must match, there must be no divergence, and 300 decisions must be
+    logged, across both chunks.
+  - Code 232 replays with the ticks shifted by one. The replay must report a
+    divergence at tick 2.
+- Both course smokes pass, and the source-length check passes.
+- Negative control: pointing the roll at the wrong chunk fails
+  `character-course-smoke` with status 231.

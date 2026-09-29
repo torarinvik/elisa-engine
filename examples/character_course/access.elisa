@@ -1,12 +1,14 @@
 # Saved accessibility settings for the character course: text size, a
-# high-contrast HUD and sound captions. The rebind menu edits them as three
-# rows after the six key slots; a load that fails any check keeps defaults.
+# high-contrast HUD, sound captions and the caption language. The rebind
+# menu edits them as four rows after the six key slots; a load that fails
+# any check keeps defaults. Version 1 saves (no language) load as English.
 module CourseAccess:
     private:
         const module Limits:
             KEY: cstr = "course-access"
-            VERSION: i64 = 1
-            FIELD_COUNT: usize = 4
+            VERSION: i64 = 2
+            FIELD_COUNT: usize = 5
+            V1_FIELD_COUNT: usize = 4
             MIN_SCALE: i64 = 100
             MAX_SCALE: i64 = 150
             SCALE_STEP: i64 = 25
@@ -25,12 +27,14 @@ module CourseAccess:
         const ROW_TEXT_SIZE: i64 = 0
         const ROW_CONTRAST: i64 = 1
         const ROW_CAPTIONS: i64 = 2
-        const ROW_COUNT: i64 = 3
+        const ROW_LANGUAGE: i64 = 3
+        const ROW_COUNT: i64 = 4
 
         struct Settings:
             text_scale: i64
             high_contrast: bool
             captions: bool
+            locale: i64
 
         enum LoadStatus:
             Loaded
@@ -48,25 +52,28 @@ module CourseAccess:
             until_nanos: u64
 
         def defaults() -> Settings:
-            Settings{text_scale: Limits::MIN_SCALE, high_contrast: false, captions: false}
+            Settings{text_scale: Limits::MIN_SCALE, high_contrast: false, captions: false, locale: UiLocale::EN}
 
         def storage_key() -> cstr:
             Limits::KEY
 
         def valid(settings: Settings&) -> bool:
             in_range: bool = settings.text_scale >= Limits::MIN_SCALE and settings.text_scale <= Limits::MAX_SCALE
-            in_range and (settings.text_scale - Limits::MIN_SCALE) % Limits::SCALE_STEP == 0
+            in_range and (settings.text_scale - Limits::MIN_SCALE) % Limits::SCALE_STEP == 0 and UiLocale::locale_valid(settings.locale)
 
         # `delta` is -1 or +1 from Left/Right; text size clamps, flags toggle.
         def adjust(settings: Settings, row: i64, delta: i64) -> Settings:
             if row == ROW_TEXT_SIZE:
                 next: i64 = settings.text_scale + delta * Limits::SCALE_STEP
                 clamped: i64 = Limits::MIN_SCALE if next < Limits::MIN_SCALE else (Limits::MAX_SCALE if next > Limits::MAX_SCALE else next)
-                Settings{text_scale: clamped, high_contrast: settings.high_contrast, captions: settings.captions}
+                Settings{text_scale: clamped, high_contrast: settings.high_contrast, captions: settings.captions, locale: settings.locale}
             elif row == ROW_CONTRAST:
-                Settings{text_scale: settings.text_scale, high_contrast: not settings.high_contrast, captions: settings.captions}
+                Settings{text_scale: settings.text_scale, high_contrast: not settings.high_contrast, captions: settings.captions, locale: settings.locale}
             elif row == ROW_CAPTIONS:
-                Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: not settings.captions}
+                Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: not settings.captions, locale: settings.locale}
+            elif row == ROW_LANGUAGE:
+                next_locale: i64 = (settings.locale + delta + UiLocale::LOCALES) % UiLocale::LOCALES
+                Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: settings.captions, locale: next_locale}
             else:
                 settings
 
@@ -75,8 +82,10 @@ module CourseAccess:
                 "Text size"
             elif row == ROW_CONTRAST:
                 "High contrast"
-            else:
+            elif row == ROW_CAPTIONS:
                 "Captions"
+            else:
+                "Language"
 
         def row_value(settings: Settings&, row: i64) -> cstr:
             if row == ROW_TEXT_SIZE:
@@ -88,8 +97,23 @@ module CourseAccess:
                     "< 100% >"
             elif row == ROW_CONTRAST:
                 "< On >" if settings.high_contrast else "< Off >"
-            else:
+            elif row == ROW_CAPTIONS:
                 "< On >" if settings.captions else "< Off >"
+            else:
+                language_name(settings.locale)
+
+        # Each language named in itself, as players look for their own.
+        def language_name(locale: i64) -> cstr:
+            if locale == UiLocale::NB:
+                "< Norsk >"
+            elif locale == UiLocale::RU:
+                "< Русский >"
+            elif locale == UiLocale::AR:
+                "< العربية >"
+            elif locale == UiLocale::JA:
+                "< 日本語 >"
+            else:
+                "< English >"
 
         def font_size(settings: Settings&, base: i32) -> i32:
             (base.i64() * settings.text_scale / 100).i32()
@@ -147,20 +171,25 @@ module CourseAccess:
             values[1] <- settings.text_scale
             values[2] <- flag(settings.high_contrast)
             values[3] <- flag(settings.captions)
+            values[4] <- settings.locale
             try Save::save_write(values, Limits::FIELD_COUNT)
 
-        # Only this version's exact shape with a listed scale and 0/1 flags.
+        # This version's exact shape (or version 1's, read as English) with a
+        # listed scale, 0/1 flags and a known locale.
         def decode(blob: Save::Blob&) -> LoadResult:
-            readable: bool = catch Save::save_read(blob, Limits::FIELD_COUNT):
+            version: i64 = Save::save_value_or(blob, 0, 0)
+            count: usize = Limits::V1_FIELD_COUNT if version == 1 else Limits::FIELD_COUNT
+            readable: bool = catch Save::save_read(blob, count):
                 value: value
                 error failure: false
             return rejected_load(LoadStatus.Rejected) if not readable
-            return rejected_load(LoadStatus.Rejected) if Save::save_value_or(blob, 0, 0) != Limits::VERSION
+            return rejected_load(LoadStatus.Rejected) if version != 1 and version != Limits::VERSION
             contrast: i64 = Save::save_value_or(blob, 2, -1)
             captions: i64 = Save::save_value_or(blob, 3, -1)
             return rejected_load(LoadStatus.Rejected) if contrast < 0 or contrast > 1 or captions < 0 or captions > 1
             settings: Settings = Settings{text_scale: Save::save_value_or(blob, 1, 0),
-                high_contrast: contrast == 1, captions: captions == 1}
+                high_contrast: contrast == 1, captions: captions == 1,
+                locale: UiLocale::EN if version == 1 else Save::save_value_or(blob, 4, -1)}
             return rejected_load(LoadStatus.Rejected) if not valid(&settings)
             LoadResult{status: LoadStatus.Loaded, settings: settings}
 
