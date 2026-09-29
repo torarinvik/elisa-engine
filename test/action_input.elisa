@@ -16,6 +16,21 @@ def application_event(kind: Application::InputEventKind, code: i64, value: f32,
         device_slot: 0,
     }
 
+def slotted_gamepad_event(kind: Application::InputEventKind, code: i64,
+    value: f32, pressed: bool, released: bool, connected: bool,
+    slot: i32) -> Application::InputEvent:
+    Application::InputEvent{
+        kind: kind,
+        device: 2,
+        code: code,
+        value: value,
+        pressed: pressed,
+        released: released,
+        chord_down: false,
+        connected: connected,
+        device_slot: slot,
+    }
+
 def application_input_tests() -> i32:
     input: mutable ActionInput::Input = ActionInput::Input()
     key_a: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.A)
@@ -158,6 +173,82 @@ def application_input_tests() -> i32:
     ActionInputRuntime::apply_application_event(&input,
         application_event(Application::InputEventKind.GamepadAxis, trigger_code, 0.1, true, false, false))
     return 84 if ActionInput::action_down(&input, 94) or not ActionInput::action_released(&input, 94)
+
+    # Assigned local players share bindings but only receive events from their
+    # own stable connection slot; one disconnect must leave the other intact.
+    slot_one_input: mutable ActionInput::Input = ActionInput::Input()
+    slot_two_input: mutable ActionInput::Input = ActionInput::Input()
+    slot_south: i64 = Application::gamepad_button_code(Application::GamepadButtonCode.South)
+    slot_binding: ActionInput::Binding = ActionInput::Binding{
+        action: 120,
+        device: ActionInput::Device.Gamepad,
+        code: slot_south,
+        chord_code: 0,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 116 if ActionInput::bind_checked(&slot_one_input, slot_binding) != ActionInput::BindResult.Bound
+    return 117 if ActionInput::bind_checked(&slot_two_input, slot_binding) != ActionInput::BindResult.Bound
+    slot_one_press: Application::InputEvent = slotted_gamepad_event(
+        Application::InputEventKind.GamepadButton, slot_south, 1.0,
+        true, false, false, 1)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_one_press, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_one_press, 2, false)
+    return 118 if not ActionInput::action_down(&slot_one_input, 120) or ActionInput::action_down(&slot_two_input, 120)
+    ActionInput::begin_frame(&slot_one_input)
+    ActionInput::begin_frame(&slot_two_input)
+    slot_two_press: Application::InputEvent = slotted_gamepad_event(
+        Application::InputEventKind.GamepadButton, slot_south, 1.0,
+        true, false, false, 2)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_two_press, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_two_press, 2, false)
+    return 119 if not ActionInput::action_down(&slot_two_input, 120) or ActionInput::action_pressed(&slot_one_input, 120)
+    ActionInput::begin_frame(&slot_one_input)
+    ActionInput::begin_frame(&slot_two_input)
+    slot_one_disconnect: Application::InputEvent = slotted_gamepad_event(
+        Application::InputEventKind.GamepadDisconnected, 0, 0.0,
+        false, true, true, 1)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_one_disconnect, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_one_disconnect, 2, false)
+    return 120 if ActionInput::action_down(&slot_one_input, 120) or not ActionInput::action_released(&slot_one_input, 120)
+    return 121 if not ActionInput::action_down(&slot_two_input, 120) or ActionInput::action_released(&slot_two_input, 120)
+    ActionInput::begin_frame(&slot_one_input)
+    ActionInput::begin_frame(&slot_two_input)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_two_press, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_one_press, 2, false)
+    return 122 if ActionInput::action_down(&slot_one_input, 120) or ActionInput::action_pressed(&slot_two_input, 120)
+    slot_two_release: Application::InputEvent = slotted_gamepad_event(
+        Application::InputEventKind.GamepadButton, slot_south, 0.0,
+        false, true, false, 2)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_two_release, 2, false)
+    return 123 if ActionInput::action_down(&slot_two_input, 120)
+    ActionInput::begin_frame(&slot_one_input)
+    ActionInput::begin_frame(&slot_two_input)
+    slot_one_connect: Application::InputEvent = slotted_gamepad_event(
+        Application::InputEventKind.GamepadConnected, 0, 1.0,
+        true, false, true, 1)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_one_connect, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_one_connect, 2, false)
+    ActionInputRuntime::apply_player_event(&slot_one_input, slot_one_press, 1, false)
+    ActionInputRuntime::apply_player_event(&slot_two_input, slot_one_press, 2, false)
+    return 124 if not ActionInput::action_down(&slot_one_input, 120) or ActionInput::action_down(&slot_two_input, 120)
+    slot_keyboard: ActionInput::Binding = ActionInput::Binding{
+        action: 121,
+        device: ActionInput::Device.Keyboard,
+        code: key_a,
+        chord_code: 0,
+        deadzone: 0.0,
+        context: ActionInput::Context.Gameplay,
+        live: true,
+    }
+    return 125 if ActionInput::bind_checked(&slot_one_input, slot_keyboard) != ActionInput::BindResult.Bound
+    return 126 if ActionInput::bind_checked(&slot_two_input, slot_keyboard) != ActionInput::BindResult.Bound
+    keyboard_press: Application::InputEvent = application_event(
+        Application::InputEventKind.Key, key_a, 1.0, true, false, false)
+    ActionInputRuntime::apply_player_event(&slot_one_input, keyboard_press, 1, true)
+    ActionInputRuntime::apply_player_event(&slot_two_input, keyboard_press, 2, false)
+    return 127 if not ActionInput::action_down(&slot_one_input, 121) or ActionInput::action_down(&slot_two_input, 121)
 
     multiple_chords: mutable ActionInput::Input = ActionInput::Input()
     shift_binding: ActionInput::Binding = chord

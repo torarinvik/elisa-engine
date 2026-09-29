@@ -5,8 +5,29 @@
 #include <SDL3/SDL_keycode.h>
 
 #include <cstdint>
+#include <cstddef>
 
 namespace probe {
+
+// Gamepad slots are connection-scoped: the slot index stays fixed while a
+// device remains open, even if a lower-numbered slot becomes vacant.
+template <typename GamepadSlots>
+inline int32_t first_open_gamepad_slot(const GamepadSlots& slots) {
+    for (size_t index = 0; index < slots.size(); ++index) {
+        if (slots[index].handle == nullptr) return static_cast<int32_t>(index + 1);
+    }
+    return 0;
+}
+
+template <typename GamepadSlots>
+inline int32_t gamepad_connection_slot(const GamepadSlots& slots, SDL_JoystickID id) {
+    for (size_t index = 0; index < slots.size(); ++index) {
+        if (slots[index].handle != nullptr && slots[index].id == id) {
+            return static_cast<int32_t>(index + 1);
+        }
+    }
+    return 0;
+}
 
 enum ElisaInputDeviceCode : int32_t {
     INPUT_DEVICE_GLOBAL = -1,

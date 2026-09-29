@@ -1,12 +1,7 @@
 namespace {
 
 int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id) {
-    for (size_t index = 0; index < service.gamepads.size(); ++index) {
-        if (service.gamepads[index].handle != nullptr && service.gamepads[index].id == id) {
-            return int32_t(index + 1);
-        }
-    }
-    return 0;
+    return probe::gamepad_connection_slot(service.gamepads, id);
 }
 
 } // namespace

@@ -136,16 +136,15 @@ void queue_pointer_event(ApplicationService& service, int32_t kind,
 
 void open_gamepad(ApplicationService& service, SDL_JoystickID id) {
     if (has_gamepad(service, id)) return;
-    for (OpenGamepad& slot : service.gamepads) {
-        if (slot.handle != nullptr) continue;
-        SDL_Gamepad* handle = SDL_OpenGamepad(id);
-        if (handle == nullptr) return;
-        slot = OpenGamepad{id, handle};
-        const int32_t device_slot = gamepad_device_slot(service, id);
-        queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, probe::INPUT_DEVICE_GAMEPAD,
-            0, 1.0f, true, false, device_slot);
-        return;
-    }
+    const int32_t connection_slot = probe::first_open_gamepad_slot(service.gamepads);
+    if (connection_slot == 0) return;
+    OpenGamepad& slot = service.gamepads[static_cast<size_t>(connection_slot - 1)];
+    SDL_Gamepad* handle = SDL_OpenGamepad(id);
+    if (handle == nullptr) return;
+    slot = OpenGamepad{id, handle};
+    const int32_t device_slot = gamepad_device_slot(service, id);
+    queue_input_event(service, ELISA_APPLICATION_INPUT_GAMEPAD_CONNECTED, probe::INPUT_DEVICE_GAMEPAD,
+        0, 1.0f, true, false, device_slot);
 }
 
 void close_gamepad(ApplicationService& service, SDL_JoystickID id) {
