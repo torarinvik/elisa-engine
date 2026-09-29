@@ -19,6 +19,8 @@ module SoundEventAssets:
             DuplicateMood
             InvalidMusic
             DuplicateMusic
+            InvalidAnim
+            DuplicateAnim
 
         struct Source:
             bytes: mutable u8[SoundEventAssets::MAX_BYTES]
@@ -150,3 +152,8 @@ module SoundEventAssets:
         def is_music(source: Source&, start: usize, stop: usize) -> bool:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             stop - start == 5 and source.bytes[start] == 109 and source.bytes[start + 1] == 117 and source.bytes[start + 2] == 115 and source.bytes[start + 3] == 105 and source.bytes[start + 4] == 99
+
+        # "anim" in ASCII.
+        def is_anim(source: Source&, start: usize, stop: usize) -> bool:
+            requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
+            stop - start == 4 and source.bytes[start] == 97 and source.bytes[start + 1] == 110 and source.bytes[start + 2] == 105 and source.bytes[start + 3] == 109

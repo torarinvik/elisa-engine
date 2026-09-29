@@ -1,0 +1,89 @@
+# Animation-event sound bindings: an animation marker, such as a foot plant
+# in a walk cycle, names a sound event and the gain to play it at. The clip
+# owns where its markers sit; this module owns which sound each marker makes
+# and when a marker has been passed. Positions are whole thousandths of a clip
+# cycle, so a replayed animation fires the same markers and the proof,
+# proof/audio_anim_events.elisa, works in exact integers.
+module AudioAnimEvents:
+    public:
+        const MAX_BINDINGS: usize = 4
+        const MAX_ANIMATION_EVENT: u64 = 65535
+        const FULL_PERMILLE: u64 = 1000
+        # A clip cycle is 1000 milli-cycles; a marker sits below that.
+        const CYCLE_MC: u64 = 1000
+
+        struct Binding:
+            defined: bool
+            animation_event: u64
+            sound_event: u32
+            gain_permille: u64
+
+        struct Bindings:
+            first: Binding
+            second: Binding
+            third: Binding
+            fourth: Binding
+
+        def Binding() -> Binding:
+            Binding{defined: false, animation_event: 0, sound_event: 0, gain_permille: 0}
+
+        def Bindings() -> Bindings:
+            Bindings{first: Binding(), second: Binding(), third: Binding(), fourth: Binding()}
+
+        def valid(animation_event: u64, sound_event: u64, gain_permille: u64) -> bool:
+            ensure not result or (animation_event >= 1 and animation_event <= MAX_ANIMATION_EVENT and sound_event >= 1 and sound_event <= 4294967295 and gain_permille <= FULL_PERMILLE)
+            animation_event >= 1 and animation_event <= MAX_ANIMATION_EVENT and sound_event >= 1 and sound_event <= 4294967295 and gain_permille <= FULL_PERMILLE
+
+        def binding(animation_event: u64, sound_event: u64, gain_permille: u64) -> Binding:
+            requires animation_event >= 1 and animation_event <= MAX_ANIMATION_EVENT and sound_event >= 1 and sound_event <= 4294967295 and gain_permille <= FULL_PERMILLE
+            Binding{defined: true, animation_event: animation_event, sound_event: sound_event.u32(), gain_permille: gain_permille}
+
+        # The binding for `animation_event`, or an undefined one.
+        def get(bindings: Bindings&, animation_event: u64) -> Binding:
+            if bindings.first.defined and bindings.first.animation_event == animation_event:
+                bindings.first
+            elif bindings.second.defined and bindings.second.animation_event == animation_event:
+                bindings.second
+            elif bindings.third.defined and bindings.third.animation_event == animation_event:
+                bindings.third
+            elif bindings.fourth.defined and bindings.fourth.animation_event == animation_event:
+                bindings.fourth
+            else:
+                Binding()
+
+        def defined(bindings: Bindings&, animation_event: u64) -> bool:
+            get(bindings, animation_event).defined
+
+        def full(bindings: Bindings&) -> bool:
+            bindings.first.defined and bindings.second.defined and bindings.third.defined and bindings.fourth.defined
+
+        # `bindings` with `value` in its first free slot; a full table is
+        # returned unchanged, so check `full` first.
+        def with_binding(bindings: Bindings, value: Binding) -> Bindings:
+            if not bindings.first.defined:
+                Bindings{first: value, second: bindings.second, third: bindings.third, fourth: bindings.fourth}
+            elif not bindings.second.defined:
+                Bindings{first: bindings.first, second: value, third: bindings.third, fourth: bindings.fourth}
+            elif not bindings.third.defined:
+                Bindings{first: bindings.first, second: bindings.second, third: value, fourth: bindings.fourth}
+            elif not bindings.fourth.defined:
+                Bindings{first: bindings.first, second: bindings.second, third: bindings.third, fourth: value}
+            else:
+                bindings
+
+        # Whether a marker at `marker_mc` (below one cycle) was passed while a
+        # clip advanced from `before_mc` to `after_mc`, both counted from the
+        # start of playback. A marker exactly at `before_mc` was heard on the
+        # previous update. Any advance of a full cycle or more passes every
+        # marker, but a marker sounds once per update however far it jumped.
+        def crossed(before_mc: u64, after_mc: u64, marker_mc: u64) -> bool:
+            ensure not result or after_mc > before_mc
+            requires marker_mc < CYCLE_MC and before_mc <= after_mc and after_mc <= 1000000000000
+            return false if after_mc <= before_mc
+            (after_mc + CYCLE_MC - marker_mc) / CYCLE_MC > (before_mc + CYCLE_MC - marker_mc) / CYCLE_MC
+
+        # The gain a marker sounds at: the bound gain, never above full.
+        def heard_gain(value: Binding) -> u64:
+            ensure result <= FULL_PERMILLE
+            return FULL_PERMILLE if value.gain_permille > FULL_PERMILLE
+            value.gain_permille

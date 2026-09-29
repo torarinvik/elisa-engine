@@ -1,0 +1,40 @@
+include "../src/audio/anim_events.elisa"
+
+def bound(id: u64, sound: u64, gain: u64) -> AudioAnimEvents::Binding:
+    AudioAnimEvents::binding(id, sound, gain)
+
+def main() -> i32:
+    # Validation.
+    return 1 if not AudioAnimEvents::valid(100, 6, 600) or AudioAnimEvents::valid(0, 6, 600)
+    return 2 if AudioAnimEvents::valid(65536, 6, 600) or AudioAnimEvents::valid(100, 0, 600) or AudioAnimEvents::valid(100, 4294967296, 600) or AudioAnimEvents::valid(100, 6, 1001)
+
+    # Table: first free slot, lookup, full.
+    table: mutable AudioAnimEvents::Bindings = AudioAnimEvents::Bindings()
+    return 3 if AudioAnimEvents::defined(&table, 100) or AudioAnimEvents::full(&table)
+    table <- AudioAnimEvents::with_binding(table, bound(100, 6, 600))
+    table <- AudioAnimEvents::with_binding(table, bound(101, 7, 500))
+    return 4 if AudioAnimEvents::get(&table, 101).sound_event != 7 or AudioAnimEvents::get(&table, 100).gain_permille != 600
+    return 5 if AudioAnimEvents::defined(&table, 102)
+    table <- AudioAnimEvents::with_binding(table, bound(102, 6, 100))
+    table <- AudioAnimEvents::with_binding(table, bound(103, 6, 100))
+    return 6 if not AudioAnimEvents::full(&table) or not AudioAnimEvents::defined(&table, 103)
+    table <- AudioAnimEvents::with_binding(table, bound(104, 6, 100))
+    return 7 if AudioAnimEvents::defined(&table, 104)
+
+    # Crossing: a marker at 500 sounds once per cycle; one exactly at the
+    # start of an update was heard on the last one.
+    return 10 if not AudioAnimEvents::crossed(0, 500, 500) or AudioAnimEvents::crossed(500, 700, 500)
+    return 11 if AudioAnimEvents::crossed(0, 499, 500) or not AudioAnimEvents::crossed(499, 501, 500)
+    return 12 if not AudioAnimEvents::crossed(900, 1600, 500) or AudioAnimEvents::crossed(1600, 1900, 500)
+    # A marker at 0 sounds when a cycle completes, not at playback start.
+    return 13 if AudioAnimEvents::crossed(0, 0, 0) or AudioAnimEvents::crossed(0, 999, 0) or not AudioAnimEvents::crossed(999, 1000, 0)
+    # A hitch of several cycles still counts as one crossing per update,
+    # and no advance means no crossing.
+    return 14 if not AudioAnimEvents::crossed(0, 5000, 250) or AudioAnimEvents::crossed(700, 700, 500)
+    # Over a whole run each marker fires once per cycle.
+    fired: usize =
+        for step in 0..<40 |count: usize = 0| -> count:
+            count <- count + 1 if AudioAnimEvents::crossed(step.u64() * 100, step.u64() * 100 + 100, 500)
+    return 15 if fired != 4
+    return 16 if AudioAnimEvents::heard_gain(bound(100, 6, 600)) != 600 or AudioAnimEvents::heard_gain(AudioAnimEvents::Binding{defined: true, animation_event: 1, sound_event: 1, gain_permille: 5000}) != 1000
+    0

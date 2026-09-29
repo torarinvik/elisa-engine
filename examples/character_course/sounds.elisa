@@ -10,6 +10,14 @@ module CourseSounds:
         const EVENT_FALL: u32 = 4
         const EVENT_SAVE: u32 = 5
         const EVENT_STEP: u32 = 6
+        # The guide's foot plants: animation markers, bound to a sound event
+        # by `anim` records. The walk clip plants a foot at the start of a
+        # cycle and again half-way through.
+        const EVENT_GUIDE_STEP: u32 = 7
+        const ANIM_STEP_LEFT: u64 = 100
+        const ANIM_STEP_RIGHT: u64 = 101
+        const MARKER_LEFT_MC: u64 = 0
+        const MARKER_RIGHT_MC: u64 = 500
         # `track` results, as bits.
         const TRACKED_STEP: u32 = 1
         const TRACKED_LANDING: u32 = 2
@@ -213,6 +221,22 @@ module CourseSounds:
             step_heard: bool = stepped and heard_outcome(fire(sounds, sounds.triggers.footfalls.event, tick))
             landing_heard: bool = gain > 0 and heard_outcome(fire_scaled(sounds, sounds.triggers.impacts.event, tick, gain))
             (TRACKED_STEP if step_heard else 0) + (TRACKED_LANDING if landing_heard else 0)
+
+        # Sounds the animation event's authored binding at its gain; an
+        # animation event with no binding is silent.
+        def fire_animation(sounds: mutable Sounds&, animation_event: u64, tick: u64) -> i32:
+            bound: AudioAnimEvents::Binding = AudioAnimEvents::get(&sounds.triggers.anims, animation_event)
+            return FIRE_FAILED if not bound.defined
+            fire_scaled(sounds, bound.sound_event, tick, AudioAnimEvents::heard_gain(bound))
+
+        # Once per frame after the guide's clip advances from `before_mc` to
+        # `after_mc` thousandths of a cycle: every foot plant passed sounds
+        # its bound event. Returns how many were heard.
+        def animation_markers(sounds: mutable Sounds&, before_mc: u64, after_mc: u64, tick: u64) -> u32:
+            return 0 if not sounds.live or after_mc < before_mc
+            left: bool = AudioAnimEvents::crossed(before_mc, after_mc, MARKER_LEFT_MC) and heard_outcome(fire_animation(sounds, ANIM_STEP_LEFT, tick))
+            right: bool = AudioAnimEvents::crossed(before_mc, after_mc, MARKER_RIGHT_MC) and heard_outcome(fire_animation(sounds, ANIM_STEP_RIGHT, tick))
+            (1 if left else 0) + (1 if right else 0)
 
         # `gain_permille` scales the event's volume; 1000 is full.
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
@@ -537,7 +561,7 @@ module CourseSounds:
                 sounds.win
             elif event == CourseSounds::EVENT_FALL:
                 sounds.fall
-            elif event == CourseSounds::EVENT_STEP:
+            elif event == CourseSounds::EVENT_STEP or event == CourseSounds::EVENT_GUIDE_STEP:
                 sounds.footstep
             else:
                 sounds.save

@@ -1,0 +1,23 @@
+include "../src/audio/anim_events.elisa"
+
+extend AudioAnimEvents:
+    # An asset's anim record passes `valid` before it reaches `binding`
+    # (SoundEventAssets::define_anim), so the constructor's requires hold and
+    # the bound sound event is a real, nonzero id.
+    def prove_guarded_binding(animation_event: u64, sound_event: u64, gain_permille: u64) -> u64:
+        ensure result <= MAX_ANIMATION_EVENT
+        return 0 if not valid(animation_event, sound_event, gain_permille)
+        binding(animation_event, sound_event, gain_permille)
+        animation_event
+
+    # A stored binding never sounds louder than full, however it was built.
+    def prove_heard_gain(value: Binding) -> u64:
+        ensure result <= FULL_PERMILLE
+        heard_gain(value)
+
+    # Without motion no marker is passed: `crossed` implies the position
+    # advanced, so a still clip stays silent.
+    def prove_no_crossing_without_motion(before_mc: u64, after_mc: u64, marker_mc: u64) -> bool:
+        ensure not result or after_mc > before_mc
+        return false if marker_mc >= CYCLE_MC or before_mc > after_mc or after_mc > 1000000000000
+        crossed(before_mc, after_mc, marker_mc)
