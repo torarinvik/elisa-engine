@@ -192,6 +192,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: sound-event variant and voice-steal choices record and replay through the decision log (AudioEventsLogged), naming the divergent tick; the course game does not call it yet ([audio-events-logged](docs/validation/audio-events-logged.md)).
   Progress on 2026-09-29: chunked decision logs (RuntimeDecisionChunks) carry generator state across sealed 256-entry chunks and replay them in order without clearing divergence ([decision-chunks](docs/validation/decision-chunks.md)); multi-chunk persistence and course wiring remain.
   Progress on 2026-09-29: the character course now fires every sound event through the chunked decision log (checked live by the course smoke); saving and replaying a course session from it remain ([decision-chunks](docs/validation/decision-chunks.md)).
+  Progress on 2026-09-29: RuntimeDecisionSessionStore saves sealed decision chunks with a manifest and replays a 600-draw, three-chunk session from disk in the native smoke ([decision-session-store](docs/validation/decision-session-store.md)); course wiring remains.
 - [ ] **W10 · P2 · Storage scale and world proofs** — After: W03, W07.
   Benchmark hot iteration, spawn/despawn, lookup, and compaction; improve measured layouts and grow implementation-linked proofs where supported. Done: representative small/large worlds show before/after timings and memory, and proof claims name exact invariants rather than claiming whole-engine safety. Proofs of other subsystems now grow with each slice (contract item 8); W10 keeps the storage and world invariants.
 
@@ -420,6 +421,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: native 3D thin-wall projectile regression (5 cm sphere vs 2 cm wall at 50-600 m/s, LinearCast CCD, 30 mm penetration budget, measured 12 mm); see docs/validation/ccd-3d-thin-wall.md.
   Progress on 2026-09-29: external CPU timing of the 2D presets (all ~32 us/frame on the five-ball tower, overhead-dominated; many-body timing still open); see docs/validation/world2d-preset-timing.md.
   Progress on 2026-09-29: 32-body 2D preset timing with overhead baseline (fast 125, balanced 149, stable 188 us/frame on M5); see docs/validation/world2d-preset-timing.md.
+  Progress on 2026-09-29: native 3D stack/large-timestep regression (five boxes on Jolt: 3 mm drift at 60 Hz, 39 mm at 15 Hz; budgets 10/80 mm); see docs/validation/stack-3d.md.
 - [ ] **P09 · P2 · Vehicles** — After: P05, P06.
   Wrap a supported Jolt vehicle path with suspension, wheel queries, drivetrain inputs, and render telemetry. Done: a drivable test track covers slopes, airborne wheels, collisions, reset, and clean unload; game policy remains Elisa-owned.
   Progress on 2026-09-29: `src/physics/vehicle.elisa` adds integer suspension, speed-sensitive steering and a shared tyre friction budget with `test/physics_vehicle.elisa` (see `docs/validation/physics-vehicle.md`); no solver, drivetrain or physics binding, so the item stays open.
