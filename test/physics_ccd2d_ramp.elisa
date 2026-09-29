@@ -55,4 +55,16 @@ def main() -> i32:
     only_ramp: Physics2dRamp::Statics = Physics2dRamp::Statics{walls: zeroed, wall_count: 0, platforms: zeroed, platform_count: 0, ramps: ramps, ramp_count: 1}
     mutable dart2: Physics2dCircles::Circle = ball(2000000, 0 - 500000, 0 - 100000000, 0)
     return 11 if not Physics2dRamp::step_statics(&dart2, &only_ramp, 0, 16, 1000) or dart2.vx <= 0 - 1000000 or dart2.vy <= 90000000
+    # End caps: a ball flying left into the ramp's lower tip (4 m, -4 m)
+    # misses the face but hits the rounded end at x = 4.05 m after 59.375%
+    # of the step, then rebounds right for the remaining 40.625% (0.65 m).
+    mutable tip: Physics2dCircles::Circle = ball(5000000, 0 - 4000000, 0 - 100000000, 0)
+    return 12 if not Physics2dRamp::step(&tip, ramps, 1, 0, 16, 1000) or tip.vx != 100000000 or tip.vy != 0
+    return 13 if tip.x_um < 4690000 or tip.x_um > 4710000 or tip.y_um != 0 - 4000000
+    # 60 mm below the tip (radius 50 mm) it passes by untouched.
+    mutable under_tip: Physics2dCircles::Circle = ball(5000000, 0 - 4060000, 0 - 100000000, 0)
+    return 14 if Physics2dRamp::step(&under_tip, ramps, 1, 0, 16, 1000) or under_tip.x_um != 3400000
+    # A glancing hit on the cap deflects along the contact normal.
+    mutable graze: Physics2dCircles::Circle = ball(5000000, 0 - 4030000, 0 - 100000000, 0)
+    return 15 if not Physics2dRamp::step(&graze, ramps, 1, 0, 16, 0) or graze.vy >= 0 or graze.vx >= 0
     return 0

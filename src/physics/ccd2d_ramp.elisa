@@ -22,6 +22,9 @@ module Physics2dRamp:
             # Placement fraction in millionths, so a fast body stops within a
             # micrometre-scale gap rather than a permille of its travel.
             t_ppm: i64
+            # Contact normal (any length) pointing from the surface to the circle.
+            nx: i64
+            ny: i64
 
         def length_um(s: Segment&) -> i64:
             tx: i64 = s.bx_um - s.ax_um
@@ -36,8 +39,10 @@ module Physics2dRamp:
             ny: i64 = s.bx_um - s.ax_um
             (nx * (x - s.ax_um) + ny * (y - s.ay_um)) / l
 
-        def sweep(c: Physics2dCircles::Circle&, dx: i64, dy: i64, s: Segment&) -> Contact:
-            miss: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000}
+        # The face of the segment: the circle's front side meeting its line
+        # within the segment's length.
+        def sweep_face(c: Physics2dCircles::Circle&, dx: i64, dy: i64, s: Segment&) -> Contact:
+            miss: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000, nx: 0, ny: 0}
             l: i64 = length_um(s)
             return miss if l == 0
             d0: i64 = distance_um(s, c.x_um, c.y_um)
@@ -51,18 +56,55 @@ module Physics2dRamp:
             py: i64 = c.y_um + dy * t / 1000000
             along: i64 = ((s.bx_um - s.ax_um) * (px - s.ax_um) + (s.by_um - s.ay_um) * (py - s.ay_um)) / l
             return miss if along < 0 or along > l
-            Contact{hit: true, t_permille: t / 1000, t_ppm: t}
+            Contact{hit: true, t_permille: t / 1000, t_ppm: t, nx: 0 - (s.by_um - s.ay_um), ny: s.bx_um - s.ax_um}
 
-        # Reflects the normal component of the velocity (um/s).
-        def bounce(c: mutable Physics2dCircles::Circle&, s: Segment&, restitution_permille: i64) -> void:
-            l: i64 = length_um(s)
-            nx: i64 = 0 - (s.by_um - s.ay_um)
-            ny: i64 = s.bx_um - s.ax_um
-            vn: i64 = (c.vx * nx + c.vy * ny) / l
-            if l > 0 and vn < 0:
-                k: i64 = vn * (1000 + restitution_permille) / 1000
-                c.vx <- c.vx - k * nx / l
-                c.vy <- c.vy - k * ny / l
+        # A rounded end of the segment: the circle's swept disc meeting the
+        # point (qx, qy), solved as a quadratic in millimetres (1 mm
+        # resolution keeps every product inside i64 for 10 m scenes). Caps
+        # are solid from every side, so a body clipping a ramp's tip or
+        # grazing its underside corner is stopped.
+        def sweep_cap(c: Physics2dCircles::Circle&, dx: i64, dy: i64, qx: i64, qy: i64) -> Contact:
+            miss: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000, nx: 0, ny: 0}
+            px: i64 = (c.x_um - qx) / 1000
+            py: i64 = (c.y_um - qy) / 1000
+            mx: i64 = dx / 1000
+            my: i64 = dy / 1000
+            r: i64 = c.radius_um / 1000
+            qa: i64 = mx * mx + my * my
+            qb: i64 = px * mx + py * my
+            qc: i64 = px * px + py * py - r * r
+            return miss if qa == 0 or qb >= 0
+            if qc <= 0:
+                return Contact{hit: true, t_permille: 0, t_ppm: 0, nx: px, ny: py}
+            disc: i64 = qb * qb - qa * qc
+            return miss if disc < 0
+            num: i64 = 0 - qb - Physics2dCircles::isqrt(disc)
+            return miss if num < 0 or num > qa
+            t: i64 = num * 1000000 / qa
+            Contact{hit: true, t_permille: t / 1000, t_ppm: t, nx: px + mx * t / 1000000, ny: py + my * t / 1000000}
+
+        def earlier(a: Contact, b: Contact) -> Contact:
+            return b if not a.hit
+            return a if not b.hit
+            b if b.t_ppm < a.t_ppm else a
+
+        # The earliest contact with the segment's face or either end cap.
+        def sweep(c: Physics2dCircles::Circle&, dx: i64, dy: i64, s: Segment&) -> Contact:
+            face: Contact = sweep_face(c, dx, dy, s)
+            return face if face.hit
+            cap_a: Contact = sweep_cap(c, dx, dy, s.ax_um, s.ay_um)
+            cap_b: Contact = sweep_cap(c, dx, dy, s.bx_um, s.by_um)
+            earlier(cap_a, cap_b)
+
+        # Reflects the velocity component (um/s) along the contact normal.
+        def bounce(c: mutable Physics2dCircles::Circle&, nx: i64, ny: i64, restitution_permille: i64) -> void:
+            l: i64 = Physics2dCircles::isqrt(nx * nx + ny * ny)
+            if l > 0:
+                vn: i64 = (c.vx * nx + c.vy * ny) / l
+                if vn < 0:
+                    k: i64 = vn * (1000 + restitution_permille) / 1000
+                    c.vx <- c.vx - k * nx / l
+                    c.vy <- c.vy - k * ny / l
 
         # A scene's static 2D geometry: walls, platforms and ramps.
         struct Statics:
@@ -85,9 +127,10 @@ module Physics2dRamp:
             dy: i64 = c.vy * dt_ms / 1000 * remaining_ppm / 1000000
             mutable best_ppm: i64 = 1000001
             mutable kind: i64 = 0
-            mutable which: i64 = 0
+            mutable normal_x: i64 = 0
+            mutable normal_y: i64 = 0
             mutable travel: i64 = 0
-            for i in 0..<4 |best_ppm, kind, which, travel|:
+            for i in 0..<4 |best_ppm, kind, normal_x, normal_y, travel|:
                 if i.i64() < st.wall_count:
                     h: Physics2dCcd::Hit = Physics2dCcd::sweep(c, dx, dy, &st.walls[i])
                     if h.hit and h.t_permille * 1000 < best_ppm:
@@ -105,7 +148,8 @@ module Physics2dRamp:
                     if r.hit and r.t_ppm < best_ppm:
                         best_ppm <- r.t_ppm
                         kind <- 3
-                        which <- i.i64()
+                        normal_x <- r.nx
+                        normal_y <- r.ny
             if kind == 0:
                 c.x_um <- c.x_um + dx
                 c.y_um <- c.y_um + dy
@@ -121,8 +165,7 @@ module Physics2dRamp:
             else:
                 c.x_um <- c.x_um + dx * best_ppm / 1000000
                 c.y_um <- c.y_um + dy * best_ppm / 1000000
-                hit_ramp: Segment = st.ramps[which.usize()]
-                bounce(c, &hit_ramp, restitution_permille)
+                bounce(c, normal_x, normal_y, restitution_permille)
             remaining_ppm - remaining_ppm * best_ppm / 1000000
 
         # One semi-implicit step against all static geometry. After a contact
