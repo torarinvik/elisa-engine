@@ -507,6 +507,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress: `src/net/lag.elisa` replays delay/loss/reordering against the prediction model with measured correction error and bounded buffers (see `docs/validation/net-lag.md`); the real transport, character loop and two-process run remain.
 - [ ] **T05 · P2 · Dedicated headless server** — After: T02, P01, W07.
   Build a server target that links required simulation services without graphics, audio devices, or a display server. Done: remote clients play an authored level; tick overrun, shutdown, persistence, and metrics work on a clean machine.
+  Progress: `src/net/server.elisa` decides ticks per wall-clock slice with a catch-up cap, overrun metrics, persistence cadence and drain-to-stop shutdown (see `docs/validation/net-server.md`); the server executable, real clock, authored level and remote clients remain.
 - [ ] **T06 · P2 · Multiplayer test laboratory** — After: T03, T04, T05.
   Add deterministic transport fault injection, reconnect/late-join tests, traffic recording, protocol fuzzing, and long multi-client sessions. Done: failures include seed/trace/build identities and compare server/client state against explicit convergence bounds.
 - [ ] **T07 · P2 · HTTP and downloadable content** — After: A03, A04, T01.

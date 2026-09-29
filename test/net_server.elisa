@@ -1,0 +1,36 @@
+include "../src/net/server.elisa"
+
+def config() -> NetServer::Config:
+    NetServer::Config{tick_us: 10000, max_catch_up: 5, drain_ticks: 3, persist_every: 4}
+
+def main() -> i32:
+    c: NetServer::Config = config()
+    idle: NetServer::Loop = NetServer::Loop()
+    # Time under a tick accumulates without running anything.
+    a: NetServer::Step = NetServer::advance(idle, &c, 4000)
+    return 1 if a.run_ticks != 0 or a.state.accumulated_us != 4000
+    # Leftover time carries: 4000 + 16000 = two ticks and 0 left.
+    b: NetServer::Step = NetServer::advance(a.state, &c, 16000)
+    return 2 if b.run_ticks != 2 or b.state.accumulated_us != 0 or b.state.metrics.ticks != 2
+    # Persistence lands exactly on every fourth tick.
+    p: NetServer::Step = NetServer::advance(b.state, &c, 20000)
+    return 3 if p.run_ticks != 2 or not p.persist or p.state.metrics.persists != 1
+    # A stall runs at most the catch-up cap and drops the rest as one overrun.
+    s: NetServer::Step = NetServer::advance(p.state, &c, 200000)
+    return 4 if s.run_ticks != 5 or s.state.metrics.overruns != 1 or s.state.metrics.dropped_ticks != 15
+    return 5 if s.state.accumulated_us != 0 or s.state.metrics.worst_backlog_us != 200000
+    # Shutdown drains three ticks, flushes persistence, then stops for good.
+    d: NetServer::Loop = NetServer::request_shutdown(s.state, &c)
+    return 6 if d.phase != NetServer::Phase.Draining or d.drain_left != 3
+    d1: NetServer::Step = NetServer::advance(d, &c, 20000)
+    return 7 if d1.state.phase != NetServer::Phase.Draining or d1.state.drain_left != 1
+    d2: NetServer::Step = NetServer::advance(d1.state, &c, 20000)
+    return 8 if d2.state.phase != NetServer::Phase.Stopped or not d2.persist
+    after: NetServer::Step = NetServer::advance(d2.state, &c, 50000)
+    return 9 if after.run_ticks != 0 or after.state.metrics.ticks != d2.state.metrics.ticks
+    again: NetServer::Loop = NetServer::request_shutdown(d2.state, &c)
+    return 10 if again.phase != NetServer::Phase.Stopped
+    # Invalid configuration or negative time never advances the loop.
+    bad: NetServer::Config = NetServer::Config{tick_us: 0, max_catch_up: 5, drain_ticks: 3, persist_every: 4}
+    return 11 if NetServer::advance(idle, &bad, 50000).run_ticks != 0 or NetServer::advance(idle, &c, -1).run_ticks != 0
+    0

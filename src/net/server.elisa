@@ -1,0 +1,74 @@
+# Headless dedicated-server tick policy. The server owns a fixed simulation
+# step and must never depend on a display or audio device: each wall-clock
+# slice is turned into a bounded number of ticks, backlog beyond the catch-up
+# cap is dropped and counted as an overrun, and shutdown drains a fixed number
+# of ticks so persistence can flush before the loop stops. Callers own the
+# actual simulation and storage; this module decides when and how many.
+include "./server_math.elisa"
+
+module NetServer:
+    public:
+        enum Phase:
+            Running
+            Draining
+            Stopped
+
+        struct Config:
+            tick_us: i64
+            max_catch_up: i64
+            drain_ticks: i64
+            persist_every: i64
+
+        struct Metrics:
+            ticks: i64
+            overruns: i64
+            dropped_ticks: i64
+            persists: i64
+            worst_backlog_us: i64
+
+        struct Loop:
+            phase: Phase
+            accumulated_us: i64
+            drain_left: i64
+            metrics: Metrics
+
+        struct Step:
+            state: Loop
+            run_ticks: i64
+            persist: bool
+
+        def config_valid(c: Config&) -> bool:
+            return false if c.tick_us <= 0 or c.max_catch_up <= 0
+            c.drain_ticks >= 0 and c.persist_every >= 0
+
+        def Loop() -> Loop:
+            Loop{phase: Phase.Running, accumulated_us: 0, drain_left: 0, metrics: Metrics{ticks: 0, overruns: 0, dropped_ticks: 0, persists: 0, worst_backlog_us: 0}}
+
+        def bigger(left: i64, right: i64) -> i64:
+            return left if left > right
+            right
+
+        # Begins an orderly shutdown; asking twice or when stopped changes nothing.
+        def request_shutdown(state: Loop, c: Config&) -> Loop:
+            return state if state.phase != Phase.Running
+            Loop{phase: Phase.Draining, accumulated_us: state.accumulated_us, drain_left: c.drain_ticks, metrics: state.metrics}
+
+        # Feeds `elapsed_us` of wall time. Returns how many ticks to run now,
+        # whether persistence is due after them, and the updated loop.
+        def advance(state: Loop, c: Config&, elapsed_us: i64) -> Step:
+            idle: Step = Step{state: state, run_ticks: 0, persist: false}
+            return idle if not config_valid(c) or elapsed_us < 0 or state.phase == Phase.Stopped
+            total: i64 = state.accumulated_us + elapsed_us
+            due: i64 = NetServerMath::ticks_due(total, c.tick_us, c.max_catch_up)
+            owed: i64 = total / c.tick_us
+            dropped: i64 = owed - due
+            kept: i64 = total - owed * c.tick_us
+            ticks_after: i64 = state.metrics.ticks + due
+            persisted: bool = NetServerMath::persist_due(ticks_after, c.persist_every) and due > 0
+            persists: i64 = state.metrics.persists + 1 if persisted else state.metrics.persists
+            overruns: i64 = state.metrics.overruns + 1 if dropped > 0 else state.metrics.overruns
+            metrics: Metrics = Metrics{ticks: ticks_after, overruns: overruns, dropped_ticks: state.metrics.dropped_ticks + dropped, persists: persists, worst_backlog_us: bigger(state.metrics.worst_backlog_us, total)}
+            left: i64 = state.drain_left - due if state.phase == Phase.Draining else state.drain_left
+            stopped: bool = state.phase == Phase.Draining and left <= 0
+            phase: Phase = Phase.Stopped if stopped else state.phase
+            Step{state: Loop{phase: phase, accumulated_us: kept, drain_left: left, metrics: metrics}, run_ticks: due, persist: persisted or stopped}

@@ -1,0 +1,19 @@
+# Integer helpers for the headless server tick loop, kept enum-free so their
+# contracts are proved (proof/net_server.elisa).
+module NetServerMath:
+    public:
+        # Whole fixed ticks owed for the time accumulated, never more than the
+        # per-frame catch-up cap, so one slow frame cannot spiral.
+        def ticks_due(accumulated_us: i64, tick_us: i64, max_ticks: i64) -> i64:
+            requires accumulated_us >= 0
+            requires tick_us > 0
+            requires max_ticks >= 0
+            ensure result >= 0
+            ensure result <= max_ticks
+            return max_ticks if accumulated_us / tick_us > max_ticks
+            accumulated_us / tick_us
+
+        # True on every `interval`-th tick, so persistence cadence is exact.
+        def persist_due(tick: i64, interval: i64) -> bool:
+            return false if interval <= 0 or tick <= 0
+            tick % interval == 0
