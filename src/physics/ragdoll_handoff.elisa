@@ -1,0 +1,102 @@
+# Ownership handoff between animation and ragdoll physics, per joint. Each of
+# up to 16 joints has exactly one writer at a time: Animation, Physics, or
+# Blend (physics pose easing back into the animated one, written by
+# animation). An impact hands a masked subset to Physics (partial ragdoll);
+# recovery blends them back over a fixed time; despawn revokes everything and
+# bumps the generation so stale skeleton/body references are rejected.
+module PhysicsRagdollHandoff:
+    public:
+        const JOINTS: i64 = 16
+        const ANIMATION: i64 = 0
+        const PHYSICS: i64 = 1
+        const BLEND: i64 = 2
+        const NONE: i64 = 3
+
+        struct Ref:
+            generation: i64
+            joint: i64
+
+        struct Rig:
+            owner: mutable i64[16]
+            blend_ms: mutable i64[16]
+            recover_ms: i64
+            generation: mutable i64
+            alive: mutable bool
+
+        def Rig(recover_ms: i64) -> Rig:
+            Rig{owner: zeroed, blend_ms: zeroed, recover_ms: recover_ms if recover_ms > 0 else 1, generation: 1, alive: true}
+
+        def valid(rig: Rig&, r: Ref) -> bool:
+            rig.alive and r.generation == rig.generation and r.joint >= 0 and r.joint < JOINTS
+
+        def reference(rig: Rig&, joint: i64) -> Ref:
+            Ref{generation: rig.generation, joint: joint}
+
+        # Who may write this joint's transform this frame (NONE for stale refs).
+        def writer(rig: Rig&, r: Ref) -> i64:
+            return NONE if not valid(rig, r)
+            rig.owner[r.joint.usize()]
+
+        def physics_writes(rig: Rig&, r: Ref) -> bool:
+            writer(rig, r) == PHYSICS
+
+        def animation_writes(rig: Rig&, r: Ref) -> bool:
+            w: i64 = writer(rig, r)
+            w == ANIMATION or w == BLEND
+
+        # Impact: joints in `mask` go limp. Returns how many changed owner.
+        def impact(rig: mutable Rig&, mask: i64) -> i64:
+            return 0 if not rig.alive
+            mutable changed: i64 = 0
+            for j in 0..<16 |changed, rig|:
+                if (mask >> j.i64()) & 1 == 1 and rig.owner[j] != PHYSICS:
+                    rig.owner[j] <- PHYSICS
+                    rig.blend_ms[j] <- 0
+                    changed <- changed + 1
+            changed
+
+        # Start recovering the physics joints in `mask`.
+        def recover(rig: mutable Rig&, mask: i64) -> i64:
+            return 0 if not rig.alive
+            mutable changed: i64 = 0
+            for j in 0..<16 |changed, rig|:
+                if (mask >> j.i64()) & 1 == 1 and rig.owner[j] == PHYSICS:
+                    rig.owner[j] <- BLEND
+                    rig.blend_ms[j] <- 0
+                    changed <- changed + 1
+            changed
+
+        def advance(rig: mutable Rig&, dt_ms: i64) -> void:
+            return if not rig.alive or dt_ms <= 0
+            step: i64 = dt_ms if dt_ms < rig.recover_ms else rig.recover_ms
+            for j in 0..<16 |rig|:
+                if rig.owner[j] == BLEND:
+                    rig.blend_ms[j] <- rig.blend_ms[j] + step
+                    if rig.blend_ms[j] >= rig.recover_ms:
+                        rig.owner[j] <- ANIMATION
+                        rig.blend_ms[j] <- 0
+
+        # Weight of the animated pose, in permille: 0 under physics, rising to
+        # 1000 as recovery completes.
+        def animation_weight(rig: Rig&, r: Ref) -> i64:
+            w: i64 = writer(rig, r)
+            return 1000 if w == ANIMATION
+            return 0 if w != BLEND
+            rig.blend_ms[r.joint.usize()] * 1000 / rig.recover_ms
+
+        def blend(rig: Rig&, r: Ref, physics_value: i64, anim_value: i64) -> i64:
+            wt: i64 = animation_weight(rig, r)
+            physics_value + (anim_value - physics_value) * wt / 1000
+
+        def despawn(rig: mutable Rig&) -> void:
+            rig.alive <- false
+            rig.generation <- rig.generation + 1
+            for j in 0..<16 |rig|:
+                rig.owner[j] <- ANIMATION
+                rig.blend_ms[j] <- 0
+
+        def count(rig: Rig&, who: i64) -> i64:
+            mutable n: i64 = 0
+            for j in 0..<16 |n|:
+                n <- n + 1 if rig.alive and rig.owner[j] == who
+            n
