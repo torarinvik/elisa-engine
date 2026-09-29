@@ -30,7 +30,7 @@ will feed. It has no I/O and stores no credential.
   gaps and repeats, install, corruption, truncation, cancellation, overrun
   and downgrade.
 - Negative control: replacing the rolling checksum with a plain sum fails
-  the test (exit 11).
+  the test (exit 8).
 - Wired into `scripts/check.elisascript`.
 
 ## Gaps
