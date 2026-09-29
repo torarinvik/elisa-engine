@@ -35,9 +35,29 @@ program.
 - These numbers are not a solver-cost ranking. They cannot guide choosing a
   preset for large scenes.
 
+## 32 bodies
+
+A second throwaway benchmark separates the harness overhead from the solver.
+
+- It places 32 balls in a 4 × 8 grid and calls `step_frame` on 20,000
+  frames of 16 ms, with no per-frame scan.
+- A baseline with the same loop and no `step_frame` call costs 0.19 µs per
+  frame, so this measures the solver.
+
+| Preset | Per frame | Share of a 16.7 ms frame |
+| --- | --- | --- |
+| fast | 125 µs | 0.7% |
+| balanced | 149 µs | 0.9% |
+| stable | 188 µs | 1.1% |
+
+- Here the ranking matches the preset names: stable costs 1.5× fast.
+- It grows much less than the substep count (8×), so the relax passes and
+  the fixed per-frame work, not the substeps, dominate at this size.
+- At the 32-body cap every preset fits comfortably in a 60 Hz frame on an M5.
+
 ## Gaps
 
-- Timing with many bodies (for example 32 and more), with the harness
-  overhead separated out, is still needed.
+- Pair checks are O(n²) and bodies are capped at 32. Larger scenes need a
+  broadphase before they can be timed.
 - There is no in-engine timer, so this timing cannot run in the gate.
 - Presets for the walkable world and for 3D remain open.
