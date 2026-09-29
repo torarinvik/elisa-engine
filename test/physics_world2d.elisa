@@ -1,0 +1,26 @@
+include "../src/physics/world2d.elisa"
+
+def ball(x: i64, y: i64, vx: i64) -> Physics2dCircles::Circle:
+    Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: 0, radius_um: 100000, mass_g: 100}
+
+def main() -> i32:
+    mutable b: Physics2dCircles::Circle[32] = zeroed
+    # Two balls rolling at each other on the ground collide once and part.
+    b[0] <- ball(0, 100000, 1000000)
+    b[1] <- ball(1000000, 100000, 0 - 1000000)
+    mutable hits: i64 = 0
+    for k in 0..<200:
+        r: Physics2dWorld::Report = Physics2dWorld::step(&b, 2, 9810000, 5, 0, 1000)
+        hits <- hits + r.resolved
+    return 1 if hits != 1
+    return 2 if b[0].vx != 0 - 1000000 or b[1].vx != 1000000
+    return 3 if b[0].y_um != 100000 or b[1].y_um != 100000
+    # A stack of three dropped balls settles without interpenetrating.
+    b[0] <- ball(0, 150000, 0)
+    b[1] <- ball(0, 400000, 0)
+    b[2] <- ball(0, 650000, 0)
+    for k in 0..<3000:
+        Physics2dWorld::step(&b, 3, 9810000, 5, 0, 200)
+    return 4 if b[0].y_um < 90000 or b[1].y_um - b[0].y_um < 190000 or b[2].y_um - b[1].y_um < 190000
+    return 5 if b[2].y_um > 520000
+    0
