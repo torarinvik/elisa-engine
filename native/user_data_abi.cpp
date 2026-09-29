@@ -21,6 +21,7 @@
 #include <windows.h>
 #define ELISA_USER_DATA_PID _getpid
 #else
+#include <fcntl.h>
 #include <unistd.h>
 #define ELISA_USER_DATA_PID getpid
 #endif
@@ -170,6 +171,75 @@ int32_t read_bytes(const std::filesystem::path& path, std::vector<uint8_t>& byte
     return ELISA_USER_DATA_OK;
 }
 
+std::filesystem::path backup_of(const std::filesystem::path& target) {
+    std::filesystem::path backup = target;
+    backup += ".bak";
+    return backup;
+}
+
+// Both record formats end with an FNV-1a checksum over every earlier byte.
+bool envelope_intact(const std::vector<uint8_t>& bytes) {
+    if (bytes.size() < 16) return false;
+    const size_t checksum_offset = bytes.size() - 8;
+    size_t reader = checksum_offset;
+    uint64_t stored = 0;
+    return read_u64(bytes, reader, stored) && checksum(bytes.data(), checksum_offset) == stored;
+}
+
+// Reads the record, or the last good copy when a crash or bad sector left the
+// primary missing or damaged. Only a fully checksummed backup is used.
+int32_t read_recovering(const std::filesystem::path& target, std::vector<uint8_t>& bytes,
+        size_t maximum, size_t minimum) {
+    const int32_t primary = read_bytes(target, bytes, maximum, minimum);
+    if (primary == ELISA_USER_DATA_OK && envelope_intact(bytes)) return primary;
+    if (primary == ELISA_USER_DATA_IO_FAILURE) return primary;
+    std::vector<uint8_t> previous;
+    if (read_bytes(backup_of(target), previous, maximum, minimum) == ELISA_USER_DATA_OK &&
+            envelope_intact(previous)) {
+        bytes.swap(previous);
+        return ELISA_USER_DATA_OK;
+    }
+    return primary;
+}
+
+// Writes and flushes the bytes to stable storage before the caller renames.
+bool write_synced(const std::filesystem::path& path, const std::vector<uint8_t>& bytes) {
+#if defined(_WIN32)
+    std::ofstream stream(path, std::ios::binary | std::ios::out | std::ios::trunc);
+    if (!stream) return false;
+    stream.write(reinterpret_cast<const char*>(bytes.data()),
+        static_cast<std::streamsize>(bytes.size()));
+    stream.flush();
+    return static_cast<bool>(stream);
+#else
+    const int descriptor = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (descriptor < 0) return false;
+    size_t written = 0;
+    bool ok = true;
+    while (ok && written < bytes.size()) {
+        const ssize_t count = ::write(descriptor, bytes.data() + written, bytes.size() - written);
+        if (count <= 0) ok = false; else written += static_cast<size_t>(count);
+    }
+#if defined(F_FULLFSYNC)
+    if (ok && ::fcntl(descriptor, F_FULLFSYNC) != 0 && ::fsync(descriptor) != 0) ok = false;
+#else
+    if (ok && ::fsync(descriptor) != 0) ok = false;
+#endif
+    return ::close(descriptor) == 0 && ok;
+#endif
+}
+
+void sync_directory(const std::filesystem::path& directory) {
+#if !defined(_WIN32)
+    const int descriptor = ::open(directory.c_str(), O_RDONLY);
+    if (descriptor < 0) return;
+    ::fsync(descriptor);
+    ::close(descriptor);
+#else
+    (void)directory;
+#endif
+}
+
 int32_t write_atomic_file(ServiceState& state, const char* key,
         const std::filesystem::path& target, const std::vector<uint8_t>& bytes) {
     std::error_code filesystem_error;
@@ -184,30 +254,42 @@ int32_t write_atomic_file(ServiceState& state, const char* key,
         std::to_string(static_cast<long long>(ELISA_USER_DATA_PID())) + "-" +
         std::to_string(serial);
     const std::filesystem::path temporary = state.root / temporary_name;
-    {
-        std::ofstream stream(temporary, std::ios::binary | std::ios::out | std::ios::trunc);
-        if (!stream) return ELISA_USER_DATA_IO_FAILURE;
-        stream.write(reinterpret_cast<const char*>(bytes.data()),
-            static_cast<std::streamsize>(bytes.size()));
-        stream.flush();
-        if (!stream) {
-            stream.close();
-            std::filesystem::remove(temporary, filesystem_error);
-            return ELISA_USER_DATA_IO_FAILURE;
-        }
+    if (!write_synced(temporary, bytes)) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return ELISA_USER_DATA_IO_FAILURE;
+    }
+    // Keep the previous intact record as the recovery copy. A crash between
+    // the two renames leaves the backup, which readers fall back to.
+    std::vector<uint8_t> previous;
+    if (read_bytes(target, previous, MAX_PAYLOAD_FILE_BYTES, 16) == ELISA_USER_DATA_OK &&
+            envelope_intact(previous) && !replace_file(target, backup_of(target))) {
+        std::filesystem::remove(temporary, filesystem_error);
+        return ELISA_USER_DATA_IO_FAILURE;
     }
     if (!replace_file(temporary, target)) {
         std::filesystem::remove(temporary, filesystem_error);
         return ELISA_USER_DATA_IO_FAILURE;
     }
+    sync_directory(state.root);
     return ELISA_USER_DATA_OK;
 }
 
-int32_t remove_file(const std::filesystem::path& path) {
+int32_t remove_single(const std::filesystem::path& path) {
     std::error_code error;
     const bool removed = std::filesystem::remove(path, error);
     if (error) return ELISA_USER_DATA_IO_FAILURE;
     return removed ? ELISA_USER_DATA_OK : ELISA_USER_DATA_NOT_FOUND;
+}
+
+// A removed record must not resurface from its recovery copy.
+int32_t remove_file(const std::filesystem::path& path) {
+    const int32_t primary = remove_single(path);
+    const int32_t backup = remove_single(backup_of(path));
+    if (primary == ELISA_USER_DATA_IO_FAILURE || backup == ELISA_USER_DATA_IO_FAILURE) {
+        return ELISA_USER_DATA_IO_FAILURE;
+    }
+    return (primary == ELISA_USER_DATA_OK || backup == ELISA_USER_DATA_OK)
+        ? ELISA_USER_DATA_OK : ELISA_USER_DATA_NOT_FOUND;
 }
 
 } // namespace
@@ -280,7 +362,7 @@ extern "C" int32_t elisa_user_data_v1_read_blob(const char* key, int64_t* versio
 
     std::vector<uint8_t> bytes;
     const std::filesystem::path target = state.root / (std::string(key) + ".save");
-    const int32_t loaded = read_bytes(target, bytes, MAX_FILE_BYTES, 40);
+    const int32_t loaded = read_recovering(target, bytes, MAX_FILE_BYTES, 40);
     if (loaded != ELISA_USER_DATA_OK) return loaded;
 
     size_t offset = 0;
@@ -363,7 +445,7 @@ extern "C" int32_t elisa_user_data_v1_read_payload(const char* key, int64_t* ver
 
     std::vector<uint8_t> bytes;
     const std::filesystem::path target = state.root / (std::string(key) + ".data");
-    const int32_t loaded = read_bytes(target, bytes, MAX_PAYLOAD_FILE_BYTES,
+    const int32_t loaded = read_recovering(target, bytes, MAX_PAYLOAD_FILE_BYTES,
         PAYLOAD_HEADER_BYTES + 1 + 8);
     if (loaded != ELISA_USER_DATA_OK) return loaded;
 
