@@ -35,6 +35,27 @@
             try RuntimeServices::physics_character_destroy(session, character)
             trace
 
+        # Saves `trace` under the course's trace key; false if storage failed.
+        def save_trace(trace: ReplaySubsystems::Trace&) -> bool:
+            stream: ReplaySubsystemsCodec::Stream = ReplaySubsystemsCodec::encode_trace(trace)
+            mutable bytes: ReplaySubsystemsCodec::Bytes = ReplaySubsystemsCodec::pack_trace(&stream)
+            catch UserData::write_payload("course-replay-trace", ReplaySubsystemsCodec::VERSION, &bytes.b[0], bytes.len):
+                ok: true
+                error failure: false
+
+        # The saved trace, validated; any storage or decode failure is not Ok.
+        def load_trace() -> ReplaySubsystemsCodec::Loaded:
+            mutable bytes: ReplaySubsystemsCodec::Bytes = ReplaySubsystemsCodec::Bytes{b: zeroed, len: 0}
+            mutable version: i64 = 0
+            mutable length: usize = 0
+            read: bool = catch UserData::read_payload("course-replay-trace", &version, &bytes.b[0], ReplaySubsystemsCodec::MAX_BYTES, &length):
+                ok: true
+                error failure: false
+            return ReplaySubsystemsCodec::trace_failed(ReplaySubsystemsCodec::Decode.Truncated) if not read or version != ReplaySubsystemsCodec::VERSION
+            bytes.len <- length
+            stream: ReplaySubsystemsCodec::Stream = ReplaySubsystemsCodec::unpack_trace(&bytes)
+            ReplaySubsystemsCodec::decode_trace(&stream)
+
         # 185: two same-input runs match in one build. 186: a sidestep on
         # tick 5 is named as an input divergence at tick 5, and a cross-build
         # comparison still sees it, because input digests are Exact.
@@ -46,4 +67,14 @@
             found: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, true)
             across: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, false)
             return 186 if found.tick != ReplayTune::PUSH_TICK or found.subsystem != 0 or across.tick != ReplayTune::PUSH_TICK
+            # 187: the recorded run saves, reloads intact and still matches a
+            # fresh run; once removed it no longer loads.
+            return 187 if not save_trace(&first)
+            reloaded: ReplaySubsystemsCodec::Loaded = load_trace()
+            return 187 if reloaded.status != ReplaySubsystemsCodec::Decode.Ok or ReplaySubsystemsCodec::encode_trace(&reloaded.trace).len != ReplaySubsystemsCodec::encode_trace(&first).len
+            return 187 if ReplaySubsystems::judge(&reloaded.trace, &second, true) != ReplaySubsystems::Verdict.Match
+            removed: bool = catch UserData::remove_payload("course-replay-trace"):
+                ok: true
+                error failure: false
+            return 187 if not removed or load_trace().status == ReplaySubsystemsCodec::Decode.Ok
             0

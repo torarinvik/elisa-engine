@@ -18,3 +18,13 @@
   smokes pass.
 - Remaining for W09: recording digests over live play rather than a scripted
   run, persisting per-subsystem traces, and animation and AI digests.
+
+## Saved traces (2026-09-30)
+
+- The course saves its recorded trace under `course-replay-trace` through
+  `UserData::write_payload`, using `ReplaySubsystemsCodec`, and reloads it
+  with full validation.
+- Code 187: the save succeeds, the reloaded trace decodes and matches a fresh
+  same-input run, and after `remove_payload` it no longer loads.
+- Control: comparing the reload against the sidestep run fails with 187.
+  Both course smokes pass.

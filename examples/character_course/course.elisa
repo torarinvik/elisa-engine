@@ -9,7 +9,7 @@ include "./access.elisa"
 include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
-include "../../src/runtime/replay_subsystems.elisa"
+include "../../src/runtime/replay_subsystems_codec.elisa"
 
 module CharacterCourse:
     private:
