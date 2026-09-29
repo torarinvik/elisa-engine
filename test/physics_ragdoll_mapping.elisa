@@ -1,0 +1,37 @@
+include "../src/physics/ragdoll_mapping.elisa"
+include "../src/physics/ragdoll_handoff.elisa"
+
+def humanoid() -> PhysicsRagdollMapping::Mapping:
+    # 0 pelvis, 1 spine, 2 head, 3 upper arm, 4 forearm, 5 hand (follows forearm)
+    PhysicsRagdollMapping::Mapping{parent: [0 - 1, 0, 1, 1, 3, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], body: [0, 1, 2, 3, 4, 0 - 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], joints: 6}
+
+def main() -> i32:
+    m: PhysicsRagdollMapping::Mapping = humanoid()
+    return 1 if PhysicsRagdollMapping::cook(&m) != PhysicsRagdollMapping::Cook.Ok
+    return 2 if PhysicsRagdollMapping::driver(&m, 5) != 4 or PhysicsRagdollMapping::driver(&m, 2) != 2 or PhysicsRagdollMapping::driver(&m, 9) != 0 - 1
+    # Hitting the forearm body (4) takes the hand with it.
+    mask: i64 = PhysicsRagdollMapping::joints_for(&m, 16)
+    return 3 if mask != 16 + 32
+    mutable rig: PhysicsRagdollHandoff::Rig = PhysicsRagdollHandoff::Rig(300)
+    return 4 if PhysicsRagdollHandoff::impact(&rig, mask) != 2
+    return 5 if not PhysicsRagdollHandoff::physics_writes(&rig, PhysicsRagdollHandoff::reference(&rig, 5))
+    # Cook rejections.
+    mutable shared: PhysicsRagdollMapping::Mapping = humanoid()
+    shared.body[5] <- 4
+    return 6 if PhysicsRagdollMapping::cook(&shared) != PhysicsRagdollMapping::Cook.SharedBody
+    mutable order: PhysicsRagdollMapping::Mapping = humanoid()
+    order.parent[3] <- 4
+    return 7 if PhysicsRagdollMapping::cook(&order) != PhysicsRagdollMapping::Cook.BadParent
+    mutable root: PhysicsRagdollMapping::Mapping = humanoid()
+    root.body[0] <- 0 - 1
+    return 8 if PhysicsRagdollMapping::cook(&root) != PhysicsRagdollMapping::Cook.RootUnmapped
+    mutable range: PhysicsRagdollMapping::Mapping = humanoid()
+    range.body[2] <- 16
+    return 9 if PhysicsRagdollMapping::cook(&range) != PhysicsRagdollMapping::Cook.BodyRange
+    mutable empty: PhysicsRagdollMapping::Mapping = humanoid()
+    empty.joints <- 0
+    return 10 if PhysicsRagdollMapping::cook(&empty) != PhysicsRagdollMapping::Cook.Empty
+    mutable two_roots: PhysicsRagdollMapping::Mapping = humanoid()
+    two_roots.parent[0] <- 0
+    return 11 if PhysicsRagdollMapping::cook(&two_roots) != PhysicsRagdollMapping::Cook.BadParent
+    return 0

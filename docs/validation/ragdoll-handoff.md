@@ -32,7 +32,26 @@ policy for which system writes each joint's transform (up to 16 joints):
   exit 12.
 - Wired into `scripts/check.elisascript`.
 
+## Skeleton-to-body mapping
+
+`src/physics/ragdoll_mapping.elisa` (`PhysicsRagdollMapping`) cooks a
+skeleton's parents and per-joint body indices.
+
+- `cook` rejects:
+  - an empty skeleton;
+  - a bad or out-of-order parent, or a second root;
+  - an unmapped root;
+  - a body index out of range;
+  - two joints sharing a body.
+- `driver` resolves unmapped joints to their nearest mapped ancestor.
+  `joints_for` turns a set of hit bodies into the joint mask for `impact`,
+  so a hand follows its forearm.
+- `test/physics_ragdoll_mapping.elisa` exits 0: it cooks a six-joint arm
+  rig, drives the handoff from a forearm hit, and checks six rejections.
+  Negative control: dropping the shared-body check makes it exit 6.
+
 ## Gaps
 
-- This is policy only. Cooked skeleton-to-body mappings, Jolt bodies and
-  the R08 animation submission are not connected yet.
+- Policy and cook validation only. Jolt bodies and the R08 animation
+  submission are not connected yet, and mappings are built in code rather
+  than cooked from assets.
