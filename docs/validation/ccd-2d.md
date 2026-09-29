@@ -63,9 +63,13 @@ sources than the binary.
 Code 9 of `test/physics_world2d.elisa` bounces a 500 m/s body off a 1 mm
 wall. Negative control: passing zero walls to the sweep makes it exit 9.
 
+Both worlds now take up to four platforms as well and step through
+`step_all`. Code 9 of `test/physics_world2d_sleep.elisa` drops a 200 m/s
+ball onto a thin ledge, and it lands exactly on top. Negative control:
+passing zero platforms makes it exit 9.
+
 ## Gaps
 
 - Only axis-aligned walls and platforms; there are no slanted segments or
-  circle-circle CCD. The worlds still call `step` (walls only), not
-  `step_all`.
+  circle-circle CCD.
 - Jolt CCD for 3D, solver budgets and measured presets remain.
