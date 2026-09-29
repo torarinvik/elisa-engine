@@ -1,0 +1,59 @@
+include "../vendor/elisa_math.elisa"
+
+# Sun shadow cascade policy. Split distances follow the practical split
+# scheme: a per-mille blend of logarithmic splits (even texel density per
+# depth) and uniform splits (no starved near cascades). Distances are integer
+# millimetres so a profile is stored and compared exactly. Cascade projections
+# are stabilised: the radius is rounded up to a fixed step and the light-space
+# origin is snapped to whole texels, so a moving or turning camera does not
+# make shadow edges shimmer. `blend_permille` fades into the next cascade
+# over a band before each split instead of switching at a visible seam.
+module BackendShadowCascades:
+    public:
+        const module Tune:
+            MAX_CASCADES: i64 = 4
+
+        def valid(near_mm: i64, far_mm: i64, count: i64, lambda_permille: i64) -> bool:
+            near_mm > 0 and far_mm > near_mm and count >= 1 and count <= 4 and lambda_permille >= 0 and lambda_permille <= 1000
+
+        # End distance of cascade `index` (1-based); the last one ends at far
+        # exactly. Returns 0 for invalid input.
+        def split_end(near_mm: i64, far_mm: i64, count: i64, lambda_permille: i64, index: i64) -> i64:
+            return 0 if not valid(near_mm, far_mm, count, lambda_permille) or index < 1 or index > count
+            return far_mm if index == count
+            n: f64 = near_mm.f64()
+            f: f64 = far_mm.f64()
+            t: f64 = index.f64() / count.f64()
+            logarithmic: f64 = n * ElisaMath::pow(f / n, t)
+            uniform: f64 = n + (f - n) * t
+            w: f64 = lambda_permille.f64() / 1000.0
+            ElisaMath::round(w * logarithmic + (1.0 - w) * uniform).i64()
+
+        # Rounds a bounding radius up to a multiple of `step_mm` so the
+        # projection size does not change frame to frame as the camera turns.
+        def stable_radius(radius_mm: i64, step_mm: i64) -> i64:
+            return 0 if radius_mm <= 0 or step_mm <= 0
+            (radius_mm + step_mm - 1) / step_mm * step_mm
+
+        # World size of one shadow-map texel for a cascade of the given radius,
+        # in micrometres (at least 1).
+        def texel_um(radius_mm: i64, resolution: i64) -> i64:
+            return 0 if radius_mm <= 0 or resolution <= 0
+            size: i64 = radius_mm * 2000 / resolution
+            size if size > 0 else 1
+
+        # Snaps a light-space coordinate (micrometres) down to a whole texel,
+        # flooring negative values too so the grid has no seam at 0.
+        def snap_um(coordinate_um: i64, texel: i64) -> i64:
+            return coordinate_um if texel <= 0
+            q: i64 = coordinate_um / texel
+            down: bool = coordinate_um < 0 and q * texel != coordinate_um
+            floored: i64 = q - 1 if down else q
+            floored * texel
+
+        # Weight of the next cascade at `distance_mm`: 0 before the band that
+        # ends at `split_mm`, rising to 1000 at the split.
+        def blend_permille(distance_mm: i64, split_mm: i64, band_mm: i64) -> i64:
+            return 0 if band_mm <= 0 or distance_mm <= split_mm - band_mm
+            return 1000 if distance_mm >= split_mm
+            (distance_mm - (split_mm - band_mm)) * 1000 / band_mm
