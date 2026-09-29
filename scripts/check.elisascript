@@ -559,17 +559,12 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    catalogue_test_binary: sview = str(root.joinpath("build/catalogue-test"))
-    _ =
-        status: i64 = run_visible(compiler, ["-emit", "exe", "-o", catalogue_test_binary, str(root.joinpath("test/catalogue.elisa"))])
-        if status != 0:
-            return status
-        status
-    _ =
-        status: i64 = run_visible(catalogue_test_binary, [])
-        if status != 0:
-            return status
-        status
+    for asset_test in ["catalogue", "visual_shelf"]:
+        asset_test_binary: sview = str(root.joinpath(f"build/{asset_test}-test"))
+        status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", asset_test_binary, str(root.joinpath(f"test/{asset_test}.elisa"))])
+        return status if status != 0
+        status <- run_visible(asset_test_binary, [])
+        return status if status != 0
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     for fixture in ["allocator_copy", "world_copy", "recorder_copy", "bridge_copy"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output):

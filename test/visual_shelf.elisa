@@ -1,0 +1,80 @@
+include "../src/assets/visual_shelf.elisa"
+using Assets
+using AssetCatalogue
+
+def id(low: u64) -> Assets::AssetId:
+    Assets::AssetId{high: 7301, low: low}
+
+def grey() -> VisualShelf::Colour:
+    VisualShelf::Colour{red: 0.5, green: 0.5, blue: 0.5}
+
+def main() -> i32:
+    shelf: mutable VisualShelf::Shelf = VisualShelf::Shelf()
+    return 1 if VisualShelf::count(&shelf) != 0 or VisualShelf::has_mesh(&shelf, id(1))
+    built: i32 = catch VisualShelf::add_mesh(&shelf, id(1), 4):
+        ok: 0
+        error failure: 1
+    built2: i32 = catch VisualShelf::add_material(&shelf, id(3), VisualShelf::Colour{red: 1.0, green: 0.25, blue: 0.0}):
+        ok: 0
+        error failure: 1
+    return 2 if built != 0 or built2 != 0 or VisualShelf::count(&shelf) != 2
+
+    return 3 if not VisualShelf::has_mesh(&shelf, id(1)) or VisualShelf::has_material(&shelf, id(1))
+    return 4 if not VisualShelf::has_material(&shelf, id(3)) or VisualShelf::has_mesh(&shelf, id(3))
+    return 5 if VisualShelf::has_mesh(&shelf, id(9)) or VisualShelf::has_material(&shelf, id(9))
+    good: Assets::VisualAsset = Assets::VisualAsset{mesh: id(1), material: id(3), local_bounds: zeroed}
+    swapped: Assets::VisualAsset = Assets::VisualAsset{mesh: id(3), material: id(1), local_bounds: zeroed}
+    missing: Assets::VisualAsset = Assets::VisualAsset{mesh: id(1), material: id(9), local_bounds: zeroed}
+    return 6 if not VisualShelf::visual_known(&shelf, &good)
+    return 7 if VisualShelf::visual_known(&shelf, &swapped) or VisualShelf::visual_known(&shelf, &missing)
+
+    shape: i32 = catch VisualShelf::mesh_shape(&shelf, id(1)):
+        value: value
+        error failure: -1
+    wrong_kind: i32 = catch VisualShelf::mesh_shape(&shelf, id(3)):
+        value: value
+        error failure: -1
+    return 8 if shape != 4 or wrong_kind != -1
+    colour: VisualShelf::Colour = catch VisualShelf::material_colour(&shelf, id(3)):
+        value: value
+        error failure: grey()
+    return 9 if colour.red != 1.0 or colour.green != 0.25
+
+    twice: i32 = catch VisualShelf::add_mesh(&shelf, id(1), 5):
+        ok: 0
+        error VisualShelf::ShelfError.Duplicate: 2
+        error failure: 1
+    return 10 if twice != 2 or VisualShelf::count(&shelf) != 2
+    zero: i32 = catch VisualShelf::add_mesh(&shelf, Assets::AssetId{high: 0, low: 0}, 1):
+        ok: 0
+        error VisualShelf::ShelfError.Invalid: 3
+        error failure: 1
+    return 11 if zero != 3
+
+    return 12 if VisualShelf::generation(&shelf, id(3)) != 0 or VisualShelf::generation(&shelf, id(9)) != -1
+    generation: i64 = catch VisualShelf::recolour(&shelf, id(3), grey()):
+        value: value
+        error failure: -1
+    after: VisualShelf::Colour = catch VisualShelf::material_colour(&shelf, id(3)):
+        value: value
+        error failure: VisualShelf::Colour{red: 0.0, green: 0.0, blue: 0.0}
+    return 13 if generation != 1 or after.red != 0.5 or VisualShelf::generation(&shelf, id(3)) != 1
+    bad_recolour: i64 = catch VisualShelf::recolour(&shelf, id(1), grey()):
+        value: value
+        error failure: -1
+    return 14 if bad_recolour != -1
+
+    full: mutable VisualShelf::Shelf = VisualShelf::Shelf()
+    filled: i32 =
+        for slot in 0..<16 |status: i32 = 0, full| -> status:
+            added: i32 = catch VisualShelf::add_mesh(&full, id(100 + slot.u64()), 1):
+                ok: 0
+                error failure: 1
+            status <- status + added
+    return 15 if filled != 0 or VisualShelf::count(&full) != 16
+    overflow: i32 = catch VisualShelf::add_mesh(&full, id(999), 1):
+        ok: 0
+        error VisualShelf::ShelfError.Capacity: 4
+        error failure: 1
+    return 16 if overflow != 4
+    0
