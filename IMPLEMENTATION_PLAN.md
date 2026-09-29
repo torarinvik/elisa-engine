@@ -570,6 +570,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `scripts/locale_keys.py` extracts MSG_ keys, checks .loc files (placeholders, orphans, missing English) and emits translator templates; gate self-test (docs/validation/locale-keys.md). Course loading of a .loc file and a real layout exercise remain.
   Progress on 2026-09-30: the character course loads its captions from packaged `text/course.loc` (5 locales) and shows them through the new length-delimited `RenderScene::set_overlay_text_utf8` (docs/validation/course-localized-captions.md). Remaining: in-game language switching, a long-text/RTL layout exercise and font shaping.
   Progress on 2026-09-30: live language switching in the course's access menu (saved as access version 2, v1 migrates as English), captions redraw in the chosen locale (docs/validation/course-language-switch.md). Remaining: a long-text/RTL layout exercise and font shaping.
+  Progress on 2026-09-30: UTF-8 wrapping helper and UTF-8 text measurement ABI (docs/validation/locale-text-wrapping.md); course caption fitting, RTL anchoring and shaping still open.
 
 ## T — networking and online runtime
 

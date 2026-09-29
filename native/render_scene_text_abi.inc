@@ -70,6 +70,17 @@ extern "C" int32_t elisa_render_scene_v1_measure_text(const char* text,
     return ELISA_RENDER_SCENE_OK;
 }
 
+// Measures length-delimited UTF-8 (see set_text_utf8). The validated
+// bytes hold no NUL, so they measure exactly as the terminated form.
+extern "C" int32_t elisa_render_scene_v1_measure_text_utf8(const uint8_t* bytes,
+    uint32_t length, int32_t font_size, float* width, float* height, int32_t* ready) {
+    if (bytes == nullptr || length > MAX_OVERLAY_TEXT_BYTES || !valid_utf8_text(bytes, length)) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    const std::string text(reinterpret_cast<const char*>(bytes), length);
+    return elisa_render_scene_v1_measure_text(text.c_str(), font_size, width, height, ready);
+}
+
 extern "C" int64_t elisa_render_scene_v1_create_text(const char* text,
     float x, float y, int32_t font_size, float red, float green, float blue, float alpha) {
     if (!valid_overlay_text(text, x, y, font_size, red, green, blue, alpha)) {

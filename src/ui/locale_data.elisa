@@ -108,6 +108,36 @@ module UiLocaleData:
                 append_utf8(&out, text.cp[at.usize()])
             out
 
+        # Breaks UTF-8 text into lines no wider than `box_w` by turning spaces
+        # into newlines, using a conservative width estimate: `em` for CJK
+        # and fullwidth characters, 3/5 em otherwise. A single word wider
+        # than the box stays whole, so callers should measure the result.
+        def wrap_utf8(text: Utf8, em: i64, box_w: i64) -> Utf8:
+            breaks: mutable i64[16] = zeroed
+            found: mutable i64 = 0
+            width: mutable i64 = 0
+            space: mutable i64 = -1
+            since_space: mutable i64 = 0
+            for at in 0..<text.length.i64() |breaks, found, width, space, since_space|:
+                byte: u8 = text.bytes[at.usize()]
+                if byte == 32u8:
+                    space <- at
+                    since_space <- 0
+                    width <- width + em * 3 / 5
+                elif byte < 128u8 or byte >= 192u8:
+                    advance: i64 = em if byte >= 227u8 and byte <= 239u8 else em * 3 / 5
+                    width <- width + advance
+                    since_space <- since_space + advance
+                    if width > box_w and space >= 0 and found < 16:
+                        breaks[found.usize()] <- space
+                        found <- found + 1
+                        width <- since_space
+                        space <- -1
+            out: mutable Utf8 = text
+            for index in 0..<found:
+                newline_at(&out, breaks[index.usize()])
+            out
+
         def plural_text(pack: Pack&, locale: i64, key: i64, count: i64) -> Lookup:
             base: Lookup = text(pack, locale, key)
             category: i64 = UiLocale::plural(base.found.locale, count)
@@ -240,3 +270,6 @@ module UiLocaleData:
                 out.bytes[at + 2] <- (128 + cp / 64 % 64).u8()
                 out.bytes[at + 3] <- (128 + cp % 64).u8()
                 out.length <- out.length + 4
+
+        def newline_at(out: mutable Utf8&, at: i64) -> void:
+            out.bytes[at.usize()] <- 10u8

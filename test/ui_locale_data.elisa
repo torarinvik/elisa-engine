@@ -120,6 +120,14 @@ def main() -> i32:
     ja_lookup: UiLocaleData::Lookup = UiLocaleData::text(&pack, UiLocale::JA, 0)
     ja_text: UiLocaleData::Utf8 = UiLocaleData::encode(&ja_lookup.text)
     return 26 if ja_text.length != 12 or ja_text.bytes[0] != 227u8
+    # Wrapping: "{0} монет" at em 10 is ~4 + 5 glyphs of 6 px; a 40 px box
+    # breaks at the space, a 200 px box leaves it whole, a 10 px box keeps
+    # the single overlong word.
+    narrow: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(ru_many, 10, 40)
+    wide: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(ru_many, 10, 200)
+    return 27 if narrow.bytes[3] != 10u8 or narrow.length != 14 or wide.bytes[3] != 32u8
+    whole: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(ja_text, 10, 5)
+    return 28 if whole.bytes[0] != 227u8 or whole.length != ja_text.length
     c: UiLocaleData::Source = bad_category()
     return 23 if UiLocaleData::load(&pack, &c) != UiLocaleData::Status.Syntax
     pd: UiLocaleData::Source = plural_dup()
