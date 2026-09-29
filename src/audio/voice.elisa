@@ -1,0 +1,113 @@
+# Voice chat policy: explicit microphone consent and a sequence-ordered jitter
+# buffer. Capture starts only when the user enabled it and never as a side
+# effect of loading a scene; a device change stops capture until it is asked
+# for again. The jitter buffer plays frames strictly in order over a window of
+# eight sequence numbers, counts gaps as lost (the decoder conceals them) and
+# late arrivals as late, and bounds bandwidth by frame size and duration.
+module AudioVoice:
+    private:
+        const module Tune:
+            WINDOW: i64 = 8
+
+    public:
+        enum Play:
+            Frame
+            Concealed
+            Waiting
+
+        struct Capture:
+            user_enabled: mutable bool
+            running: mutable bool
+            muted: mutable bool
+
+        struct Jitter:
+            base: mutable i64
+            present: mutable bool[8]
+            lost: mutable i64
+            late: mutable i64
+            played: mutable i64
+
+        def Capture() -> Capture:
+            Capture{user_enabled: false, running: false, muted: false}
+
+        def Jitter(first_seq: i64) -> Jitter:
+            Jitter{base: first_seq, present: [false, false, false, false, false, false, false, false], lost: 0, late: 0, played: 0}
+
+        def enable(c: mutable Capture&, value: bool):
+            c.user_enabled <- value
+            c.running <- c.running and value
+
+        # Capture begins only from an explicit start while enabled.
+        def start(c: mutable Capture&) -> bool:
+            return false if not c.user_enabled
+            c.running <- true
+            true
+
+        # A scene load never starts capture and stops nothing the user chose.
+        def on_scene_load(c: mutable Capture&):
+            c.running <- c.running
+
+        # A changed or removed input device stops capture until restarted.
+        def on_device_change(c: mutable Capture&):
+            c.running <- false
+
+        def set_muted(c: mutable Capture&, value: bool):
+            c.muted <- value
+
+        # Whether microphone frames should be encoded and sent right now.
+        def sending(c: Capture&) -> bool:
+            c.running and not c.muted
+
+        def slot(seq: i64) -> usize:
+            requires seq >= 0
+            (seq - (seq / Tune::WINDOW) * Tune::WINDOW).usize()
+
+        def depth(j: Jitter&) -> i64:
+            for index in 0..<8 |count: i64 = 0| -> count:
+                count <- count + 1 if j.present[index]
+
+        # Plays (or skips) the frame at `base`, then moves the window on.
+        def advance_one(j: mutable Jitter&) -> Play:
+            here: usize = slot(j.base)
+            had: bool = j.present[here]
+            j.present[here] <- false
+            j.base <- j.base + 1
+            j.lost <- j.lost + 1 if not had else j.lost
+            j.played <- j.played + 1 if had else j.played
+            return Play.Frame if had
+            Play.Concealed
+
+        # After the window is empty, jumps straight to the window ending at
+        # `seq`, counting every skipped frame as lost.
+        def skip_ahead(j: mutable Jitter&, seq: i64):
+            return if seq < j.base + Tune::WINDOW
+            target: i64 = seq - Tune::WINDOW + 1
+            j.lost <- j.lost + (target - j.base)
+            j.base <- target
+
+        # Accepts a frame. Late frames (already played or skipped) and repeats
+        # are refused. A frame beyond the window pushes the window forward,
+        # counting the skipped frames as lost.
+        def push(j: mutable Jitter&, seq: i64) -> bool:
+            return false if seq < 0
+            if seq < j.base:
+                j.late <- j.late + 1
+                return false
+            for n in 0..<8:
+                advance_one(j) if seq >= j.base + Tune::WINDOW
+            skip_ahead(j, seq)
+            here: usize = slot(seq)
+            return false if j.present[here]
+            j.present[here] <- true
+            true
+
+        # Next playout step: the buffered frame, a concealed gap when later
+        # frames are waiting behind a hole, or Waiting when nothing is queued.
+        def pop(j: mutable Jitter&) -> Play:
+            return Play.Waiting if depth(j) == 0
+            advance_one(j)
+
+        # Bytes per frame and frame length against a bandwidth cap in bits/s.
+        def within_bandwidth(frame_bytes: i64, frame_ms: i64, cap_bps: i64) -> bool:
+            return false if frame_bytes <= 0 or frame_ms <= 0 or cap_bps <= 0
+            frame_bytes * 8000 <= cap_bps * frame_ms

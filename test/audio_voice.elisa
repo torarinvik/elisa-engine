@@ -1,0 +1,46 @@
+include "../src/audio/voice.elisa"
+
+def main() -> i32:
+    c: mutable AudioVoice::Capture = AudioVoice::Capture()
+    # Nothing starts implicitly; scene load does not start capture.
+    AudioVoice::on_scene_load(&c)
+    return 1 if c.running or AudioVoice::sending(&c)
+    return 2 if AudioVoice::start(&c)
+    AudioVoice::enable(&c, true)
+    return 3 if c.running
+    return 4 if not AudioVoice::start(&c) or not AudioVoice::sending(&c)
+    AudioVoice::set_muted(&c, true)
+    return 5 if AudioVoice::sending(&c) or not c.running
+    AudioVoice::set_muted(&c, false)
+    # A device change stops capture until asked again; disabling stops it too.
+    AudioVoice::on_device_change(&c)
+    return 6 if c.running or AudioVoice::sending(&c)
+    AudioVoice::start(&c)
+    AudioVoice::enable(&c, false)
+    return 7 if c.running or AudioVoice::start(&c)
+    # In-order frames play in order.
+    j: mutable AudioVoice::Jitter = AudioVoice::Jitter(100)
+    return 8 if AudioVoice::pop(&j) != AudioVoice::Play.Waiting
+    return 9 if not AudioVoice::push(&j, 100) or not AudioVoice::push(&j, 101)
+    return 10 if AudioVoice::push(&j, 101) or AudioVoice::depth(&j) != 2
+    return 11 if AudioVoice::pop(&j) != AudioVoice::Play.Frame or AudioVoice::pop(&j) != AudioVoice::Play.Frame
+    return 12 if j.played != 2 or j.base != 102
+    # Reordered arrival is put back in order; a hole is concealed then counted lost.
+    AudioVoice::push(&j, 102)
+    AudioVoice::push(&j, 104)
+    AudioVoice::push(&j, 103)
+    return 13 if AudioVoice::pop(&j) != AudioVoice::Play.Frame or AudioVoice::pop(&j) != AudioVoice::Play.Frame or AudioVoice::pop(&j) != AudioVoice::Play.Frame
+    AudioVoice::push(&j, 107)
+    return 14 if AudioVoice::pop(&j) != AudioVoice::Play.Concealed or j.lost != 1
+    return 15 if AudioVoice::pop(&j) != AudioVoice::Play.Concealed
+    return 16 if AudioVoice::pop(&j) != AudioVoice::Play.Frame or j.lost != 2
+    # A frame that arrives after its slot passed is late and refused.
+    return 17 if AudioVoice::push(&j, 103) or j.late != 1
+    # A far-ahead frame moves the window on and counts the skipped ones lost.
+    before: i64 = j.lost
+    return 18 if not AudioVoice::push(&j, 130) or j.lost <= before or j.base < 123
+    return 19 if AudioVoice::push(&j, -1)
+    # Bandwidth: 80 bytes per 20 ms is 32 kbit/s.
+    return 20 if not AudioVoice::within_bandwidth(80, 20, 32000) or AudioVoice::within_bandwidth(81, 20, 32000)
+    return 21 if AudioVoice::within_bandwidth(0, 20, 32000) or AudioVoice::within_bandwidth(80, 0, 32000)
+    return 0
