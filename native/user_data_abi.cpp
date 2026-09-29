@@ -2,6 +2,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -298,6 +299,23 @@ extern "C" uint32_t elisa_user_data_abi_version() {
     return ABI_VERSION;
 }
 
+// Removes staging files a crash left behind. Recent ones are kept, since
+// another process of the same application may still be writing them.
+void sweep_orphans(const std::filesystem::path& root) {
+    constexpr auto MAX_AGE = std::chrono::hours(1);
+    std::error_code error;
+    const auto now = std::filesystem::file_time_type::clock::now();
+    for (std::filesystem::directory_iterator it(root, error), end; !error && it != end; it.increment(error)) {
+        const std::string name = it->path().filename().string();
+        if (name.find(".tmp-") == std::string::npos) continue;
+        std::error_code entry_error;
+        if (!it->is_regular_file(entry_error) || entry_error) continue;
+        const auto written = std::filesystem::last_write_time(it->path(), entry_error);
+        if (entry_error || now - written < MAX_AGE) continue;
+        std::filesystem::remove(it->path(), entry_error);
+    }
+}
+
 extern "C" int32_t elisa_user_data_v1_initialize(const char* application_id) {
     if (!valid_component(application_id, 96, true)) return ELISA_USER_DATA_INVALID_KEY;
     std::filesystem::path base;
@@ -310,6 +328,7 @@ extern "C" int32_t elisa_user_data_v1_initialize(const char* application_id) {
     const std::string utf8 = root.u8string();
     if (utf8.empty() || utf8.size() >= 4096) return ELISA_USER_DATA_CAPACITY;
 
+    sweep_orphans(root);
     ServiceState& state = service();
     std::lock_guard<std::mutex> lock(state.mutex);
     state.root = std::move(root);

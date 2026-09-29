@@ -24,12 +24,17 @@ byte API had no flush or recovery protocol.
 - A crash between the two renames leaves only the backup, and the next read
   recovers it.
 
+- **Orphan sweep.** `initialize` deletes `*.tmp-*` staging files older than
+  an hour; newer ones stay, since another process may still be writing.
+
 ## Checks
 
 - `test/user_data_service_test.cpp` codes 70–78: two generations round trip,
   a damaged primary recovers the previous generation, a missing primary
   recovers it, a damaged backup is never used (`NotFound`), removal deletes
   the backup, and a truncated payload recovers the previous payload.
+- Codes 79–80: a three-hour-old orphan is swept at initialise and a fresh
+  one is kept; skipping the sweep fails code 80.
 - Negative control: making the read ignore the backup fails code 73.
 - The existing corruption, truncation and wrong-version cases still pass,
   since they have no backup.
@@ -39,5 +44,4 @@ byte API had no flush or recovery protocol.
 ## Gaps
 
 - Recovery gives the previous record, so up to one save is lost, by design.
-- Orphaned `.tmp-*` files from a crash are not yet swept at initialise.
 - Whole-world restoration and native resource rehydration remain.

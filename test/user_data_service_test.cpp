@@ -284,6 +284,19 @@ int main() {
     if (!expect(elisa_user_data_v1_remove_blob("settings") == ELISA_USER_DATA_OK,
             "remove settings")) return 27;
 
+    // Orphaned staging files from a crash are swept at initialise once stale.
+    {
+        std::ofstream(expected_root / "crashed.tmp-1-1") << "x";
+        std::ofstream(expected_root / "live.tmp-2-2") << "y";
+        std::filesystem::last_write_time(expected_root / "crashed.tmp-1-1",
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours(3), error);
+        if (!expect(!error, "age the orphan")) return 79;
+    }
+    if (!expect(elisa_user_data_v1_initialize("test.wall-game") == ELISA_USER_DATA_OK &&
+            !std::filesystem::exists(expected_root / "crashed.tmp-1-1", error) &&
+            std::filesystem::exists(expected_root / "live.tmp-2-2", error),
+            "sweep stale staging files only")) return 80;
+
     const std::filesystem::path blocked = scratch / "not-a-directory";
     {
         std::ofstream file(blocked);
