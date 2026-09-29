@@ -1,0 +1,25 @@
+include "../src/net/lag.elisa"
+
+def scenario(delay: i64, loss_every: i64, reorder: bool, bump: i64) -> NetLag::Report:
+    c: NetLag::Conditions = NetLag::Conditions{delay: delay, loss_every: loss_every, reorder: reorder, step: 2, bump: bump, bump_every: 10, bump_until: 60}
+    NetLag::run(c, 60, 120)
+
+def main() -> i32:
+    calm: NetLag::Report = scenario(0, 0, false, 0)
+    return 1 if not calm.valid or calm.max_error != 0 or calm.corrections != 0 or calm.final_error != 0
+    delayed: NetLag::Report = scenario(3, 0, false, 5)
+    return 2 if delayed.max_error != 5 or delayed.final_error != 0
+    return 3 if delayed.blocked != 0 or delayed.max_pending > 16
+    lossy: NetLag::Report = scenario(3, 2, false, 5)
+    return 4 if lossy.lost == 0 or lossy.max_error < delayed.max_error or lossy.final_error != 0
+    shuffled: NetLag::Report = scenario(3, 0, true, 5)
+    return 5 if shuffled.stale == 0 or shuffled.final_error != 0
+    # A long delay fills the bounded input buffer and stalls instead of growing.
+    slow: NetLag::Report = scenario(20, 0, false, 5)
+    return 6 if slow.max_pending != 16 or slow.blocked == 0 or slow.final_error != 0
+    # Everything stacked still converges once input stops.
+    worst: NetLag::Report = scenario(8, 3, true, 5)
+    return 7 if worst.final_error != 0 or worst.max_pending > 16
+    return 8 if scenario(21, 0, false, 0).valid or scenario(-1, 0, false, 0).valid
+    return 9 if scenario(3, 0, false, 5).max_error != delayed.max_error
+    0

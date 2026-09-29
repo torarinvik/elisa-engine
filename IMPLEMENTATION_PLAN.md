@@ -504,6 +504,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress (2026-09-29): `NetInterest` per-client relevance, full/delta/resend/leave planning and byte-budget charging with a proved bound; see [`docs/validation/net-interest.md`](docs/validation/net-interest.md). Remaining: connect to world data and the wire/session path, prioritised deferral, and a real multi-client run.
 - [ ] **T04 · P2 · Prediction, reconciliation, lag handling** — After: T03, P04, W09.
   Extend existing prediction/interpolation/recovery models to the real transport and character loop, defining solver determinism limits. Done: a two-process game tolerates configured delay/loss/reordering with measured correction error and bounded input/history buffers.
+  Progress: `src/net/lag.elisa` replays delay/loss/reordering against the prediction model with measured correction error and bounded buffers (see `docs/validation/net-lag.md`); the real transport, character loop and two-process run remain.
 - [ ] **T05 · P2 · Dedicated headless server** — After: T02, P01, W07.
   Build a server target that links required simulation services without graphics, audio devices, or a display server. Done: remote clients play an authored level; tick overrun, shutdown, persistence, and metrics work on a clean machine.
 - [ ] **T06 · P2 · Multiplayer test laboratory** — After: T03, T04, T05.
