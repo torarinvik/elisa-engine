@@ -48,6 +48,18 @@ module Physics2dCircles:
             c.vy <- 0 if bounce < rest_um_s
             Contact.Resolved
 
+        # Coulomb friction from the ground while resting on it: the
+        # horizontal speed drops by mu * g * dt toward zero, never past it.
+        def ground_friction(c: mutable Circle&, ground_um: i64, friction_permille: i64, gravity_um_s2: i64, dt_ms: i64) -> bool:
+            return false if c.mass_g <= 0 or dt_ms <= 0 or c.y_um - c.radius_um > ground_um
+            cut: i64 = gravity_um_s2 * friction_permille / 1000 * dt_ms / 1000
+            return false if cut <= 0
+            if c.vx > 0:
+                c.vx <- 0 if c.vx <= cut else c.vx - cut
+            if c.vx < 0:
+                c.vx <- 0 if c.vx >= 0 - cut else c.vx + cut
+            true
+
         # Circle-circle contact. Returns None when apart, Touching when
         # overlapping but already separating (positions corrected only).
         def pair(a: mutable Circle&, b: mutable Circle&, restitution_permille: i64) -> Contact:

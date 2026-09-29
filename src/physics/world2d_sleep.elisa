@@ -11,7 +11,7 @@ module Physics2dSleepWorld:
             woken: i64
             asleep: i64
 
-        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64) -> Report:
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, states: mutable Physics2dSleep::State[32]&, count: i64, rule: Physics2dSleep::Rule&, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, friction_permille: i64) -> Report:
             n: i64 = 32 if count > 32 else count
             mutable minx: i64[32] = zeroed
             mutable maxx: i64[32] = zeroed
@@ -50,6 +50,7 @@ module Physics2dSleepWorld:
                 mutable c: Physics2dCircles::Circle = bodies[i]
                 mutable s: Physics2dSleep::State = states[i]
                 Physics2dCircles::ground(&c, ground_um, restitution_permille, 50000)
+                Physics2dCircles::ground_friction(&c, ground_um, friction_permille, gravity_um_s2, dt_ms)
                 Physics2dSleep::update(&c, &s, rule)
                 asleep <- asleep + 1 if s.asleep
                 bodies[i] <- c
