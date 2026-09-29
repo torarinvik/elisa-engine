@@ -1,0 +1,84 @@
+# Collision-layer diagnostics: an engine-side mirror of the 32x32 layer
+# matrix the physics service is given, so a game can ask which layers meet,
+# find layers that collide with nothing, catch one-sided settings, and bound
+# the broadphase work its body counts imply before a frame is ever stepped.
+module PhysicsLayerDiagnostics:
+    public:
+        const LAYERS: i64 = 32
+
+        struct Matrix:
+            cells: mutable i64[1024]
+
+        struct Counts:
+            bodies: mutable i64[32]
+
+        struct Report:
+            enabled_pairs: i64
+            isolated_layers: i64
+            asymmetric_cells: i64
+            candidate_pairs: i64
+
+        def layer_matrix_none() -> Matrix:
+            Matrix{cells: zeroed}
+
+        def layer_matrix_all() -> Matrix:
+            mutable m: Matrix = Matrix{cells: zeroed}
+            for i in 0..<1024:
+                m.cells[i] <- 1
+            m
+
+        def layer_in_range(layer: i64) -> bool:
+            layer >= 0 and layer < LAYERS
+
+        # Sets both directions, as the physics service does. Out-of-range
+        # layers are refused, never clamped onto a real layer.
+        def layer_set(m: mutable Matrix&, a: i64, b: i64, enabled: bool) -> bool:
+            return false if not layer_in_range(a) or not layer_in_range(b)
+            m.cells[(a * LAYERS + b).usize()] <- 1 if enabled else 0
+            m.cells[(b * LAYERS + a).usize()] <- 1 if enabled else 0
+            true
+
+        # One direction only: models a hand-edited or corrupted table so the
+        # report can prove it notices.
+        def layer_set_one_way(m: mutable Matrix&, a: i64, b: i64, enabled: bool) -> bool:
+            return false if not layer_in_range(a) or not layer_in_range(b)
+            m.cells[(a * LAYERS + b).usize()] <- 1 if enabled else 0
+            true
+
+        def layer_collides(m: Matrix&, a: i64, b: i64) -> bool:
+            return false if not layer_in_range(a) or not layer_in_range(b)
+            m.cells[(a * LAYERS + b).usize()] != 0 and m.cells[(b * LAYERS + a).usize()] != 0
+
+        def layer_count_set(c: mutable Counts&, layer: i64, bodies: i64) -> bool:
+            return false if not layer_in_range(layer) or bodies < 0 or bodies > 1000000
+            c.bodies[layer.usize()] <- bodies
+            true
+
+        # Worst-case broadphase pairs: every body of a layer against every
+        # body of each layer it meets (n(n-1)/2 within one layer).
+        def layer_report(m: Matrix&, c: Counts&) -> Report:
+            mutable pairs: i64 = 0
+            mutable asym: i64 = 0
+            mutable candidates: i64 = 0
+            for i in 0..<1024 |pairs, asym, candidates|:
+                a: i64 = i.i64() / LAYERS
+                b: i64 = i.i64() % LAYERS
+                here: i64 = m.cells[i]
+                there: i64 = m.cells[(b * LAYERS + a).usize()]
+                asym <- asym + 1 if here != there and a < b else asym
+                both: bool = here != 0 and there != 0 and a <= b
+                pairs <- pairs + 1 if both else pairs
+                na: i64 = c.bodies[a.usize()]
+                nb: i64 = c.bodies[b.usize()]
+                cost: i64 = na * (na - 1) / 2 if a == b else na * nb
+                candidates <- candidates + cost if both else candidates
+            mutable isolated: i64 = 0
+            for a in 0..<32 |isolated|:
+                mutable any: i64 = 0
+                for b in 0..<32 |any|:
+                    any <- any + 1 if layer_collides(m, a.i64(), b.i64()) else any
+                isolated <- isolated + 1 if any == 0 else isolated
+            Report{enabled_pairs: pairs, isolated_layers: isolated, asymmetric_cells: asym, candidate_pairs: candidates}
+
+        def layer_within_budget(r: Report&, max_candidate_pairs: i64) -> bool:
+            r.asymmetric_cells == 0 and r.candidate_pairs <= max_candidate_pairs

@@ -1,0 +1,31 @@
+include "../src/physics/layer_diagnostics.elisa"
+
+def main() -> i32:
+    mutable m: PhysicsLayerDiagnostics::Matrix = PhysicsLayerDiagnostics::layer_matrix_none()
+    mutable c: PhysicsLayerDiagnostics::Counts = PhysicsLayerDiagnostics::Counts{bodies: zeroed}
+    none: PhysicsLayerDiagnostics::Report = PhysicsLayerDiagnostics::layer_report(m, c)
+    return 1 if none.enabled_pairs != 0 or none.isolated_layers != 32 or none.asymmetric_cells != 0
+    # Static (0) meets dynamic (1); dynamic meets itself; debris (2) meets static only.
+    return 2 if not PhysicsLayerDiagnostics::layer_set(m, 0, 1, true) or not PhysicsLayerDiagnostics::layer_set(m, 1, 1, true) or not PhysicsLayerDiagnostics::layer_set(m, 2, 0, true)
+    return 3 if not PhysicsLayerDiagnostics::layer_collides(m, 1, 0) or PhysicsLayerDiagnostics::layer_collides(m, 2, 1)
+    return 4 if PhysicsLayerDiagnostics::layer_set(m, 32, 0, true) or PhysicsLayerDiagnostics::layer_set(m, 0, -1, true) or PhysicsLayerDiagnostics::layer_collides(m, 40, 0)
+    return 5 if not PhysicsLayerDiagnostics::layer_count_set(c, 0, 10) or not PhysicsLayerDiagnostics::layer_count_set(c, 1, 20) or not PhysicsLayerDiagnostics::layer_count_set(c, 2, 100)
+    return 6 if PhysicsLayerDiagnostics::layer_count_set(c, 3, -1) or PhysicsLayerDiagnostics::layer_count_set(c, 99, 1)
+    r: PhysicsLayerDiagnostics::Report = PhysicsLayerDiagnostics::layer_report(m, c)
+    # Pairs: (0,1), (1,1), (0,2). Isolated: layers 3..31.
+    return 7 if r.enabled_pairs != 3 or r.isolated_layers != 29 or r.asymmetric_cells != 0
+    # Candidates: 10*20 + 20*19/2 + 10*100 = 200 + 190 + 1000.
+    return 8 if r.candidate_pairs != 1390
+    return 9 if not PhysicsLayerDiagnostics::layer_within_budget(r, 1390) or PhysicsLayerDiagnostics::layer_within_budget(r, 1389)
+    # Letting debris hit itself costs 100*99/2 more pairs: the budget catches it.
+    return 10 if not PhysicsLayerDiagnostics::layer_set(m, 2, 2, true)
+    d: PhysicsLayerDiagnostics::Report = PhysicsLayerDiagnostics::layer_report(m, c)
+    return 11 if d.candidate_pairs != 1390 + 4950 or PhysicsLayerDiagnostics::layer_within_budget(d, 2000)
+    # A one-sided cell is reported and never counts as a collision.
+    return 12 if not PhysicsLayerDiagnostics::layer_set_one_way(m, 5, 6, true)
+    o: PhysicsLayerDiagnostics::Report = PhysicsLayerDiagnostics::layer_report(m, c)
+    return 13 if o.asymmetric_cells != 1 or PhysicsLayerDiagnostics::layer_collides(m, 5, 6) or o.enabled_pairs != 4 or PhysicsLayerDiagnostics::layer_within_budget(o, 1000000)
+    all: PhysicsLayerDiagnostics::Matrix = PhysicsLayerDiagnostics::layer_matrix_all()
+    a: PhysicsLayerDiagnostics::Report = PhysicsLayerDiagnostics::layer_report(all, c)
+    return 14 if a.enabled_pairs != 32 * 33 / 2 or a.isolated_layers != 0
+    return 0
