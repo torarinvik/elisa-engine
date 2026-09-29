@@ -39,6 +39,13 @@ module RuntimeDecisionSessionStore:
             return RuntimeDecisionLogStore::Stored.StorageFailure if status != 0
             RuntimeDecisionLogStore::Stored.Ok
 
+        # Saves a full recorder as chunk `index` and returns the recorder that
+        # continues it. A failed save still continues, so play never stalls on
+        # disk; the manifest then names only the chunks that were written.
+        def seal(index: i64, log: RuntimeDecisionLog::Log&) -> RuntimeDecisionLog::Log:
+            _ = save_chunk(index, log)
+            RuntimeDecisionChunks::continue_after(log)
+
         def manifest() -> Manifest:
             mutable bytes: u8[8] = zeroed
             mutable version: i64 = 0
