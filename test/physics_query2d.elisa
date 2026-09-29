@@ -1,0 +1,24 @@
+include "../src/physics/query2d.elisa"
+
+def ball(x: i64, y: i64) -> Physics2dCircles::Circle:
+    Physics2dCircles::Circle{x_um: x, y_um: y, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+
+def main() -> i32:
+    c: Physics2dCircles::Circle = ball(1000000, 0)
+    # A 2 m ray along +x enters the circle at 0.9 m: 450000 ppm.
+    t: i64 = Physics2dQuery::ray_circle(0, 0, 2000000, 0, &c)
+    return 1 if t < 449000 or t > 451000
+    return 2 if Physics2dQuery::ray_circle(0, 0, 0 - 2000000, 0, &c) != 0 - 1
+    return 3 if Physics2dQuery::ray_circle(0, 0, 500000, 0, &c) != 0 - 1
+    return 4 if Physics2dQuery::ray_circle(0, 300000, 2000000, 0, &c) != 0 - 1
+    return 5 if Physics2dQuery::ray_circle(1000000, 0, 2000000, 0, &c) != 0
+    mutable bodies: Physics2dCircles::Circle[32] = zeroed
+    bodies[0] <- ball(1500000, 0)
+    bodies[1] <- ball(700000, 0)
+    bodies[2] <- ball(700000, 900000)
+    h: Physics2dQuery::Hit = Physics2dQuery::cast(&bodies, 3, 0, 0, 2000000, 0)
+    return 6 if h.body != 1 or h.fraction_ppm < 299000 or h.fraction_ppm > 301000
+    miss: Physics2dQuery::Hit = Physics2dQuery::cast(&bodies, 3, 0, 0 - 500000, 2000000, 0)
+    return 7 if miss.body != 0 - 1 or miss.fraction_ppm != 0 - 1
+    return 8 if not Physics2dQuery::contains(&c, 1050000, 50000) or Physics2dQuery::contains(&c, 1100000, 50000)
+    0

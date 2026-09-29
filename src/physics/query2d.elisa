@@ -1,0 +1,50 @@
+# P10 2D queries over circles: a ray cast returning the nearest hit as a
+# fraction of the ray (per-million) and the body index, and a point query.
+# Integer maths in micrometres, so a picked body is the same on every run.
+include "circles2d.elisa"
+
+module Physics2dQuery:
+    public:
+        struct Hit:
+            body: i64
+            fraction_ppm: i64
+
+        # Entry fraction (per-million of the segment) of the segment
+        # (ox,oy)->(ox+dx,oy+dy) into circle `c`, or -1 when it misses.
+        def ray_circle(ox: i64, oy: i64, dx: i64, dy: i64, c: Physics2dCircles::Circle&) -> i64:
+            len2: i64 = dx * dx + dy * dy
+            return 0 - 1 if len2 <= 0
+            fx: i64 = ox - c.x_um
+            fy: i64 = oy - c.y_um
+            r2: i64 = c.radius_um * c.radius_um
+            return 0 if fx * fx + fy * fy <= r2
+            # |f + t d|^2 = r^2  ->  len2 t^2 + 2 b t + (|f|^2 - r^2) = 0 with b = f.d.
+            b: i64 = fx * dx + fy * dy
+            return 0 - 1 if b >= 0
+            # Scale to millimetres for the discriminant so products stay in i64.
+            bm: i64 = b / 1000000
+            lm: i64 = len2 / 1000000
+            cm: i64 = (fx * fx + fy * fy - r2) / 1000000
+            disc: i64 = bm * bm - lm * cm
+            return 0 - 1 if disc < 0 or lm <= 0
+            t_ppm: i64 = (0 - bm - Physics2dCircles::isqrt(disc)) * 1000000 / lm
+            return 0 - 1 if t_ppm > 1000000
+            return 0 if t_ppm < 0
+            t_ppm
+
+        # Nearest hit among `count` bodies; ties go to the lower index.
+        def cast(bodies: Physics2dCircles::Circle[32]&, count: i64, ox: i64, oy: i64, dx: i64, dy: i64) -> Hit:
+            n: i64 = 32 if count > 32 else count
+            mutable best: i64 = 0 - 1
+            mutable at: i64 = 1000001
+            for i in 0..<n:
+                t: i64 = ray_circle(ox, oy, dx, dy, &bodies[i])
+                if t >= 0 and t < at:
+                    at <- t
+                    best <- i
+            Hit{body: best, fraction_ppm: at if best >= 0 else 0 - 1}
+
+        def contains(c: Physics2dCircles::Circle&, x: i64, y: i64) -> bool:
+            dx: i64 = x - c.x_um
+            dy: i64 = y - c.y_um
+            dx * dx + dy * dy <= c.radius_um * c.radius_um
