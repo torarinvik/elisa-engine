@@ -1,0 +1,69 @@
+include "../src/ui/edit_field.elisa"
+
+def type3(f: mutable UiEditField::Field&):
+    UiEditField::insert(f, 97)
+    UiEditField::insert(f, 98)
+    UiEditField::insert(f, 99)
+
+def main() -> i32:
+    f: UiEditField::Field = UiEditField::make(false)
+    type3(f)
+    return 1 if f.len != 3 or f.caret != 3 or f.text[0] != 97 or f.text[2] != 99
+    # Insert in the middle.
+    UiEditField::move(f, -1, false)
+    UiEditField::insert(f, 120)
+    return 2 if f.len != 4 or f.text[2] != 120 or f.text[3] != 99 or f.caret != 3
+    # Selection replaced by typing.
+    UiEditField::select_all(f)
+    return 3 if not UiEditField::has_selection(f) or not UiEditField::can_copy(f)
+    UiEditField::insert(f, 122)
+    return 4 if f.len != 1 or f.text[0] != 122
+    # Invalid code points and a leading combining mark are refused.
+    return 5 if UiEditField::insert(f, 0) or UiEditField::insert(f, 55300) or UiEditField::insert(f, 1114112)
+    g: UiEditField::Field = UiEditField::make(false)
+    return 6 if UiEditField::insert(g, 769)
+    # Grapheme-aware delete: e + combining acute goes as one unit.
+    UiEditField::insert(g, 101)
+    UiEditField::insert(g, 769)
+    UiEditField::insert(g, 102)
+    UiEditField::move(g, -1, false)
+    return 7 if g.caret != 2
+    UiEditField::backspace(g)
+    return 8 if g.len != 1 or g.text[0] != 102 or g.caret != 0
+    # Forward delete also removes the whole cluster.
+    h: UiEditField::Field = UiEditField::make(false)
+    UiEditField::insert(h, 97)
+    UiEditField::insert(h, 8205)
+    UiEditField::insert(h, 98)
+    UiEditField::move(h, -1, false)
+    UiEditField::move(h, -1, false)
+    return 9 if h.caret != 0
+    UiEditField::delete_forward(h)
+    return 10 if h.len != 1 or h.text[0] != 98
+    # Composition stays out of the text until committed; cancel leaves nothing.
+    c: UiEditField::Field = UiEditField::make(false)
+    UiEditField::insert(c, 65)
+    return 11 if not UiEditField::set_preedit(c, 3, 12354) or c.len != 1 or c.preedit_len != 3
+    UiEditField::cancel_preedit(c)
+    return 12 if c.len != 1 or c.preedit_len != 0 or UiEditField::commit_preedit(c)
+    UiEditField::set_preedit(c, 3, 12354)
+    return 13 if not UiEditField::commit_preedit(c) or c.len != 4 or c.text[1] != 12354 or c.text[3] != 12356 or c.preedit_len != 0
+    return 14 if UiEditField::set_preedit(c, 9, 65)
+    # Undo restores the state before the last edit.
+    u: UiEditField::Field = UiEditField::make(false)
+    type3(u)
+    UiEditField::backspace(u)
+    return 15 if u.len != 2
+    UiEditField::undo(u)
+    return 16 if u.len != 3 or u.text[2] != 99
+    # Password field: bullets shown, copy refused.
+    p: UiEditField::Field = UiEditField::make(true)
+    type3(p)
+    UiEditField::select_all(p)
+    return 17 if UiEditField::display(&p, 1) != 8226 or UiEditField::can_copy(&p) or UiEditField::display(&p, 5) != 0
+    # Capacity is 32.
+    full: UiEditField::Field = UiEditField::make(false)
+    for n in 0..<32:
+        UiEditField::insert(full, 65)
+    return 18 if full.len != 32 or UiEditField::insert(full, 66)
+    return 0

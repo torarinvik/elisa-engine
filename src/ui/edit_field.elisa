@@ -1,0 +1,169 @@
+# Single-line editable text over Unicode code points (capacity 32): caret,
+# selection, IME composition, grapheme-aware deletion and a password policy.
+# Composition text (the preedit) is held apart from the committed text and
+# only joins it on commit, so a cancelled composition leaves no trace. A
+# "grapheme" here is a base code point plus any following combining marks
+# (U+0300-036F), variation selectors (U+FE00-FE0F) or joiners (U+200D); this
+# is a documented subset of full grapheme clustering. Editing keys report
+# whether the field consumed them, so gameplay input is not also triggered.
+module UiEditField:
+    private:
+        const module Tune:
+            CAP: i64 = 32
+
+    public:
+        struct Field:
+            text: mutable i64[32]
+            len: mutable i64
+            caret: mutable i64
+            anchor: mutable i64
+            preedit: mutable i64[8]
+            preedit_len: mutable i64
+            password: bool
+            undo_text: mutable i64[32]
+            undo_len: mutable i64
+            undo_caret: mutable i64
+
+        def make(password: bool) -> Field:
+            z: i64[32] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            p: i64[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+            Field{text: z, len: 0, caret: 0, anchor: 0, preedit: p, preedit_len: 0, password: password, undo_text: z, undo_len: 0, undo_caret: 0}
+
+        def is_extend(cp: i64) -> bool:
+            (cp >= 768 and cp <= 879) or (cp >= 65024 and cp <= 65039) or cp == 8205
+
+        def cp_ok(cp: i64) -> bool:
+            cp > 0 and cp <= 1114111 and not (cp >= 55296 and cp <= 57343)
+
+        def has_selection(f: Field&) -> bool:
+            f.caret != f.anchor
+
+        def sel_lo(f: Field&) -> i64:
+            return f.caret if f.caret < f.anchor
+            f.anchor
+
+        def sel_hi(f: Field&) -> i64:
+            return f.caret if f.caret > f.anchor
+            f.anchor
+
+        def save_undo(f: mutable Field&):
+            for k in 0..<32:
+                t: i64 = k.i64()
+                f.undo_text[t] <- f.text[t]
+            f.undo_len <- f.len
+            f.undo_caret <- f.caret
+
+        # Removes [lo, hi) and leaves the caret at lo.
+        def remove_range(f: mutable Field&, lo: i64, hi: i64):
+            gap: i64 = hi - lo
+            for k in 0..<32:
+                t: i64 = k.i64()
+                f.text[t] <- f.text[t + gap] if t >= lo and t + gap < f.len
+            f.len <- f.len - gap
+            f.caret <- lo
+            f.anchor <- lo
+
+        def delete_selection(f: mutable Field&) -> bool:
+            return false if not has_selection(f)
+            remove_range(f, sel_lo(f), sel_hi(f))
+            true
+
+        # Start of the grapheme that ends just before `pos`.
+        def prev_boundary(f: Field&, pos: i64) -> i64:
+            requires pos >= 0
+            requires pos <= 32
+            return 0 if pos <= 0
+            at: mutable i64 = pos - 1
+            for k in 0..<32:
+                at <- at - 1 if at > 0 and is_extend(f.text[at])
+            at
+
+        def next_boundary(f: Field&, pos: i64) -> i64:
+            requires pos >= 0
+            requires pos <= 32
+            return f.len if pos >= f.len
+            at: mutable i64 = pos + 1
+            for k in 0..<32:
+                at <- at + 1 if at < f.len and is_extend(f.text[at])
+            at
+
+        # Inserts a committed code point, replacing any selection. False for
+        # an invalid code point, a leading combining mark, or a full field.
+        def insert(f: mutable Field&, cp: i64) -> bool:
+            return false if not cp_ok(cp)
+            save_undo(f)
+            delete_selection(f)
+            return false if f.len >= 32 or (is_extend(cp) and f.caret == 0)
+            for k in 0..<32:
+                t: i64 = 31 - k.i64()
+                f.text[t] <- f.text[t - 1] if t > f.caret and t <= f.len
+            f.text[f.caret] <- cp
+            f.len <- f.len + 1
+            f.caret <- f.caret + 1
+            f.anchor <- f.caret
+            true
+
+        def backspace(f: mutable Field&) -> bool:
+            save_undo(f)
+            return true if delete_selection(f)
+            return false if f.caret == 0
+            remove_range(f, prev_boundary(f, f.caret), f.caret)
+            true
+
+        def delete_forward(f: mutable Field&) -> bool:
+            save_undo(f)
+            return true if delete_selection(f)
+            return false if f.caret >= f.len
+            remove_range(f, f.caret, next_boundary(f, f.caret))
+            true
+
+        def move(f: mutable Field&, dir: i64, extend: bool):
+            target: mutable i64 = f.caret
+            target <- prev_boundary(f, f.caret) if dir < 0
+            target <- next_boundary(f, f.caret) if dir > 0
+            f.caret <- target
+            f.anchor <- target if not extend
+
+        def select_all(f: mutable Field&):
+            f.anchor <- 0
+            f.caret <- f.len
+
+        # Composition: a preedit of up to 8 code points that never touches text.
+        def set_preedit(f: mutable Field&, count: i64, first: i64) -> bool:
+            return false if count < 0 or count > 8 or (count > 0 and not cp_ok(first))
+            f.preedit_len <- count
+            for k in 0..<8:
+                f.preedit[k.i64()] <- first + k.i64() if k.i64() < count
+            true
+
+        def cancel_preedit(f: mutable Field&):
+            f.preedit_len <- 0
+
+        def commit_preedit(f: mutable Field&) -> bool:
+            n: i64 = f.preedit_len
+            return false if n == 0 or f.len - (sel_hi(f) - sel_lo(f)) + n > 32
+            f.preedit_len <- 0
+            ok: mutable bool = true
+            for k in 0..<8:
+                ok <- insert(f, f.preedit[k.i64()]) if k.i64() < n and ok
+            ok
+
+        def undo(f: mutable Field&) -> bool:
+            return false if f.undo_len == 0 and f.len == 0
+            for k in 0..<32:
+                t: i64 = k.i64()
+                f.text[t] <- f.undo_text[t]
+            f.len <- f.undo_len
+            f.caret <- f.undo_caret
+            f.anchor <- f.undo_caret
+            true
+
+        # What is shown for position `i`: the code point, or a bullet for a
+        # password field. Copy and cut are refused for password fields.
+        def display(f: Field&, i: i64) -> i64:
+            return 0 if i < 0 or i >= f.len
+            return 8226 if f.password
+            f.text[i]
+
+        def can_copy(f: Field&) -> bool:
+            has_selection(f) and not f.password
