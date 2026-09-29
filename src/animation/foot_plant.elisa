@@ -1,0 +1,58 @@
+# Foot placement policy for a two-legged character on uneven ground, in
+# millimetres relative to the character's root plane. The pelvis drops by the
+# lower of the two ground heights (never rising, and never more than the
+# allowed drop) so neither leg has to stretch past its length. Each foot then
+# targets its ground height relative to the moved pelvis, is limited to what a
+# two-bone leg can reach, and the applied offsets move toward their targets at
+# a bounded speed so a step or a stair does not pop.
+module AnimationFootPlant:
+    private:
+        const module Tune:
+            LIMIT: i64 = 100000
+
+    public:
+        struct Plan:
+            pelvis_drop: i64
+            left_target: i64
+            right_target: i64
+
+        def near(v: i64) -> bool:
+            v > 0 - Tune::LIMIT and v < Tune::LIMIT
+
+        def lowest(a: i64, b: i64) -> i64:
+            return a if a < b
+            b
+
+        # Pelvis drop (>= 0) so the lower foot can reach its ground, capped at
+        # `max_drop`. Out-of-range input gives no drop.
+        def pelvis_drop(left_ground: i64, right_ground: i64, max_drop: i64) -> i64:
+            return 0 if not near(left_ground) or not near(right_ground) or max_drop <= 0 or max_drop >= 100000
+            low: i64 = lowest(left_ground, right_ground)
+            return 0 if low >= 0
+            need: i64 = 0 - low
+            return max_drop if need > max_drop
+            need
+
+        # A two-bone leg reaches distances from |upper - lower| to upper + lower.
+        def clamp_reach(upper: i64, lower: i64, distance: i64) -> i64:
+            return 0 if upper <= 0 or lower <= 0 or upper >= 100000 or lower >= 100000 or distance < 0
+            far: i64 = upper + lower
+            gap: i64 = upper - lower
+            near_limit: i64 = 0 - gap if gap < 0 else gap
+            return far if distance > far
+            return near_limit if distance < near_limit
+            distance
+
+        def plan(left_ground: i64, right_ground: i64, max_drop: i64) -> Plan:
+            drop: i64 = pelvis_drop(left_ground, right_ground, max_drop)
+            valid: bool = near(left_ground) and near(right_ground)
+            left: i64 = left_ground + drop if valid else 0
+            right: i64 = right_ground + drop if valid else 0
+            Plan{pelvis_drop: drop, left_target: left, right_target: right}
+
+        # Moves `current` toward `target` by at most `max_step`.
+        def approach(current: i64, target: i64, max_step: i64) -> i64:
+            return target if max_step <= 0 or not near(current) or not near(target) or max_step >= 100000
+            return target if target - current <= max_step and current - target <= max_step
+            return current + max_step if target > current
+            current - max_step
