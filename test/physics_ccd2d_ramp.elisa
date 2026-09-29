@@ -3,6 +3,18 @@ include "../src/physics/ccd2d_ramp.elisa"
 def ball(x: i64, y: i64, vx: i64, vy: i64) -> Physics2dCircles::Circle:
     Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: vy, radius_um: 50000, mass_g: 100}
 
+# Slides a copy of `start` for 60 steps under gravity; returns its closest
+# approach to the ramp and its final x.
+def slide(start: Physics2dCircles::Circle, ramp: Physics2dRamp::Segment&) -> i64[2]:
+    ramps: Physics2dRamp::Segment[4] = [ramp, ramp, ramp, ramp]
+    mutable c: Physics2dCircles::Circle = start
+    mutable deepest: i64 = Physics2dRamp::distance_um(ramp, c.x_um, c.y_um)
+    for _ in 0..<60 |c, deepest|:
+        Physics2dRamp::step(&c, ramps, 1, 9810000, 16, 0)
+        now: i64 = Physics2dRamp::distance_um(ramp, c.x_um, c.y_um)
+        deepest <- now if now < deepest else deepest
+    [deepest, c.x_um]
+
 def main() -> i32:
     # A 45 degree ramp down to the right; solid below.
     ramp: Physics2dRamp::Segment = Physics2dRamp::Segment{ax_um: 0, ay_um: 0, bx_um: 4000000, by_um: 0 - 4000000}
@@ -16,13 +28,9 @@ def main() -> i32:
     # Inelastic: the normal speed is gone, the tangential speed slides it down the slope.
     sum: i64 = fast.vx + fast.vy
     return 4 if fast.vx <= 0 or fast.vy >= 0 or sum > 1000 or sum < 0 - 1000
-    # Under gravity it keeps sliding on the surface for a second, never sinking.
-    mutable deepest: i64 = d
-    for _ in 0..<60 |fast, deepest|:
-        Physics2dRamp::step(&fast, ramps, 1, 9810000, 16, 0)
-        now: i64 = Physics2dRamp::distance_um(&ramp, fast.x_um, fast.y_um)
-        deepest <- now if now < deepest else deepest
-    return 5 if deepest < 45000 or fast.x_um <= 1000000
+    # Released at rest in contact, a ball slides down under gravity for a second, never sinking.
+    slid: i64[2] = slide(ball(1035356, 0 - 964644, 0, 0), &ramp)
+    return 5 if slid[0] < 45000 or slid[1] <= 2500000
     # One-sided: a ball below the ramp moving up passes through.
     mutable under: Physics2dCircles::Circle = ball(2000000, 0 - 3000000, 0, 100000000)
     return 6 if Physics2dRamp::step(&under, ramps, 1, 0, 16, 0)
@@ -33,8 +41,18 @@ def main() -> i32:
     floor: Physics2dRamp::Segment = Physics2dRamp::Segment{ax_um: 0, ay_um: 0, bx_um: 2000000, by_um: 0}
     floors: Physics2dRamp::Segment[4] = [floor, floor, floor, floor]
     mutable drop: Physics2dCircles::Circle = ball(1000000, 60000, 0, 0 - 1000000)
-    return 8 if not Physics2dRamp::step(&drop, floors, 1, 0, 16, 1000) or drop.vy != 1000000 or drop.y_um != 50000
+    return 8 if not Physics2dRamp::step(&drop, floors, 1, 0, 16, 1000) or drop.vy != 1000000 or drop.y_um != 56000
     # Behind the ramp and moving further away (falling beneath it) is not stopped either.
     mutable below: Physics2dCircles::Circle = ball(2000000, 0 - 3000000, 0, 0 - 100000000)
     return 9 if Physics2dRamp::step(&below, ramps, 1, 0, 16, 0) or below.y_um != 0 - 4600000
+    # Mixed geometry: a wall reached first beats the ramp further along, and
+    # the rest of the step carries the dart back out (1551000 + 0.72 * 1.6 m).
+    near_wall: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 1500000, thickness_um: 1000, y_min_um: 0 - 5000000, y_max_um: 5000000}
+    mixed: Physics2dRamp::Statics = Physics2dRamp::Statics{walls: [near_wall, near_wall, near_wall, near_wall], wall_count: 1, platforms: zeroed, platform_count: 0, ramps: ramps, ramp_count: 1}
+    mutable dart: Physics2dCircles::Circle = ball(2000000, 0 - 500000, 0 - 100000000, 0)
+    return 10 if not Physics2dRamp::step_statics(&dart, &mixed, 0, 16, 1000) or dart.vx != 100000000 or dart.x_um != 2703000
+    # Without the wall the same dart meets the ramp instead.
+    only_ramp: Physics2dRamp::Statics = Physics2dRamp::Statics{walls: zeroed, wall_count: 0, platforms: zeroed, platform_count: 0, ramps: ramps, ramp_count: 1}
+    mutable dart2: Physics2dCircles::Circle = ball(2000000, 0 - 500000, 0 - 100000000, 0)
+    return 11 if not Physics2dRamp::step_statics(&dart2, &only_ramp, 0, 16, 1000) or dart2.vx <= 0 - 1000000 or dart2.vy <= 90000000
     return 0

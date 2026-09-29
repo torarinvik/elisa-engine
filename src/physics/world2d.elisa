@@ -5,7 +5,7 @@
 # Bodies move with continuous collision against up to four thin walls and four platforms.
 include "circles2d.elisa"
 include "sweep2d.elisa"
-include "ccd2d.elisa"
+include "ccd2d_ramp.elisa"
 
 module Physics2dWorld:
     public:
@@ -15,7 +15,7 @@ module Physics2dWorld:
             overflowed: bool
             wall_hits: i64
 
-        def step(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, walls: Physics2dCcd::Wall[4], wall_count: i64, platforms: Physics2dCcd::Platform[4], platform_count: i64) -> Report:
+        def step(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, gravity_um_s2: i64, dt_ms: i64, ground_um: i64, restitution_permille: i64, statics: Physics2dRamp::Statics&) -> Report:
             n: i64 = 32 if count > 32 else count
             mutable minx: i64[32] = zeroed
             mutable maxx: i64[32] = zeroed
@@ -24,7 +24,7 @@ module Physics2dWorld:
             mutable wall_hits: i64 = 0
             for i in 0..<n:
                 mutable c: Physics2dCircles::Circle = bodies[i]
-                wall_hits <- wall_hits + 1 if Physics2dCcd::step_all(&c, walls, wall_count, platforms, platform_count, gravity_um_s2, dt_ms, restitution_permille)
+                wall_hits <- wall_hits + 1 if Physics2dRamp::step_statics(&c, statics, gravity_um_s2, dt_ms, restitution_permille)
                 bodies[i] <- c
                 minx[i] <- bodies[i].x_um - bodies[i].radius_um
                 maxx[i] <- bodies[i].x_um + bodies[i].radius_um

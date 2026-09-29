@@ -64,23 +64,81 @@ module Physics2dRamp:
                 c.vx <- c.vx - k * nx / l
                 c.vy <- c.vy - k * ny / l
 
-        # Semi-implicit step against up to four segments; returns true on a hit.
-        def step(c: mutable Physics2dCircles::Circle&, ramps: Segment[4], count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
+        # A scene's static 2D geometry: walls, platforms and ramps.
+        struct Statics:
+            walls: Physics2dCcd::Wall[4]
+            wall_count: i64
+            platforms: Physics2dCcd::Platform[4]
+            platform_count: i64
+            ramps: Segment[4]
+            ramp_count: i64
+
+        def open() -> Statics:
+            Statics{walls: zeroed, wall_count: 0, platforms: zeroed, platform_count: 0, ramps: zeroed, ramp_count: 0}
+
+        # Moves `c` through `remaining_ppm` millionths of a `dt_ms` step,
+        # stopping at the earliest contact of any kind (walls and platforms
+        # reflect their axis, ramps their normal). Returns the millionths
+        # still left after a contact, or -1 when the move finished freely.
+        def advance(c: mutable Physics2dCircles::Circle&, st: Statics&, dt_ms: i64, remaining_ppm: i64, restitution_permille: i64) -> i64:
+            dx: i64 = c.vx * dt_ms / 1000 * remaining_ppm / 1000000
+            dy: i64 = c.vy * dt_ms / 1000 * remaining_ppm / 1000000
+            mutable best_ppm: i64 = 1000001
+            mutable kind: i64 = 0
+            mutable which: i64 = 0
+            mutable travel: i64 = 0
+            for i in 0..<4 |best_ppm, kind, which, travel|:
+                if i.i64() < st.wall_count:
+                    h: Physics2dCcd::Hit = Physics2dCcd::sweep(c, dx, dy, &st.walls[i])
+                    if h.hit and h.t_permille * 1000 < best_ppm:
+                        best_ppm <- h.t_permille * 1000
+                        kind <- 1
+                        travel <- h.travel_um
+                if i.i64() < st.platform_count:
+                    h: Physics2dCcd::Hit = Physics2dCcd::sweep_platform(c, dx, dy, &st.platforms[i])
+                    if h.hit and h.t_permille * 1000 < best_ppm:
+                        best_ppm <- h.t_permille * 1000
+                        kind <- 2
+                        travel <- h.travel_um
+                if i.i64() < st.ramp_count:
+                    r: Contact = sweep(c, dx, dy, &st.ramps[i])
+                    if r.hit and r.t_ppm < best_ppm:
+                        best_ppm <- r.t_ppm
+                        kind <- 3
+                        which <- i.i64()
+            if kind == 0:
+                c.x_um <- c.x_um + dx
+                c.y_um <- c.y_um + dy
+                return 0 - 1
+            if kind == 1:
+                c.x_um <- c.x_um + travel
+                c.y_um <- c.y_um + dy * best_ppm / 1000000
+                c.vx <- 0 - c.vx * restitution_permille / 1000
+            elif kind == 2:
+                c.y_um <- c.y_um + travel
+                c.x_um <- c.x_um + dx * best_ppm / 1000000
+                c.vy <- 0 - c.vy * restitution_permille / 1000
+            else:
+                c.x_um <- c.x_um + dx * best_ppm / 1000000
+                c.y_um <- c.y_um + dy * best_ppm / 1000000
+                hit_ramp: Segment = st.ramps[which.usize()]
+                bounce(c, &hit_ramp, restitution_permille)
+            remaining_ppm - remaining_ppm * best_ppm / 1000000
+
+        # One semi-implicit step against all static geometry. After a contact
+        # the rest of the step continues with the reflected velocity (up to
+        # three contacts), so a body resting on a ramp slides instead of
+        # sticking. Returns true on any hit.
+        def step_statics(c: mutable Physics2dCircles::Circle&, st: Statics&, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
             return false if c.mass_g <= 0 or dt_ms <= 0
             c.vy <- c.vy - gravity_um_s2 * dt_ms / 1000
-            dx: i64 = c.vx * dt_ms / 1000
-            dy: i64 = c.vy * dt_ms / 1000
-            mutable best: Contact = Contact{hit: false, t_permille: 1000, t_ppm: 1000000}
-            mutable which: i64 = 0
-            for i in 0..<4 |best, which|:
-                if i.i64() < count:
-                    h: Contact = sweep(c, dx, dy, &ramps[i])
-                    if h.hit and h.t_ppm < best.t_ppm:
-                        best <- h
-                        which <- i.i64()
-            c.x_um <- c.x_um + dx * best.t_ppm / 1000000
-            c.y_um <- c.y_um + dy * best.t_ppm / 1000000
-            if best.hit:
-                hit_ramp: Segment = ramps[which.usize()]
-                bounce(c, &hit_ramp, restitution_permille)
-            best.hit
+            first: i64 = advance(c, st, dt_ms, 1000000, restitution_permille)
+            return false if first < 0
+            second: i64 = advance(c, st, dt_ms, first, restitution_permille) if first > 0 else 0 - 1
+            _ = advance(c, st, dt_ms, second, restitution_permille) if second > 0 else 0 - 1
+            true
+
+        # Step against ramps only.
+        def step(c: mutable Physics2dCircles::Circle&, ramps: Segment[4], count: i64, gravity_um_s2: i64, dt_ms: i64, restitution_permille: i64) -> bool:
+            st: Statics = Statics{walls: zeroed, wall_count: 0, platforms: zeroed, platform_count: 0, ramps: ramps, ramp_count: count}
+            step_statics(c, &st, gravity_um_s2, dt_ms, restitution_permille)
