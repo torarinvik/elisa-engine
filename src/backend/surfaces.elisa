@@ -1,0 +1,100 @@
+# Independent render surfaces (one per native window) with generation-checked
+# handles. Each surface has its own size, DPI, suspension and close lifecycle;
+# closing one bumps only its slot's generation, so its old handle is rejected
+# while every other surface, and the game world, carry on. A slot is reused
+# only after it is closed, and reuse changes the generation.
+module BackendSurfaces:
+    private:
+        const module Tune:
+            SLOTS: i64 = 4
+            MAX_SIDE: i64 = 16384
+            MIN_DPI: i64 = 500
+            MAX_DPI: i64 = 4000
+
+    public:
+        struct Handle:
+            slot: i64
+            generation: i64
+
+        struct Table:
+            open: mutable bool[4]
+            suspended: mutable bool[4]
+            generation: mutable i64[4]
+            width: mutable i64[4]
+            height: mutable i64[4]
+            dpi_permille: mutable i64[4]
+
+        def make() -> Table:
+            Table{open: [false, false, false, false], suspended: [false, false, false, false], generation: [0, 0, 0, 0], width: [0, 0, 0, 0], height: [0, 0, 0, 0], dpi_permille: [1000, 1000, 1000, 1000]}
+
+        def none() -> Handle:
+            Handle{slot: -1, generation: 0}
+
+        def size_ok(w: i64, h: i64) -> bool:
+            w > 0 and h > 0 and w <= 16384 and h <= 16384
+
+        def dpi_ok(dpi_permille: i64) -> bool:
+            dpi_permille >= 500 and dpi_permille <= 4000
+
+        def valid(t: Table&, h: Handle&) -> bool:
+            return false if h.slot < 0 or h.slot >= 4
+            t.open[h.slot] and t.generation[h.slot] == h.generation
+
+        def free_slot(t: Table&) -> i64:
+            found: mutable i64 = -1
+            for k in 0..<4:
+                s: i64 = k.i64()
+                found <- s if found < 0 and not t.open[s]
+            found
+
+        # Opens a surface; `none()` when the size or DPI is bad or all slots
+        # are taken.
+        def open_surface(t: mutable Table&, w: i64, h: i64, dpi_permille: i64) -> Handle:
+            return none() if not size_ok(w, h) or not dpi_ok(dpi_permille)
+            s: i64 = free_slot(t)
+            return none() if s < 0
+            t.open[s] <- true
+            t.suspended[s] <- false
+            t.generation[s] <- t.generation[s] + 1
+            t.width[s] <- w
+            t.height[s] <- h
+            t.dpi_permille[s] <- dpi_permille
+            Handle{slot: s, generation: t.generation[s]}
+
+        def resize(t: mutable Table&, h: Handle&, w: i64, ht: i64) -> bool:
+            return false if not valid(t, h) or not size_ok(w, ht)
+            t.width[h.slot] <- w
+            t.height[h.slot] <- ht
+            true
+
+        def set_dpi(t: mutable Table&, h: Handle&, dpi_permille: i64) -> bool:
+            return false if not valid(t, h) or not dpi_ok(dpi_permille)
+            t.dpi_permille[h.slot] <- dpi_permille
+            true
+
+        def suspend(t: mutable Table&, h: Handle&, on: bool) -> bool:
+            return false if not valid(t, h)
+            t.suspended[h.slot] <- on
+            true
+
+        # A surface renders while open, not suspended and with a real size.
+        def renderable(t: Table&, h: Handle&) -> bool:
+            valid(t, h) and not t.suspended[h.slot]
+
+        def close(t: mutable Table&, h: Handle&) -> bool:
+            return false if not valid(t, h)
+            t.open[h.slot] <- false
+            t.suspended[h.slot] <- false
+            t.generation[h.slot] <- t.generation[h.slot] + 1
+            true
+
+        def live_count(t: Table&) -> i64:
+            n: mutable i64 = 0
+            for k in 0..<4:
+                n <- n + 1 if t.open[k.i64()]
+            n
+
+        # Pixel size after DPI scaling, for the swapchain.
+        def pixel_width(t: Table&, h: Handle&) -> i64:
+            return 0 if not valid(t, h)
+            t.width[h.slot] * t.dpi_permille[h.slot] / 1000
