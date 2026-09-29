@@ -3,22 +3,15 @@ include "../src/physics/world2d.elisa"
 def ball(x: i64, y: i64, vx: i64) -> Physics2dCircles::Circle:
     Physics2dCircles::Circle{x_um: x, y_um: y, vx: vx, vy: 0, radius_um: 100000, mass_g: 100}
 
-def no_walls() -> Physics2dCcd::Wall[4]:
-    w: Physics2dCcd::Wall = Physics2dCcd::Wall{x_um: 0, thickness_um: 0, y_min_um: 0, y_max_um: 0}
-    [w, w, w, w]
-
-def no_platforms() -> Physics2dCcd::Platform[4]:
-    p: Physics2dCcd::Platform = Physics2dCcd::Platform{y_um: 0, thickness_um: 0, x_min_um: 0, x_max_um: 0}
-    [p, p, p, p]
-
 def main() -> i32:
+    open_scene: Physics2dRamp::Statics = Physics2dRamp::open()
     mutable b: Physics2dCircles::Circle[32] = zeroed
     # Two balls rolling at each other on the ground collide once and part.
     b[0] <- ball(0, 100000, 1000000)
     b[1] <- ball(1000000, 100000, 0 - 1000000)
     mutable hits: i64 = 0
     for k in 0..<200:
-        r: Physics2dWorld::Report = Physics2dWorld::step(&b, 2, 9810000, 5, 0, 1000, no_walls(), 0, no_platforms(), 0)
+        r: Physics2dWorld::Report = Physics2dWorld::step(&b, 2, 9810000, 5, 0, 1000, &open_scene)
         hits <- hits + r.resolved
     return 1 if hits != 1
     return 2 if b[0].vx != 0 - 1000000 or b[1].vx != 1000000
@@ -28,7 +21,7 @@ def main() -> i32:
     b[1] <- ball(0, 400000, 0)
     b[2] <- ball(0, 650000, 0)
     for k in 0..<3000:
-        Physics2dWorld::step(&b, 3, 9810000, 5, 0, 200, no_walls(), 0, no_platforms(), 0)
+        Physics2dWorld::step(&b, 3, 9810000, 5, 0, 200, &open_scene)
     return 4 if b[0].y_um < 90000 or b[1].y_um - b[0].y_um < 190000 or b[2].y_um - b[1].y_um < 190000
     return 5 if b[2].y_um > 520000
     # A fast body in the plain world bounces off a thin wall too.
@@ -36,6 +29,22 @@ def main() -> i32:
     walls: Physics2dCcd::Wall[4] = [wall, wall, wall, wall]
     mutable shot: Physics2dCircles::Circle[32] = zeroed
     shot[0] <- Physics2dCircles::Circle{x_um: 0, y_um: 1000000, vx: 500000000, vy: 0, radius_um: 50000, mass_g: 50}
-    wr: Physics2dWorld::Report = Physics2dWorld::step(&shot, 1, 9810000, 16, 0, 1000, walls, 1, no_platforms(), 0)
+    walled: Physics2dRamp::Statics = Physics2dRamp::Statics{walls: walls, wall_count: 1, platforms: zeroed, platform_count: 0, ramps: zeroed, ramp_count: 0}
+    wr: Physics2dWorld::Report = Physics2dWorld::step(&shot, 1, 9810000, 16, 0, 1000, &walled)
     return 9 if wr.wall_hits != 1 or shot[0].x_um + 50000 > 2000000 or shot[0].vx != 0 - 500000000
+    # A ball dropped on a ramp in the world lands on it and rolls down, never sinking in.
+    slope: Physics2dRamp::Segment = Physics2dRamp::Segment{ax_um: 0, ay_um: 3000000, bx_um: 4000000, by_um: 1000000}
+    sloped: Physics2dRamp::Statics = Physics2dRamp::Statics{walls: zeroed, wall_count: 0, platforms: zeroed, platform_count: 0, ramps: [slope, slope, slope, slope], ramp_count: 1}
+    mutable roll: Physics2dCircles::Circle[32] = zeroed
+    roll[0] <- Physics2dCircles::Circle{x_um: 1000000, y_um: 4000000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    mutable contacts: i64 = 0
+    mutable closest: i64 = 1000000000
+    for _ in 0..<60 |roll, contacts, closest|:
+        rr: Physics2dWorld::Report = Physics2dWorld::step(&roll, 1, 9810000, 16, 0, 0, &sloped)
+        contacts <- contacts + rr.wall_hits
+        d: i64 = Physics2dRamp::distance_um(&slope, roll[0].x_um, roll[0].y_um)
+        closest <- d if d < closest else closest
+    return 10 if contacts < 10
+    return 11 if closest < 95000
+    return 12 if roll[0].x_um <= 1500000
     0

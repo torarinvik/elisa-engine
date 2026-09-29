@@ -1,0 +1,51 @@
+include "../src/physics/world2d_presets.elisa"
+
+def tower() -> Physics2dCircles::Circle[32]:
+    mutable b: Physics2dCircles::Circle[32] = zeroed
+    for i in 0..<5 |b|:
+        b[i] <- Physics2dCircles::Circle{x_um: 0, y_um: 150000 + 260000 * i.i64(), vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    b
+
+# Settles a five-ball stack for 3 s of 16 ms frames; returns the worst
+# overlap over the last second and the top ball's height.
+def settle(preset: Physics2dPresets::Preset) -> i64[3]:
+    open_scene: Physics2dRamp::Statics = Physics2dRamp::open()
+    mutable b: Physics2dCircles::Circle[32] = tower()
+    mutable worst: i64 = 0
+    mutable steps: i64 = 0
+    for f in 0..<188 |b, worst, steps|:
+        r: Physics2dPresets::FrameReport = Physics2dPresets::step_frame(&b, 5, preset, 16, 9810000, 0, 200, &open_scene)
+        steps <- steps + r.substeps
+        o: i64 = Physics2dPresets::max_overlap_um(&b, 5, 0)
+        worst <- o if f >= 125 and o > worst else worst
+    [worst, b[4].y_um, steps]
+
+def main() -> i32:
+    fast: i64[3] = settle(Physics2dPresets::fast())
+    balanced: i64[3] = settle(Physics2dPresets::balanced())
+    stable: i64[3] = settle(Physics2dPresets::stable())
+    return 1 if fast[2] != 188 or balanced[2] != 376 or stable[2] != 752
+    # Measured worst settled overlaps (23, 10, 4 mm) as regression budgets.
+    return 2 if fast[0] > 30000
+    return 3 if balanced[0] > 12000
+    return 4 if stable[0] > 6000
+    return 5 if not (stable[0] < balanced[0] and balanced[0] < fast[0])
+    # Every tower stands near its ideal 0.9 m top.
+    return 6 if fast[1] < 840000 or stable[1] < 860000
+    # A 100 ms hitch is clamped to the budget and the rest reported dropped.
+    open_scene: Physics2dRamp::Statics = Physics2dRamp::open()
+    mutable b: Physics2dCircles::Circle[32] = tower()
+    hitch: Physics2dPresets::FrameReport = Physics2dPresets::step_frame(&b, 5, Physics2dPresets::stable(), 100, 9810000, 0, 200, &open_scene)
+    return 7 if hitch.substeps != 8 or hitch.dropped_ms != 68
+    # A 10 ms frame under balanced runs 8 + 2.
+    short: Physics2dPresets::FrameReport = Physics2dPresets::step_frame(&b, 5, Physics2dPresets::balanced(), 10, 9810000, 0, 200, &open_scene)
+    return 8 if short.substeps != 2 or short.dropped_ms != 0
+    # Relaxation separates an overlapping pair and lifts it out of the ground
+    # without touching velocity; zero passes move nothing.
+    mutable pair: Physics2dCircles::Circle[32] = zeroed
+    pair[0] <- Physics2dCircles::Circle{x_um: 0, y_um: 50000, vx: 0, vy: 7, radius_um: 100000, mass_g: 100}
+    pair[1] <- Physics2dCircles::Circle{x_um: 0, y_um: 150000, vx: 0, vy: 0, radius_um: 100000, mass_g: 100}
+    return 9 if Physics2dPresets::relax(&pair, 2, 0, 0) != 0 or pair[0].y_um != 50000
+    Physics2dPresets::relax(&pair, 2, 0, 8)
+    return 10 if Physics2dPresets::max_overlap_um(&pair, 2, 0) > 1000 or pair[0].y_um < 100000 or pair[0].vy != 7
+    return 0

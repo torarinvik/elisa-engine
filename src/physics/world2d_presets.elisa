@@ -1,0 +1,113 @@
+# Solver presets for the plain 2D world: how a frame is split into fixed
+# substeps and how much frame time a step may consume. A frame longer than
+# the preset's budget is clamped and the dropped time reported rather than
+# run as one huge step (which tunnels and explodes) or as unbounded
+# catch-up steps (the spiral of death). `max_overlap_um` is the diagnostic
+# the presets are measured with: the deepest circle-circle or ground
+# penetration in the world.
+include "world2d.elisa"
+
+module Physics2dPresets:
+    public:
+        struct Preset:
+            substep_ms: i64
+            max_substeps: i64
+            # Position-only relaxation passes after each substep.
+            relax_passes: i64
+
+        # One 16 ms step a frame plus four relaxation passes: cheapest, loosest stacks.
+        def fast() -> Preset:
+            Preset{substep_ms: 16, max_substeps: 1, relax_passes: 4}
+
+        def balanced() -> Preset:
+            Preset{substep_ms: 8, max_substeps: 4, relax_passes: 2}
+
+        # 4 ms substeps: tightest stacks at four times the cost of fast.
+        def stable() -> Preset:
+            Preset{substep_ms: 4, max_substeps: 8, relax_passes: 1}
+
+        struct FrameReport:
+            substeps: i64
+            dropped_ms: i64
+            resolved: i64
+            wall_hits: i64
+            overflowed: bool
+
+        # Runs `frame_ms` of simulation as whole substeps (a remainder shorter
+        # than one substep is carried as a final shorter step).
+        def step_frame(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, preset: Preset, frame_ms: i64, gravity_um_s2: i64, ground_um: i64, restitution_permille: i64, statics: Physics2dRamp::Statics&) -> FrameReport:
+            sub: i64 = preset.substep_ms if preset.substep_ms > 0 else 1
+            budget: i64 = sub * preset.max_substeps
+            run: i64 = frame_ms if frame_ms < budget else budget
+            dropped: i64 = frame_ms - run if frame_ms > run else 0
+            mutable left: i64 = run
+            mutable steps: i64 = 0
+            mutable resolved: i64 = 0
+            mutable wall_hits: i64 = 0
+            mutable overflowed: bool = false
+            for _ in 0..<64 |left, steps, resolved, wall_hits, overflowed|:
+                if left > 0:
+                    dt: i64 = sub if left >= sub else left
+                    r: Physics2dWorld::Report = Physics2dWorld::step(bodies, count, gravity_um_s2, dt, ground_um, restitution_permille, statics)
+                    relax(bodies, count, ground_um, preset.relax_passes)
+                    left <- left - dt
+                    steps <- steps + 1
+                    resolved <- resolved + r.resolved
+                    wall_hits <- wall_hits + r.wall_hits
+                    overflowed <- overflowed or r.overflowed
+            FrameReport{substeps: steps, dropped_ms: dropped, resolved: resolved, wall_hits: wall_hits, overflowed: overflowed}
+
+        # Position-only Gauss-Seidel passes: each pass pushes every overlapping
+        # pair apart by inverse mass, then lifts bodies out of the ground.
+        # Velocities are untouched, so no energy is added; this drains the
+        # overlap a single resolve pass leaves along a stack's contact chain.
+        def relax(bodies: mutable Physics2dCircles::Circle[32]&, count: i64, ground_um: i64, passes: i64) -> i64:
+            n: i64 = 32 if count > 32 else count
+            p: i64 = 8 if passes > 8 else passes
+            mutable moved: i64 = 0
+            for sweep_no in 0..<8 |moved|:
+                if sweep_no.i64() < p:
+                    for i in 0..<32 |moved|:
+                        for j in 0..<32 |moved|:
+                            if i.i64() < n and j.i64() < n and j > i:
+                                mutable a: Physics2dCircles::Circle = bodies[i]
+                                mutable b: Physics2dCircles::Circle = bodies[j]
+                                dx: i64 = b.x_um - a.x_um
+                                dy: i64 = b.y_um - a.y_um
+                                reach: i64 = a.radius_um + b.radius_um
+                                near: bool = dx < reach and dx > 0 - reach and dy < reach and dy > 0 - reach
+                                d: i64 = Physics2dCircles::isqrt(dx * dx + dy * dy) if near else reach
+                                ia: i64 = 0 if a.mass_g <= 0 else 1000000 / a.mass_g
+                                ib: i64 = 0 if b.mass_g <= 0 else 1000000 / b.mass_g
+                                total: i64 = ia + ib
+                                if d < reach and d > 0 and total > 0:
+                                    depth: i64 = reach - d
+                                    a.x_um <- a.x_um - dx * depth / d * ia / total
+                                    a.y_um <- a.y_um - dy * depth / d * ia / total
+                                    b.x_um <- b.x_um + dx * depth / d * ib / total
+                                    b.y_um <- b.y_um + dy * depth / d * ib / total
+                                    bodies[i] <- a
+                                    bodies[j] <- b
+                                    moved <- moved + 1
+                    for i in 0..<32:
+                        if i.i64() < n and bodies[i].mass_g > 0 and bodies[i].y_um - bodies[i].radius_um < ground_um:
+                            bodies[i].y_um <- ground_um + bodies[i].radius_um
+            moved
+
+        # Deepest penetration between any two circles or into the ground.
+        def max_overlap_um(bodies: Physics2dCircles::Circle[32]&, count: i64, ground_um: i64) -> i64:
+            n: i64 = 32 if count > 32 else count
+            mutable worst: i64 = 0
+            for i in 0..<32 |worst|:
+                if i.i64() < n:
+                    a: Physics2dCircles::Circle = bodies[i]
+                    sink: i64 = ground_um - (a.y_um - a.radius_um)
+                    worst <- sink if sink > worst else worst
+                    for j in 0..<32 |worst|:
+                        if j > i and j.i64() < n:
+                            b: Physics2dCircles::Circle = bodies[j]
+                            dx: i64 = b.x_um - a.x_um
+                            dy: i64 = b.y_um - a.y_um
+                            gap: i64 = a.radius_um + b.radius_um - Physics2dCircles::isqrt(dx * dx + dy * dy)
+                            worst <- gap if gap > worst else worst
+            worst
