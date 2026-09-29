@@ -433,6 +433,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress (2026-09-29): `AiBrain` state machine (patrol/chase/search/interact, cone+hearing perception, replay digest) and proved `AiPatrol` route arithmetic; see [`docs/validation/ai-brain.md`](docs/validation/ai-brain.md). Remaining: drive an agent in the character playground (body, NavAgent, rendering) and inspect state in game.
 - [ ] **N05 · P2 · Crowds and avoidance** — After: N03, W07.
   Integrate DetourCrowd where it fits the movement contract, with agent lifecycle and per-tick budgets. Done: converging crowds avoid obstacles and each other, recover from blocked exits, and retain bounded cost without bypassing gameplay or physics authority.
+  Progress on 2026-09-29: `src/nav/crowd.elisa` provides deterministic capped separation for up to eight agents with equal-and-opposite pair pushes and a tie-break for stacked agents (see `docs/validation/nav-crowd.md`). Reciprocal avoidance, Detour integration, larger crowds and measured budgets remain.
 - [ ] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.
   Integrate tile streaming and supported DetourTileCache obstacle updates with generation-tagged query results. Done: unload/rebuild during a pending path request cannot return stale routes; rebakes are bounded and agents recover when tiles become available.
 

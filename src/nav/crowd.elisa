@@ -1,0 +1,67 @@
+# Deterministic local avoidance for small crowds. Each agent is pushed away
+# from neighbours closer than the personal radius, in proportion to the
+# overlap, so pushes between two agents are equal and opposite and repeat
+# exactly on every run. Coincident agents separate along +x for the lower
+# index and -x for the higher, so a stack never stays stuck. The push is
+# capped so avoidance cannot overpower path following.
+module NavCrowd:
+    private:
+        const module Tune:
+            AGENTS: usize = 8
+            LIMIT: i64 = 100000
+
+    public:
+        struct Crowd:
+            xs: i64[8]
+            ys: i64[8]
+            count: i64
+
+        struct Push:
+            dx: i64
+            dy: i64
+
+        def Crowd() -> Crowd:
+            Crowd{xs: [0, 0, 0, 0, 0, 0, 0, 0], ys: [0, 0, 0, 0, 0, 0, 0, 0], count: 0}
+
+        def crowd_root(value: i64) -> i64:
+            return 0 if value <= 0
+            for n in 0..<400 |root: i64 = 0| -> root:
+                root <- n.i64() if n.i64() * n.i64() <= value
+
+        def near(value: i64) -> bool:
+            value > 0 - Tune::LIMIT and value < Tune::LIMIT
+
+        # Push on agent `i` from agent `j`. Zero when either index is invalid,
+        # they are the same agent, or they are at least `radius` apart.
+        def pair_push(c: Crowd&, i: i64, j: i64, radius: i64) -> Push:
+            none: Push = Push{dx: 0, dy: 0}
+            return none if i == j or i < 0 or j < 0 or i >= c.count or j >= c.count or radius <= 0
+            xi: i64 = c.xs[i.usize()]
+            yi: i64 = c.ys[i.usize()]
+            xj: i64 = c.xs[j.usize()]
+            yj: i64 = c.ys[j.usize()]
+            return none if not near(xi) or not near(yi) or not near(xj) or not near(yj) or radius > Tune::LIMIT
+            gap_x: i64 = xi - xj
+            gap_y: i64 = yi - yj
+            squared: i64 = gap_x * gap_x + gap_y * gap_y
+            return none if squared >= radius * radius
+            return Push{dx: radius if i < j else 0 - radius, dy: 0} if squared == 0
+            distance: i64 = crowd_root(squared)
+            overlap: i64 = radius - distance
+            Push{dx: gap_x * overlap / distance, dy: gap_y * overlap / distance}
+
+        def clamp_axis(value: i64, cap: i64) -> i64:
+            return cap if value > cap
+            return 0 - cap if value < 0 - cap
+            value
+
+        # Total push on agent `i`, each axis capped at `cap`.
+        def avoid(c: Crowd&, i: i64, radius: i64, cap: i64) -> Push:
+            return Push{dx: 0, dy: 0} if cap <= 0
+            sum_x: mutable i64 = 0
+            sum_y: mutable i64 = 0
+            for j in 0..<Tune::AGENTS:
+                pushed: Push = pair_push(c, i, j.i64(), radius)
+                sum_x <- sum_x + pushed.dx
+                sum_y <- sum_y + pushed.dy
+            Push{dx: clamp_axis(sum_x, cap), dy: clamp_axis(sum_y, cap)}
