@@ -1,0 +1,77 @@
+# Retargeting map between a source and a target skeleton, and attachment
+# sockets. A map pairs up to 16 source bones with target bones; it is valid
+# only when every source and target bone is used at most once and indices are
+# in range, so two source bones can never drive one target bone. Translation
+# is scaled by the ratio of the two rigs' reference bone lengths (permille);
+# rotations pass through unscaled. A socket is a bone plus a fixed offset and
+# is rejected when it names a bone the skeleton does not have.
+module AnimationRetarget:
+    private:
+        const module Tune:
+            PAIRS: i64 = 16
+            BONES: i64 = 64
+
+    public:
+        struct Map:
+            count: mutable i64
+            source: mutable i64[16]
+            target: mutable i64[16]
+
+        struct Socket:
+            bone: i64
+            offset_x: i64
+            offset_y: i64
+            offset_z: i64
+
+        def make() -> Map:
+            zero: i64[16] = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            Map{count: 0, source: zero, target: zero}
+
+        def bone_ok(bone: i64) -> bool:
+            bone >= 0 and bone < 64
+
+        def uses_source(m: Map&, bone: i64) -> bool:
+            hit: mutable bool = false
+            for n in 0..<16:
+                s: i64 = n.i64()
+                hit <- true if s < m.count and m.source[s] == bone
+            hit
+
+        def uses_target(m: Map&, bone: i64) -> bool:
+            hit: mutable bool = false
+            for n in 0..<16:
+                s: i64 = n.i64()
+                hit <- true if s < m.count and m.target[s] == bone
+            hit
+
+        # Adds a pair; false for a bad bone, a repeated source or target bone,
+        # or a full map. A refused pair leaves the map untouched.
+        def pair(m: mutable Map&, source: i64, target: i64) -> bool:
+            return false if not bone_ok(source) or not bone_ok(target) or m.count >= 16
+            return false if uses_source(m, source) or uses_target(m, target)
+            i: i64 = m.count
+            m.source[i] <- source
+            m.target[i] <- target
+            m.count <- i + 1
+            true
+
+        # Target bone for a source bone, or -1.
+        def lookup(m: Map&, source: i64) -> i64:
+            found: mutable i64 = -1
+            for n in 0..<16:
+                s: i64 = n.i64()
+                found <- m.target[s] if found < 0 and s < m.count and m.source[s] == source
+            found
+
+        # Translation scale in permille from reference bone lengths (mm);
+        # 0 signals an unusable rig.
+        def scale_permille(source_len: i64, target_len: i64) -> i64:
+            return 0 if source_len <= 0 or target_len <= 0 or source_len >= 1000000 or target_len >= 1000000
+            target_len * 1000 / source_len
+
+        def scale_translation(value_mm: i64, permille: i64) -> i64:
+            return 0 if permille <= 0 or permille > 100000 or value_mm >= 100000000 or value_mm <= 0 - 100000000
+            value_mm * permille / 1000
+
+        def socket_ok(s: Socket&, bone_count: i64) -> bool:
+            bone_count > 0 and bone_count <= 64 and s.bone >= 0 and s.bone < bone_count and s.offset_x > -100000 and s.offset_x < 100000 and s.offset_y > -100000 and s.offset_y < 100000 and s.offset_z > -100000 and s.offset_z < 100000

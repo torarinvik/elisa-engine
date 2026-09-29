@@ -418,6 +418,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-29: `src/animation/foot_plant.elisa` adds pelvis-drop, leg-reach clamp and bounded-approach policy with `test/animation_foot_plant.elisa` (see `docs/validation/animation-foot-plant.md`); no IK solve or ground probes, so the item stays open.
 - [ ] **C06 · P2 · Retargeting and sockets** — After: C01, C04.
   Add rig maps, retarget poses, proportion handling, and attachments driven by evaluated skeletons. Done: two different rigs share a clip with documented limits; a held item stays aligned during blends, teleports, and character destruction.
+  Progress on 2026-09-29: `src/animation/retarget.elisa` adds a validated one-to-one bone map, translation scaling and socket checks with `test/animation_retarget.elisa` (see `docs/validation/animation-retarget.md`); no pose retargeting or attachment following, so the item stays open.
 - [ ] **C07 · P2 · Animation compression with ACL** — After: C02, A02.
   Add an optional cooked codec path and benchmark it against existing ozz storage on real clips using positional/angular error budgets. Done: codec choice follows measured size/decode/error results, rejects incompatible data, and does not force two decoders into every build.
 - [ ] **C08 · P1 · Character gameplay composition** — After: C04, C05, P05, R08.
