@@ -1,0 +1,47 @@
+# P10 sleeping for 2D bodies: a body whose speed stays under a threshold for
+# a number of consecutive steps goes to sleep and is skipped by integration;
+# any contact impulse or explicit wake resets it. Deterministic counters, so
+# the same scene sleeps on the same step everywhere.
+include "circles2d.elisa"
+
+module Physics2dSleep:
+    public:
+        struct Rule:
+            speed_um_s: i64
+            steps: i64
+
+        struct State:
+            quiet: mutable i64
+            asleep: mutable bool
+
+        def awake() -> State:
+            State{quiet: 0, asleep: false}
+
+        def slow(c: Physics2dCircles::Circle&, r: Rule&) -> bool:
+            limit: i64 = r.speed_um_s
+            c.vx <= limit and c.vx >= 0 - limit and c.vy <= limit and c.vy >= 0 - limit
+
+        # Call once per step after contacts. Returns true when the body falls
+        # asleep on this step; a sleeping body's velocity is zeroed.
+        def update(c: mutable Physics2dCircles::Circle&, s: mutable State&, r: Rule&) -> bool:
+            return false if s.asleep or c.mass_g <= 0
+            if not slow(c, r):
+                s.quiet <- 0
+                return false
+            s.quiet <- s.quiet + 1
+            return false if s.quiet < r.steps
+            s.asleep <- true
+            c.vx <- 0
+            c.vy <- 0
+            true
+
+        def wake(s: mutable State&) -> bool:
+            was: bool = s.asleep
+            s.asleep <- false
+            s.quiet <- 0
+            was
+
+        # Integrate only awake bodies.
+        def integrate(c: mutable Physics2dCircles::Circle&, s: State&, gravity_um_s2: i64, dt_ms: i64) -> bool:
+            return false if s.asleep
+            Physics2dCircles::integrate(c, gravity_um_s2, dt_ms)
