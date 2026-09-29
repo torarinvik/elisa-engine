@@ -2,6 +2,10 @@
 # event-triggered effects. AudioEvents decides whether an event plays and
 # into which slot; this module owns the native clips, voices and stream and
 # releases them all on `stop`. Without an audio route every call is a no-op.
+include "./sound_mix.elisa"
+include "../../src/audio/events_logged.elisa"
+include "../../src/runtime/decision_chunks.elisa"
+
 module CourseSounds:
     public:
         const EVENT_JUMP: u32 = 1
@@ -98,6 +102,9 @@ module CourseSounds:
                 mix: mutable AudioMixer::Mix
                 mood: mutable i32
                 last_variant: mutable u32
+                # Every started event's outcome, slot and variant (W09).
+                decisions: mutable RuntimeDecisionLog::Log
+                sealed_chunks: mutable i64
                 asset_sum: mutable u64
                 asset_checked_ms: mutable u64
 
@@ -126,9 +133,11 @@ module CourseSounds:
                 last_x: 0.0,
                 last_z: 0.0,
                 tracked: false,
-                mix: settled_mix(),
+                mix: CourseSoundMix::settled_mix(),
                 mood: MOOD_PLAY,
                 last_variant: 0,
+                decisions: RuntimeDecisionLog::recorder(0),
+                sealed_chunks: 0,
                 asset_sum: 0,
                 asset_checked_ms: 0,
             }
@@ -241,8 +250,11 @@ module CourseSounds:
         # `gain_permille` scales the event's volume; 1000 is full.
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
             return SILENT if not sounds.live
-            trigger: AudioEvents::Trigger = catch AudioEvents::trigger(&sounds.board, event, tick):
-                value: value
+            if RuntimeDecisionChunks::full(&sounds.decisions):
+                sounds.decisions <- RuntimeDecisionChunks::continue_after(&sounds.decisions)
+                sounds.sealed_chunks <- sounds.sealed_chunks + 1
+            trigger: AudioEvents::Trigger = catch AudioEventsLogged::trigger(&sounds.board, event, tick, &sounds.decisions):
+                value: value.trigger
                 error failure: AudioEvents::Trigger{outcome: AudioEvents::Outcome.Play, slot: AudioEvents::MAX_INSTANCES, variant: 0}
             return DUPLICATE if trigger.outcome == AudioEvents::Outcome.Duplicate
             return COOLING if trigger.outcome == AudioEvents::Outcome.Cooling
@@ -261,6 +273,10 @@ module CourseSounds:
             REPLACED if trigger.outcome == AudioEvents::Outcome.Replace else PLAYED
 
         # The variant of the last event that started a voice.
+        # Started events recorded through the decision log, across chunks.
+        def decisions(sounds: Sounds&) -> i64:
+            sounds.sealed_chunks * RuntimeDecisionLog::CAP + sounds.decisions.count
+
         def last_variant(sounds: Sounds&) -> u32:
             sounds.last_variant
 
@@ -274,8 +290,8 @@ module CourseSounds:
 
         # The authored gains for `mood`; full gain before the asset loads.
         def mood_snapshot(sounds: Sounds&, mood: i32) -> AudioMixer::Snapshot:
-            value: AudioMoods::Mood = AudioMoods::get(&sounds.triggers.moods, mood_id(mood))
-            AudioMixer::snapshot(permille_gain(value.music_permille), permille_gain(value.effects_permille), permille_gain(value.ui_permille))
+            value: AudioMoods::Mood = AudioMoods::get(&sounds.triggers.moods, CourseSoundMix::mood_slot(mood))
+            AudioMixer::snapshot(CourseSoundMix::permille_gain(value.music_permille), CourseSoundMix::permille_gain(value.effects_permille), CourseSoundMix::permille_gain(value.ui_permille))
 
         # Reads sounds/events.sfx without starting audio, so the mix can be
         # checked on a session without an audio route.
@@ -319,7 +335,7 @@ module CourseSounds:
             reload_events(sounds, "sounds/events.sfx")
 
         def mood_ramp_ms(sounds: Sounds&, mood: i32) -> u64:
-            AudioMoods::heard_ramp_ms(AudioMoods::get(&sounds.triggers.moods, mood_id(mood)))
+            AudioMoods::heard_ramp_ms(AudioMoods::get(&sounds.triggers.moods, CourseSoundMix::mood_slot(mood)))
 
         # Called every frame. A new mood starts a ramp from the gains heard
         # now; an unchanged mood keeps the running ramp. The heard gains go to
@@ -458,22 +474,12 @@ module CourseSounds:
             sounds.wind <- AudioRuntime::empty_clip()
             sounds.board <- AudioEvents::Board()
             sounds.triggers <- SoundEventAssets::Triggers()
-            sounds.mix <- settled_mix()
+            sounds.mix <- CourseSoundMix::settled_mix()
             sounds.mood <- MOOD_PLAY
             full: AudioMixer::Snapshot = mood_snapshot(sounds, MOOD_PLAY)
             apply_gains(full) and released
 
     private:
-        def mood_id(mood: i32) -> u64:
-            mood.u64() if mood >= 0 else AudioMoods::MAX_MOODS
-
-        def permille_gain(permille: u64) -> f32:
-            AudioMoods::heard_permille(permille).f32() / 1000.0
-
-        def settled_mix() -> AudioMixer::Mix:
-            full: AudioMixer::Snapshot = AudioMixer::snapshot(1.0, 1.0, 1.0)
-            AudioMixer::Mix{from: full, goal: full, start_tick: 0, ramp_ticks: 0}
-
         def cue_stream(sounds: Sounds&, cue: u64) -> AudioRuntime::StreamHandle:
             sounds.victory if cue == MUSIC_VICTORY else sounds.music
 

@@ -50,6 +50,8 @@
                     fired: i32 = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, tick.u64())
                     count <- count + 1 if fired != CourseSounds::FIRE_FAILED and CourseSounds::last_variant(&sounds) == 0
             return 169 if common < 130 or common > 170
+            # Each of the 200 jumps started a voice and logged one decision.
+            return 169 if CourseSounds::decisions(&sounds) != 200
             _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
             first: u32 = CourseSounds::last_variant(&sounds)
             CourseSounds::reset_scene(&sounds)
