@@ -1,0 +1,89 @@
+include "../src/animation/effector_drag.elisa"
+include "../src/animation/effector_pose.elisa"
+
+def near(a: f64, b: f64, e: f64) -> bool:
+    a - b < e and b - a < e
+
+def vnear(a: MotionQuat::V, b: MotionQuat::V, e: f64) -> bool:
+    near(a.x, b.x, e) and near(a.y, b.y, e) and near(a.z, b.z, e)
+
+def unit(q: MotionQuat::Q) -> bool:
+    near(MotionQuat::dot(q, q), 1.0, 1.0e-12)
+
+def dir(p: darray[f64]&, a: i64, b: i64) -> MotionQuat::V:
+    x: MotionQuat::V = EffectorPose::at(p, a)
+    y: MotionQuat::V = EffectorPose::at(p, b)
+    MotionQuat::vnormalize(MotionQuat::V{x: y.x - x.x, y: y.y - x.y, z: y.z - x.z})
+
+def main() -> i32:
+    # Arc: takes a to b, is unit, handles equal, opposite and zero directions.
+    x: MotionQuat::V = MotionQuat::V{x: 1.0, y: 0.0, z: 0.0}
+    y: MotionQuat::V = MotionQuat::V{x: 0.0, y: 2.0, z: 0.0}
+    q: MotionQuat::Q = EffectorPose::arc(x, y)
+    return 1 if not unit(q) or not vnear(MotionQuat::rotate(q, x), MotionQuat::V{x: 0.0, y: 1.0, z: 0.0}, 1.0e-12)
+    same: MotionQuat::Q = EffectorPose::arc(y, y)
+    return 2 if not (near(same.w, 1.0, 1.0e-12) and near(same.x, 0.0, 1.0e-12))
+    back: MotionQuat::V = MotionQuat::V{x: -3.0, y: 0.0, z: 0.0}
+    flip: MotionQuat::Q = EffectorPose::arc(x, back)
+    return 3 if not unit(flip) or not vnear(MotionQuat::rotate(flip, x), MotionQuat::V{x: -1.0, y: 0.0, z: 0.0}, 1.0e-12)
+    zero: MotionQuat::V = MotionQuat::V{x: 0.0, y: 0.0, z: 0.0}
+    return 4 if EffectorPose::arc(zero, x).w != 1.0 or EffectorPose::arc(x, zero).w != 1.0
+    upflip: MotionQuat::Q = EffectorPose::arc(MotionQuat::V{x: 0.0, y: 1.0, z: 0.0}, MotionQuat::V{x: 0.0, y: -1.0, z: 0.0})
+    return 5 if not vnear(MotionQuat::rotate(upflip, MotionQuat::V{x: 0.0, y: 1.0, z: 0.0}), MotionQuat::V{x: 0.0, y: -1.0, z: 0.0}, 1.0e-12)
+
+    # Hip, knee, ankle, spare; drag the ankle and convert the solve.
+    rest: darray[f64] = [0.0, 1.0, 0.0, 0.0, 0.5, 0.3, 0.0, 0.0, 0.0, 0.3, 1.0, 0.0]
+    chain: darray[i64] = [0, 1, 2]
+    press: darray[f64] = [0.0, 5.0, 0.0, 0.0, -1.0, 0.0]
+    session: EffectorDrag::Session = EffectorDrag::begin(GizmoIndex::PLANE_XZ, Gizmo::world_basis(), rest, chain, press)
+    now: darray[f64] = [0.25, 5.0, 0.1, 0.0, -1.0, 0.0]
+    step: EffectorDrag::Step = EffectorDrag::solve(session, EffectorDrag::target(session, now), 0.000001, 32)
+    return 6 if step.outcome != AnimationFabrik::Outcome.Reached
+    solved: darray[f64] = step.positions
+    # Rest world rotations: the hip turned 90 degrees about y, the knee and
+    # ankle a quarter turn about x and z, so the check is not about identity.
+    h: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::V{x: 0.0, y: 1.0, z: 0.0}, 1.5707963267948966)
+    k: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::V{x: 1.0, y: 0.0, z: 0.0}, 0.4)
+    a: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}, -0.7)
+    rest_world: darray[f64] = [h.x, h.y, h.z, h.w, k.x, k.y, k.z, k.w, a.x, a.y, a.z, a.w]
+    world: darray[f64] = EffectorPose::world(rest, solved, chain, rest_world)
+    return 7 if world.count != 12
+    # Each aimed bone's bone-space direction, carried by the new world
+    # rotation, points along the solved bone.
+    for j in 0..<2 |world, rest_world, rest, solved|:
+        old: MotionQuat::Q = EffectorPose::quat_at(rest_world, j.i64(), 3)
+        now_q: MotionQuat::Q = EffectorPose::quat_at(world, j.i64(), 3)
+        return 8 if not unit(now_q)
+        in_bone: MotionQuat::V = MotionQuat::rotate(MotionQuat::conjugate(old), dir(rest, j.i64(), j.i64() + 1))
+        return 9 if not vnear(MotionQuat::rotate(now_q, in_bone), dir(solved, j.i64(), j.i64() + 1), 1.0e-9)
+    # The effector keeps its rest world rotation exactly.
+    for c in 8..<12 |world, rest_world|:
+        return 10 if world[c] != rest_world[c]
+    # Local rotations compose back to the world ones through the chain.
+    outside: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}, 0.3)
+    local: darray[f64] = EffectorPose::local(world, outside)
+    return 11 if local.count != 12
+    mutable acc: MotionQuat::Q = outside
+    for j in 0..<3 |local, world, acc|:
+        acc <- MotionQuat::mul(acc, EffectorPose::quat_at(local, j.i64(), 3))
+        w: MotionQuat::Q = EffectorPose::quat_at(world, j.i64(), 3)
+        return 12 if not near(MotionQuat::dot(acc, w) * MotionQuat::dot(acc, w), 1.0, 1.0e-9)
+    # An unmoved chain keeps every rotation.
+    still: darray[f64] = EffectorPose::world(rest, rest, chain, rest_world)
+    for c in 0..<12 |still, rest_world|:
+        return 13 if not near(still[c], rest_world[c], 1.0e-12)
+    # Rejected inputs.
+    lone: darray[f64] = [0.0, 0.0, 0.0, 1.0]
+    ragged: darray[f64] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0]
+    return 20 if EffectorPose::world(rest, solved, chain, lone).count != 0
+    one: darray[i64] = [0]
+    return 21 if EffectorPose::world(rest, solved, one, lone).count != 0
+    outside_chain: darray[i64] = [0, 1, 4]
+    return 22 if EffectorPose::world(rest, solved, outside_chain, rest_world).count != 0
+    shorter: darray[f64] = [0.0, 1.0, 0.0, 0.0, 0.5, 0.3, 0.0, 0.0, 0.0]
+    return 23 if EffectorPose::world(rest, shorter, chain, rest_world).count != 0
+    return 24 if EffectorPose::local(lone, outside).count != 0
+    return 25 if EffectorPose::local(ragged, outside).count != 0
+    negative: darray[i64] = [-1, 1, 2]
+    return 26 if EffectorPose::world(rest, solved, negative, rest_world).count != 0
+    0

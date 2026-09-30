@@ -1,0 +1,42 @@
+# Integer rules for EffectorPose, split out so the prover can check them:
+# where a chain joint's packed xyzw rotation sits, each joint's parent in the
+# chain, and which joints aim a bone.
+module EffectorPoseIndex:
+    public:
+        const MIN_CHAIN: i64 = 2
+        const MAX_CHAIN: i64 = 8
+
+        # Offset of component `c` (x, y, z, w) of chain joint `k` in a packed
+        # rotation array, or -1 outside the chain.
+        def quat_slot(k: i64, c: i64, count: i64) -> i64:
+            requires count >= 0
+            requires count <= 8
+            ensure result >= -1
+            ensure result < 32
+            ensure k >= 0 or result == -1
+            ensure k < count or result == -1
+            ensure c >= 0 or result == -1
+            ensure c < 4 or result == -1
+            ensure k < 0 or k >= count or c < 0 or c >= 4 or result == k + k + k + k + c
+            return -1 if k < 0 or k >= count or c < 0 or c >= 4
+            k + k + k + k + c
+
+        # The chain joint a joint's local rotation is relative to; -1 for the
+        # root, whose parent lies outside the chain.
+        def parent(k: i64, count: i64) -> i64:
+            requires count >= 0
+            requires count <= 8
+            ensure result >= -1
+            ensure result < 7
+            ensure result < k or result == -1
+            ensure k < 1 or k >= count or result == k - 1
+            return -1 if k < 1 or k >= count
+            k - 1
+
+        # Every chain joint but the effector aims its bone at the next joint;
+        # the effector keeps its world orientation.
+        def aims(k: i64, count: i64) -> bool:
+            ensure not result or k >= 0
+            ensure not result or k < count - 1
+            return false if k < 0 or k >= count - 1
+            true

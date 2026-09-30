@@ -1,0 +1,34 @@
+include "../src/animation/effector_pose_index.elisa"
+
+extend EffectorPoseIndex:
+    # quat_slot, parent and aims carry their exact rules as their own proved
+    # ensures; these wrappers restate the cases callers rely on.
+    def prove_slot_bounded(k: i64, c: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 8
+        ensure result >= -1
+        ensure result < 32
+        quat_slot(k, c, count)
+
+    def prove_slot_bad_component(k: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 8
+        ensure result == -1
+        quat_slot(k, 4, count)
+
+    def prove_root_has_no_parent(count: i64) -> i64:
+        requires count >= 0
+        requires count <= 8
+        ensure result == -1
+        parent(0, count)
+
+    def prove_parent_before(k: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 8
+        ensure result < k or result == -1
+        parent(k, count)
+
+    def prove_negative_never_aims(k: i64, count: i64) -> bool:
+        requires k < 0
+        ensure not result
+        aims(k, count)

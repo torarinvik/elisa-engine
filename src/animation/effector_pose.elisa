@@ -1,0 +1,88 @@
+# Rotations for an IK drag (M04): turns the joint positions EffectorDrag
+# solves into local rotations a skinned pose override can take. The chain's
+# joints must each be the next one's parent. Each bone keeps its rest world
+# rotation turned by the shortest arc from its rest direction to its solved
+# direction; the effector keeps its rest world rotation so a hand or foot
+# does not twist with the limb. Local rotations are relative to the chain
+# parent, and the root's to `outside`, its unchanged parent's world rotation.
+include "./motion_quat.elisa"
+include "./effector_pose_index.elisa"
+
+module EffectorPose:
+    private:
+        const EPSILON: f64 = 0.000000001
+
+    public:
+        def at(p: darray[f64]&, joint: i64) -> MotionQuat::V:
+            MotionQuat::V{x: p[(joint * 3).usize()], y: p[(joint * 3 + 1).usize()], z: p[(joint * 3 + 2).usize()]}
+
+        def quat_at(q: darray[f64]&, k: i64, count: i64) -> MotionQuat::Q:
+            MotionQuat::Q{x: q[EffectorPoseIndex::quat_slot(k, 0, count).usize()], y: q[EffectorPoseIndex::quat_slot(k, 1, count).usize()],
+                z: q[EffectorPoseIndex::quat_slot(k, 2, count).usize()], w: q[EffectorPoseIndex::quat_slot(k, 3, count).usize()]}
+
+        # Shortest-arc rotation taking direction `a` to direction `b`. Opposite
+        # directions turn half way around an axis perpendicular to `a`;
+        # a zero-length direction gives the identity.
+        def arc(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::Q:
+            u: MotionQuat::V = MotionQuat::vnormalize(a)
+            v: MotionQuat::V = MotionQuat::vnormalize(b)
+            return MotionQuat::identity() if MotionQuat::vdot(u, u) < 0.5 or MotionQuat::vdot(v, v) < 0.5
+            d: f64 = MotionQuat::vdot(u, v)
+            if d < -1.0 + EPSILON:
+                side: MotionQuat::V = MotionQuat::cross(u, MotionQuat::V{x: 1.0, y: 0.0, z: 0.0})
+                other: MotionQuat::V = MotionQuat::cross(u, MotionQuat::V{x: 0.0, y: 1.0, z: 0.0})
+                mutable axis: MotionQuat::V = MotionQuat::vnormalize(other)
+                if MotionQuat::vdot(side, side) > MotionQuat::vdot(other, other):
+                    axis <- MotionQuat::vnormalize(side)
+                return MotionQuat::Q{x: axis.x, y: axis.y, z: axis.z, w: 0.0}
+            c: MotionQuat::V = MotionQuat::cross(u, v)
+            MotionQuat::normalize(MotionQuat::Q{x: c.x, y: c.y, z: c.z, w: 1.0 + d})
+
+        # Solved world rotations (xyzw per chain joint) from the rest and
+        # solved packed xyz positions and the chain's rest world rotations.
+        # Empty when the chain, rotation count or any joint is unusable.
+        def world(rest: darray[f64]&, solved: darray[f64]&, chain: darray[i64]&, rest_world: darray[f64]&) -> darray[f64]:
+            none: darray[f64] = []
+            count: i64 = chain.count.i64()
+            joints: i64 = rest.count.i64() / 3
+            return none if count < EffectorPoseIndex::MIN_CHAIN or count > EffectorPoseIndex::MAX_CHAIN
+            return none if rest.count != solved.count or rest.count.i64() != joints * 3 or rest_world.count.i64() != count * 4
+            mutable ok: bool = true
+            for k in 0..<chain.count |chain, joints, ok|:
+                ok <- ok and chain[k] >= 0 and chain[k] < joints
+            return none if not ok
+            mutable out: darray[f64] = []
+            for k in 0..<chain.count |chain, rest, solved, rest_world, count, out|:
+                mutable q: MotionQuat::Q = quat_at(rest_world, k.i64(), count)
+                if EffectorPoseIndex::aims(k.i64(), count):
+                    a: MotionQuat::V = at(rest, chain[k + 1])
+                    b: MotionQuat::V = at(rest, chain[k])
+                    c: MotionQuat::V = at(solved, chain[k + 1])
+                    e: MotionQuat::V = at(solved, chain[k])
+                    turn: MotionQuat::Q = arc(MotionQuat::V{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}, MotionQuat::V{x: c.x - e.x, y: c.y - e.y, z: c.z - e.z})
+                    q <- MotionQuat::normalize(MotionQuat::mul(turn, q))
+                out.push(q.x)
+                out.push(q.y)
+                out.push(q.z)
+                out.push(q.w)
+            out
+
+        # Local rotations for the pose override: each solved world rotation
+        # relative to its chain parent's, the root's relative to `outside`.
+        def local(world_rotations: darray[f64]&, outside: MotionQuat::Q) -> darray[f64]:
+            none: darray[f64] = []
+            count: i64 = world_rotations.count.i64() / 4
+            return none if count < EffectorPoseIndex::MIN_CHAIN or count > EffectorPoseIndex::MAX_CHAIN or world_rotations.count.i64() != count * 4
+            mutable out: darray[f64] = []
+            for k in 0..<8 |world_rotations, outside, count, out|:
+                if k.i64() < count:
+                    p: i64 = EffectorPoseIndex::parent(k.i64(), count)
+                    mutable parent_q: MotionQuat::Q = outside
+                    if p >= 0:
+                        parent_q <- quat_at(world_rotations, p, count)
+                    q: MotionQuat::Q = MotionQuat::normalize(MotionQuat::mul(MotionQuat::conjugate(parent_q), quat_at(world_rotations, k.i64(), count)))
+                    out.push(q.x)
+                    out.push(q.y)
+                    out.push(q.z)
+                    out.push(q.w)
+            out
