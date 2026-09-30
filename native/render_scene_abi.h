@@ -503,6 +503,7 @@ int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_set_visibility_policy(
     int64_t handle, float draw_distance, float lod_bias, uint32_t layer_mask, int32_t renderable);
 int32_t elisa_render_scene_v1_set_occlusion_culling(int32_t enabled);
+int32_t elisa_render_scene_v1_set_wireframe_mode(int32_t mode);
 int64_t elisa_render_scene_v1_create_text(const char* text, float x, float y,
     int32_t font_size, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_text(int64_t handle, const char* text);

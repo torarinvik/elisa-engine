@@ -52,10 +52,31 @@ The mutation check caught every mutant except one equivalent mutant. Turning
 the zero-size early return into a negative-size one still draws no stars,
 because `points` rejects a zero size too.
 
+## Native drawing over a mesh
+
+`scripts/skeleton_display_smoke.py` cooks a four-joint skinned panel and runs
+`test/render_scene_skeleton_display_main.elisa` on SDL3/Metal. The skeleton
+lies 0.1 below the panel, joint 2 is selected and joint 3 hovered. Five
+captures are compared against the bare mesh:
+
+- **Depth-tested:** 0 pixels change, and no selected-orange pixel appears.
+- **X-ray:** 69 pixels change, 22 orange and 17 yellow, so role colours survive
+  Wicked's tone mapping (about 209,165,79 and 205,199,139).
+- **Mesh hidden:** the mesh disappears and the depth-tested skeleton shows
+  (22 orange pixels).
+- **Wireframe:** the new `RenderScene::set_wireframe_mode` (0 shaded,
+  1 wireframe only, 2 wireframe over shaded) changes 7860 pixels. Mode 3 is
+  rejected.
+
+The first run found a bug. `set_visible` hid only the root object, but a
+mesh with placement metadata draws through child objects, so the panel stayed
+visible. `set_visible` now hides and shows those children too; it checks
+them all before changing any.
+
+Wicked's view is left-handed here: +x draws to the left of the screen, so
+the skeleton sits at negative x to lie under the panel.
+
 ## Still open
 
-This covers only the records. Still open for M03:
-- drawing the records over a skinned mesh in the SDL3/Metal smoke test;
-- the mesh-visibility toggle (`set_visible` already exists) and the wireframe
-  toggle (Wicked's `SetWireframeMode`);
-- picking in every M01 viewport.
+Still open for M03: picking in every M01 viewport. The picking math is done
+(docs/validation/skeleton-pick.md); wiring it to live viewports is not.

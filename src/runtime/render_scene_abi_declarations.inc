@@ -106,6 +106,7 @@
             draw_distance: f32, lod_bias: f32, layer_mask: u32, renderable: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_occlusion_culling(enabled: i32) -> i32
+        extern elisa_render_scene_v1_set_wireframe_mode(mode: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_stop_animation(handle: i64, blend_seconds: f32) -> i32
         @callconv(c)

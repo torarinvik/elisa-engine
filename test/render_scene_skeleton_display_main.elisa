@@ -1,0 +1,95 @@
+# M03 skeleton display on a live SDL3/Metal scene. A four-joint skeleton lies
+# just under the skinned self-test panel (the panel is flat at y = 0 and draws
+# around x = -2.9..-1; the camera looks down on it). Five captures go to the directory in
+# $ELISA_SKELETON_DISPLAY_DIR: the bare mesh, the depth-tested skeleton (hidden
+# by the panel), the x-ray skeleton (drawn over it), the depth-tested skeleton
+# with the mesh hidden, and the mesh in wireframe. Run via
+# scripts/skeleton_display_smoke.py, which compares them.
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_debug.elisa"
+include "../src/math/geometry.elisa"
+include "../src/animation/skeleton_display.elisa"
+
+const module Shot:
+    WARMUP: usize = 4
+    SETTLE: usize = 2
+
+def skeleton() -> darray[f64]:
+    [-1.4, -0.1, 0.0, -1.8, -0.1, 0.0, -2.2, -0.1, 0.0, -1.8, -0.1, 0.3]
+
+# Present a few frames with the skeleton queued (or not) and save `name`
+# under the capture directory. Returns 0 or a failing step.
+def shot(records: darray[f64]&, xray: bool, chunk: mutable RenderScene::DebugLineChunk&, path: cstr) -> i32:
+    for _ in 0..<Shot::SETTLE |records, xray, chunk|:
+        if records.count > 0:
+            queued: usize = catch RenderScene::debug_line_records(records, SkeletonDisplayIndex::depth_tested(xray), chunk):
+                value: value
+                error failure: return 1
+            return 2 if queued * 10 != records.count
+        return 3 if Application::pump() != Application::PumpStatus.Running
+    return 4 if not Application::save_screenshot(path)
+    0
+
+def exercise() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Skeleton Display", width: 320, height: 240, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 240, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: 0.0, y: 3.0, z: 1.5}, Geometry::vec3_zero(),
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh("build/cooked/subsets/skeleton-display-rig.pkg",
+        Geometry::transform_identity(), RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    none: darray[f64] = []
+    joints: darray[f64] = skeleton()
+    parents: darray[i64] = [-1, 0, 1, 1]
+    records: darray[f64] = SkeletonDisplay::lines(joints, parents, 2, 3, 0.05)
+    return 5 if records.count.i64() != SkeletonDisplayIndex::display_lines(4, 3, true) * 10
+    chunk: mutable RenderScene::DebugLineChunk = RenderScene::DebugLineChunk()
+    for _ in 0..<Shot::WARMUP:
+        return 6 if Application::pump() != Application::PumpStatus.Running
+    return 10 if shot(none, false, &chunk, Application::environment_value("ELISA_SKELETON_BASE")) != 0
+    return 20 if shot(records, false, &chunk, Application::environment_value("ELISA_SKELETON_DEPTH")) != 0
+    return 30 if shot(records, true, &chunk, Application::environment_value("ELISA_SKELETON_XRAY")) != 0
+    hidden: i32 = catch RenderScene::set_visible(mesh, false):
+        ok: 0
+        error failure: 1
+    return 40 if hidden != 0
+    return 41 if shot(records, false, &chunk, Application::environment_value("ELISA_SKELETON_HIDDEN")) != 0
+    shown: i32 = catch RenderScene::set_visible(mesh, true):
+        ok: 0
+        error failure: 1
+    return 50 if shown != 0
+    rejected: i32 = catch RenderScene::set_wireframe_mode(3):
+        ok: 0
+        error failure: 1
+    return 51 if rejected != 1
+    wire: i32 = catch RenderScene::set_wireframe_mode(1):
+        ok: 0
+        error failure: 1
+    return 52 if wire != 0
+    return 53 if shot(none, false, &chunk, Application::environment_value("ELISA_SKELETON_WIRE")) != 0
+    shaded: i32 = catch RenderScene::set_wireframe_mode(0):
+        ok: 0
+        error failure: 1
+    return 54 if shaded != 0
+    0
+
+def main() -> i32:
+    result: i32 = exercise()
+    _ = catch RenderScene::debug_clear():
+        ok: 0
+        error failure: 1
+    _ = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    _ = Application::shutdown()
+    result

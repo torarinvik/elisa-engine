@@ -568,4 +568,7 @@ module RenderScene:
         def set_visible(handle: InstanceHandle, visible: bool) -> void error[RenderSceneError]:
             visible_value: i32 = 1 if visible else 0
             try check_status(elisa_render_scene_v1_set_visible(handle.native_value, visible_value))
+        # 0 shaded, 1 wireframe only, 2 wireframe drawn over the shaded mesh.
+        def set_wireframe_mode(mode: i32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_wireframe_mode(mode))
         include "./render_scene_overlay_api.inc"

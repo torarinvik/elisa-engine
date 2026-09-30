@@ -19,7 +19,14 @@ extern "C" int32_t elisa_render_scene_v1_set_visible(int64_t handle, int32_t vis
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     wi::scene::ObjectComponent* object = state.scene->objects.GetComponent(state.instances[slot].entity);
     if (object == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    // Multi-placement meshes draw through child objects; hide those too.
+    for (wi::ecs::Entity child : state.instances[slot].imported_mesh_entities) {
+        if (state.scene->objects.GetComponent(child) == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     object->SetRenderable(visible != 0);
+    for (wi::ecs::Entity child : state.instances[slot].imported_mesh_entities) {
+        state.scene->objects.GetComponent(child)->SetRenderable(visible != 0);
+    }
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -49,6 +56,18 @@ extern "C" int32_t elisa_render_scene_v1_set_occlusion_culling(int32_t enabled) 
     if (state.visibility_lod == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     state.visibility_lod->set_occlusion_culling(enabled != 0);
     return ELISA_RENDER_SCENE_OK;
+}
+
+// 0 shaded, 1 wireframe only, 2 wireframe over shaded (Wicked WIREFRAME_MODE order).
+extern "C" int32_t elisa_render_scene_v1_set_wireframe_mode(int32_t mode) {
+    if (mode < 0 || mode > 2) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    wi::renderer::SetWireframeMode(static_cast<wi::renderer::WIREFRAME_MODE>(mode));
+    return wi::renderer::GetWireframeMode() == static_cast<wi::renderer::WIREFRAME_MODE>(mode)
+        ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_BACKEND_FAILED;
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
