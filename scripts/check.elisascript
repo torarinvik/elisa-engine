@@ -571,6 +571,8 @@ def main(arguments: darray[sview]) -> i64:
     # through its own link script.
     if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), "viewport_render"]) != 0 or run_visible(str(root.joinpath("build/viewport_render-test")), []) != 0:
         return 1
+    if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), "viewport_motion"]) != 0 or run_visible(str(root.joinpath("build/viewport_motion-test")), []) != 0:
+        return 1
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))
     for fixture in ["allocator_copy", "world_copy", "recorder_copy", "bridge_copy"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output):

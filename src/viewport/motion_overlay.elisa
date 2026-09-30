@@ -1,0 +1,153 @@
+# Motion overlays for mocap cleanup (plan M05): batched points, joint motion
+# trails over a frame window, per-segment speed or acceleration heat, ground
+# contact markers and onion-skin ghost skeletons. Everything is appended to a
+# ViewportDraw list, so it is one batched upload per frame and rendered by the
+# same GPU path (and CPU reference rasterizer) as the rest of the viewport.
+#
+# Tracks are per-joint position arrays indexed by frame (world space, metres,
+# sampled at `fps`). Window, ghost-frame and heat-bucket arithmetic comes from
+# MotionOverlayPolicy, whose range guarantees are proved, so no overlay can
+# index outside a track or the colour ramp.
+#
+# Labels are not provided: the viewport draws lines and triangles only; text
+# over the viewport belongs to the host UI (see docs/validation/
+# viewport-motion-overlay.md).
+include "./viewport_draw.elisa"
+include "./motion_overlay_policy.elisa"
+include "../animation/pose_override.elisa"
+
+module MotionOverlay:
+    public:
+        const SPEED: i32 = 0
+        const ACCELERATION: i32 = 1
+        # Colours in the heat ramp.
+        const RAMP: i64 = 8
+
+        struct Heat:
+            # SPEED (m/s) or ACCELERATION (m/s^2).
+            mode: i32
+            # Values at or below `low` are the coolest colour, at or above
+            # `high` the hottest.
+            low: f32
+            high: f32
+            fps: f32
+
+        # Screen-sized markers at every point.
+        def points(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, pts: darray[Geometry::Vec3]&, radius_px: f32, color: u32, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            for k in 0..<pts.count:
+                try ViewportDraw::marker(list, cam, pts[k], radius_px, color, layer)
+            pts.count
+
+        # The track as a polyline over [frame - before, frame + after]; returns
+        # the number of segments. Empty tracks draw nothing.
+        def trail(list: mutable ViewportDraw::List&, track: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64, color: u32, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            return 0 if track.count < 2
+            count: i64 = track.count.i64()
+            first: i64 = MotionOverlayPolicy::window_first(frame, before, count)
+            last: i64 = MotionOverlayPolicy::window_last(frame, after, count)
+            mutable drawn: usize = 0
+            for f in first..<last:
+                try ViewportDraw::line(list, track[f.usize()], track[(f + 1).usize()], color, layer)
+                drawn <- drawn + 1
+            drawn
+
+        # Ramp colour for bucket `b` of RAMP: blue, cyan, green, yellow,
+        # orange, red.
+        def ramp_color(b: i64) -> u32:
+            t: i64 = MotionOverlayPolicy::heat_bucket(b, RAMP)
+            return ViewportDraw::rgba(40, 80, 230, 255) if t == 0
+            return ViewportDraw::rgba(40, 170, 230, 255) if t == 1
+            return ViewportDraw::rgba(40, 200, 150, 255) if t == 2
+            return ViewportDraw::rgba(90, 210, 70, 255) if t == 3
+            return ViewportDraw::rgba(200, 220, 50, 255) if t == 4
+            return ViewportDraw::rgba(245, 180, 40, 255) if t == 5
+            return ViewportDraw::rgba(245, 110, 30, 255) if t == 6
+            ViewportDraw::rgba(240, 30, 30, 255)
+
+        # Speed (m/s) of segment f -> f+1, or acceleration (m/s^2) at f
+        # (central difference; clip ends use the one-sided neighbour).
+        def segment_value(track: darray[Geometry::Vec3]&, f: i64, heat: Heat&) -> f32:
+            n: i64 = track.count.i64()
+            return 0.0 if n < 2 or f < 0 or f >= n - 1
+            if heat.mode == ACCELERATION:
+                return 0.0 if n < 3
+                c: i64 = f if f >= 1 else 1
+                d: Geometry::Vec3 = Geometry::vec3_add(Geometry::vec3_sub(track[(c + 1).usize()], Geometry::vec3_scale(track[c.usize()], 2.0)), track[(c - 1).usize()])
+                return Geometry::vec3_length(d) * heat.fps * heat.fps
+            Geometry::vec3_length(Geometry::vec3_sub(track[(f + 1).usize()], track[f.usize()])) * heat.fps
+
+        # Bucket of a value on the ramp (NaN counts as the hottest so bad data
+        # is flagged, not hidden).
+        def bucket_of(value: f32, heat: Heat&) -> i64:
+            return RAMP - 1 if value != value
+            span: f32 = heat.high - heat.low
+            return RAMP - 1 if not (span > 0.0) or value >= heat.high
+            return 0 if value <= heat.low
+            MotionOverlayPolicy::heat_bucket(((value - heat.low) / span * RAMP.f32()).i64(), RAMP)
+
+        # The trail coloured per segment by speed or acceleration.
+        def heat_trail(list: mutable ViewportDraw::List&, track: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64, heat: Heat&, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            return 0 if track.count < 2
+            count: i64 = track.count.i64()
+            first: i64 = MotionOverlayPolicy::window_first(frame, before, count)
+            last: i64 = MotionOverlayPolicy::window_last(frame, after, count)
+            mutable drawn: usize = 0
+            for f in first..<last:
+                c: u32 = ramp_color(bucket_of(segment_value(track, f, heat), heat))
+                try ViewportDraw::line(list, track[f.usize()], track[(f + 1).usize()], c, layer)
+                drawn <- drawn + 1
+            drawn
+
+        # Markers where the track is in ground contact (height above
+        # `ground_y` at most `height_limit` metres and speed at most
+        # `speed_limit` m/s) inside the window, dropped onto the ground.
+        def contacts(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, track: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64, fps: f32, ground_y: f32, height_limit: f32, speed_limit: f32, radius_px: f32, color: u32, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            return 0 if track.count < 2
+            count: i64 = track.count.i64()
+            first: i64 = MotionOverlayPolicy::window_first(frame, before, count)
+            last: i64 = MotionOverlayPolicy::window_last(frame, after, count)
+            heat: Heat = Heat{mode: SPEED, low: 0.0, high: 1.0, fps: fps}
+            mutable drawn: usize = 0
+            for f in first..<(last + 1):
+                p: Geometry::Vec3 = track[f.usize()]
+                s: f32 = segment_value(track, f if f < count - 1 else count - 2, &heat)
+                h_mm: i64 = millis(p.y - ground_y)
+                if MotionOverlayPolicy::in_contact(h_mm, millis(s), millis(height_limit), millis(speed_limit)):
+                    try ViewportDraw::marker(list, cam, Geometry::Vec3{x: p.x, y: ground_y, z: p.z}, radius_px, color, layer)
+                    drawn <- drawn + 1
+            drawn
+
+        # Onion-skin ghost: a skeleton at another frame's model transforms,
+        # bones only, in a faded colour. Returns bones drawn.
+        def ghost(list: mutable ViewportDraw::List&, rig: PoseOverride::Rig&, models: darray[Geometry::Transform]&, color: u32, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            count: usize = PoseOverride::rig_bone_count(rig)
+            return 0 if models.count != count
+            mutable drawn: usize = 0
+            for b in 0..<count:
+                parent: i64 = PoseOverride::rig_parent(rig, b)
+                if parent >= 0:
+                    try ViewportDraw::line(list, models[parent.usize()].position, models[b].position, color, layer)
+                    drawn <- drawn + 1
+            drawn
+
+        # Frame of ghost `k` (negative = earlier) every `step` frames.
+        def ghost_frame(frame: i64, k: i64, step: i64, count: i64) -> i64:
+            return 0 if count < 1
+            kk: i64 = k if k > -64 and k < 64 else (63 if k > 0 else -63)
+            ss: i64 = step if step > 0 and step < 100000 else 1
+            MotionOverlayPolicy::ghost_frame(frame, kk * ss, count)
+
+        # Ghost colour: tinted by direction (earlier cool, later warm) and
+        # fading with distance.
+        def ghost_color(k: i64, ghosts: i64) -> u32:
+            n: i64 = ghosts if ghosts > 0 else 1
+            d: i64 = k if k >= 0 else 0 - k
+            alpha: i64 = 200 - (d - 1) * 140 / n
+            return ViewportDraw::rgba(90, 150, 255, alpha) if k < 0
+            ViewportDraw::rgba(255, 150, 80, alpha)
+
+    private:
+        def millis(v: f32) -> i64:
+            return 9223372036854 if v != v or v > 9223372036854.0
+            return -9223372036854 if v < -9223372036854.0
+            (v * 1000.0).i64()

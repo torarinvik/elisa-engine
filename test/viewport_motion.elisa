@@ -1,0 +1,254 @@
+# Motion overlays (plan M05): a synthetic one-frame spike at frame 300 lights
+# up hot only where it is, in a CPU raster of a front view (written to
+# build/viewport_heat_spike.png); trail windows, ghost frames, contacts and
+# ghost skeletons count exactly; bad input (empty or short tracks, NaN,
+# absurd windows) draws nothing wrong; and 4 joints x 600 frames of heat
+# trails plus 3 ghosts build and render inside a 16.6 ms frame (skipped
+# without a Metal device).
+include "../src/viewport/viewport.elisa"
+include "../src/viewport/viewport_raster.elisa"
+include "../src/viewport/png_writer.elisa"
+include "../src/viewport/motion_overlay.elisa"
+
+@link_name("clock_gettime_nsec_np")
+extern c_clock_ns(clock: i32) -> u64 can[Blocking.IO]
+@link_name("putchar")
+extern c_putchar(c: i32) -> i32 can[Blocking.IO]
+
+def print_number(label: sview, value: i64):
+    for c in label:
+        _ = c_putchar(c.i32())
+    mutable digits: darray[i32] = []
+    mutable rest: i64 = value
+    digits.push((rest % 10).i32())
+    rest <- rest / 10
+    while rest > 0:
+        digits.push((rest % 10).i32())
+        rest <- rest / 10
+    for k in 0..<digits.count:
+        _ = c_putchar(48 + digits[digits.count - 1 - k])
+    _ = c_putchar(10)
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+# 600 frames sweeping x from -1 to 1 at height y (0.2 m/s at 60 fps), with
+# frame 300 lifted by `spike` metres.
+def sweep(y: f32, z: f32, spike: f32) -> darray[Geometry::Vec3]:
+    mutable t: darray[Geometry::Vec3] = []
+    for f in 0..<600:
+        x: f32 = -1.0 + 2.0 * f.f32() / 599.0
+        lift: f32 = spike if f == 300 else 0.0
+        t.push(v(x, y + lift, z))
+    return move t
+
+def heat(mode: i32) -> MotionOverlay::Heat:
+    MotionOverlay::Heat{mode: mode, low: 0.0, high: 2.0, fps: 60.0}
+
+def trail_n(list: mutable ViewportDraw::List&, t: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64) -> i64:
+    catch MotionOverlay::trail(list, t, frame, before, after, 0xffffffff, ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+
+def heat_n(list: mutable ViewportDraw::List&, t: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64, h: MotionOverlay::Heat&) -> i64:
+    catch MotionOverlay::heat_trail(list, t, frame, before, after, h, ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+
+def contacts_n(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, t: darray[Geometry::Vec3]&, frame: i64, before: i64, after: i64) -> i64:
+    catch MotionOverlay::contacts(list, cam, t, frame, before, after, 60.0, 0.0, 0.03, 0.2, 4.0, ViewportDraw::rgba(255, 60, 200, 255), ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+
+def red(img: ViewportRaster::Image&, x: i64, y: i64) -> bool:
+    k: usize = ((y * img.width + x) * 4).usize()
+    img.rgba[k] > 200 and img.rgba[k + 1] < 90 and img.rgba[k + 2] < 90
+
+def blue(img: ViewportRaster::Image&, x: i64, y: i64) -> bool:
+    k: usize = ((y * img.width + x) * 4).usize()
+    img.rgba[k + 2] > 180 and img.rgba[k] < 90
+
+# The spike picture: hot pixels only within 12 px of frame 300's column.
+def spike_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(480, 240, ViewportCamera::FRONT)
+    t: darray[Geometry::Vec3] = sweep(1.0, 0.0, 0.05)
+    h: MotionOverlay::Heat = heat(MotionOverlay::SPEED)
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    return 30 if heat_n(&list, &t, 300, 1000, 1000, &h) != 599
+    mutable img: ViewportRaster::Image = ViewportRaster::create(480, 240)
+    ViewportRaster::clear(&img, ViewportDraw::rgba(20, 20, 24, 255))
+    ViewportRaster::render(&img, &cam, &list)
+    _ = catch PngWriter::save("build/viewport_heat_spike.png", 480, 240, &img.rgba):
+        value: 0
+        error failure: return 31
+    sx: i64 = ViewportCamera::project(&cam, t[300]).x.i64()
+    mutable hot_near: i64 = 0
+    mutable hot_far: i64 = 0
+    mutable cool: i64 = 0
+    for y in 0..<240:
+        for x in 0..<480:
+            d: i64 = x.i64() - sx
+            if red(&img, x.i64(), y.i64()):
+                if d < 12 and d > -12:
+                    hot_near <- hot_near + 1
+                else:
+                    hot_far <- hot_far + 1
+            elif blue(&img, x.i64(), y.i64()):
+                cool <- cool + 1
+    print_number("spike hot px near: ", hot_near)
+    print_number("spike hot px elsewhere: ", hot_far)
+    print_number("cool px: ", cool)
+    return 32 if hot_near < 4
+    return 33 if hot_far != 0
+    return 34 if cool < 150
+    # Acceleration mode: the spike is hot, a steady segment is cold.
+    a: MotionOverlay::Heat = MotionOverlay::Heat{mode: MotionOverlay::ACCELERATION, low: 0.0, high: 50.0, fps: 60.0}
+    return 35 if MotionOverlay::bucket_of(MotionOverlay::segment_value(&t, 300, &a), &a) != MotionOverlay::RAMP - 1
+    return 36 if MotionOverlay::bucket_of(MotionOverlay::segment_value(&t, 100, &a), &a) != 0
+    0
+
+def windows_case() -> i32:
+    t: darray[Geometry::Vec3] = sweep(1.0, 0.0, 0.0)
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    return 40 if trail_n(&list, &t, 300, 10, 20) != 30
+    return 41 if trail_n(&list, &t, 5, 10, 20) != 25
+    return 42 if trail_n(&list, &t, 595, 10, 20) != 14
+    # A frame outside the clip is clamped to its end first, then windowed.
+    return 43 if trail_n(&list, &t, 100000, 10, 20) != 10
+    return 44 if trail_n(&list, &t, -100000, 0, 3) != 3
+    # Negative and absurd window sizes.
+    return 45 if trail_n(&list, &t, 300, -50, -50) != 0
+    return 46 if trail_n(&list, &t, 300, 9223372036854775000, 9223372036854775000) != 599
+    # Ghost frames: clamped to the clip, stepped, symmetric.
+    return 47 if MotionOverlay::ghost_frame(300, -1, 5, 600) != 295 or MotionOverlay::ghost_frame(300, 2, 5, 600) != 310
+    return 48 if MotionOverlay::ghost_frame(2, -3, 5, 600) != 0 or MotionOverlay::ghost_frame(598, 3, 5, 600) != 599
+    return 49 if MotionOverlay::ghost_frame(300, 1000, 99999, 600) != 599 or MotionOverlay::ghost_frame(300, 2, 1000000000, 600) != 302 or MotionOverlay::ghost_frame(300, 1, 5, 0) != 0
+    return 50 if MotionOverlay::ghost_frame(300, 1, -7, 600) != 301
+    # Ghost colours fade outward and differ by direction.
+    return 51 if MotionOverlay::ghost_color(-1, 3) == MotionOverlay::ghost_color(1, 3)
+    return 52 if (MotionOverlay::ghost_color(1, 3) >> 24) <= (MotionOverlay::ghost_color(3, 3) >> 24)
+    0
+
+def contacts_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create(320, 240)
+    # A foot: planted (y = 0.01) for frames 0..99, lifted after.
+    mutable t: darray[Geometry::Vec3] = []
+    for f in 0..<200:
+        t.push(v(0.1, 0.01 if f < 100 else 0.3, 0.0))
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    # Frame 99 is the takeoff (its forward segment lifts 0.29 m), so 0..98.
+    return 60 if contacts_n(&list, &cam, &t, 50, 50, 149) != 99
+    return 61 if contacts_n(&list, &cam, &t, 150, 20, 20) != 0
+    # Sliding at 1.2 m/s is not a contact even on the ground.
+    mutable slide: darray[Geometry::Vec3] = []
+    for f in 0..<100:
+        slide.push(v(f.f32() * 0.02, 0.0, 0.0))
+    return 62 if contacts_n(&list, &cam, &slide, 50, 50, 50) != 0
+    0
+
+def adversarial_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create(320, 240)
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    empty: darray[Geometry::Vec3] = []
+    one: darray[Geometry::Vec3] = [v(0.0, 0.0, 0.0)]
+    h: MotionOverlay::Heat = heat(MotionOverlay::SPEED)
+    return 70 if trail_n(&list, &empty, 0, 5, 5) != 0 or trail_n(&list, &one, 0, 5, 5) != 0
+    return 71 if heat_n(&list, &empty, 0, 5, 5, &h) != 0 or contacts_n(&list, &cam, &one, 0, 5, 5) != 0
+    return 72 if ViewportDraw::vertex_count(&list) != 0
+    # NaN positions: the draw list rejects them rather than storing them.
+    nan: f32 = 0.0 / 0.0
+    bad: darray[Geometry::Vec3] = [v(0.0, 0.0, 0.0), v(nan, 0.0, 0.0), v(1.0, 0.0, 0.0)]
+    return 73 if trail_n(&list, &bad, 1, 1, 1) != -1
+    # NaN speed is flagged hottest; an inverted range saturates.
+    return 74 if MotionOverlay::bucket_of(nan, &h) != MotionOverlay::RAMP - 1
+    inv: MotionOverlay::Heat = MotionOverlay::Heat{mode: MotionOverlay::SPEED, low: 2.0, high: 1.0, fps: 60.0}
+    return 75 if MotionOverlay::bucket_of(0.5, &inv) != MotionOverlay::RAMP - 1
+    return 76 if MotionOverlay::bucket_of(-5.0, &h) != 0 or MotionOverlay::bucket_of(1.0e30, &h) != MotionOverlay::RAMP - 1
+    # Ramp lookups outside the ramp clamp.
+    return 77 if MotionOverlay::ramp_color(-9) != MotionOverlay::ramp_color(0) or MotionOverlay::ramp_color(99) != MotionOverlay::ramp_color(7)
+    # Out-of-range segment indices are zero.
+    return 78 if MotionOverlay::segment_value(&one, 0, &h) != 0.0 or MotionOverlay::segment_value(&bad, 7, &h) != 0.0
+    # Points batch.
+    pts: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.2, 1.0, 0.0)]
+    n: i64 = catch MotionOverlay::points(&list, &cam, &pts, 3.0, 0xffffffff, ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+    return 79 if n != 2 or ViewportDraw::vertex_count(&list) == 0
+    0
+
+def add(rig: mutable PoseOverride::Rig&, parent: i64, offset: Geometry::Vec3) -> i32:
+    catch PoseOverride::rig_add(rig, parent, Geometry::transform_translate(Geometry::transform_identity(), offset)):
+        value: 0
+        error failure: 1
+
+def ghost_n(list: mutable ViewportDraw::List&, rig: PoseOverride::Rig&, models: darray[Geometry::Transform]&, k: i64) -> i64:
+    catch MotionOverlay::ghost(list, rig, models, MotionOverlay::ghost_color(k, 3), ViewportDraw::DEPTH):
+        value: value.i64()
+        error failure: -1
+
+# 4 joints x 600 frames of heat trails, contacts on two feet and 3 ghost
+# skeletons each side, built and rendered in under 16.6 ms.
+def budget_case() -> i32:
+    code: i32 = catch Viewport::create(1280, 720):
+        value: 0
+        Viewport::ViewportError.NoDevice: 1
+        error failure: 2
+    if code == 1:
+        print_number("no Metal device, budget skipped: ", 0)
+        return 0
+    mutable vp: Viewport::Viewport = catch Viewport::create(1280, 720):
+        value: value
+        error failure: return 90
+    mutable rig: PoseOverride::Rig = PoseOverride::Rig()
+    mutable bad: i32 = add(&rig, -1, v(0.0, 1.0, 0.0))
+    bad <- bad + add(&rig, 0, v(0.0, 0.5, 0.0))
+    bad <- bad + add(&rig, 0, v(-0.15, -0.9, 0.0))
+    bad <- bad + add(&rig, 0, v(0.15, -0.9, 0.0))
+    return 91 if bad != 0
+    held: PoseOverride::Overrides = PoseOverride::overrides(&rig)
+    mutable models: darray[Geometry::Transform] = []
+    _ = catch PoseOverride::evaluate_rest(&rig, &held, &models):
+        value: value
+        error failure: return 92
+    mutable tracks: darray[darray[Geometry::Vec3]] = []
+    tracks.push(sweep(1.0, 0.0, 0.05))
+    tracks.push(sweep(1.5, 0.0, 0.0))
+    tracks.push(sweep(0.05, 0.1, 0.0))
+    tracks.push(sweep(0.05, -0.1, 0.0))
+    h: MotionOverlay::Heat = heat(MotionOverlay::SPEED)
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    mutable worst: u64 = 0
+    for round in 0..<5:
+        start: u64 = c_clock_ns(4)
+        ViewportDraw::clear(&list)
+        mutable drawn: i64 = 0
+        for j in 0..<tracks.count:
+            drawn <- drawn + heat_n(&list, &tracks[j], 300, 1000, 1000, &h)
+        drawn <- drawn + contacts_n(&list, &vp.camera, &tracks[2], 300, 300, 300)
+        drawn <- drawn + contacts_n(&list, &vp.camera, &tracks[3], 300, 300, 300)
+        for k in 1..<4:
+            drawn <- drawn + ghost_n(&list, &rig, &models, k.i64())
+            drawn <- drawn + ghost_n(&list, &rig, &models, 0 - k.i64())
+        return 93 if drawn < 4 * 599 + 18
+        Viewport::invalidate(&vp, ViewportPolicy::DIRTY_CAMERA)
+        _ = Viewport::acknowledge(&vp, vp.published_frame)
+        rendered: bool = catch Viewport::tick(&vp, &list):
+            value: value
+            error failure: return 94
+        return 95 if not rendered
+        took: u64 = c_clock_ns(4) - start
+        worst <- took if round > 0 and took > worst else worst
+    print_number("overlay build+render worst ns: ", worst.i64())
+    return 96 if worst > 16600000
+    0
+
+def main() -> i32:
+    s: i32 = spike_case()
+    return s if s != 0
+    w: i32 = windows_case()
+    return w if w != 0
+    c: i32 = contacts_case()
+    return c if c != 0
+    a: i32 = adversarial_case()
+    return a if a != 0
+    budget_case()
