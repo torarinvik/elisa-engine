@@ -1,0 +1,131 @@
+# M01: the Wicked renderer's frame of the skinned self-test panel becomes the
+# backdrop of an engine viewport, and the shared-scene skeleton draws over it
+# in the same IOSurface ring. Saves $ELISA_BACKDROP_WICKED (the presented
+# Wicked frame) and $ELISA_BACKDROP_VIEWPORT (the composited viewport). Run via
+# scripts/viewport_backdrop_smoke.py, which compares them.
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/math/geometry.elisa"
+include "../src/viewport/viewport_scene.elisa"
+include "../src/viewport/png_writer.elisa"
+
+const module Backdrop:
+    WARMUP: usize = 6
+    # Frames to wait for the streamed mesh to appear, and the pixels of the
+    # presented frame that must differ from its corner (background) colour.
+    MAX_WAIT: usize = 240
+    MIN_MESH: i64 = 400
+    # The viewport clear colour.
+    CLEAR_R: i64 = 38
+    CLEAR_G: i64 = 40
+    CLEAR_B: i64 = 46
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def near(rgba: darray[u8]&, k: usize, r: i64, g: i64, b: i64) -> bool:
+    dr: i64 = rgba[k * 4].i64() - r
+    dg: i64 = rgba[k * 4 + 1].i64() - g
+    db: i64 = rgba[k * 4 + 2].i64() - b
+    dr * dr + dg * dg + db * db < 432
+
+def count_near(rgba: darray[u8]&, r: i64, g: i64, b: i64) -> i64:
+    mutable hits: i64 = 0
+    for k in 0..<(rgba.count / 4):
+        hits <- hits + 1 if near(rgba, k, r, g, b)
+    hits
+
+def wicked_scene() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Viewport Backdrop", width: 320, height: 240, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 240, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: 0.0, y: 3.0, z: 1.5}, Geometry::vec3_zero(),
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh("build/cooked/subsets/skeleton-display-rig.pkg",
+        Geometry::transform_identity(), RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    for _ in 0..<Backdrop::WARMUP:
+        return 5 if Application::pump() != Application::PumpStatus.Running
+    0
+
+def composite(frame: darray[u8]&, fw: i64, fh: i64) -> i32:
+    mutable vp: Viewport::Viewport = catch Viewport::create(320, 240):
+        value: value
+        error failure: return 20
+    mutable scene: ViewportScene::Scene = ViewportScene::create()
+    joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.1), v(-0.15, 0.5, 0.05)]
+    parents: darray[i64] = [-1, 0, 1, 0]
+    shaped: i32 = catch ViewportScene::set_skeleton(&scene, &joints, &parents):
+        value: 0
+        error failure: 1
+    return 21 if shaped != 0
+    ViewportScene::select(&scene, 2)
+    _ = ViewportScene::frame_selection(&scene, &vp)
+    mutable seen: i64 = ViewportScene::tick(&scene, &vp, -1)
+    _ = Viewport::acknowledge(&vp, vp.published_frame)
+    mutable plain: darray[u8] = []
+    return 22 if not Viewport::read_rgba(&vp, &plain)
+    bare: i64 = count_near(plain, Backdrop::CLEAR_R, Backdrop::CLEAR_G, Backdrop::CLEAR_B)
+    return 23 if bare * 2 < 320 * 240
+    return 24 if not Viewport::set_backdrop(&vp, frame, fw, fh)
+    # The backdrop dirties the view: exactly one redraw, then idle.
+    before: i64 = vp.rendered
+    seen <- ViewportScene::tick(&scene, &vp, seen)
+    return 25 if vp.rendered != before + 1
+    _ = Viewport::acknowledge(&vp, vp.published_frame)
+    seen <- ViewportScene::tick(&scene, &vp, seen)
+    return 26 if vp.rendered != before + 1
+    mutable shown: darray[u8] = []
+    return 27 if not Viewport::read_rgba(&vp, &shown)
+    return 28 if count_near(shown, Backdrop::CLEAR_R, Backdrop::CLEAR_G, Backdrop::CLEAR_B) * 4 > bare
+    return 29 if count_near(shown, 255, 154, 0) < 8
+    written: i32 = catch PngWriter::save(Application::environment_value("ELISA_BACKDROP_VIEWPORT"), 320, 240, &shown):
+        value: 0
+        error failure: 1
+    return 30 if written != 0
+    # Clearing the backdrop brings the plain clear colour back.
+    Viewport::clear_backdrop(&vp)
+    seen <- ViewportScene::tick(&scene, &vp, seen)
+    mutable again: darray[u8] = []
+    return 31 if not Viewport::read_rgba(&vp, &again)
+    return 32 if count_near(again, Backdrop::CLEAR_R, Backdrop::CLEAR_G, Backdrop::CLEAR_B) != bare
+    Viewport::destroy(&vp)
+    0
+
+# Pixels unlike the frame's top-left (background) pixel.
+def foreground(frame: darray[u8]&) -> i64:
+    return 0 if frame.count < 4
+    count_near(frame, frame[0].i64(), frame[1].i64(), frame[2].i64()) * -1 + (frame.count / 4).i64()
+
+def exercise() -> i32:
+    setup: i32 = wicked_scene()
+    return setup if setup != 0
+    mutable frame: darray[u8] = []
+    return 11 if not Application::read_presented(&frame)
+    mutable waited: usize = 0
+    while foreground(frame) < Backdrop::MIN_MESH and waited < Backdrop::MAX_WAIT:
+        return 13 if Application::pump() != Application::PumpStatus.Running
+        return 11 if not Application::read_presented(&frame)
+        waited <- waited + 1
+    return 14 if foreground(frame) < Backdrop::MIN_MESH
+    return 10 if not Application::save_screenshot(Application::environment_value("ELISA_BACKDROP_WICKED"))
+    fw: i64 = Application::presented_width()
+    fh: i64 = Application::presented_height()
+    return 12 if fw < 320 or fh < 240 or frame.count.i64() != fw * fh * 4
+    composite(frame, fw, fh)
+
+def main() -> i32:
+    result: i32 = exercise()
+    _ = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    _ = Application::shutdown()
+    result

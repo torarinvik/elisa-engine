@@ -42,6 +42,47 @@ extern "C" int32_t elisa_application_v1_save_screenshot(const char* path) {
     return probe::save_rgba_png(presented, std::string(path)) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_FRAME_FAILED;
 }
 
+// Presented frame size in pixels (0 before the first frame), so a caller can
+// size the buffer for elisa_application_v1_read_rgba.
+static wi::graphics::Texture application_presented_texture() {
+    ApplicationService& service = application_service();
+    if (!service.initialized || service.frame_count == 0 || !on_owner_thread(service)) return {};
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr) return {};
+    return device->GetBackBuffer(&service.host.wicked().swapChain);
+}
+
+extern "C" int64_t elisa_application_v1_presented_width(void) {
+    std::lock_guard<std::mutex> guard(application_service().mutex);
+    const wi::graphics::Texture presented = application_presented_texture();
+    return presented.IsValid() ? int64_t(presented.GetDesc().width) : 0;
+}
+
+extern "C" int64_t elisa_application_v1_presented_height(void) {
+    std::lock_guard<std::mutex> guard(application_service().mutex);
+    const wi::graphics::Texture presented = application_presented_texture();
+    return presented.IsValid() ? int64_t(presented.GetDesc().height) : 0;
+}
+
+// Copy the last presented frame out as tightly packed RGBA8, top row first
+// (plan M01: the engine viewport shows it as a backdrop behind its overlays).
+// Returns the bytes written, or 0 when there is no frame or `capacity` is
+// too small.
+extern "C" int64_t elisa_application_v1_read_rgba(uint8_t* out, int64_t capacity) {
+    if (out == nullptr || capacity <= 0) return 0;
+    std::lock_guard<std::mutex> guard(application_service().mutex);
+    const wi::graphics::Texture presented = application_presented_texture();
+    if (!presented.IsValid()) return 0;
+    const auto desc = presented.GetDesc();
+    const int64_t bytes = int64_t(desc.width) * int64_t(desc.height) * 4;
+    if (bytes <= 0 || bytes > capacity) return 0;
+    wi::graphics::GetDevice()->WaitForGPU();
+    wi::vector<uint8_t> raw;
+    if (!wi::helper::saveTextureToMemoryFile(presented, "RAW", raw) || int64_t(raw.size()) < bytes) return 0;
+    std::memcpy(out, raw.data(), size_t(bytes));
+    return bytes;
+}
+
 namespace {
 
 void note_application_capture_submission(ApplicationService& service) {

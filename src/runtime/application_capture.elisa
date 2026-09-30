@@ -32,6 +32,15 @@ extend Application:
         @callconv(c)
         extern elisa_application_v1_cancel_screenshot(ticket: u64) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_presented_width() -> i64
+
+        @callconv(c)
+        extern elisa_application_v1_presented_height() -> i64
+
+        @callconv(c)
+        extern elisa_application_v1_read_rgba(out: mutable void&, capacity: i64) -> i64
+
     public:
         def environment_value(name: cstr) -> cstr:
             elisa_application_v1_environment_value(name)
@@ -51,3 +60,20 @@ extend Application:
 
         def cancel_screenshot(ticket: u64) -> bool:
             elisa_application_v1_cancel_screenshot(ticket) == Application::NativeStatus::OK
+
+        # Last presented frame as RGBA8, top row first, sized to
+        # `presented_width` x `presented_height` (plan M01 backdrop). False
+        # before the first frame.
+        def read_presented(out: mutable darray[u8]&) -> bool:
+            n: i64 = elisa_application_v1_presented_width() * elisa_application_v1_presented_height() * 4
+            return false if n <= 0
+            out.clear()
+            for _ in 0..<n.usize():
+                out.push(0)
+            elisa_application_v1_read_rgba((&out[0]).cast[mutable void&], n) == n
+
+        def presented_width() -> i64:
+            elisa_application_v1_presented_width()
+
+        def presented_height() -> i64:
+            elisa_application_v1_presented_height()

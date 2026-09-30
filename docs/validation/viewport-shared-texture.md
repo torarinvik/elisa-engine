@@ -88,9 +88,13 @@ Both are registered in `scripts/check.elisascript`. The second is linked by `scr
 
 ## Still open
 
-- **The skinned mesh is not drawn into this texture.** The Wicked renderer draws only into its SDL swapchain, and there is no Wicked render-to-IOSurface path. For now the viewport draws engine draw lists: grid, skeleton and overlays. Routing Wicked's scene render into the ring needs a native change in `render_scene_abi.cpp`, and it cannot be validated headlessly because Wicked needs its window.
+- **Camera sync with the Wicked view.** The backdrop is the Wicked frame as rendered by the Wicked camera; the viewport's overlays use the viewport camera. Driving `RenderScene::set_camera_look_at` from `ViewportCamera` so the two line up is the next step, and it is a copy through the CPU, not zero-copy.
 - **On-screen compositing inside elisa-ui.** This is added in the elisa-ui `mocap-viewport` worktree; see that branch's notes.
 
 ## Shared scene (2026-10-01)
 
 `ViewportScene` (src/viewport/viewport_scene.elisa) holds one skeleton, selection and grid flag with a revision counter. Each `Viewport` keeps the last revision it drew; `tick` invalidates only when the revision moved and builds a draw list only when the viewport will render. `test/viewport_scene.elisa` drives a perspective view plus front and side orthographic views from one scene: each renders once, 1000 idle ticks render nothing, one scene change redraws every view exactly once, resizing the side view changes only its generation, and selecting a joint turns it orange in all three views and frame-selection centres it within 10 px. A mutant that drops the revision invalidate is caught (exit 9).
+
+## Skinned mesh backdrop (2026-10-01)
+
+`Viewport::set_backdrop` uploads an RGBA8 frame that every later render stretches over the target before the draw list; `clear_backdrop` removes it. The Wicked side gained `elisa_application_v1_read_rgba` with `presented_width`/`presented_height` (`Application::read_presented`), which copies the last presented frame. `scripts/viewport_backdrop_smoke.py` builds `test/viewport_wicked_backdrop_main.elisa` through the render-scene harness with `build/viewport_metal.o` linked in (new `ELISA_RENDER_SCENE_EXTRA_OBJECTS`). Wicked draws the skinned panel at 640x480; the test waits until the mesh is on screen, sets it as the backdrop of a 320x240 viewport sharing a `ViewportScene`, and checks one redraw on the backdrop change, none while idle, the orange selected joint on top, and the plain clear colour back after `clear_backdrop`. Across three runs the script finds 99.35% of viewport pixels match the Wicked frame. A mutant that skips the backdrop draw is caught (exit 28). The first version waited a fixed six frames and sometimes captured before the mesh streamed in; the wait is now on the frame content.

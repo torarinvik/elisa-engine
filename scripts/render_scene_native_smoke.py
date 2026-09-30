@@ -37,7 +37,7 @@ ROOT = Path(__file__).resolve().parents[1]
 FRAMEWORKS = [
     "Foundation", "CoreFoundation", "CoreGraphics", "CoreText", "ImageIO",
     "Metal", "QuartzCore", "AppKit", "IOKit", "GameController", "AudioToolbox",
-    "CoreAudio", "AVFoundation", "VideoToolbox", "Cocoa",
+    "CoreAudio", "AVFoundation", "VideoToolbox", "Cocoa", "IOSurface",
 ]
 
 
@@ -351,6 +351,8 @@ def main() -> int:
         str(basisu_transcoder / "basisu_transcoder.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
         str(archive), str(runtime_object),
+        # Prebuilt objects a test main also needs, e.g. build/viewport_metal.o.
+        *[extra for extra in os.environ.get("ELISA_RENDER_SCENE_EXTRA_OBJECTS", "").split(os.pathsep) if extra],
         str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
         str(libraries / "LUA/libLUA.a"),

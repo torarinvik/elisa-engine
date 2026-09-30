@@ -119,6 +119,21 @@ module Viewport:
             return 0 if vp.handle == 0 or vp.published_slot < 0
             c_surface_id(vp.handle, vp.published_slot.i32())
 
+        # Show `rgba` (width*height RGBA8, top row first) stretched behind
+        # the draw list, e.g. the Wicked renderer's frame of the skinned
+        # mesh; the pixels are copied. Marks the scene dirty.
+        def set_backdrop(vp: mutable Viewport&, rgba: darray[u8]&, width: i64, height: i64) -> bool:
+            return false if vp.handle == 0 or width < 1 or height < 1
+            return false if rgba.count.i64() != width * height * 4
+            return false if c_set_backdrop(vp.handle, (&rgba[0]).cast[void&], width.i32(), height.i32()) == 0
+            vp.dirty <- vp.dirty | ViewportPolicy::DIRTY_SCENE
+            true
+
+        def clear_backdrop(vp: mutable Viewport&):
+            return if vp.handle == 0
+            c_clear_backdrop(vp.handle)
+            vp.dirty <- vp.dirty | ViewportPolicy::DIRTY_SCENE
+
         # Read the newest published frame back as RGBA8 (for PNG output and
         # tests). Returns false when nothing is published.
         def read_rgba(vp: Viewport&, out: mutable darray[u8]&) -> bool:
@@ -145,6 +160,10 @@ module Viewport:
         extern c_surface_id(handle: usize, slot: i32) -> u32
         @link_name("elisa_viewport_metal_render")
         extern c_render(handle: usize, slot: i32, matrix: void&, positions: void&, colors: void&, depth_tris: i64, depth_lines: i64, top_tris: i64, top_lines: i64, clear: u32) -> i32 can[Memory.Allocate]
+        @link_name("elisa_viewport_metal_set_backdrop")
+        extern c_set_backdrop(handle: usize, rgba: void&, width: i32, height: i32) -> i32 can[Memory.Allocate]
+        @link_name("elisa_viewport_metal_clear_backdrop")
+        extern c_clear_backdrop(handle: usize) -> i32
         @link_name("elisa_viewport_metal_read_rgba")
         extern c_read(handle: usize, slot: i32, out: mutable void&, capacity: i64) -> i64
 
