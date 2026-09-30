@@ -121,6 +121,13 @@ int64_t elisa_application_v1_next_input_event_token(void);
 int32_t elisa_application_v1_next_pointer_event(
     int32_t* kind, int32_t* button, float* x, float* y,
     float* delta_x, float* delta_y, uint32_t* buttons, int32_t* pressed);
+// Relative mouse mode hides and confines the cursor so motion deltas keep
+// arriving past the window edge (mouse-look). Returns OK, INVALID_ARGUMENT,
+// INVALID_STATE, WRONG_THREAD, or UNSUPPORTED when the platform refuses;
+// a refused request leaves the mode off.
+int32_t elisa_application_v1_set_relative_mouse(int32_t enabled);
+// 1 while relative mode is active, 0 otherwise (including when stopped).
+int32_t elisa_application_v1_relative_mouse(void);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);

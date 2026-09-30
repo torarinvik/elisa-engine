@@ -154,6 +154,12 @@ extend Application:
         extern elisa_application_v1_next_input_event_token() -> i64
 
         @callconv(c)
+        extern elisa_application_v1_set_relative_mouse(enabled: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_relative_mouse() -> i32
+
+        @callconv(c)
         extern elisa_application_v1_next_pointer_event(kind: mutable i32&,
             button: mutable i32&, x: mutable f32&, y: mutable f32&,
             delta_x: mutable f32&, delta_y: mutable f32&,
@@ -466,6 +472,23 @@ extend Application:
                 event.value <- 1.0 if event.pressed else 0.0
             event.chord_down <- false
             true
+
+        enum RelativeMouse:
+            Enabled
+            Disabled
+            Unsupported
+            NotRunning
+
+        # Mouse-look mode: hides and confines the cursor so motion deltas keep
+        # arriving at the window edge. A platform refusal leaves the mode off.
+        def set_relative_mouse(enabled: bool) -> RelativeMouse:
+            status: i32 = elisa_application_v1_set_relative_mouse(1 if enabled else 0)
+            return RelativeMouse.NotRunning if status == NativeStatus::INVALID_STATE or status == NativeStatus::WRONG_THREAD
+            return RelativeMouse.Unsupported if status != NativeStatus::OK
+            RelativeMouse.Enabled if enabled else RelativeMouse.Disabled
+
+        def relative_mouse() -> bool:
+            elisa_application_v1_relative_mouse() == 1
 
         # Pointer coordinates and deltas stay in logical window units. Editor
         # viewports apply the camera's display scale before ray construction.

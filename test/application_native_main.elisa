@@ -362,6 +362,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
     0
 
 def exercise_application() -> i32:
+    return 190 if Application::set_relative_mouse(true) != Application::RelativeMouse.NotRunning or Application::relative_mouse()
     config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
@@ -394,6 +395,13 @@ def exercise_application() -> i32:
     return 44 if ActionInput::bind_checked(&actions, escape) != ActionInput::BindResult.Bound
     _ = ActionInputRuntime::begin_frame(&actions)
     return 45 if ActionInput::action_down(&actions, 1)
+    # Mouse-look mode either engages (and reports so) or is refused and stays off.
+    relative: Application::RelativeMouse = Application::set_relative_mouse(true)
+    return 191 if relative == Application::RelativeMouse.Enabled and not Application::relative_mouse()
+    return 192 if relative == Application::RelativeMouse.Unsupported and Application::relative_mouse()
+    return 191 if relative == Application::RelativeMouse.NotRunning or relative == Application::RelativeMouse.Disabled
+    return 193 if Application::set_relative_mouse(false) != Application::RelativeMouse.Disabled
+    return 194 if Application::relative_mouse()
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0
