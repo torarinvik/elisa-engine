@@ -139,6 +139,33 @@ module ActionInput:
                 input.states[slot] <- ActionState{action: binding.action, down: false, pressed: false, released: false, value: 0.0, live: true}
             BindResult.Bound
 
+        def binding_count(input: Input&) -> usize:
+            input.binding_count
+
+        # Binding at `index`, or a non-live zero binding past the end.
+        def binding_at(input: Input&, index: usize) -> Binding:
+            return Binding{action: 0, device: Device.Keyboard, code: 0, chord_code: 0, deadzone: 0.0, context: Context.Gameplay, live: false} if index >= input.binding_count
+            input.bindings[index]
+
+        # Points an existing binding at a new code/chord, keeping its action,
+        # device, dead zone and context. The same checks as bind apply, and the
+        # old key's held state is dropped so a rebind never leaves it stuck.
+        def rebind_checked(input: mutable Input&, index: usize, code: i64, chord_code: i64) -> BindResult:
+            return BindResult.InvalidAction if index >= input.binding_count
+            return BindResult.InvalidCode if code <= 0 or chord_code < 0 or chord_code == code
+            current: Binding = input.bindings[index]
+            for other in 0..<input.binding_count:
+                existing: Binding = input.bindings[other]
+                return BindResult.DuplicateBinding if other != index and existing.live and existing.action == current.action and existing.device == current.device and existing.code == code and existing.chord_code == chord_code and existing.context == current.context
+            input.bindings[index] <- Binding{action: current.action, device: current.device, code: code, chord_code: chord_code, deadzone: current.deadzone, context: current.context, live: current.live}
+            input.binding_down[index] <- false
+            input.binding_values[index] <- 0.0
+            input.source_down[index] <- false
+            input.source_values[index] <- 0.0
+            input.chord_down[index] <- false
+            refresh_action(input, state_slot(input, current.action))
+            BindResult.Bound
+
         def bind(input: mutable Input&, binding: Binding) -> void error[InputError]:
             result: BindResult = bind_checked(input, binding)
             raise InputError.InvalidAction if result == BindResult.InvalidAction

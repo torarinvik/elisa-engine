@@ -1,0 +1,110 @@
+# Saved control profiles: every ActionInput binding as validated bytes.
+# "EIB1", a u32 count, then 20 bytes per binding (i32 action, code, chord,
+# dead zone in 1/2^20 steps, device byte, context byte, two zero bytes).
+# Loading rebuilds the bindings through bind_checked in a scratch map
+# first, so a damaged or hand-edited profile changes nothing.
+include "action_input.elisa"
+
+module ActionInputProfile:
+    private:
+        const HEADER_BYTES: usize = 8
+        const RECORD_BYTES: usize = 20
+        const DEADZONE_SCALE: f32 = 1048576.0
+
+        def profile_put_i32(out: mutable Bytes&, offset: usize, value: i64) -> void:
+            bits: u64 = value.u64() & 4294967295
+            out.data[offset] <- (bits & 255).u8()
+            out.data[offset + 1] <- ((bits >> 8) & 255).u8()
+            out.data[offset + 2] <- ((bits >> 16) & 255).u8()
+            out.data[offset + 3] <- ((bits >> 24) & 255).u8()
+
+        def profile_get_i32(data: Bytes&, offset: usize) -> i64:
+            raw: i64 = data.data[offset].i64() + (data.data[offset + 1].i64() << 8) + (data.data[offset + 2].i64() << 16) + (data.data[offset + 3].i64() << 24)
+            raw - 4294967296 if raw >= 2147483648 else raw
+
+        def profile_device_byte(device: ActionInput::Device) -> i64:
+            return 0 if device == ActionInput::Device.Keyboard
+            return 1 if device == ActionInput::Device.Mouse
+            2
+
+        def profile_device_of(value: i64) -> ActionInput::Device:
+            return ActionInput::Device.Keyboard if value == 0
+            return ActionInput::Device.Mouse if value == 1
+            ActionInput::Device.Gamepad
+
+        def profile_record(data: Bytes&, index: usize) -> ActionInput::Binding:
+            base: usize = HEADER_BYTES + index * RECORD_BYTES
+            ActionInput::Binding{
+                action: profile_get_i32(data, base),
+                device: profile_device_of(data.data[base + 16].i64()),
+                code: profile_get_i32(data, base + 4),
+                chord_code: profile_get_i32(data, base + 8),
+                deadzone: profile_get_i32(data, base + 12).f32() / DEADZONE_SCALE,
+                context: ActionInput::Context.UI if data.data[base + 17] == 1 else ActionInput::Context.Gameplay,
+                live: true,
+            }
+
+        def profile_record_shape_ok(data: Bytes&, index: usize) -> bool:
+            base: usize = HEADER_BYTES + index * RECORD_BYTES
+            data.data[base + 16] <= 2 and data.data[base + 17] <= 1 and data.data[base + 18] == 0 and data.data[base + 19] == 0
+
+    public:
+        const MAX_BYTES: usize = 1288
+
+        struct Bytes:
+            data: mutable u8[1288]
+            count: mutable usize
+
+        enum LoadStatus:
+            Loaded
+            BadMagic
+            BadLength
+            BadField
+            Rejected
+            TargetNotEmpty
+
+        def quantize_deadzone(deadzone: f32) -> f32:
+            (deadzone * DEADZONE_SCALE + 0.5).i64().f32() / DEADZONE_SCALE
+
+        def profile_encode(input: ActionInput::Input&) -> Bytes:
+            mutable out: Bytes = Bytes{data: zeroed, count: 0}
+            out.data[0] <- 69
+            out.data[1] <- 73
+            out.data[2] <- 66
+            out.data[3] <- 49
+            count: usize = ActionInput::binding_count(input)
+            profile_put_i32(&out, 4, count.i64())
+            for index in 0..<count |out|:
+                binding: ActionInput::Binding = ActionInput::binding_at(input, index)
+                base: usize = HEADER_BYTES + index * RECORD_BYTES
+                profile_put_i32(&out, base, binding.action)
+                profile_put_i32(&out, base + 4, binding.code)
+                profile_put_i32(&out, base + 8, binding.chord_code)
+                profile_put_i32(&out, base + 12, (binding.deadzone * DEADZONE_SCALE + 0.5).i64())
+                out.data[base + 16] <- profile_device_byte(binding.device).u8()
+                out.data[base + 17] <- (1 if binding.context == ActionInput::Context.UI else 0).u8()
+            out.count <- HEADER_BYTES + count * RECORD_BYTES
+            out
+
+        # Loads into an empty map only. Every record must pass bind_checked in
+        # a scratch map before the target sees any of them.
+        def profile_load(data: Bytes&, input: mutable ActionInput::Input&) -> LoadStatus:
+            return LoadStatus.TargetNotEmpty if ActionInput::binding_count(input) != 0
+            return LoadStatus.BadLength if data.count < HEADER_BYTES or data.count > MAX_BYTES
+            return LoadStatus.BadMagic if data.data[0] != 69 or data.data[1] != 73 or data.data[2] != 66 or data.data[3] != 49
+            count: i64 = profile_get_i32(data, 4)
+            return LoadStatus.BadLength if count < 0 or count > 64
+            return LoadStatus.BadLength if data.count != HEADER_BYTES + count.usize() * RECORD_BYTES
+            mutable shapes_ok: bool = true
+            for index in 0..<count.usize() |shapes_ok|:
+                shapes_ok <- false if not profile_record_shape_ok(data, index)
+            return LoadStatus.BadField if not shapes_ok
+            mutable scratch: ActionInput::Input = ActionInput::Input()
+            mutable accepted: bool = true
+            for index in 0..<count.usize() |scratch, accepted|:
+                result: ActionInput::BindResult = ActionInput::bind_checked(&scratch, profile_record(data, index))
+                accepted <- false if result != ActionInput::BindResult.Bound
+            return LoadStatus.Rejected if not accepted
+            for index in 0..<count.usize() |input|:
+                ActionInput::bind_checked(input, profile_record(data, index))
+            LoadStatus.Loaded

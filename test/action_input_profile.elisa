@@ -1,0 +1,81 @@
+include "../src/runtime/action_input_profile.elisa"
+
+const JUMP: i64 = 1
+const MOVE: i64 = 2
+const MENU: i64 = 3
+const KEY_SPACE: i64 = 44
+const KEY_J: i64 = 13
+const KEY_ESC: i64 = 41
+const KEY_SHIFT: i64 = 225
+const STICK_X: i64 = 900
+
+def binding(action: i64, device: ActionInput::Device, code: i64, deadzone: f32,
+    context: ActionInput::Context) -> ActionInput::Binding:
+    ActionInput::Binding{action: action, device: device, code: code, chord_code: 0,
+        deadzone: deadzone, context: context, live: true}
+
+def bound_input() -> ActionInput::Input:
+    mutable input: ActionInput::Input = ActionInput::Input()
+    ActionInput::bind_checked(&input, binding(JUMP, ActionInput::Device.Keyboard, KEY_SPACE, 0.0, ActionInput::Context.Gameplay))
+    ActionInput::bind_checked(&input, binding(MOVE, ActionInput::Device.Gamepad, STICK_X, 0.2, ActionInput::Context.Gameplay))
+    ActionInput::bind_checked(&input, binding(MENU, ActionInput::Device.Keyboard, KEY_ESC, 0.0, ActionInput::Context.UI))
+    input
+
+def key(code: i64, down: bool) -> ActionInput::Event:
+    ActionInput::Event{device: ActionInput::Device.Keyboard, code: code,
+        value: 1.0 if down else 0.0, pressed: down, released: not down, chord_down: false}
+
+def same_binding(a: ActionInput::Binding, b: ActionInput::Binding) -> bool:
+    a.action == b.action and a.device == b.device and a.code == b.code and a.chord_code == b.chord_code and ActionInputProfile::quantize_deadzone(a.deadzone) == b.deadzone and a.context == b.context and a.live == b.live
+
+def main() -> i32:
+    mutable input: ActionInput::Input = bound_input()
+    return 1 if ActionInput::binding_count(&input) != 3
+    return 2 if ActionInput::binding_at(&input, 7).live
+    # Holding the old key, then rebinding, must not leave the action stuck.
+    ActionInput::apply(&input, key(KEY_SPACE, true))
+    return 3 if not ActionInput::action_down(&input, JUMP)
+    return 4 if ActionInput::rebind_checked(&input, 0, KEY_J, KEY_SHIFT) != ActionInput::BindResult.Bound
+    return 5 if ActionInput::action_down(&input, JUMP)
+    return 6 if ActionInput::rebind_checked(&input, 9, KEY_J, 0) != ActionInput::BindResult.InvalidAction
+    return 7 if ActionInput::rebind_checked(&input, 0, 0, 0) != ActionInput::BindResult.InvalidCode
+    return 8 if ActionInput::rebind_checked(&input, 0, KEY_J, KEY_J) != ActionInput::BindResult.InvalidCode
+    ActionInput::begin_frame(&input)
+    ActionInput::apply(&input, key(KEY_SPACE, true))
+    return 9 if ActionInput::action_down(&input, JUMP)
+    ActionInput::apply(&input, ActionInput::Event{device: ActionInput::Device.Keyboard, code: KEY_J, value: 1.0, pressed: true, released: false, chord_down: true})
+    return 10 if not ActionInput::action_down(&input, JUMP)
+
+    bytes: ActionInputProfile::Bytes = ActionInputProfile::profile_encode(&input)
+    return 11 if bytes.count != 8 + 3 * 20
+    mutable loaded: ActionInput::Input = ActionInput::Input()
+    return 12 if ActionInputProfile::profile_load(&bytes, &loaded) != ActionInputProfile::LoadStatus.Loaded
+    return 13 if ActionInput::binding_count(&loaded) != 3
+    mutable same: bool = true
+    for index in 0..<3 |same|:
+        same <- false if not same_binding(ActionInput::binding_at(&input, index), ActionInput::binding_at(&loaded, index))
+    return 14 if not same
+    return 15 if ActionInputProfile::profile_load(&bytes, &loaded) != ActionInputProfile::LoadStatus.TargetNotEmpty
+
+    mutable bad: ActionInputProfile::Bytes = bytes
+    bad.data[0] <- 88
+    mutable fresh: ActionInput::Input = ActionInput::Input()
+    return 16 if ActionInputProfile::profile_load(&bad, &fresh) != ActionInputProfile::LoadStatus.BadMagic
+    bad <- bytes
+    bad.count <- bad.count - 1
+    return 17 if ActionInputProfile::profile_load(&bad, &fresh) != ActionInputProfile::LoadStatus.BadLength
+    bad <- bytes
+    bad.data[8 + 20 + 16] <- 7
+    return 18 if ActionInputProfile::profile_load(&bad, &fresh) != ActionInputProfile::LoadStatus.BadField
+    # Third record rewritten as a duplicate of the first: all-or-nothing.
+    bad <- bytes
+    for offset in 0..<20 |bad|:
+        bad.data[8 + 40 + offset] <- bytes.data[8 + offset]
+    return 19 if ActionInputProfile::profile_load(&bad, &fresh) != ActionInputProfile::LoadStatus.Rejected
+    return 20 if ActionInput::binding_count(&fresh) != 0
+    bad <- bytes
+    bad.data[8 + 4] <- 0
+    bad.data[8 + 5] <- 0
+    return 21 if ActionInputProfile::profile_load(&bad, &fresh) != ActionInputProfile::LoadStatus.Rejected
+    return 22 if ActionInputProfile::quantize_deadzone(0.2) != ActionInput::binding_at(&loaded, 1).deadzone
+    0
