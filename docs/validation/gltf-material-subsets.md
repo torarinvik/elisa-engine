@@ -209,7 +209,7 @@ per-subset bound rejects it.
   game registers each slot's material in Elisa. Superseded for factors by
   [`cooked-slot-materials.md`](cooked-slot-materials.md); textures remain.
 - **Bounded skin importer.** The runtime glTF cooker emits v3 packages with
-  bounded combined skin rigs, up to 64 palette bones and 256 transform nodes,
+  bounded combined skin rigs, up to 256 palette bones and 256 transform nodes,
   four float32 influences per vertex, and up to 16 material subsets. Authored
   inverse-bind matrices are retained in palette order. Sampled LINEAR, STEP,
   and CUBICSPLINE TRS and morph-weight channels become fixed 30 Hz clips (up to

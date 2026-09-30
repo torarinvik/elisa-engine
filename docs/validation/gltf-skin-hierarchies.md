@@ -13,7 +13,7 @@ offset without reapplying the mesh transform. Identity-only helper nodes are
 omitted unless an animation channel targets them.
 
 The source node limit remains 256. The runtime distinguishes this hierarchy
-bound from the 64-bone skin palette, and animation samples include helper
+bound from the 256-bone skin palette, and animation samples include helper
 nodes as well as palette joints. Matrix-authored rig nodes are decomposed to
 TRS when their affine linear columns are orthogonal and have nonzero scale;
 matrices with shear are rejected rather than approximated.
@@ -53,7 +53,7 @@ native loader also accepts a 65-node rig with two palette bones.
 - The full SDL3/Metal RenderScene smoke passed the sibling-branch animation submission probe, separately rooted mesh upload/world-offset assertion, multi-skin and mixed-placement armature probes, plus the later overlay-hide readback. The Elisa-owned maze app and packaged-maze stages also passed; the package ran with checkout access denied and rejected missing, escaping, corrupted, and dependency-invalid bundles.
 - `python3 scripts/check_source_length.py`, `python3 scripts/check_module_hygiene.py`, and `git diff --check` passed.
 
-Multi-skin scenes combine separate rig branches and palettes, bounded by 64
+Multi-skin scenes combine separate rig branches and palettes, bounded by 256
 total palette bones and 256 rig nodes. Mixed static and skinned placements
 are also supported; static placements receive a synthetic identity bind bone,
 which counts toward the palette limit. A dedicated cooker regression combines

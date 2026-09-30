@@ -1,5 +1,5 @@
 # M02 scrub timing on a live SDL3/Metal render instance. A 10,000-frame,
-# 64-bone, 120 Hz take is scrubbed with random jumps (the worst case for a
+# 70-bone, 120 Hz take is scrubbed with random jumps (the worst case for a
 # timeline drag); each frame samples the clip through PosePlayback, fills
 # and submits the render pose to a skinned instance, and presents. Run via
 # scripts/pose_scrub_benchmark.py, which reads the printed timings.
@@ -36,8 +36,7 @@ def emit(work: bool, value: u64) -> bool:
 
 const module Setup:
     FRAMES: i64 = 10000
-    # The glTF cooker caps a skin at 64 joints (scripts/cook_gltf_skin.py).
-    BONES: i64 = 64
+    BONES: i64 = 70
     RATE_HZ: i64 = 120
     WARMUP: i64 = 30
     MEASURED: i64 = 600

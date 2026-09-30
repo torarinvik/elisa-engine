@@ -4,7 +4,7 @@
 Builds test/render_scene_pose_scrub_main.elisa through the render-scene smoke
 harness (render-only mode, so no fixtures are recooked) and reads the 600
 per-frame wall times it prints (whole frame, and the scrub work before
-presenting), in nanoseconds. Each frame samples a 64-bone
+presenting), in nanoseconds. Each frame samples a 70-bone
 120 Hz clip at a random jump, fills and submits the render pose, and presents.
 """
 
@@ -21,10 +21,10 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 import cook_gltf_geometry  # noqa: E402
-import cook_gltf_skin  # noqa: E402
 import gltf_skin_self_test  # noqa: E402
 
 BUDGET_MS = 16.6
+BONES = 70
 RIG = ROOT / "build/cooked/subsets/scrub-rig.pkg"
 
 
@@ -49,7 +49,7 @@ def write_rig(output: Path, joints: int) -> None:
 
 def main() -> int:
     RIG.parent.mkdir(parents=True, exist_ok=True)
-    write_rig(RIG, cook_gltf_skin.MAX_JOINTS)
+    write_rig(RIG, BONES)
     env = dict(os.environ)
     env.update({
         "ELISA_RENDER_SCENE_RENDER_ONLY": "1",

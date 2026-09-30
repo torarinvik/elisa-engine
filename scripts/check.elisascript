@@ -319,6 +319,8 @@ def main(arguments: darray[sview]) -> i64:
     return native_unit_status if native_unit_status != 0
     scene_file_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/scene_file.py")), "--self-test"])
     return scene_file_status if scene_file_status != 0
+    skin_limit_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/gltf_skin_limit_test.py"))])
+    return skin_limit_status if skin_limit_status != 0
     locale_keys_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/locale_keys.py")), "--self-test"])
     return locale_keys_status if locale_keys_status != 0
     smoke_artifacts_status: i64 = run_visible(get_environment_or("PYTHON_BIN", "python3"), [str(root.joinpath("scripts/native_smoke_artifacts.py")), "--self-test"])

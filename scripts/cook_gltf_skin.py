@@ -13,7 +13,7 @@ import struct
 import cook_assets
 import cook_gltf_nodes
 
-MAX_JOINTS = 64
+MAX_JOINTS = 256
 MAX_RIG_NODES = cook_gltf_nodes.MAX_NODES
 GLTF_IDENTITY_MATRIX = (
     1.0, 0.0, 0.0, 0.0,
