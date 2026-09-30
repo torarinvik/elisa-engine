@@ -17,8 +17,6 @@ extend UiTouchMath:
     # A gesture's movement distance is never negative, for any finger travel.
     def prove_manhattan(dx: i64, dy: i64) -> i64:
         ensure result >= 0
-        return 0 if dx <= 0 - 1000000000
-        return 0 if dx >= 1000000000
-        return 0 if dy <= 0 - 1000000000
-        return 0 if dy >= 1000000000
-        manhattan(dx, dy)
+        if dx > 0 - 1000000000 and dx < 1000000000 and dy > 0 - 1000000000 and dy < 1000000000:
+            return manhattan(dx, dy)
+        0
