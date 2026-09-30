@@ -1,0 +1,44 @@
+# Integer ordering behind skeleton picking (plan M03). A candidate hit (a
+# joint sphere or bone capsule under the cursor) is a key (distance code,
+# kind, bone); `better` is the strict lexicographic order on keys, so the
+# winner never depends on the order candidates are visited:
+#   - nearer first (distance along the ray, quantised to 1 micrometre);
+#   - on an equal distance, a joint beats a bone (a joint sits on the end of
+#     its bones, so clicking it must select the joint);
+#   - then the lower bone index.
+# The ensures on `better` state the whole order (each clause is one rule, in
+# both directions) and are proved by proof/skeleton_pick_policy.elisa. They
+# are written with < and > only: the prover handles those but not `!=`.
+module SkeletonPickPolicy:
+    public:
+        const NONE: i64 = 0
+        const JOINT: i64 = 1
+        const BONE: i64 = 2
+
+        # 2^40 micrometres (about 1100 km) caps the code.
+        const MAX_CODE: i64 = 1099511627776
+
+        def clamp_code(code: i64) -> i64:
+            ensure result >= 0
+            ensure result <= MAX_CODE
+            return 0 if code < 0
+            return MAX_CODE if code > MAX_CODE
+            code
+
+        # True when key a is picked over key b.
+        def better(a_code: i64, a_kind: i64, a_bone: i64, b_code: i64, b_kind: i64, b_bone: i64) -> bool:
+            # Nearer wins; farther never wins.
+            ensure result or a_code >= b_code
+            ensure not result or a_code <= b_code
+            # Equal distance: joint (1) before bone (2).
+            ensure not result or a_code < b_code or a_code > b_code or a_kind <= b_kind
+            ensure result or a_code < b_code or a_code > b_code or a_kind >= b_kind
+            # Equal distance and kind: lower bone; a key never beats itself.
+            ensure not result or a_code < b_code or a_code > b_code or a_kind < b_kind or a_kind > b_kind or a_bone < b_bone
+            ensure result or a_code < b_code or a_code > b_code or a_kind < b_kind or a_kind > b_kind or a_bone >= b_bone
+            return true if a_code < b_code
+            return false if a_code > b_code
+            return true if a_kind < b_kind
+            return false if a_kind > b_kind
+            return true if a_bone < b_bone
+            false

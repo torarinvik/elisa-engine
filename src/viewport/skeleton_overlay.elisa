@@ -1,0 +1,207 @@
+# Skeleton display and picking for editor viewports (plan M03).
+#
+# Input is a PoseOverride rig and the model transforms it evaluated (from
+# PoseOverride::evaluate / evaluate_rest), so what is drawn and picked is
+# exactly the displayed pose, overrides included. A joint is the origin of a
+# bone's model transform; bone `b` is the segment from its parent's joint to
+# its own (roots have no segment).
+#
+# Drawing appends to a ViewportDraw list: bones as lines, joints as
+# screen-sized markers. X-ray puts the skeleton in the TOP layer (drawn over
+# the mesh without depth testing); otherwise it depth-tests against the mesh.
+# Selection beats hover beats the base colour.
+#
+# Picking casts ViewportCamera::ray through a pixel and tests joint spheres and
+# bone capsules whose radii are a fixed number of pixels at their depth, so
+# picking tolerance is the same at any zoom and in orthographic views. All
+# hits are ordered by SkeletonPickPolicy::better (nearest first, joint before
+# bone on a tie, then lower index); the result carries the hit distance.
+#
+# `show_mesh` and `wireframe` are display toggles for the mesh pass the host
+# owns; they are carried in Style so one struct holds the viewport's display
+# state, and `mesh_mode` turns them into one value for the host.
+include "./viewport_draw.elisa"
+include "./skeleton_pick_policy.elisa"
+include "../animation/pose_override.elisa"
+
+module SkeletonOverlay:
+    public:
+        error OverlayError:
+            ShapeMismatch
+            Draw
+
+        # mesh_mode values.
+        const MESH_HIDDEN: i32 = 0
+        const MESH_SHADED: i32 = 1
+        const MESH_WIREFRAME: i32 = 2
+
+        struct Style:
+            joint_px: f32
+            bone_px: f32
+            joint_color: u32
+            bone_color: u32
+            selected_color: u32
+            hover_color: u32
+            xray: bool
+            show_mesh: bool
+            wireframe: bool
+
+        # What is selected or hovered: kind is SkeletonPickPolicy::NONE,
+        # JOINT or BONE.
+        struct Target:
+            kind: i64
+            bone: i64
+
+        struct Hit:
+            kind: i64
+            bone: i64
+            # Along the pick ray, in metres (world units).
+            distance: f32
+
+        def default_style() -> Style:
+            Style{joint_px: 6.0, bone_px: 4.0, joint_color: ViewportDraw::rgba(235, 235, 240, 255), bone_color: ViewportDraw::rgba(90, 170, 255, 255), selected_color: ViewportDraw::rgba(255, 170, 30, 255), hover_color: ViewportDraw::rgba(255, 240, 120, 255), xray: true, show_mesh: true, wireframe: false}
+
+        def nothing() -> Target:
+            Target{kind: SkeletonPickPolicy::NONE, bone: -1}
+
+        def joint(bone: i64) -> Target:
+            Target{kind: SkeletonPickPolicy::JOINT, bone: bone}
+
+        def bone(index: i64) -> Target:
+            Target{kind: SkeletonPickPolicy::BONE, bone: index}
+
+        def mesh_mode(style: Style&) -> i32:
+            return MESH_HIDDEN if not style.show_mesh
+            return MESH_WIREFRAME if style.wireframe
+            MESH_SHADED
+
+        def layer(style: Style&) -> i32:
+            return ViewportDraw::TOP if style.xray
+            ViewportDraw::DEPTH
+
+        def color_for(style: Style&, kind: i64, index: i64, selected: Target, hovered: Target) -> u32:
+            return style.selected_color if selected.kind == kind and selected.bone == index
+            return style.hover_color if hovered.kind == kind and hovered.bone == index
+            return style.joint_color if kind == SkeletonPickPolicy::JOINT
+            style.bone_color
+
+        # Append the skeleton. Returns the number of joints drawn.
+        def draw(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, rig: PoseOverride::Rig&, models: darray[Geometry::Transform]&, style: Style&, selected: Target, hovered: Target) -> usize error[OverlayError]:
+            count: usize = PoseOverride::rig_bone_count(rig)
+            raise OverlayError.ShapeMismatch if models.count != count
+            l: i32 = layer(style)
+            mutable failed: i64 = 0
+            # Bones first so joint markers sit on top of them.
+            for b in 0..<count:
+                parent: i64 = PoseOverride::rig_parent(rig, b)
+                if parent >= 0:
+                    c: u32 = color_for(style, SkeletonPickPolicy::BONE, b.i64(), selected, hovered)
+                    failed <- failed + catch ViewportDraw::bone(list, models[parent.usize()].position, models[b].position, c, l):
+                        value: 0
+                        error failure: 1
+            for b in 0..<count:
+                c: u32 = color_for(style, SkeletonPickPolicy::JOINT, b.i64(), selected, hovered)
+                failed <- failed + catch ViewportDraw::marker(list, cam, models[b].position, style.joint_px, c, l):
+                    value: 0
+                    error failure: 1
+            raise OverlayError.Draw if failed != 0
+            count
+
+        # The joint or bone under pixel (px, py), nearest first. A miss (or a
+        # non-finite pixel, or models that do not match the rig) is NONE.
+        def pick(cam: ViewportCamera::Camera&, rig: PoseOverride::Rig&, models: darray[Geometry::Transform]&, style: Style&, px: f32, py: f32) -> Hit:
+            mutable best: Hit = Hit{kind: SkeletonPickPolicy::NONE, bone: -1, distance: 0.0}
+            count: usize = PoseOverride::rig_bone_count(rig)
+            return best if models.count != count or not finite(px) or not finite(py)
+            ray: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+            mutable best_code: i64 = 0
+            for b in 0..<count:
+                center: Geometry::Vec3 = models[b].position
+                radius: f32 = style.joint_px * pixel_size(cam, center)
+                t: f32 = ray_sphere(ray, center, radius)
+                if t >= 0.0:
+                    code: i64 = code_for(t)
+                    if best.kind == SkeletonPickPolicy::NONE or SkeletonPickPolicy::better(code, SkeletonPickPolicy::JOINT, b.i64(), best_code, best.kind, best.bone):
+                        best <- Hit{kind: SkeletonPickPolicy::JOINT, bone: b.i64(), distance: t}
+                        best_code <- code
+            for b in 0..<count:
+                parent: i64 = PoseOverride::rig_parent(rig, b)
+                if parent >= 0:
+                    p0: Geometry::Vec3 = models[parent.usize()].position
+                    p1: Geometry::Vec3 = models[b].position
+                    mid: Geometry::Vec3 = Geometry::vec3_scale(Geometry::vec3_add(p0, p1), 0.5)
+                    radius: f32 = style.bone_px * pixel_size(cam, mid)
+                    t: f32 = ray_capsule(ray, p0, p1, radius)
+                    if t >= 0.0:
+                        code: i64 = code_for(t)
+                        if best.kind == SkeletonPickPolicy::NONE or SkeletonPickPolicy::better(code, SkeletonPickPolicy::BONE, b.i64(), best_code, best.kind, best.bone):
+                            best <- Hit{kind: SkeletonPickPolicy::BONE, bone: b.i64(), distance: t}
+                            best_code <- code
+            best
+
+        def target_of(hit: Hit) -> Target:
+            Target{kind: hit.kind, bone: hit.bone}
+
+        # Metres along the ray to a code (1 code = 1 micrometre).
+        def code_for(distance: f32) -> i64:
+            return SkeletonPickPolicy::MAX_CODE if not finite(distance) or distance >= 1000000.0
+            SkeletonPickPolicy::clamp_code((distance * 1000000.0 + 0.5).i64())
+
+        # Entry distance of a ray (unit direction) into a sphere, the exit
+        # distance when the origin is inside, or -1 for a miss.
+        def ray_sphere(ray: Geometry::Ray3, center: Geometry::Vec3, radius: f32) -> f32:
+            return -1.0 if not finite(radius) or radius <= 0.0
+            oc: Geometry::Vec3 = Geometry::vec3_sub(ray.origin, center)
+            b: f32 = Geometry::vec3_dot(ray.direction, oc)
+            c: f32 = Geometry::vec3_dot(oc, oc) - radius * radius
+            disc: f32 = b * b - c
+            return -1.0 if not finite(disc) or disc < 0.0
+            root: f32 = Geometry::sqrt_f32(disc)
+            near: f32 = 0.0 - b - root
+            return near if near >= 0.0
+            far: f32 = 0.0 - b + root
+            return far if far >= 0.0
+            -1.0
+
+        # Distance along a ray (unit direction) to where it first comes within
+        # `radius` of segment p0-p1, or -1 for a miss.
+        def ray_capsule(ray: Geometry::Ray3, p0: Geometry::Vec3, p1: Geometry::Vec3, radius: f32) -> f32:
+            return -1.0 if not finite(radius) or radius <= 0.0
+            seg: Geometry::Vec3 = Geometry::vec3_sub(p1, p0)
+            len2: f32 = Geometry::vec3_dot(seg, seg)
+            return ray_sphere(ray, p0, radius) if len2 < 1.0e-12
+            # Closest approach of the ray to the segment's line, then clamped.
+            w: Geometry::Vec3 = Geometry::vec3_sub(ray.origin, p0)
+            b: f32 = Geometry::vec3_dot(ray.direction, seg)
+            d: f32 = Geometry::vec3_dot(ray.direction, w)
+            e: f32 = Geometry::vec3_dot(seg, w)
+            denom: f32 = len2 - b * b
+            mutable s: f32 = 0.0
+            if denom > 1.0e-9 * len2:
+                s <- clamp01((e - b * d) / denom)
+            else:
+                s <- clamp01(e / len2)
+            # Ray parameter nearest to that segment point, then re-project.
+            q: Geometry::Vec3 = Geometry::vec3_add(p0, Geometry::vec3_scale(seg, s))
+            mutable t: f32 = Geometry::vec3_dot(ray.direction, Geometry::vec3_sub(q, ray.origin))
+            t <- 0.0 if t < 0.0
+            at: Geometry::Vec3 = Geometry::ray3_at(ray, t)
+            s <- clamp01(Geometry::vec3_dot(Geometry::vec3_sub(at, p0), seg) / len2)
+            q2: Geometry::Vec3 = Geometry::vec3_add(p0, Geometry::vec3_scale(seg, s))
+            # The capsule around q2 is locally a sphere: enter it.
+            ray_sphere(ray, q2, radius)
+
+    private:
+        def finite(v: f32) -> bool:
+            v == v and v < 1.0e30 and v > -1.0e30
+
+        def clamp01(v: f32) -> f32:
+            return 0.0 if not (v >= 0.0)
+            return 1.0 if v > 1.0
+            v
+
+        # World size of one pixel at a point (orthographic: constant).
+        def pixel_size(cam: ViewportCamera::Camera&, p: Geometry::Vec3) -> f32:
+            b: ViewportCamera::Basis = ViewportCamera::basis(cam)
+            depth: f32 = Geometry::vec3_dot(Geometry::vec3_sub(p, b.eye), b.forward)
+            ViewportCamera::world_per_pixel(cam, depth if depth > ViewportCamera::NEAR else ViewportCamera::NEAR)
