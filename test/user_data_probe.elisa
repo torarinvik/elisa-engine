@@ -3,6 +3,7 @@ include "../src/runtime/quality_settings.elisa"
 include "../src/world/prefab_scene_codec.elisa"
 include "../src/runtime/decision_log_store.elisa"
 include "./decision_session_probe.elisa"
+include "./action_input_store_probe.elisa"
 
 const module QualityPersistenceTest:
     PROFILE_VERSION: i64 = 1
@@ -131,6 +132,8 @@ def exercise_user_data() -> i32:
     return 53 if RuntimeDecisionLogStore::load("decisions").stored != RuntimeDecisionLogStore::Stored.NotFound
     session_code: i32 = DecisionSessionProbe::run()
     return session_code if session_code != 0
+    input_store_code: i32 = ActionInputStoreProbe::run()
+    return input_store_code if input_store_code != 0
 
     invalid_key: i32 = catch UserData::write_blob("../outside", &blob):
         value: 0

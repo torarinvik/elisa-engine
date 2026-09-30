@@ -8,19 +8,19 @@ module ActionInputReplayCodec:
     private:
         const HEADER_BYTES: usize = 8
 
-        def air_kind_byte(kind: ActionInputReplay::Kind) -> i64:
-            return 0 if kind == ActionInputReplay::Kind.Input
-            return 1 if kind == ActionInputReplay::Kind.Context
-            return 2 if kind == ActionInputReplay::Kind.Connect
-            return 3 if kind == ActionInputReplay::Kind.Disconnect
+        def air_kind_byte(kind: ActionInputReplay::EntryKind) -> i64:
+            return 0 if kind == ActionInputReplay::EntryKind.Input
+            return 1 if kind == ActionInputReplay::EntryKind.Context
+            return 2 if kind == ActionInputReplay::EntryKind.Connect
+            return 3 if kind == ActionInputReplay::EntryKind.Disconnect
             4
 
-        def air_kind_of(value: i64) -> ActionInputReplay::Kind:
-            return ActionInputReplay::Kind.Input if value == 0
-            return ActionInputReplay::Kind.Context if value == 1
-            return ActionInputReplay::Kind.Connect if value == 2
-            return ActionInputReplay::Kind.Disconnect if value == 3
-            ActionInputReplay::Kind.ClearDevice
+        def air_kind_of(value: i64) -> ActionInputReplay::EntryKind:
+            return ActionInputReplay::EntryKind.Input if value == 0
+            return ActionInputReplay::EntryKind.Context if value == 1
+            return ActionInputReplay::EntryKind.Connect if value == 2
+            return ActionInputReplay::EntryKind.Disconnect if value == 3
+            ActionInputReplay::EntryKind.ClearDevice
 
         def air_device_byte(device: ActionInput::Device) -> i64:
             return 0 if device == ActionInput::Device.Keyboard

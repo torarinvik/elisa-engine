@@ -1,0 +1,121 @@
+# Keeps control profiles and input recordings in the user-data directory as
+# checksummed, versioned payloads. A recording file holds the action log and
+# the pointer-axis log together ("EIS1", u32 action length, u32 pointer
+# length, then both codecs' bytes). Everything read back goes through the
+# codecs' validating decoders, and a load fills the caller's state only when
+# every part decodes.
+include "./action_input_profile.elisa"
+include "./action_input_replay_codec.elisa"
+include "./action_pointer_replay.elisa"
+include "./user_data.elisa"
+
+module ActionInputStore:
+    private:
+        const RECORDING_HEADER: usize = 12
+        const RECORDING_BYTES: usize = 28700
+
+        struct RecordingBytes:
+            data: mutable u8[28700]
+            count: mutable usize
+
+        def store_put_u32(out: mutable RecordingBytes&, offset: usize, value: usize) -> void:
+            bits: u64 = value.u64()
+            out.data[offset] <- (bits & 255).u8()
+            out.data[offset + 1] <- ((bits >> 8) & 255).u8()
+            out.data[offset + 2] <- ((bits >> 16) & 255).u8()
+            out.data[offset + 3] <- ((bits >> 24) & 255).u8()
+
+        def store_get_u32(data: RecordingBytes&, offset: usize) -> usize:
+            (data.data[offset].u64() + (data.data[offset + 1].u64() << 8) + (data.data[offset + 2].u64() << 16) + (data.data[offset + 3].u64() << 24)).usize()
+
+        def store_read_status(key: cstr, version: mutable i64&, payload: mutable u8&, capacity: usize, length: mutable usize&) -> i32:
+            catch UserData::read_payload(key, version, payload, capacity, length):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                UserData::UserDataError.WrongVersion: 2
+                UserData::UserDataError.Corrupt: 3
+                error failure: 4
+
+        def store_status_of(status: i32, version: i64, expected: i64) -> Stored:
+            return Stored.NotFound if status == 1
+            return Stored.WrongVersion if status == 2 or (status == 0 and version != expected)
+            return Stored.Corrupt if status == 3
+            return Stored.StorageFailure if status != 0
+            Stored.Ok
+
+    public:
+        const PROFILE_VERSION: i64 = 1
+        const RECORDING_VERSION: i64 = 1
+
+        enum Stored:
+            Ok
+            NotFound
+            WrongVersion
+            Corrupt
+            StorageFailure
+
+        def save_profile(key: cstr, input: ActionInput::Input&) -> Stored:
+            mutable bytes: ActionInputProfile::Bytes = ActionInputProfile::profile_encode(input)
+            status: i32 = catch UserData::write_payload(key, PROFILE_VERSION, &bytes.data[0], bytes.count):
+                ok: 0
+                error failure: 1
+            Stored.Ok if status == 0 else Stored.StorageFailure
+
+        # Loads into an empty map; a profile that fails validation or any
+        # bind check leaves `input` without bindings and reports Corrupt.
+        def load_profile(key: cstr, input: mutable ActionInput::Input&) -> Stored:
+            mutable bytes: ActionInputProfile::Bytes = ActionInputProfile::Bytes{data: zeroed, count: 0}
+            mutable version: i64 = 0
+            mutable length: usize = 0
+            stored: Stored = store_status_of(store_read_status(key, &version, &bytes.data[0], ActionInputProfile::MAX_BYTES, &length), version, PROFILE_VERSION)
+            return stored if stored != Stored.Ok
+            bytes.count <- length
+            loaded: ActionInputProfile::LoadStatus = ActionInputProfile::profile_load(&bytes, input)
+            Stored.Ok if loaded == ActionInputProfile::LoadStatus.Loaded else Stored.Corrupt
+
+        def save_recording(key: cstr, actions: ActionInputReplay::Log&, pointer: ActionPointerReplay::Log&) -> Stored:
+            action_bytes: ActionInputReplayCodec::Bytes = ActionInputReplayCodec::encode(actions)
+            pointer_bytes: ActionPointerReplay::Bytes = ActionPointerReplay::pointer_encode(pointer)
+            mutable out: RecordingBytes = RecordingBytes{data: zeroed, count: 0}
+            out.data[0] <- 69
+            out.data[1] <- 73
+            out.data[2] <- 83
+            out.data[3] <- 49
+            store_put_u32(&out, 4, action_bytes.count)
+            store_put_u32(&out, 8, pointer_bytes.count)
+            for index in 0..<action_bytes.count |out|:
+                out.data[RECORDING_HEADER + index] <- action_bytes.data[index]
+            pointer_base: usize = RECORDING_HEADER + action_bytes.count
+            for index in 0..<pointer_bytes.count |out|:
+                out.data[pointer_base + index] <- pointer_bytes.data[index]
+            out.count <- pointer_base + pointer_bytes.count
+            status: i32 = catch UserData::write_payload(key, RECORDING_VERSION, &out.data[0], out.count):
+                ok: 0
+                error failure: 1
+            Stored.Ok if status == 0 else Stored.StorageFailure
+
+        # Both logs must be empty; they are filled only if both parts decode.
+        def load_recording(key: cstr, actions: mutable ActionInputReplay::Log&, pointer: mutable ActionPointerReplay::Log&) -> Stored:
+            mutable raw: RecordingBytes = RecordingBytes{data: zeroed, count: 0}
+            mutable version: i64 = 0
+            mutable length: usize = 0
+            stored: Stored = store_status_of(store_read_status(key, &version, &raw.data[0], RECORDING_BYTES, &length), version, RECORDING_VERSION)
+            return stored if stored != Stored.Ok
+            raw.count <- length
+            return Stored.Corrupt if length < RECORDING_HEADER or raw.data[0] != 69 or raw.data[1] != 73 or raw.data[2] != 83 or raw.data[3] != 49
+            action_count: usize = store_get_u32(&raw, 4)
+            pointer_count: usize = store_get_u32(&raw, 8)
+            return Stored.Corrupt if action_count > 16392 or pointer_count > 12296 or RECORDING_HEADER + action_count + pointer_count != length
+            mutable action_bytes: ActionInputReplayCodec::Bytes = ActionInputReplayCodec::Bytes{data: zeroed, count: action_count}
+            for index in 0..<action_count |action_bytes|:
+                action_bytes.data[index] <- raw.data[RECORDING_HEADER + index]
+            mutable pointer_bytes: ActionPointerReplay::Bytes = ActionPointerReplay::Bytes{data: zeroed, count: pointer_count}
+            for index in 0..<pointer_count |pointer_bytes|:
+                pointer_bytes.data[index] <- raw.data[RECORDING_HEADER + action_count + index]
+            mutable staged_actions: ActionInputReplay::Log = ActionInputReplay::Log()
+            mutable staged_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
+            return Stored.Corrupt if ActionInputReplayCodec::decode(&action_bytes, &staged_actions) != ActionInputReplayCodec::DecodeStatus.Ok
+            return Stored.Corrupt if ActionPointerReplay::pointer_decode(&pointer_bytes, &staged_pointer) != ActionPointerReplay::DecodeStatus.Ok
+            actions <- staged_actions
+            pointer <- staged_pointer
+            Stored.Ok
