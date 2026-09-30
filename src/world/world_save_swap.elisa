@@ -1,0 +1,76 @@
+# Swap a saved world into the running World in place. The payload is first
+# loaded into a throwaway staging world, so malformed or cyclic saves are
+# rejected before the live world changes. The live world then keeps its
+# epoch and identity allocator: every current entity is despawned and the
+# saved entities are respawned with fresh IDs above the high-water mark,
+# so references held from before the swap go stale instead of aliasing.
+# A failure during the rebuild restores the captured pre-swap world.
+include "./world_save.elisa"
+include "./rollback.elisa"
+
+module World::SaveSwap:
+    public:
+        error SaveSwapError:
+            Rejected
+            InvalidWorld
+            RestoreFailed
+
+    private:
+        def saveswap_stage(bytes: u8&, length: usize) -> bool:
+            staging: mutable World::World = catch World::World():
+                value: value
+                error failure: return false
+            catch World::SaveGame::load_world(&staging, bytes, length):
+                ok: true
+                error failure: false
+
+        def saveswap_despawn(world: mutable World::World&, reference: World::EntityRef) -> bool:
+            catch World::world_despawn(world, reference):
+                ok: true
+                error failure: false
+
+        def saveswap_reference(world: World::World&, index: usize) -> World::EntityRef:
+            catch World::world_live_reference_at(world, index):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+
+        # Children must leave the hierarchy before their parents, so sweep
+        # the live column leaves-first until it is empty or stops shrinking.
+        def saveswap_clear(world: mutable World::World&) -> bool:
+            for sweep in 0..<World::MAX_ENTITIES |world|:
+                count: usize = World::world_live_ids_count(world)
+                if World::world_live_count(world) != 0:
+                    for offset in 0..<count |world|:
+                        reference: World::EntityRef = saveswap_reference(world, count - 1 - offset)
+                        if World::world_is_live(world, reference):
+                            _ = saveswap_despawn(world, reference)
+            World::world_compact(world)
+            World::world_live_count(world) == 0 and World::world_registry_count(world) == 0
+
+        def saveswap_load(world: mutable World::World&, bytes: u8&, length: usize) -> bool:
+            catch World::SaveGame::load_world(world, bytes, length):
+                ok: true
+                error failure: false
+
+        def saveswap_restore(world: mutable World::World&, snapshot: World::Rollback::Snapshot&) -> bool:
+            catch World::Rollback::restore(world, snapshot):
+                ok: true
+                error failure: false
+
+        # 0 swapped, 1 live world invalid, 2 rebuilt-and-restored, 3 restore failed.
+        def saveswap_rebuild(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
+            current: World::Rollback::Snapshot = catch World::Rollback::capture(world):
+                value: value
+                error failure: return 1
+            cleared: bool = saveswap_clear(world)
+            loaded: bool = cleared and saveswap_load(world, bytes, length)
+            return 0 if loaded
+            return 3 if not saveswap_restore(world, &current)
+            2
+
+    public:
+        def replace_world(world: mutable World::World&, bytes: u8&, length: usize) -> void error[SaveSwapError]:
+            raise SaveSwapError.Rejected if not saveswap_stage(bytes, length)
+            status: i32 = saveswap_rebuild(world, bytes, length)
+            raise SaveSwapError.RestoreFailed if status == 3
+            raise SaveSwapError.InvalidWorld if status != 0

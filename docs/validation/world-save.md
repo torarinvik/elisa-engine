@@ -37,3 +37,18 @@ this pass already made. The native smoke `world-save-physics-smoke`
 three bodies, the guard body's pose, refusal of a second pass, and that references from
 the replaced world resolve to no body. A control without the empty-bindings guard fails
 with status 16. Swapping a loaded world into a running game is still open.
+
+## In-place swap
+
+`World::SaveSwap::replace_world` (src/world/world_save_swap.elisa) swaps a save into the
+running World. It first loads the payload into a throwaway staging world, so malformed
+or cyclic saves are rejected before anything changes. It then captures a rollback
+snapshot, despawns every live entity leaves-first, compacts, and respawns the saved
+entities. The live world keeps its epoch and identity allocator, so the new IDs sit
+above the old high-water mark and pre-swap references go stale instead of aliasing.
+If the rebuild fails, the snapshot is restored. test/world_save_swap.elisa (gated)
+covers corrupt-payload rejection with the live world intact, kind counts, the same
+epoch, fresh IDs, stale old references and the preserved hierarchy. A control without
+the staging check fails with 4. The rollback-after-failed-rebuild branch has no direct
+test (staging makes it unreachable with current inputs). No shipped game drives
+swap, then render and physics rehydration, end to end yet.
