@@ -1,0 +1,94 @@
+# Line records for the M05 overlays: heat-coloured trail segments, faded
+# onion-ghost skeletons at other frames and ground-contact crosses. Each
+# record is ten values (start xyz, end xyz, rgba) so a renderer can submit
+# whole batches instead of one call per line.
+include "./overlay_trail.elisa"
+include "./overlay_line_index.elisa"
+
+module OverlayLines:
+    private:
+        def push_line(out: mutable darray[f64]&, ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64, rgb: darray[f64]&, alpha: f64) -> void:
+            out.push(ax)
+            out.push(ay)
+            out.push(az)
+            out.push(bx)
+            out.push(by)
+            out.push(bz)
+            out.push(rgb[0])
+            out.push(rgb[1])
+            out.push(rgb[2])
+            out.push(alpha)
+
+    public:
+        # One record per trail segment (xyz samples in `points`), coloured
+        # by the segment's heat. Heat is matched to segments by index; a
+        # missing value draws cold.
+        def trail(points: darray[f64]&, heat: darray[f64]&) -> darray[f64]:
+            out: mutable darray[f64] = []
+            n: i64 = points.count.i64() / 3
+            for s in 1..<(n if n > 1 else 1).usize() |out, points, heat|:
+                i: usize = s - 1
+                h: f64 = get heat[i] else 0.0
+                rgb: darray[f64] = OverlayTrail::colour(h)
+                push_line(out, points[i * 3], points[i * 3 + 1], points[i * 3 + 2], points[s * 3], points[s * 3 + 1], points[s * 3 + 2], rgb, 1.0)
+            out
+
+        # Bones of the skeleton at `frame` in a frame-major clip, grey with
+        # the given alpha. Empty for a malformed shape or frame.
+        def ghost(positions: darray[f64]&, frames: i64, parents: darray[i64]&, frame: i64, alpha: f64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            joints: i64 = parents.count.i64()
+            return out if frames < 1 or frames > OverlayIndex::MAX_FRAMES or joints > OverlayIndex::MAX_JOINTS
+            return out if positions.count.i64() != frames * joints * 3 or frame < 0 or frame >= frames
+            grey: darray[f64] = [0.7, 0.7, 0.75]
+            for j in 0..<parents.count |out, positions, frames, parents, frame, alpha, joints, grey|:
+                joint: i64 = j.i64()
+                parent: i64 = parents[j]
+                if OverlayLineIndex::has_bone(joint, parent, joints):
+                    a: i64 = OverlayIndex::slot(frame, joint, 0, frames, joints)
+                    b: i64 = OverlayIndex::slot(frame, parent, 0, frames, joints)
+                    push_line(out, positions[a.usize()], positions[(a + 1).usize()], positions[(a + 2).usize()], positions[b.usize()], positions[(b + 1).usize()], positions[(b + 2).usize()], grey, alpha)
+            out
+
+        # Ghost skeletons `step`, 2 * `step`, ... frames either side of
+        # `center`, `count` each way where the clip has them. Nearer ghosts
+        # are more opaque: the k-th pair has alpha 0.6 * (count + 1 - k) /
+        # (count + 1).
+        def ghosts(positions: darray[f64]&, frames: i64, parents: darray[i64]&, center: i64, step: i64, count: i64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if step < 1 or count < 1 or count > 64 or step > OverlayIndex::MAX_FRAMES
+            for k in 1..<(count + 1).usize() |out, positions, frames, parents, center, step, count|:
+                distance: i64 = step * k.i64()
+                alpha: f64 = 0.6 * (count + 1 - k.i64()).f64() / (count + 1).f64()
+                if OverlayIndex::has_ghost_before(center, distance, frames):
+                    before: darray[f64] = ghost(positions, frames, parents, OverlayIndex::window_first(center, distance, frames), alpha)
+                    for v in 0..<before.count |out, before|:
+                        out.push(before[v])
+                if distance <= OverlayIndex::MAX_FRAMES and OverlayIndex::has_ghost_after(center, distance, frames):
+                    after: darray[f64] = ghost(positions, frames, parents, OverlayIndex::window_last(center, distance, frames), alpha)
+                    for v in 0..<after.count |out, after|:
+                        out.push(after[v])
+            out
+
+        # An orange cross of half-size `size` on the ground plane at each
+        # marker (xyz triples), with `up` the vertical axis.
+        def contacts(markers: darray[f64]&, up: i64, size: f64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if up < 0 or up >= 3
+            orange: darray[f64] = [1.0, 0.55, 0.1]
+            first: i64 = 1 if up == 0 else 0
+            second: i64 = 1 if up == 2 else 2
+            n: i64 = markers.count.i64() / 3
+            for m in 0..<n.usize() |out, markers, up, size, orange, first, second|:
+                x: f64 = markers[m * 3]
+                y: f64 = markers[m * 3 + 1]
+                z: f64 = markers[m * 3 + 2]
+                dx1: f64 = size if first == 0 else 0.0
+                dy1: f64 = size if first == 1 else 0.0
+                dz1: f64 = size if first == 2 else 0.0
+                dx2: f64 = size if second == 0 else 0.0
+                dy2: f64 = size if second == 1 else 0.0
+                dz2: f64 = size if second == 2 else 0.0
+                push_line(out, x - dx1, y - dy1, z - dz1, x + dx1, y + dy1, z + dz1, orange, 1.0)
+                push_line(out, x - dx2, y - dy2, z - dz2, x + dx2, y + dy2, z + dz2, orange, 1.0)
+            out

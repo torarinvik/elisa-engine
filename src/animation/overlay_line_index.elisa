@@ -1,0 +1,44 @@
+# Integer rules for OverlayLines, split out so the prover can check them:
+# the value slots of a line record (start xyz, end xyz, rgba), which parent
+# links draw a ghost bone, and how many lines a frame of overlays needs.
+module OverlayLineIndex:
+    public:
+        const VALUES: i64 = 10
+        const MAX_LINES: i64 = 1048576
+        const MAX_JOINTS: i64 = 256
+
+        # Slot of value `k` of line `line` in a record buffer of `lines`
+        # lines, or -1.
+        def slot(line: i64, k: i64, lines: i64) -> i64:
+            requires lines >= 0
+            requires lines <= MAX_LINES
+            ensure result >= -1
+            ensure line < lines or result == -1
+            ensure k < VALUES or result == -1
+            return -1 if line < 0 or line >= lines
+            return -1 if k < 0 or k >= VALUES
+            line * VALUES + k
+
+        # Whether joint `joint` draws a bone to `parent`: roots (any parent
+        # outside the skeleton) and self-links draw nothing.
+        def has_bone(joint: i64, parent: i64, joints: i64) -> bool:
+            ensure not result or joint >= 0
+            ensure not result or joint < joints
+            ensure not result or parent >= 0
+            ensure not result or parent < joints
+            ensure not result or parent != joint
+            return false if joint < 0 or joint >= joints
+            return false if parent < 0 or parent >= joints
+            return false if parent == joint
+            true
+
+        # Lines for one frame of overlays: `trails` trails of `samples`
+        # samples each, `ghosts` ghost skeletons of `bones` bones, and two
+        # lines per contact marker. Zero for any negative or oversized input.
+        def frame_lines(trails: i64, samples: i64, ghosts: i64, bones: i64, markers: i64) -> i64:
+            ensure result >= 0
+            return 0 if trails < 0 or trails > 64 or samples < 0 or samples > 1048576
+            return 0 if ghosts < 0 or ghosts > 64 or bones < 0 or bones > MAX_JOINTS
+            return 0 if markers < 0 or markers > 65536
+            segments: i64 = samples - 1 if samples > 0 else 0
+            trails * segments + ghosts * bones + markers * 2

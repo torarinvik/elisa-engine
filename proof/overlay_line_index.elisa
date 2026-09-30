@@ -1,0 +1,33 @@
+include "../src/animation/overlay_line_index.elisa"
+
+extend OverlayLineIndex:
+    def prove_slot_inside(line: i64, k: i64, lines: i64) -> i64:
+        requires lines >= 0
+        requires lines <= 1048576
+        ensure result >= -1
+        slot(line, k, lines)
+
+    def prove_slot_rejects_past_line(line: i64, k: i64, lines: i64) -> i64:
+        requires lines >= 0
+        requires lines <= 1048576
+        requires line >= lines
+        ensure result == -1
+        slot(line, k, lines)
+
+    def prove_slot_rejects_past_value(line: i64, k: i64, lines: i64) -> i64:
+        requires lines >= 0
+        requires lines <= 1048576
+        requires k >= 10
+        ensure result == -1
+        slot(line, k, lines)
+
+    def prove_bone_links_inside(joint: i64, parent: i64, joints: i64) -> bool:
+        ensure not result or joint >= 0
+        ensure not result or joint < joints
+        ensure not result or parent >= 0
+        ensure not result or parent < joints
+        has_bone(joint, parent, joints)
+
+    def prove_frame_lines_signed(trails: i64, samples: i64, ghosts: i64, bones: i64, markers: i64) -> i64:
+        ensure result >= 0
+        frame_lines(trails, samples, ghosts, bones, markers)
