@@ -1,0 +1,195 @@
+# M04 live gizmo cursor on a skinned SDL3/Metal instance. The camera frames
+# the panel and the translate gizmo on its IK tip (2, 1, 0). Real SDL pointer events (pushed through
+# the test probe) run GizmoCursor: a move hovers the x shaft, a left press
+# begins an EffectorDrag, a move drags and a left release commits the solved
+# pose. A second drag is then cancelled with a right press and must restore
+# the committed pose. Captures go to $ELISA_CURSOR_{REST,DRAG,CANCEL}.
+# Run via scripts/gizmo_cursor_smoke.py.
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/application_input.elisa"
+include "../src/runtime/render_scene_animation_submission.elisa"
+include "../src/math/geometry.elisa"
+include "../src/animation/effector_drag.elisa"
+include "../src/animation/effector_pose.elisa"
+include "../src/animation/gizmo_cursor.elisa"
+
+@callconv(c)
+extern elisa_application_v1_test_push_pointer_event(
+    kind: i32, button: i32, x: f32, y: f32, delta_x: f32,
+    delta_y: f32, buttons: u32, pressed: i32) -> i32
+
+const module Shot:
+    WARMUP: usize = 4
+    SETTLE: usize = 3
+    PROBE_MOTION: i32 = 1
+    PROBE_BUTTON: i32 = 2
+    SIZE: f64 = 0.5
+    TOLERANCE: f64 = 0.02
+
+def offsets() -> darray[f64]:
+    [2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.02, 0.0]
+
+def shot(local: darray[f64]&, mesh: RenderScene::InstanceHandle, pose: mutable RenderScene::AnimationPose&, path: cstr) -> i32:
+    t: darray[f64] = offsets()
+    for _ in 0..<Shot::SETTLE |local, mesh, pose, t|:
+        for b in 0..<4 |local, pose, t|:
+            mutable r: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+            if b < 2:
+                r <- Geometry::Quat{x: local[b * 4].f32(), y: local[b * 4 + 1].f32(), z: local[b * 4 + 2].f32(), w: local[b * 4 + 3].f32()}
+            transform: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: t[b * 3].f32(), y: t[b * 3 + 1].f32(), z: t[b * 3 + 2].f32()},
+                rotation: r, scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}
+            set: i32 = catch RenderScene::set_bone_transform(pose, b, transform):
+                ok: 0
+                error failure: 1
+            return 1 if set != 0
+        submitted: i32 = catch RenderScene::submit_animation_pose(mesh, pose):
+            ok: 0
+            error failure: 1
+        return 2 if submitted != 0
+        return 3 if Application::pump() != Application::PumpStatus.Running
+        completed: i32 = catch RenderScene::complete_animation_pose(mesh):
+            ok: 0
+            error failure: 1
+        return 4 if completed != 0
+    return 5 if not Application::save_screenshot(path)
+    0
+
+def rotations(positions: darray[f64]&, rest: darray[f64]&, chain: darray[i64]&) -> darray[f64]:
+    rest_world: darray[f64] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    world: darray[f64] = EffectorPose::world(rest, positions, chain, rest_world)
+    EffectorPose::local(world, MotionQuat::identity())
+
+# Camera ray through pixel (x, y) as [origin, direction]; empty on failure.
+def pixel_ray(x: f64, y: f64) -> darray[f64]:
+    none: darray[f64] = []
+    ray: Geometry::Ray3 = catch RenderScene::camera_ray(x.f32(), y.f32()):
+        value: value
+        error failure: return none
+    out: darray[f64] = [ray.origin.x.f64(), ray.origin.y.f64(), ray.origin.z.f64(),
+        ray.direction.x.f64(), ray.direction.y.f64(), ray.direction.z.f64()]
+    out
+
+# First pixel (row-major) whose ray hovers the x shaft,
+# as [x, y]; empty when none does.
+def shaft_pixel(origin: darray[f64]&) -> darray[f64]:
+    basis: darray[f64] = Gizmo::world_basis()
+    mutable found: darray[f64] = []
+    for row in 0..<240 |origin, basis, found|:
+        for i in 0..<320 |origin, basis, found, row|:
+            px: f64 = i.f64()
+            py: f64 = row.f64()
+            if found.count == 0:
+                ray: darray[f64] = pixel_ray(px, py)
+                hit: i64 = GizmoDisplay::hover(GizmoDisplayIndex::TRANSLATE, basis, origin, Shot::SIZE, ray, Shot::TOLERANCE)
+                if hit == GizmoIndex::AXIS_X:
+                    found <- [px, py]
+    found
+
+def push(kind: i32, button: i32, at: darray[f64]&, dx: f64, pressed: i32) -> bool:
+    x: f64 = at[0] + dx
+    elisa_application_v1_test_push_pointer_event(kind, button, x.f32(), at[1].f32(), 0.0, 0.0, 0, pressed) == 0
+
+# GizmoCursorIndex event for an SDL pointer event.
+def cursor_event(event: Application::PointerEvent&) -> i64:
+    mutable kind: i64 = -1
+    if event.kind == Application::PointerEventKind.Motion:
+        kind <- 0
+    if event.kind == Application::PointerEventKind.Button:
+        kind <- 1
+    mutable pressed: i64 = 0
+    if event.pressed:
+        pressed <- 1
+    GizmoCursorIndex::event_of(kind, event.button.i64(), pressed)
+
+struct Outcome:
+    positions: darray[f64]
+    actions: i64
+
+# Pump, feed every queued pointer event to the cursor and the IK drag, and
+# return the pose after the last event plus the actions as base-8 digits.
+def drive(start: darray[f64]&, chain: darray[i64]&) -> Outcome:
+    basis: darray[f64] = Gizmo::world_basis()
+    origin: darray[f64] = [start[3], start[4], start[5]]
+    none: darray[f64] = []
+    mutable positions: darray[f64] = [start[0], start[1], start[2], start[3], start[4], start[5]]
+    mutable actions: i64 = 0
+    if Application::pump() != Application::PumpStatus.Running:
+        return Outcome{positions: none, actions: -1}
+    mutable cursor: GizmoCursor::Cursor = GizmoCursor::Cursor()
+    mutable session: EffectorDrag::Session = EffectorDrag::begin(7, basis, start, chain, origin)
+    event: mutable Application::PointerEvent = zeroed
+    while Application::next_pointer_event(&event) |start, chain, basis, origin, positions, actions, cursor, session, event|:
+        ray: darray[f64] = pixel_ray(event.x.f64(), event.y.f64())
+        code: i64 = cursor_event(event)
+        report: GizmoCursor::Report = GizmoCursor::feed(cursor, GizmoDisplayIndex::TRANSLATE, basis, origin, Shot::SIZE, Shot::TOLERANCE, code, ray)
+        cursor <- report.cursor
+        actions <- actions * 8 + report.action
+        if report.action == GizmoCursorIndex::BEGIN:
+            session <- EffectorDrag::begin(report.cursor.active, basis, start, chain, ray)
+        if report.action == GizmoCursorIndex::UPDATE or report.action == GizmoCursorIndex::COMMIT:
+            step: EffectorDrag::Step = EffectorDrag::solve(session, EffectorDrag::target(session, ray), 0.000001, 32)
+            positions <- step.positions
+        if report.action == GizmoCursorIndex::REVERT:
+            positions <- EffectorDrag::cancel(session)
+    Outcome{positions: positions, actions: actions}
+
+def exercise() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Gizmo Cursor", width: 320, height: 240, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 240, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: 1.0, y: 3.0, z: 3.0}, Geometry::Vec3{x: 1.0, y: 0.5, z: 0.5},
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh("build/cooked/subsets/effector-drag-rig.pkg",
+        Geometry::transform_identity(), RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+    for _ in 0..<Shot::WARMUP:
+        return 5 if Application::pump() != Application::PumpStatus.Running
+    rest: darray[f64] = [2.0, 0.0, 0.0, 2.0, 1.0, 0.0]
+    chain: darray[i64] = [0, 1]
+    still: darray[f64] = rotations(rest, rest, chain)
+    return 10 if shot(still, mesh, &pose, Application::environment_value("ELISA_CURSOR_REST")) != 0
+    tip: darray[f64] = [2.0, 1.0, 0.0]
+    px: darray[f64] = shaft_pixel(tip)
+    return 11 if px.count != 2
+    # Hover, press, drag 40 pixels right, release.
+    return 12 if not (push(Shot::PROBE_MOTION, 0, px, 0.0, 0) and push(Shot::PROBE_BUTTON, 1, px, 0.0, 1))
+    return 12 if not (push(Shot::PROBE_MOTION, 0, px, 40.0, 0) and push(Shot::PROBE_BUTTON, 1, px, 40.0, 0))
+    first: Outcome = drive(rest, chain)
+    # HOVER, BEGIN, UPDATE, COMMIT.
+    return 13 if first.actions != 1 * 512 + 2 * 64 + 3 * 8 + 4
+    # The tip was pulled toward +x off the unit sphere's top.
+    return 14 if not (first.positions.count == 6 and first.positions[3] > 2.05 and first.positions[4] < 1.0)
+    committed: darray[f64] = first.positions
+    dragged: darray[f64] = rotations(committed, rest, chain)
+    return 20 if shot(dragged, mesh, &pose, Application::environment_value("ELISA_CURSOR_DRAG")) != 0
+    # Drag again from the committed pose and cancel with a right press.
+    moved: darray[f64] = [committed[3], committed[4], committed[5]]
+    qx: darray[f64] = shaft_pixel(moved)
+    return 21 if qx.count != 2
+    return 22 if not (push(Shot::PROBE_MOTION, 0, qx, 0.0, 0) and push(Shot::PROBE_BUTTON, 1, qx, 0.0, 1))
+    return 22 if not (push(Shot::PROBE_MOTION, 0, qx, -60.0, 0) and push(Shot::PROBE_BUTTON, 3, qx, -60.0, 1))
+    second: Outcome = drive(committed, chain)
+    # HOVER, BEGIN, UPDATE, REVERT.
+    return 23 if second.actions != 1 * 512 + 2 * 64 + 3 * 8 + 5
+    for i in 0..<6 |second, committed|:
+        return 24 if second.positions[i] != committed[i]
+    back: darray[f64] = rotations(second.positions, rest, chain)
+    return 30 if shot(back, mesh, &pose, Application::environment_value("ELISA_CURSOR_CANCEL")) != 0
+    0
+
+def main() -> i32:
+    result: i32 = exercise()
+    _ = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    _ = Application::shutdown()
+    result

@@ -31,4 +31,14 @@ test/animation_gizmo_cursor.elisa covers:
 
 The tests are mutation-checked.
 
-Still open: feeding live SDL pointer events in an interactive run.
+## Live SDL run
+
+`scripts/gizmo_cursor_smoke.py` builds `test/render_scene_gizmo_cursor_main.elisa`
+on SDL3/Metal. Pointer events are pushed through the test probe and read back
+with `Application::next_pointer_event`. Each one becomes a `GizmoCursorIndex`
+event and a `RenderScene::camera_ray` ray.
+
+1. A move over the x shaft hovers, a left press begins an `EffectorDrag`, a move 40 px right drags and a left release commits. The actions must be HOVER, BEGIN, UPDATE, COMMIT, and the tip must move toward +x.
+2. A second drag from the committed pose ends with a right press. The actions must be HOVER, BEGIN, UPDATE, REVERT, and the pose must return exactly to the committed one.
+
+Result on 2026-09-30: `moved=7239` pixels from rest to the committed drag, and `cancel_drift=0` between the committed and cancelled captures. A mutant that corrupted the reverted pose was caught (exit 24). The smoke is run by hand and is not in the gate.
