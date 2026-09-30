@@ -191,3 +191,4 @@ extern "C" int32_t elisa_application_v1_relative_mouse(void) {
 }
 
 #include "application_clipboard.inc"
+#include "application_displays.inc"

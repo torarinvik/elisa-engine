@@ -133,6 +133,11 @@ int32_t elisa_application_v1_relative_mouse(void);
 // returns QUEUE_FULL without copying when `capacity` is too small.
 int32_t elisa_application_v1_set_clipboard_text(const uint8_t* text, uint32_t length);
 int32_t elisa_application_v1_clipboard_text(uint8_t* out, uint32_t capacity, uint32_t* length);
+
+// Connected displays. display_info writes eight int32 fields: id, x, y,
+// width, height, refresh in millihertz, content scale in permille, primary.
+int32_t elisa_application_v1_display_count(uint32_t* count);
+int32_t elisa_application_v1_display_info(uint32_t index, int32_t* fields);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);
