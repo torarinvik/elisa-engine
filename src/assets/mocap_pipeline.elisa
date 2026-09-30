@@ -1,0 +1,126 @@
+# Headless mocap cleanup pipeline (plan M07): load a GLB, de-spike the key
+# tracks of one animation with MotionFilters, and save the result. It needs
+# no window, GPU or application loop, so a batch tool or CI can run it over a
+# folder of takes. Only the filtered output accessors change on disk; every
+# other byte of the file is written back as it was read.
+include "./glb_document.elisa"
+include "../animation/motion_filters.elisa"
+
+module MocapPipeline:
+    public:
+        struct Settings:
+            # Running-median window in keys (odd, at most 255).
+            window: usize
+            # Gaussian sigma in keys after the median; 0 skips it.
+            sigma: f64
+            translations: bool
+            rotations: bool
+
+        struct Report:
+            filtered: usize
+            # Channels left alone: longer than MotionFilters::capacity(),
+            # a filter refused them, or the path is not selected.
+            skipped: usize
+            values_written: usize
+
+        def default_settings() -> Settings:
+            Settings{window: 5, sigma: 1.0, translations: true, rotations: true}
+
+    private:
+        def selected(settings: Settings, path: GlbDocument::TargetPath) -> bool:
+            return settings.translations if path == GlbDocument::TargetPath.Translation
+            return settings.rotations if path == GlbDocument::TargetPath.Rotation
+            false
+
+        # Filter one output track in place. False when it is too long or a
+        # filter refuses it; the document is then untouched.
+        def filter_track(doc: mutable GlbDocument::Document&, slot: usize, rotation: bool, settings: Settings, written: mutable usize&) -> bool:
+            held: GlbDocument::Track = GlbDocument::track(doc, slot)
+            return false if held.count > MotionFilters::capacity() or held.count < 3
+            components: usize = held.components
+            mutable x: MotionFilters::Signal = MotionFilters::Signal()
+            mutable y: MotionFilters::Signal = MotionFilters::Signal()
+            mutable z: MotionFilters::Signal = MotionFilters::Signal()
+            mutable w: MotionFilters::Signal = MotionFilters::Signal()
+            for key in 0..<held.count:
+                _ = MotionFilters::push(&x, GlbDocument::track_value(doc, slot, key, 0).f64())
+                _ = MotionFilters::push(&y, GlbDocument::track_value(doc, slot, key, 1).f64())
+                _ = MotionFilters::push(&z, GlbDocument::track_value(doc, slot, key, 2).f64())
+                if components == 4:
+                    _ = MotionFilters::push(&w, GlbDocument::track_value(doc, slot, key, 3).f64())
+            if rotation:
+                _ = MotionFilters::quat_continuity(&x, &y, &z, &w)
+            mutable fx: MotionFilters::Signal = MotionFilters::Signal()
+            mutable fy: MotionFilters::Signal = MotionFilters::Signal()
+            mutable fz: MotionFilters::Signal = MotionFilters::Signal()
+            mutable fw: MotionFilters::Signal = MotionFilters::Signal()
+            mutable ok: bool = MotionFilters::despike(&x, &fx, settings.window, settings.sigma, false)
+            ok <- ok and MotionFilters::despike(&y, &fy, settings.window, settings.sigma, false)
+            ok <- ok and MotionFilters::despike(&z, &fz, settings.window, settings.sigma, false)
+            if components == 4:
+                ok <- ok and MotionFilters::despike(&w, &fw, settings.window, settings.sigma, false)
+            return false if not ok
+            for key in 0..<held.count:
+                mutable a: f64 = fx.values[key]
+                mutable b: f64 = fy.values[key]
+                mutable c: f64 = fz.values[key]
+                mutable d: f64 = 0.0
+                if components == 4:
+                    d <- fw.values[key]
+                    length_squared: f64 = a * a + b * b + c * c + d * d
+                    if length_squared > 0.0000001:
+                        inverse: f64 = 1.0 / ElisaMath::sqrt(length_squared)
+                        a <- a * inverse
+                        b <- b * inverse
+                        c <- c * inverse
+                        d <- d * inverse
+                _ = GlbDocument::set_track_value(doc, slot, key, 0, a.f32())
+                _ = GlbDocument::set_track_value(doc, slot, key, 1, b.f32())
+                _ = GlbDocument::set_track_value(doc, slot, key, 2, c.f32())
+                if components == 4:
+                    _ = GlbDocument::set_track_value(doc, slot, key, 3, d.f32())
+                written <- written + components
+            true
+
+    public:
+        # Clean every selected channel of `animation` in place. An output
+        # track shared by several channels is filtered once.
+        def clean_animation(doc: mutable GlbDocument::Document&, animation: usize, settings: Settings) -> Report:
+            mutable filtered: usize = 0
+            mutable skipped: usize = 0
+            mutable written: usize = 0
+            mutable done: darray[usize] = []
+            for at in 0..<GlbDocument::channel_count(doc, animation):
+                held: GlbDocument::Channel = GlbDocument::channel(doc, animation, at)
+                mutable seen: bool = false
+                for k in 0..<done.count:
+                    seen <- true if done[k] == held.output
+                if not seen:
+                    done.push(held.output)
+                    if not selected(settings, held.path) or held.interpolation == GlbDocument::Interpolation.CubicSpline:
+                        skipped <- skipped + 1
+                    elif filter_track(doc, held.output, held.path == GlbDocument::TargetPath.Rotation, settings, &written):
+                        filtered <- filtered + 1
+                    else:
+                        skipped <- skipped + 1
+            Report{filtered: filtered, skipped: skipped, values_written: written}
+
+        # Clean every animation.
+        def clean_all(doc: mutable GlbDocument::Document&, settings: Settings) -> Report:
+            mutable filtered: usize = 0
+            mutable skipped: usize = 0
+            mutable written: usize = 0
+            for a in 0..<GlbDocument::animation_count(doc):
+                one: Report = clean_animation(doc, a, settings)
+                filtered <- filtered + one.filtered
+                skipped <- skipped + one.skipped
+                written <- written + one.values_written
+            Report{filtered: filtered, skipped: skipped, values_written: written}
+
+        # Load `input`, clean every animation, save to `output`. A load
+        # failure raises before `output` is opened, so nothing is written.
+        def clean_file(input: cstr, output: cstr, settings: Settings) -> Report error[GlbDocument::GlbDocumentError]:
+            mutable doc: GlbDocument::Document = try GlbDocument::load(input)
+            report: Report = clean_all(&doc, settings)
+            _ = try GlbDocument::save(&doc, output)
+            report

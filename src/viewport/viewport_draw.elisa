@@ -1,0 +1,124 @@
+# Draw lists for embeddable viewports (plan M01, M03, M05). A list holds
+# world-space line segments and triangles in two layers:
+#   - DEPTH: depth-tested scene geometry (floor grid, ghosts, trails);
+#   - TOP: drawn over everything (x-ray bones, selection, gizmos, markers).
+# Both the Metal viewport renderer (ViewportMetal) and the CPU rasterizer
+# (ViewportRaster) consume the same list with the same camera matrix.
+#
+# Colours are packed RGBA8 as 0xAABBGGRR (R in the low byte), the memory
+# order of an RGBA pixel on a little-endian machine.
+include "../math/geometry.elisa"
+include "../vendor/elisa_math.elisa"
+include "./viewport_camera.elisa"
+
+module ViewportDraw:
+    public:
+        const DEPTH: i32 = 0
+        const TOP: i32 = 1
+
+        # Vertices per list; 4M vertices is 64 MiB of positions and colours.
+        const MAX_VERTICES: usize = 4194304
+
+        error DrawError:
+            Capacity
+            BadLayer
+            NotFinite
+
+        # Positions are xyz triples; colours one per vertex. Lines are vertex
+        # pairs, triangles vertex triples. `*_lines` / `*_tris` count
+        # vertices so the renderer can slice the shared arrays.
+        struct Batch:
+            positions: mutable darray[f32]
+            colors: mutable darray[u32]
+
+        struct List:
+            depth_lines: mutable Batch
+            depth_tris: mutable Batch
+            top_lines: mutable Batch
+            top_tris: mutable Batch
+
+        def rgba(r: i64, g: i64, b: i64, a: i64) -> u32:
+            (clamp_byte(r) | (clamp_byte(g) << 8) | (clamp_byte(b) << 16) | (clamp_byte(a) << 24)).u32()
+
+        def create() -> List:
+            List{depth_lines: Batch{positions: [], colors: []}, depth_tris: Batch{positions: [], colors: []}, top_lines: Batch{positions: [], colors: []}, top_tris: Batch{positions: [], colors: []}}
+
+        def clear(list: mutable List&):
+            list.depth_lines.positions.clear()
+            list.depth_lines.colors.clear()
+            list.depth_tris.positions.clear()
+            list.depth_tris.colors.clear()
+            list.top_lines.positions.clear()
+            list.top_lines.colors.clear()
+            list.top_tris.positions.clear()
+            list.top_tris.colors.clear()
+
+        def vertex_count(list: List&) -> usize:
+            list.depth_lines.colors.count + list.depth_tris.colors.count + list.top_lines.colors.count + list.top_tris.colors.count
+
+        def line(list: mutable List&, a: Geometry::Vec3, b: Geometry::Vec3, color: u32, layer: i32) -> void error[DrawError]:
+            raise DrawError.BadLayer if layer != DEPTH and layer != TOP
+            raise DrawError.NotFinite if not Geometry::vec3_is_finite(a) or not Geometry::vec3_is_finite(b)
+            raise DrawError.Capacity if vertex_count(list) + 2 > MAX_VERTICES
+            if layer == DEPTH:
+                push(&list.depth_lines, a, color)
+                push(&list.depth_lines, b, color)
+            else:
+                push(&list.top_lines, a, color)
+                push(&list.top_lines, b, color)
+
+        def triangle(list: mutable List&, a: Geometry::Vec3, b: Geometry::Vec3, c: Geometry::Vec3, color: u32, layer: i32) -> void error[DrawError]:
+            raise DrawError.BadLayer if layer != DEPTH and layer != TOP
+            raise DrawError.NotFinite if not Geometry::vec3_is_finite(a) or not Geometry::vec3_is_finite(b) or not Geometry::vec3_is_finite(c)
+            raise DrawError.Capacity if vertex_count(list) + 3 > MAX_VERTICES
+            if layer == DEPTH:
+                push(&list.depth_tris, a, color)
+                push(&list.depth_tris, b, color)
+                push(&list.depth_tris, c, color)
+            else:
+                push(&list.top_tris, a, color)
+                push(&list.top_tris, b, color)
+                push(&list.top_tris, c, color)
+
+        # Floor grid on y = 0: `lines_per_side` lines each side of the origin
+        # every `spacing` metres, with the X axis red and the Z axis blue.
+        def grid(list: mutable List&, spacing: f32, lines_per_side: i64, color: u32) -> void error[DrawError]:
+            raise DrawError.NotFinite if spacing != spacing or spacing <= 0.0 or lines_per_side < 1 or lines_per_side > 1000
+            extent: f32 = spacing * lines_per_side.f32()
+            for k in 0..<(2 * lines_per_side + 1):
+                offset: f32 = (k - lines_per_side).f32() * spacing
+                along_x: u32 = rgba(200, 60, 60, 255) if k == lines_per_side else color
+                along_z: u32 = rgba(60, 90, 210, 255) if k == lines_per_side else color
+                try line(list, Geometry::Vec3{x: 0.0 - extent, y: 0.0, z: offset}, Geometry::Vec3{x: extent, y: 0.0, z: offset}, along_x, DEPTH)
+                try line(list, Geometry::Vec3{x: offset, y: 0.0, z: 0.0 - extent}, Geometry::Vec3{x: offset, y: 0.0, z: extent}, along_z, DEPTH)
+
+        # A screen-facing octagon of `radius_px` pixels at `center`: joints,
+        # contact markers and gizmo handles keep their size at any zoom.
+        def marker(list: mutable List&, cam: ViewportCamera::Camera&, center: Geometry::Vec3, radius_px: f32, color: u32, layer: i32) -> void error[DrawError]:
+            raise DrawError.NotFinite if radius_px != radius_px or radius_px <= 0.0
+            b: ViewportCamera::Basis = ViewportCamera::basis(cam)
+            depth: f32 = Geometry::vec3_dot(Geometry::vec3_sub(center, b.eye), b.forward)
+            return if depth <= ViewportCamera::NEAR
+            r: f32 = radius_px * ViewportCamera::world_per_pixel(cam, depth)
+            mutable prev: Geometry::Vec3 = Geometry::vec3_add(center, Geometry::vec3_scale(b.right, r))
+            for k in 1..<9:
+                angle: f32 = k.f32() * 0.785398163
+                next: Geometry::Vec3 = Geometry::vec3_add(center, Geometry::vec3_add(Geometry::vec3_scale(b.right, r * ElisaMath::cosf(angle)), Geometry::vec3_scale(b.up, r * ElisaMath::sinf(angle))))
+                try triangle(list, center, prev, next, color, layer)
+                prev <- next
+
+        # A bone as a line from parent joint to child joint.
+        def bone(list: mutable List&, parent: Geometry::Vec3, child: Geometry::Vec3, color: u32, layer: i32) -> void error[DrawError]:
+            try line(list, parent, child, color, layer)
+
+    private:
+        def clamp_byte(value: i64) -> i64:
+            return 0 if value < 0
+            return 255 if value > 255
+            value
+
+        def push(batch: mutable Batch&, p: Geometry::Vec3, color: u32):
+            batch.positions.push(p.x)
+            batch.positions.push(p.y)
+            batch.positions.push(p.z)
+            batch.colors.push(color)

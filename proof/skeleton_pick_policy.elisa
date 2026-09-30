@@ -1,0 +1,11 @@
+include "../src/viewport/skeleton_pick_policy.elisa"
+
+# The six ensures on SkeletonPickPolicy::better are checked with the module:
+# together they say `better` is exactly the strict lexicographic order on
+# (code, kind, bone), which is irreflexive, asymmetric and total on distinct
+# keys, so the minimum over any candidate set is unique.
+extend SkeletonPickPolicy:
+    def prove_code(code: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 1099511627776
+        clamp_code(code)

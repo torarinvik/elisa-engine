@@ -1,0 +1,126 @@
+# Long-take clip storage with random-access sampling (plan M02). A clip is a
+# dense bone-major-per-frame table of local transforms: ten f32 per sample
+# (position xyz, rotation xyzw, scale xyz), so any frame is one offset away
+# and scrubbing costs the same anywhere in a two-hour take. Shapes past the
+# LongClipIndex limits fail with a typed error before anything is allocated.
+include "../math/geometry.elisa"
+include "./pose.elisa"
+include "./long_clip_index.elisa"
+
+module LongClip:
+    public:
+        const FLOATS_PER_SAMPLE: usize = 10
+
+        error LongClipError:
+            BoneCapacity
+            FrameCapacity
+            SampleCapacity
+            BadRate
+
+        affine struct Clip:
+            private:
+                bones: mutable usize
+                frames: mutable usize
+                rate: mutable f32
+                data: mutable darray[f32]
+
+    private:
+        def slot(clip: Clip&, frame: usize, bone: usize) -> usize:
+            (frame * clip.bones + bone) * FLOATS_PER_SAMPLE
+
+        def read(clip: Clip&, frame: usize, bone: usize) -> Geometry::Transform:
+            at: usize = slot(clip, frame, bone)
+            Geometry::Transform{
+                position: Geometry::Vec3{x: clip.data[at], y: clip.data[at + 1], z: clip.data[at + 2]},
+                rotation: Geometry::Quat{x: clip.data[at + 3], y: clip.data[at + 4], z: clip.data[at + 5], w: clip.data[at + 6]},
+                scale: Geometry::Vec3{x: clip.data[at + 7], y: clip.data[at + 8], z: clip.data[at + 9]},
+            }
+
+    public:
+        # An empty clip (no bones, no frames), for fallbacks.
+        def Clip() -> Clip:
+            Clip{bones: 0, frames: 0, rate: 1.0, data: []}
+
+        # A clip of `frames` x `bones` identity samples at `rate` frames per
+        # second.
+        def create(bones: usize, frames: usize, rate: f32) -> Clip error[LongClipError]:
+            raise LongClipError.BoneCapacity if not LongClipIndex::bones_fit(bones.i64())
+            raise LongClipError.FrameCapacity if not LongClipIndex::frames_fit(frames.i64())
+            raise LongClipError.SampleCapacity if bones.i64() * frames.i64() > LongClipIndex::MAX_SAMPLES
+            raise LongClipError.BadRate if not (rate > 0.0 and rate < 100000.0)
+            mutable clip: Clip = Clip{bones: bones, frames: frames, rate: rate, data: []}
+            total: usize = bones * frames
+            for s in 0..<total:
+                clip.data.push(0.0)
+                clip.data.push(0.0)
+                clip.data.push(0.0)
+                clip.data.push(0.0)
+                clip.data.push(0.0)
+                clip.data.push(0.0)
+                clip.data.push(1.0)
+                clip.data.push(1.0)
+                clip.data.push(1.0)
+                clip.data.push(1.0)
+            return move clip
+
+        def bone_count(clip: Clip&) -> usize:
+            clip.bones
+
+        def frame_count(clip: Clip&) -> usize:
+            clip.frames
+
+        def rate(clip: Clip&) -> f32:
+            clip.rate
+
+        # Seconds from the first frame to the last.
+        def duration(clip: Clip&) -> f32:
+            return 0.0 if clip.frames == 0
+            (clip.frames - 1).f32() / clip.rate
+
+        # Store one local transform. False when the frame or bone is outside
+        # the clip or the transform is not finite; nothing changes then.
+        def set_local(clip: mutable Clip&, frame: usize, bone: usize, value: Geometry::Transform) -> bool:
+            return false if frame >= clip.frames or bone >= clip.bones
+            return false if not Geometry::vec3_is_finite(value.position) or not Geometry::quat_is_finite(value.rotation) or not Geometry::vec3_is_finite(value.scale)
+            at: usize = slot(clip, frame, bone)
+            clip.data[at] <- value.position.x
+            clip.data[at + 1] <- value.position.y
+            clip.data[at + 2] <- value.position.z
+            clip.data[at + 3] <- value.rotation.x
+            clip.data[at + 4] <- value.rotation.y
+            clip.data[at + 5] <- value.rotation.z
+            clip.data[at + 6] <- value.rotation.w
+            clip.data[at + 7] <- value.scale.x
+            clip.data[at + 8] <- value.scale.y
+            clip.data[at + 9] <- value.scale.z
+            true
+
+        # The stored sample, with frame and bone clamped into the clip.
+        # Identity for an empty clip.
+        def local(clip: Clip&, frame: usize, bone: usize) -> Geometry::Transform:
+            return Geometry::transform_identity() if clip.frames == 0 or clip.bones == 0
+            at_frame: usize = LongClipIndex::clamp_frame(frame.i64(), clip.frames.i64()).usize()
+            at_bone: usize = LongClipIndex::clamp_frame(bone.i64(), clip.bones.i64()).usize()
+            read(clip, at_frame, at_bone)
+
+        # Bone `bone` at `seconds`, interpolated between the two nearest
+        # frames (lerp for position and scale, shortest-arc nlerp for
+        # rotation). Times outside the clip hold the end frames.
+        def sample(clip: Clip&, seconds: f32, bone: usize) -> Geometry::Transform:
+            return Geometry::transform_identity() if clip.frames == 0 or bone >= clip.bones
+            position: f32 = seconds * clip.rate
+            return read(clip, 0, bone) if not (position > 0.0)
+            whole: i64 = position.i64()
+            base: usize = LongClipIndex::clamp_frame(whole, clip.frames.i64()).usize()
+            next: usize = LongClipIndex::next_frame(whole, clip.frames.i64()).usize()
+            weight: f32 = position - whole.f32()
+            return read(clip, base, bone) if base == next
+            Pose::transform_lerp(read(clip, base, bone), read(clip, next, bone), weight)
+
+        # Every bone at `seconds` into `out`, which is resized to the bone
+        # count. The count written.
+        def sample_pose(clip: Clip&, seconds: f32, out: mutable darray[Geometry::Transform]&) -> usize:
+            out.clear()
+            for b in 0..<clip.bones:
+                out.push(sample(clip, seconds, b))
+            out.count

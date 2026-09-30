@@ -1,0 +1,181 @@
+# CPU rasterizer for viewport draw lists (plan M01 / M07). It renders the
+# same ViewportDraw list with the same camera matrix as the Metal renderer,
+# into RGBA8 pixels plus a depth buffer. It is the headless reference image
+# (PNG thumbnails, CI regression pictures) and the oracle the Metal readback
+# is compared against.
+#
+# Rules: pixel centres at +0.5; triangles are filled for either winding;
+# lines are stepped one pixel per major-axis step; depth test is
+# less-or-equal on clip-space z in [0, 1]. The TOP layer ignores and does
+# not write depth. Alpha is ignored (opaque).
+include "./viewport_camera.elisa"
+include "./viewport_draw.elisa"
+include "./viewport_policy.elisa"
+
+module ViewportRaster:
+    public:
+        struct Image:
+            width: mutable i64
+            height: mutable i64
+            rgba: mutable darray[u8]
+            depth: mutable darray[f32]
+
+        def create(width: i64, height: i64) -> Image:
+            w: i64 = ViewportPolicy::clamp_extent(width)
+            h: i64 = ViewportPolicy::clamp_extent(height)
+            mutable img: Image = Image{width: w, height: h, rgba: [], depth: []}
+            n: usize = (w * h).usize()
+            for _ in 0..<n:
+                img.rgba.push(0)
+                img.rgba.push(0)
+                img.rgba.push(0)
+                img.rgba.push(255)
+                img.depth.push(1.0)
+            return move img
+
+        def clear(img: mutable Image&, color: u32):
+            n: usize = (img.width * img.height).usize()
+            for k in 0..<n:
+                store(img, k, color)
+                img.depth[k] <- 1.0
+
+        def pixel(img: Image&, x: i64, y: i64) -> u32:
+            return 0 if x < 0 or y < 0 or x >= img.width or y >= img.height
+            at: usize = ((y * img.width + x) * 4).usize()
+            img.rgba[at].u32() | (img.rgba[at + 1].u32() << 8) | (img.rgba[at + 2].u32() << 16) | (img.rgba[at + 3].u32() << 24)
+
+        # Draw the list: depth triangles, depth lines, then the TOP layer.
+        def render(img: mutable Image&, cam: ViewportCamera::Camera&, list: ViewportDraw::List&):
+            m: f32[16] = ViewportCamera::view_projection(cam)
+            triangles(img, &m, &list.depth_tris, true)
+            lines(img, &m, &list.depth_lines, true)
+            triangles(img, &m, &list.top_tris, false)
+            lines(img, &m, &list.top_lines, false)
+
+    private:
+        struct Clip:
+            x: f32
+            y: f32
+            z: f32
+            w: f32
+
+        def store(img: mutable Image&, k: usize, color: u32):
+            at: usize = k * 4
+            img.rgba[at] <- (color & 0xff).u8()
+            img.rgba[at + 1] <- ((color >> 8) & 0xff).u8()
+            img.rgba[at + 2] <- ((color >> 16) & 0xff).u8()
+            img.rgba[at + 3] <- 255
+
+        def to_clip(m: f32[16]&, batch: ViewportDraw::Batch&, v: usize) -> Clip:
+            x: f32 = batch.positions[v * 3]
+            y: f32 = batch.positions[v * 3 + 1]
+            z: f32 = batch.positions[v * 3 + 2]
+            Clip{x: m[0] * x + m[4] * y + m[8] * z + m[12], y: m[1] * x + m[5] * y + m[9] * z + m[13], z: m[2] * x + m[6] * y + m[10] * z + m[14], w: m[3] * x + m[7] * y + m[11] * z + m[15]}
+
+        def lerp_clip(a: Clip, b: Clip, t: f32) -> Clip:
+            Clip{x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, z: a.z + (b.z - a.z) * t, w: a.w + (b.w - a.w) * t}
+
+        def plot(img: mutable Image&, x: i64, y: i64, z: f32, color: u32, depth_test: bool):
+            return if x < 0 or y < 0 or x >= img.width or y >= img.height
+            return if z < 0.0 or z > 1.0
+            k: usize = (y * img.width + x).usize()
+            if depth_test:
+                return if z > img.depth[k]
+                img.depth[k] <- z
+            store(img, k, color)
+
+        def lines(img: mutable Image&, m: f32[16]&, batch: ViewportDraw::Batch&, depth_test: bool):
+            n: usize = batch.colors.count / 2
+            wf: f32 = img.width.f32()
+            hf: f32 = img.height.f32()
+            for s in 0..<n:
+                mutable a: Clip = to_clip(m, batch, s * 2)
+                mutable b: Clip = to_clip(m, batch, s * 2 + 1)
+                # Clip against the near plane z >= 0.
+                continue if a.z < 0.0 and b.z < 0.0
+                if a.z < 0.0:
+                    a <- lerp_clip(a, b, a.z / (a.z - b.z))
+                if b.z < 0.0:
+                    b <- lerp_clip(b, a, b.z / (b.z - a.z))
+                continue if a.w <= 0.0000001 or b.w <= 0.0000001
+                ax: f32 = (a.x / a.w * 0.5 + 0.5) * wf
+                ay: f32 = (0.5 - a.y / a.w * 0.5) * hf
+                bx: f32 = (b.x / b.w * 0.5 + 0.5) * wf
+                by: f32 = (0.5 - b.y / b.w * 0.5) * hf
+                az: f32 = a.z / a.w
+                bz: f32 = b.z / b.w
+                dx: f32 = bx - ax
+                dy: f32 = by - ay
+                adx: f32 = dx if dx >= 0.0 else 0.0 - dx
+                ady: f32 = dy if dy >= 0.0 else 0.0 - dy
+                major: f32 = adx if adx >= ady else ady
+                # Very long off-screen segments are bounded to the screen
+                # diagonal's worth of steps per pixel of travel.
+                continue if major > 1000000.0
+                steps: i64 = major.i64() + 1
+                color: u32 = batch.colors[s * 2]
+                for k in 0..<steps:
+                    t: f32 = 0.0 if steps <= 1 else k.f32() / (steps - 1).f32()
+                    px: f32 = ax + dx * t
+                    py: f32 = ay + dy * t
+                    continue if px < 0.0 or py < 0.0 or px >= wf or py >= hf
+                    plot(img, px.i64(), py.i64(), az + (bz - az) * t, color, depth_test)
+
+        def edge(ax: f32, ay: f32, bx: f32, by: f32, px: f32, py: f32) -> f32:
+            (bx - ax) * (py - ay) - (by - ay) * (px - ax)
+
+        def triangles(img: mutable Image&, m: f32[16]&, batch: ViewportDraw::Batch&, depth_test: bool):
+            n: usize = batch.colors.count / 3
+            wf: f32 = img.width.f32()
+            hf: f32 = img.height.f32()
+            for t in 0..<n:
+                a: Clip = to_clip(m, batch, t * 3)
+                b: Clip = to_clip(m, batch, t * 3 + 1)
+                c: Clip = to_clip(m, batch, t * 3 + 2)
+                # Triangles crossing the near plane are dropped (joints and
+                # markers are small; the grid is lines).
+                continue if a.z < 0.0 or b.z < 0.0 or c.z < 0.0
+                continue if a.w <= 0.0000001 or b.w <= 0.0000001 or c.w <= 0.0000001
+                ax: f32 = (a.x / a.w * 0.5 + 0.5) * wf
+                ay: f32 = (0.5 - a.y / a.w * 0.5) * hf
+                bx: f32 = (b.x / b.w * 0.5 + 0.5) * wf
+                by: f32 = (0.5 - b.y / b.w * 0.5) * hf
+                cx: f32 = (c.x / c.w * 0.5 + 0.5) * wf
+                cy: f32 = (0.5 - c.y / c.w * 0.5) * hf
+                area: f32 = edge(ax, ay, bx, by, cx, cy)
+                continue if area == 0.0 or area != area
+                x0: i64 = clamp_i(floor_i(min3(ax, bx, cx)), 0, img.width - 1)
+                x1: i64 = clamp_i(floor_i(max3(ax, bx, cx)), 0, img.width - 1)
+                y0: i64 = clamp_i(floor_i(min3(ay, by, cy)), 0, img.height - 1)
+                y1: i64 = clamp_i(floor_i(max3(ay, by, cy)), 0, img.height - 1)
+                az: f32 = a.z / a.w
+                bz: f32 = b.z / b.w
+                cz: f32 = c.z / c.w
+                color: u32 = batch.colors[t * 3]
+                for y in y0..<(y1 + 1):
+                    for x in x0..<(x1 + 1):
+                        px: f32 = x.f32() + 0.5
+                        py: f32 = y.f32() + 0.5
+                        w0: f32 = edge(bx, by, cx, cy, px, py) / area
+                        w1: f32 = edge(cx, cy, ax, ay, px, py) / area
+                        w2: f32 = edge(ax, ay, bx, by, px, py) / area
+                        continue if w0 < 0.0 or w1 < 0.0 or w2 < 0.0
+                        plot(img, x, y, w0 * az + w1 * bz + w2 * cz, color, depth_test)
+
+        def min3(a: f32, b: f32, c: f32) -> f32:
+            m: f32 = a if a <= b else b
+            m if m <= c else c
+
+        def max3(a: f32, b: f32, c: f32) -> f32:
+            m: f32 = a if a >= b else b
+            m if m >= c else c
+
+        def floor_i(v: f32) -> i64:
+            return -1 if v < -1.0
+            return 1000000 if v > 1000000.0
+            ElisaMath::floor(v.f64()).i64()
+
+        def clamp_i(v: i64, lo: i64, hi: i64) -> i64:
+            return lo if v < lo
+            return hi if v > hi
+            v

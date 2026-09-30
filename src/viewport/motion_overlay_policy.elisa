@@ -1,0 +1,74 @@
+# Integer policy behind motion overlays (plan M05), proved by
+# proof/motion_overlay_policy.elisa:
+#   - a trail window around a frame always lies inside the clip;
+#   - onion-skin ghost frames always lie inside the clip;
+#   - a heat value always maps to a bucket of the colour ramp.
+module MotionOverlayPolicy:
+    public:
+        # Longest window either side of the current frame.
+        const MAX_SPAN: i64 = 1000000
+        const MAX_BUCKETS: i64 = 64
+
+        def clamp_i(v: i64, lo: i64, hi: i64) -> i64:
+            requires lo <= hi
+            ensure result >= lo
+            ensure result <= hi
+            return lo if v < lo
+            return hi if v > hi
+            v
+
+        # First frame of the window [frame - before, frame + after] in a clip
+        # of `count` frames (count >= 1).
+        def window_first(frame: i64, before: i64, count: i64) -> i64:
+            requires count >= 1
+            requires count <= 1000000000
+            ensure result >= 0
+            ensure result <= count - 1
+            f: i64 = clamp_i(frame, 0, count - 1)
+            b: i64 = clamp_i(before, 0, MAX_SPAN)
+            clamp_i(f - b, 0, count - 1)
+
+        def window_last(frame: i64, after: i64, count: i64) -> i64:
+            requires count >= 1
+            requires count <= 1000000000
+            ensure result >= 0
+            ensure result <= count - 1
+            f: i64 = clamp_i(frame, 0, count - 1)
+            a: i64 = clamp_i(after, 0, MAX_SPAN)
+            clamp_i(f + a, 0, count - 1)
+
+        # A ghost `offset` frames from `frame` (negative = earlier), held at
+        # the clip ends. Callers pass k * step for ghost k.
+        def ghost_frame(frame: i64, offset: i64, count: i64) -> i64:
+            requires count >= 1
+            requires count <= 1000000000
+            ensure result >= 0
+            ensure result <= count - 1
+            f: i64 = clamp_i(frame, 0, count - 1)
+            # Offsets beyond the clip length reach an end anyway.
+            return 0 if offset <= 0 - count
+            return count - 1 if offset >= count
+            clamp_i(f + offset, 0, count - 1)
+
+        # Ramp bucket for a value already scaled to buckets (floor of
+        # (value - lo) / (hi - lo) * buckets, computed by the caller): values
+        # below the ramp take the first bucket, above it the last.
+        def heat_bucket(scaled: i64, buckets: i64) -> i64:
+            ensure result >= 0
+            ensure result <= MAX_BUCKETS - 1
+            ensure scaled > 0 or result <= 0
+            return 0 if scaled <= 0
+            return 0 if buckets < 1
+            return MAX_BUCKETS - 1 if buckets > MAX_BUCKETS and scaled >= MAX_BUCKETS - 1
+            return buckets - 1 if buckets <= MAX_BUCKETS and scaled >= buckets - 1
+            return scaled if scaled < MAX_BUCKETS
+            MAX_BUCKETS - 1
+
+        # Ground contact: a point is in contact when it is low and slow
+        # (heights in mm, speeds in mm/s).
+        def in_contact(height_mm: i64, speed_mm_s: i64, height_limit: i64, speed_limit: i64) -> bool:
+            ensure not result or height_mm <= height_limit
+            ensure not result or speed_mm_s <= speed_limit
+            return false if height_mm > height_limit
+            return false if speed_mm_s > speed_limit
+            true

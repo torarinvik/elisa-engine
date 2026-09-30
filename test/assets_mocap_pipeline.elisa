@@ -1,0 +1,85 @@
+include "../src/assets/mocap_pipeline.elisa"
+
+@link_name("fopen")
+extern c_fopen(path: u8&, mode: u8&) -> mutable heap void&? can[Blocking.IO, Memory.Allocate]
+
+def missing_input() -> i32:
+    code: i32 = catch MocapPipeline::clean_file("build/no-such-take.glb", "build/pipeline-should-not-exist.glb", MocapPipeline::default_settings()):
+        value: 0
+        GlbDocument::GlbDocumentError.OpenFailed: 1
+        error failure: 2
+    return 1 if code != 1
+    mutable exists: bool = false
+    can Blocking.IO, Memory.Allocate:
+        exists <- c_fopen("build/pipeline-should-not-exist.glb".cast[u8&], "rb".cast[u8&]) != null
+    return 2 if exists
+    0
+
+def load_or_empty(path: cstr) -> GlbDocument::Document:
+    doc: GlbDocument::Document = catch GlbDocument::load(path):
+        value: value
+        error failure: GlbDocument::Document()
+    return move doc
+
+def real_take() -> i32:
+    path: cstr = "../elisa-boxing-game/build/dual-stance/black/black-boxer.glb"
+    present: i32 = catch GlbDocument::load(path):
+        value: 1
+        GlbDocument::GlbDocumentError.OpenFailed: 0
+        error failure: 2
+    return 0 if present == 0
+    return 10 if present != 1
+    mutable doc: GlbDocument::Document = load_or_empty(path)
+    pristine: GlbDocument::Document = load_or_empty(path)
+    jab: i64 = GlbDocument::find_animation(&doc, "jab")
+    hips: i64 = GlbDocument::find_node(&doc, "mixamorig:Hips")
+    return 11 if jab < 0 or hips < 0
+    at: i64 = GlbDocument::find_channel(&doc, jab.usize(), hips.usize(), GlbDocument::TargetPath.Translation)
+    return 12 if at < 0
+    channel: GlbDocument::Channel = GlbDocument::channel(&doc, jab.usize(), at.usize())
+    keys: usize = GlbDocument::key_count(&doc, channel.output)
+    return 13 if keys < 9
+    middle: usize = keys / 2
+    before: f32 = GlbDocument::track_value(&doc, channel.output, middle, 1)
+    # Inject a one-key 50-unit spike, then clean only this clip.
+    return 14 if not GlbDocument::set_track_value(&doc, channel.output, middle, 1, before + 50.0)
+    report: MocapPipeline::Report = MocapPipeline::clean_animation(&doc, jab.usize(), MocapPipeline::default_settings())
+    return 15 if report.filtered == 0 or report.values_written == 0
+    after: f32 = GlbDocument::track_value(&doc, channel.output, middle, 1)
+    gap: f32 = after - before
+    return 16 if gap > 5.0 or gap < -5.0
+    # Only BIN bytes changed; the JSON chunk and header are untouched.
+    first: i64 = GlbDocument::first_difference(&doc, &pristine)
+    return 17 if first < GlbDocument::bin_start(&doc).i64()
+    # Rotations stay unit length.
+    arm: i64 = GlbDocument::find_node(&doc, "mixamorig:RightForeArm")
+    turn: i64 = GlbDocument::find_channel(&doc, jab.usize(), arm.usize(), GlbDocument::TargetPath.Rotation)
+    return 18 if turn < 0
+    spin: GlbDocument::Channel = GlbDocument::channel(&doc, jab.usize(), turn.usize())
+    for key in 0..<GlbDocument::key_count(&doc, spin.output):
+        a: f32 = GlbDocument::track_value(&doc, spin.output, key, 0)
+        b: f32 = GlbDocument::track_value(&doc, spin.output, key, 1)
+        c: f32 = GlbDocument::track_value(&doc, spin.output, key, 2)
+        d: f32 = GlbDocument::track_value(&doc, spin.output, key, 3)
+        length: f32 = a * a + b * b + c * c + d * d
+        return 19 if length > 1.001 or length < 0.999
+    # Whole-file headless run: load, clean all clips, save, reload.
+    full: MocapPipeline::Report = catch MocapPipeline::clean_file(path, "build/pipeline-cleaned.glb", MocapPipeline::default_settings()):
+        value: value
+        error failure: MocapPipeline::Report{filtered: 0, skipped: 0, values_written: 0}
+    return 20 if full.filtered == 0
+    cleaned: GlbDocument::Document = load_or_empty("build/pipeline-cleaned.glb")
+    return 21 if GlbDocument::byte_count(&cleaned) != GlbDocument::byte_count(&pristine) or GlbDocument::animation_count(&cleaned) != GlbDocument::animation_count(&pristine)
+    return 22 if GlbDocument::first_difference(&cleaned, &pristine) < GlbDocument::bin_start(&pristine).i64()
+    # Cleaning is deterministic: a second run writes the same bytes.
+    _ = catch MocapPipeline::clean_file(path, "build/pipeline-cleaned-again.glb", MocapPipeline::default_settings()):
+        value: value
+        error failure: MocapPipeline::Report{filtered: 0, skipped: 0, values_written: 0}
+    again: GlbDocument::Document = load_or_empty("build/pipeline-cleaned-again.glb")
+    return 23 if GlbDocument::first_difference(&again, &cleaned) != -1
+    0
+
+def main() -> i32:
+    status: i32 = missing_input()
+    return status if status != 0
+    real_take()

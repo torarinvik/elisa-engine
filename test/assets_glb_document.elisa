@@ -1,0 +1,295 @@
+include "../src/assets/glb_document.elisa"
+
+# Plan M06: GLB load, edit and byte-exact export. Synthetic buffers cover
+# every rejection path; the boxing game's exported character, when present
+# next to this checkout, covers a real Blender GLB. Run from the repo root.
+
+def append(bytes: mutable darray[u8]&, text: sview):
+    for k in 0..<text.len.usize():
+        bytes.push(text[k.i64()].u8())
+
+def put_u32(bytes: mutable darray[u8]&, value: u32):
+    bytes.push((value & 255).u8())
+    bytes.push(((value >> 8) & 255).u8())
+    bytes.push(((value >> 16) & 255).u8())
+    bytes.push(((value >> 24) & 255).u8())
+
+def set_u32(bytes: mutable darray[u8]&, at: usize, value: u32):
+    bytes[at] <- (value & 255).u8()
+    bytes[at + 1] <- ((value >> 8) & 255).u8()
+    bytes[at + 2] <- ((value >> 16) & 255).u8()
+    bytes[at + 3] <- ((value >> 24) & 255).u8()
+
+def u32_ref(value: u32&) -> u32:
+    value
+
+def put_f32(bytes: mutable darray[u8]&, value: f32):
+    put_u32(bytes, u32_ref((&value).cast[u32&] can Unsafe.PointerCast))
+
+# Two nodes (hips -> knee), one animation with a LINEAR rotation channel on
+# the knee and a STEP translation channel on the hips, sharing key times.
+def bin_chunk() -> darray[u8]:
+    mutable b: darray[u8] = []
+    put_f32(&b, 0.0)
+    put_f32(&b, 1.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 1.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 0.7071)
+    put_f32(&b, 0.0)
+    put_f32(&b, 0.7071)
+    put_f32(&b, 0.0)
+    put_f32(&b, 1.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 0.0)
+    put_f32(&b, 1.1)
+    put_f32(&b, 0.0)
+    b
+
+def glb(nodes: sview, views: sview, accessors: sview, animations: sview) -> darray[u8]:
+    mutable json: darray[u8] = []
+    append(&json, "{\"asset\":{\"version\":\"2.0\"},\"nodes\":")
+    append(&json, nodes)
+    append(&json, ",\"buffers\":[{\"byteLength\":64}],\"bufferViews\":")
+    append(&json, views)
+    append(&json, ",\"accessors\":")
+    append(&json, accessors)
+    append(&json, ",\"animations\":")
+    append(&json, animations)
+    append(&json, "}")
+    while json.count % 4 != 0:
+        json.push(32)
+    bin: darray[u8] = bin_chunk()
+    mutable out: darray[u8] = []
+    put_u32(&out, GlbDocument::MAGIC)
+    put_u32(&out, 2)
+    put_u32(&out, (28 + json.count + bin.count).u32())
+    put_u32(&out, json.count.u32())
+    put_u32(&out, GlbDocument::CHUNK_JSON)
+    for k in 0..<json.count:
+        out.push(json[k])
+    put_u32(&out, bin.count.u32())
+    put_u32(&out, GlbDocument::CHUNK_BIN)
+    for k in 0..<bin.count:
+        out.push(bin[k])
+    out
+
+def nodes_ok() -> sview:
+    "[{\"name\":\"hips\",\"children\":[1],\"translation\":[0,1,0]},{\"name\":\"knee\",\"rotation\":[0,0,0,1]}]"
+
+def views_ok() -> sview:
+    "[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":8,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":40,\"byteLength\":24}]"
+
+def accessors_ok() -> sview:
+    "[{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}]"
+
+def animations_ok() -> sview:
+    "[{\"name\":\"walk\",\"channels\":[{\"sampler\":0,\"target\":{\"node\":1,\"path\":\"rotation\"}},{\"sampler\":1,\"target\":{\"node\":0,\"path\":\"translation\"}}],\"samplers\":[{\"input\":0,\"output\":1},{\"input\":0,\"output\":2,\"interpolation\":\"STEP\"}]}]"
+
+def valid() -> darray[u8]:
+    glb(nodes_ok(), views_ok(), accessors_ok(), animations_ok())
+
+# The GlbDocumentError variant a buffer is rejected with, as a code; 0 if accepted.
+def rejection(bytes: darray[u8]&) -> i32:
+    code: i32 = catch GlbDocument::from_bytes(bytes):
+        value: 0
+        GlbDocument::GlbDocumentError.BadMagic: 1
+        GlbDocument::GlbDocumentError.UnsupportedVersion: 2
+        GlbDocument::GlbDocumentError.LengthMismatch: 3
+        GlbDocument::GlbDocumentError.Truncated: 4
+        GlbDocument::GlbDocumentError.BadChunk: 5
+        GlbDocument::GlbDocumentError.BadJson: 6
+        GlbDocument::GlbDocumentError.MissingField: 7
+        GlbDocument::GlbDocumentError.IndexOutOfRange: 8
+        GlbDocument::GlbDocumentError.AccessorOutOfRange: 9
+        GlbDocument::GlbDocumentError.UnsupportedComponentType: 10
+        GlbDocument::GlbDocumentError.UnsupportedLayout: 11
+        GlbDocument::GlbDocumentError.AccessorShape: 12
+        GlbDocument::GlbDocumentError.InvalidHierarchy: 13
+        GlbDocument::GlbDocumentError.Capacity: 14
+        error failure: 99
+    code
+
+def near(value: f32, expected: f32) -> bool:
+    value - expected < 0.000001 and expected - value < 0.000001
+
+def load_or_empty(bytes: darray[u8]&) -> GlbDocument::Document:
+    doc: GlbDocument::Document = catch GlbDocument::from_bytes(bytes):
+        value: value
+        error failure: GlbDocument::Document()
+    return move doc
+
+def synthetic() -> i32:
+    source: darray[u8] = valid()
+    doc: mutable GlbDocument::Document = load_or_empty(&source)
+    return 1 if GlbDocument::node_count(&doc) != 2 or GlbDocument::animation_count(&doc) != 1
+    return 2 if GlbDocument::find_node(&doc, "knee") != 1 or GlbDocument::node_parent(&doc, 1) != 0 or GlbDocument::node_parent(&doc, 0) != -1
+    return 3 if not GlbDocument::node_name_is(&doc, 0, "hips") or GlbDocument::find_node(&doc, "hip") != -1
+    return 4 if GlbDocument::node_rest(&doc, 0).position.y != 1.0 or GlbDocument::node_rest(&doc, 1).rotation.w != 1.0
+    walk: i64 = GlbDocument::find_animation(&doc, "walk")
+    return 5 if walk != 0 or GlbDocument::channel_count(&doc, 0) != 2
+    rotation_at: i64 = GlbDocument::find_channel(&doc, 0, 1, GlbDocument::TargetPath.Rotation)
+    return 6 if rotation_at != 0 or GlbDocument::find_channel(&doc, 0, 1, GlbDocument::TargetPath.Scale) != -1
+    rotation: GlbDocument::Channel = GlbDocument::channel(&doc, 0, 0)
+    step: GlbDocument::Channel = GlbDocument::channel(&doc, 0, 1)
+    return 7 if step.interpolation != GlbDocument::Interpolation.Step or rotation.interpolation != GlbDocument::Interpolation.Linear
+    # The shared key-time accessor decodes once.
+    return 8 if rotation.input != step.input or GlbDocument::track_count(&doc) != 3
+    return 9 if GlbDocument::key_count(&doc, rotation.output) != 2 or GlbDocument::track(&doc, rotation.output).components != 4
+    return 10 if GlbDocument::track_value(&doc, rotation.input, 1, 0) != 1.0 or not near(GlbDocument::track_value(&doc, rotation.output, 1, 1), 0.7071)
+    return 11 if not near(GlbDocument::track_value(&doc, step.output, 1, 1), 1.1)
+    # Unedited, the export is the input.
+    pristine: GlbDocument::Document = load_or_empty(&source)
+    return 12 if GlbDocument::first_difference(&doc, &pristine) != -1 or GlbDocument::byte_count(&doc) != source.count
+    for k in 0..<source.count:
+        return 13 if GlbDocument::byte_at(&doc, k) != source[k]
+    # One edited value changes only its own four bytes, inside that
+    # channel's output accessor.
+    return 14 if not GlbDocument::set_track_value(&doc, rotation.output, 1, 1, 0.5)
+    held: GlbDocument::Track = GlbDocument::track(&doc, rotation.output)
+    first: i64 = GlbDocument::first_difference(&doc, &pristine)
+    last: i64 = GlbDocument::last_difference(&doc, &pristine)
+    return 15 if first < (held.byte_start + 20).i64() or last > (held.byte_start + 23).i64() or first < 0
+    return 16 if GlbDocument::byte_count(&doc) != source.count or GlbDocument::track_value(&doc, rotation.output, 1, 1) != 0.5
+    # Out-of-range and non-finite edits are refused without a change.
+    nan: f32 = 0.0 / 0.0
+    return 17 if GlbDocument::set_track_value(&doc, rotation.output, 2, 0, 1.0) or GlbDocument::set_track_value(&doc, rotation.output, 0, 4, 1.0) or GlbDocument::set_track_value(&doc, 9, 0, 0, 1.0) or GlbDocument::set_track_value(&doc, rotation.output, 0, 0, nan)
+    return 18 if GlbDocument::edit_count(&doc) != 1
+    # The edited bytes re-parse to the edited value.
+    mutable edited: darray[u8] = []
+    for k in 0..<GlbDocument::byte_count(&doc):
+        edited.push(GlbDocument::byte_at(&doc, k))
+    again: GlbDocument::Document = load_or_empty(&edited)
+    return 19 if GlbDocument::track_value(&again, rotation.output, 1, 1) != 0.5 or GlbDocument::node_count(&again) != 2
+    0
+
+def adversarial() -> i32:
+    good: darray[u8] = valid()
+    return 30 if rejection(&good) != 0
+    mutable magic: darray[u8] = valid()
+    magic[0] <- 0
+    return 31 if rejection(&magic) != 1
+    mutable version: darray[u8] = valid()
+    version[4] <- 1
+    return 32 if rejection(&version) != 2
+    mutable longer: darray[u8] = valid()
+    put_u32(&longer, 0)
+    return 33 if rejection(&longer) != 3
+    mutable json_long: darray[u8] = valid()
+    set_u32(&json_long, 12, 100000)
+    return 34 if rejection(&json_long) != 4
+    # BIN chunk claims more bytes than the file holds.
+    mutable bin_short: darray[u8] = valid()
+    _ = bin_short.pop()
+    _ = bin_short.pop()
+    _ = bin_short.pop()
+    _ = bin_short.pop()
+    set_u32(&bin_short, 8, bin_short.count.u32())
+    return 35 if rejection(&bin_short) != 4
+    mutable tiny: darray[u8] = []
+    put_u32(&tiny, GlbDocument::MAGIC)
+    put_u32(&tiny, 2)
+    return 36 if rejection(&tiny) != 4
+    mutable wrong_chunk: darray[u8] = valid()
+    set_u32(&wrong_chunk, 16, GlbDocument::CHUNK_BIN)
+    return 37 if rejection(&wrong_chunk) != 5
+    too_many: darray[u8] = glb(nodes_ok(), views_ok(), "[{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":1,\"componentType\":5126,\"count\":3,\"type\":\"VEC4\"},{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}]", animations_ok())
+    return 38 if rejection(&too_many) != 9
+    past_bin: darray[u8] = glb(nodes_ok(), "[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":8,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":40,\"byteLength\":40}]", accessors_ok(), animations_ok())
+    return 39 if rejection(&past_bin) != 9
+    shorts: darray[u8] = glb(nodes_ok(), views_ok(), "[{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\"},{\"bufferView\":1,\"componentType\":5123,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}]", animations_ok())
+    return 40 if rejection(&shorts) != 10
+    trailing: darray[u8] = glb("[{\"name\":\"hips\",\"children\":[1,]},{}]", views_ok(), accessors_ok(), animations_ok())
+    return 41 if rejection(&trailing) != 6
+    stray_child: darray[u8] = glb("[{\"children\":[5]},{}]", views_ok(), accessors_ok(), animations_ok())
+    return 42 if rejection(&stray_child) != 8
+    cycle: darray[u8] = glb("[{\"children\":[1]},{\"children\":[0]}]", views_ok(), accessors_ok(), animations_ok())
+    return 43 if rejection(&cycle) != 13
+    sparse: darray[u8] = glb(nodes_ok(), views_ok(), "[{\"bufferView\":0,\"componentType\":5126,\"count\":2,\"type\":\"SCALAR\",\"sparse\":{}},{\"bufferView\":1,\"componentType\":5126,\"count\":2,\"type\":\"VEC4\"},{\"bufferView\":2,\"componentType\":5126,\"count\":2,\"type\":\"VEC3\"}]", animations_ok())
+    return 44 if rejection(&sparse) != 11
+    strided: darray[u8] = glb(nodes_ok(), "[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":8,\"byteLength\":32,\"byteStride\":20},{\"buffer\":0,\"byteOffset\":40,\"byteLength\":24}]", accessors_ok(), animations_ok())
+    return 45 if rejection(&strided) != 11
+    no_sampler: darray[u8] = glb(nodes_ok(), views_ok(), accessors_ok(), "[{\"channels\":[{\"target\":{\"node\":1,\"path\":\"rotation\"}}],\"samplers\":[{\"input\":0,\"output\":1}]}]")
+    return 46 if rejection(&no_sampler) != 7
+    wrong_shape: darray[u8] = glb(nodes_ok(), views_ok(), accessors_ok(), "[{\"channels\":[{\"sampler\":0,\"target\":{\"node\":1,\"path\":\"rotation\"}}],\"samplers\":[{\"input\":0,\"output\":2}]}]")
+    return 47 if rejection(&wrong_shape) != 12
+    far_node: darray[u8] = glb(nodes_ok(), views_ok(), accessors_ok(), "[{\"channels\":[{\"sampler\":0,\"target\":{\"node\":9,\"path\":\"rotation\"}}],\"samplers\":[{\"input\":0,\"output\":1}]}]")
+    return 48 if rejection(&far_node) != 8
+    far_accessor: darray[u8] = glb(nodes_ok(), views_ok(), accessors_ok(), "[{\"channels\":[{\"sampler\":0,\"target\":{\"node\":1,\"path\":\"rotation\"}}],\"samplers\":[{\"input\":0,\"output\":7}]}]")
+    return 49 if rejection(&far_accessor) != 8
+    # A view that starts past the chunk, even with a zero-length accessor.
+    far_view: darray[u8] = glb(nodes_ok(), "[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":4096,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":40,\"byteLength\":24}]", accessors_ok(), animations_ok())
+    return 50 if rejection(&far_view) != 9
+    external: darray[u8] = glb(nodes_ok(), "[{\"buffer\":1,\"byteOffset\":0,\"byteLength\":8},{\"buffer\":0,\"byteOffset\":8,\"byteLength\":32},{\"buffer\":0,\"byteOffset\":40,\"byteLength\":24}]", accessors_ok(), animations_ok())
+    return 51 if rejection(&external) != 11
+    # Every truncation of a valid file is rejected, never half-loaded.
+    for cut in 0..<good.count:
+        mutable prefix: darray[u8] = []
+        for k in 0..<cut:
+            prefix.push(good[k])
+        return 52 if rejection(&prefix) == 0
+    # A failed load leaves nothing behind: load reports and yields no doc.
+    missing: i32 = catch GlbDocument::load("build/no-such-file.glb"):
+        value: 0
+        GlbDocument::GlbDocumentError.OpenFailed: 1
+        error failure: 2
+    return 53 if missing != 1
+    0
+
+def real_file() -> i32:
+    path: cstr = "../elisa-boxing-game/build/dual-stance/black/black-boxer.glb"
+    present: i32 = catch GlbDocument::load(path):
+        value: 1
+        GlbDocument::GlbDocumentError.OpenFailed: 0
+        error failure: 2
+    return 0 if present == 0
+    return 60 if present != 1
+    mutable doc: GlbDocument::Document = catch GlbDocument::load(path):
+        value: value
+        error failure: GlbDocument::Document()
+    pristine: GlbDocument::Document = catch GlbDocument::load(path):
+        value: value
+        error failure: GlbDocument::Document()
+    return 61 if GlbDocument::node_count(&doc) < 50 or GlbDocument::animation_count(&doc) == 0
+    return 62 if GlbDocument::find_node(&doc, "mixamorig:Hips") < 0
+    written: usize = catch GlbDocument::save(&doc, "build/glb-roundtrip-unedited.glb"):
+        value: value
+        error failure: 0
+    return 63 if written != GlbDocument::byte_count(&doc)
+    reread: GlbDocument::Document = catch GlbDocument::load("build/glb-roundtrip-unedited.glb"):
+        value: value
+        error failure: GlbDocument::Document()
+    return 64 if GlbDocument::first_difference(&reread, &pristine) != -1
+    # Edit every key of one bone's rotation channel in one clip.
+    jab: i64 = GlbDocument::find_animation(&doc, "jab")
+    arm: i64 = GlbDocument::find_node(&doc, "mixamorig:RightForeArm")
+    return 65 if jab < 0 or arm < 0
+    at: i64 = GlbDocument::find_channel(&doc, jab.usize(), arm.usize(), GlbDocument::TargetPath.Rotation)
+    return 66 if at < 0
+    held: GlbDocument::Channel = GlbDocument::channel(&doc, jab.usize(), at.usize())
+    track: GlbDocument::Track = GlbDocument::track(&doc, held.output)
+    for key in 0..<track.count:
+        w: f32 = GlbDocument::track_value(&doc, held.output, key, 3)
+        return 67 if not GlbDocument::set_track_value(&doc, held.output, key, 3, -w)
+    first: i64 = GlbDocument::first_difference(&doc, &pristine)
+    last: i64 = GlbDocument::last_difference(&doc, &pristine)
+    return 68 if first < track.byte_start.i64() or last >= (track.byte_start + track.count * 16).i64()
+    written_edit: usize = catch GlbDocument::save(&doc, "build/glb-roundtrip-edited.glb"):
+        value: value
+        error failure: 0
+    return 69 if written_edit != GlbDocument::byte_count(&pristine)
+    edited: GlbDocument::Document = catch GlbDocument::load("build/glb-roundtrip-edited.glb"):
+        value: value
+        error failure: GlbDocument::Document()
+    return 70 if GlbDocument::first_difference(&edited, &doc) != -1
+    return 71 if GlbDocument::track_value(&edited, held.output, 0, 3) != -GlbDocument::track_value(&pristine, held.output, 0, 3)
+    0
+
+def main() -> i32:
+    status: i32 = synthetic()
+    return status if status != 0
+    rejected: i32 = adversarial()
+    return rejected if rejected != 0
+    real_file()

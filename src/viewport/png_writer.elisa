@@ -1,0 +1,107 @@
+# Minimal, deterministic RGBA8 PNG writer (plan M01 readback, M07
+# thumbnails and regression images). Rows are unfiltered and the zlib stream
+# uses stored (uncompressed) deflate blocks, so the same pixels always give
+# the same bytes; no compression library is needed.
+module PngWriter:
+    public:
+        # 16384 x 16384 is the viewport limit; one row stays well under 4 GiB.
+        const MAX_SIDE: i64 = 16384
+
+        error PngError:
+            BadSize
+            ShortPixels
+            OpenFailed
+            WriteFailed
+
+        def crc32(bytes: darray[u8]&, start: usize, count: usize) -> u32:
+            mutable crc: u32 = 0xffffffff
+            for k in 0..<count:
+                crc <- crc ^ bytes[start + k].u32()
+                for _ in 0..<8:
+                    mask: u32 = 0 - (crc & 1)
+                    crc <- (crc >> 1) ^ (0xedb88320 & mask)
+            crc ^ 0xffffffff
+
+        # Encode `width` x `height` tightly packed RGBA8 pixels.
+        def encode(width: i64, height: i64, rgba: darray[u8]&) -> darray[u8] error[PngError]:
+            raise PngError.BadSize if width < 1 or height < 1 or width > MAX_SIDE or height > MAX_SIDE
+            row: usize = width.usize() * 4
+            raise PngError.ShortPixels if rgba.count < row * height.usize()
+            mutable out: darray[u8] = []
+            for b in [137, 80, 78, 71, 13, 10, 26, 10]:
+                out.push(b.u8())
+            # IHDR: size, 8-bit depth, colour type 6 (RGBA), deflate, no
+            # filter method variants, no interlace.
+            mutable ihdr: darray[u8] = []
+            be32(&ihdr, width.u32())
+            be32(&ihdr, height.u32())
+            for b in [8, 6, 0, 0, 0]:
+                ihdr.push(b.u8())
+            chunk(&out, 0x49484452, &ihdr)
+            # zlib stream: header, stored blocks of at most 65535 bytes over
+            # the filtered rows (filter byte 0 per row), adler-32 trailer.
+            raw_len: usize = (row + 1) * height.usize()
+            mutable z: darray[u8] = []
+            z.push(0x78)
+            z.push(0x01)
+            mutable a1: u32 = 1
+            mutable a2: u32 = 0
+            mutable remaining: usize = raw_len
+            mutable at: usize = 0
+            while remaining > 0:
+                n: usize = remaining if remaining < 65535 else 65535
+                last: bool = n == remaining
+                z.push(1 if last else 0)
+                z.push((n & 0xff).u8())
+                z.push((n >> 8).u8())
+                z.push((~n & 0xff).u8())
+                z.push(((~n >> 8) & 0xff).u8())
+                for k in 0..<n:
+                    pos: usize = at + k
+                    y: usize = pos / (row + 1)
+                    x: usize = pos % (row + 1)
+                    value: u8 = 0 if x == 0 else rgba[y * row + x - 1]
+                    z.push(value)
+                    a1 <- (a1 + value.u32()) % 65521
+                    a2 <- (a2 + a1) % 65521
+                at <- at + n
+                remaining <- remaining - n
+            be32(&z, (a2 << 16) | a1)
+            chunk(&out, 0x49444154, &z)
+            empty: darray[u8] = []
+            chunk(&out, 0x49454e44, &empty)
+            return move out
+
+        def save(path: cstr, width: i64, height: i64, rgba: darray[u8]&) -> usize error[PngError]:
+            bytes: darray[u8] = try encode(width, height, rgba)
+            can Blocking.IO, Memory.Allocate, Memory.Release:
+                handle: mutable heap void&? = c_fopen(path.cast[u8&], "wb".cast[u8&])
+                raise PngError.OpenFailed if handle == null
+                stream: mutable heap void& = handle
+                written: usize = c_fwrite((&bytes[0]).cast[void&], 1, bytes.count, stream)
+                closed: i32 = c_fclose(stream)
+                raise PngError.WriteFailed if written != bytes.count or closed != 0
+                return written
+
+    private:
+        @link_name("fopen")
+        extern c_fopen(path: u8&, mode: u8&) -> mutable heap void&? can[Blocking.IO, Memory.Allocate]
+        @link_name("fclose")
+        extern c_fclose(stream: heap void&) -> i32 can[Blocking.IO, Memory.Release]
+        @link_name("fwrite")
+        extern c_fwrite(buffer: void&, size: usize, count: usize, stream: void&) -> usize can[Blocking.IO]
+
+        def be32(out: mutable darray[u8]&, value: u32):
+            out.push((value >> 24).u8())
+            out.push(((value >> 16) & 0xff).u8())
+            out.push(((value >> 8) & 0xff).u8())
+            out.push((value & 0xff).u8())
+
+        def chunk(out: mutable darray[u8]&, kind: u32, data: darray[u8]&):
+            be32(out, data.count.u32())
+            start: usize = out.count
+            be32(out, kind)
+            for k in 0..<data.count:
+                out.push(data[k])
+            crc: u32 = crc32(out, start, data.count + 4)
+            be32(out, crc)

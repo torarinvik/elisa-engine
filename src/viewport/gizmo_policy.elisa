@@ -1,0 +1,113 @@
+# Integer policy for manipulation gizmos (plan M04), kept float-free so
+# elisa-proof can check it (proof/gizmo_policy.elisa).
+#
+# Handles are constraint masks: bit 0 = X, bit 1 = Y, bit 2 = Z. An axis
+# handle has one bit (1, 2, 4) and moves or rotates along/about that axis; a
+# plane handle has two (3 = XY, 5 = XZ, 6 = YZ) and moves in that plane.
+# Rotate gizmos only have axis handles.
+module GizmoPolicy:
+    public:
+        const TRANSLATE: i64 = 0
+        const ROTATE: i64 = 1
+
+        const NONE: i64 = 0
+        const AXIS_X: i64 = 1
+        const AXIS_Y: i64 = 2
+        const PLANE_XY: i64 = 3
+        const AXIS_Z: i64 = 4
+        const PLANE_XZ: i64 = 5
+        const PLANE_YZ: i64 = 6
+
+        # Drag states and events.
+        const IDLE: i64 = 0
+        const DRAGGING: i64 = 1
+        const BEGIN: i64 = 0
+        const MOVE: i64 = 1
+        const COMMIT: i64 = 2
+        const CANCEL: i64 = 3
+
+        const MAX_CODE: i64 = 1099511627776
+
+        def is_axis(handle: i64) -> bool:
+            ensure not result or handle >= 1
+            ensure not result or handle <= 4
+            return true if handle == AXIS_X
+            return true if handle == AXIS_Y
+            return true if handle == AXIS_Z
+            false
+
+        def is_plane(handle: i64) -> bool:
+            ensure not result or handle >= 3
+            ensure not result or handle <= 6
+            return true if handle == PLANE_XY
+            return true if handle == PLANE_XZ
+            return true if handle == PLANE_YZ
+            false
+
+        # Handles a gizmo of `mode` accepts.
+        def allowed(mode: i64, handle: i64) -> bool:
+            ensure not result or handle >= 1
+            ensure not result or handle <= 6
+            return false if handle < 1
+            return false if handle > 6
+            return is_axis(handle) if mode == ROTATE
+            return true if mode == TRANSLATE
+            false
+
+        # Axis index (0 = X, 1 = Y, 2 = Z) normal to a plane handle, or the
+        # axis of an axis handle; NO_AXIS (3) for anything else.
+        const NO_AXIS: i64 = 3
+
+        def normal_axis(handle: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 3
+            return NO_AXIS if handle < 1
+            return NO_AXIS if handle > 6
+            # 1 = X, 2 = Y, 3 = XY (normal Z), 4 = Z, 5 = XZ (normal Y),
+            # 6 = YZ (normal X).
+            return 0 if handle <= 1
+            return 1 if handle <= 2
+            return 2 if handle <= 4
+            return 1 if handle <= 5
+            0
+
+        # Drag state machine: any state other than DRAGGING counts as IDLE.
+        # BEGIN always ends in DRAGGING (a second BEGIN is harmless), MOVE
+        # keeps the state, COMMIT, CANCEL and unknown events end in IDLE.
+        def next_state(state: i64, event: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1
+            ensure event < 2 or result <= 0
+            ensure event > 0 or event < 0 or result >= 1
+            return IDLE if event < 0
+            return IDLE if event > 1
+            return DRAGGING if event <= 0
+            return moved(state)
+
+        # MOVE: dragging stays dragging, anything else is idle.
+        def moved(state: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1
+            ensure state < 1 or state > 1 or result >= 1
+            return IDLE if state < 1
+            return IDLE if state > 1
+            DRAGGING
+
+        def clamp_code(code: i64) -> i64:
+            ensure result >= 0
+            ensure result <= MAX_CODE
+            return 0 if code < 0
+            return MAX_CODE if code > MAX_CODE
+            code
+
+        # Pick order: nearer code first, then the smaller handle (axes before
+        # the planes that contain them).
+        def better(a_code: i64, a_handle: i64, b_code: i64, b_handle: i64) -> bool:
+            ensure not result or a_code <= b_code
+            ensure a_code >= b_code or result
+            ensure not result or a_code < b_code or a_handle < b_handle
+            ensure a_code > b_code or a_code < b_code or a_handle >= b_handle or result
+            return true if a_code < b_code
+            return false if a_code > b_code
+            return true if a_handle < b_handle
+            false

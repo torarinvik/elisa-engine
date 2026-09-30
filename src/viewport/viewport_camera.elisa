@@ -1,0 +1,248 @@
+# Orbit / pan / zoom / frame-selection camera for embeddable viewports
+# (plan M01). The stored state is integer (yaw, pitch code, zoom code, all
+# clamped by ViewportPolicy, which is proved); the float math here only turns
+# that state into a basis, a view-projection matrix, screen projections and
+# pick rays. The same matrix feeds the Metal viewport renderer and the CPU
+# rasterizer, so CPU pictures, GPU pictures and picking agree.
+#
+# Conventions: metres, right-handed, +Y up, -Z forward (as Geometry). Clip
+# space is Metal's: x, y in [-1, 1] with +y up, z in [0, 1]. Screen pixels
+# have their origin at the top-left, +y down.
+include "../math/geometry.elisa"
+include "../vendor/elisa_math.elisa"
+include "./viewport_policy.elisa"
+
+module ViewportCamera:
+    public:
+        const PERSPECTIVE: i32 = 0
+        # Orthographic views looking down -Z (front) and -X (side, from +X).
+        const FRONT: i32 = 1
+        const SIDE: i32 = 2
+
+        # Orbit sensitivity: centidegrees per dragged pixel.
+        const ORBIT_CD_PER_PIXEL: i64 = 25
+        # Zoom code steps per wheel notch (8 steps double the distance).
+        const ZOOM_STEPS_PER_NOTCH: i64 = 1
+
+        const NEAR: f32 = 0.01
+        const FAR: f32 = 1000.0
+        # Orthographic views put the eye this far behind the target so
+        # nothing in front of the camera plane is clipped.
+        const ORTHO_BACKOFF: f32 = 500.0
+
+        struct Camera:
+            target: mutable Geometry::Vec3
+            yaw_cd: mutable i64
+            pitch_code: mutable i64
+            zoom_code: mutable i64
+            # Distance at the neutral zoom code.
+            base_distance: mutable f32
+            fov_y: mutable f32
+            projection: mutable i32
+            width: mutable i64
+            height: mutable i64
+
+        struct Basis:
+            eye: Geometry::Vec3
+            right: Geometry::Vec3
+            up: Geometry::Vec3
+            forward: Geometry::Vec3
+
+        struct ScreenPoint:
+            x: f32
+            y: f32
+            # Clip-space depth in [0, 1] (0 at the near plane).
+            depth: f32
+            # Distance along the view direction; only meaningful in front.
+            view_depth: f32
+            in_front: bool
+
+        # A perspective camera 3 m from the origin, looking slightly down.
+        def create(width: i64, height: i64) -> Camera:
+            Camera{target: Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, yaw_cd: 3000, pitch_code: ViewportPolicy::PITCH_LIMIT_CD + 1500, zoom_code: ViewportPolicy::ZOOM_NEUTRAL, base_distance: 3.0, fov_y: 0.8, projection: PERSPECTIVE, width: ViewportPolicy::clamp_extent(width), height: ViewportPolicy::clamp_extent(height)}
+
+        # An orthographic front or side view. Orbit is ignored for these.
+        def create_ortho(width: i64, height: i64, projection: i32) -> Camera:
+            mutable cam: Camera = create(width, height)
+            cam.projection <- SIDE if projection == SIDE else FRONT
+            cam.yaw_cd <- 9000 if projection == SIDE else 0
+            cam.pitch_code <- ViewportPolicy::PITCH_LIMIT_CD
+            cam
+
+        def resize(cam: mutable Camera&, width: i64, height: i64) -> bool:
+            w: i64 = ViewportPolicy::clamp_extent(width)
+            h: i64 = ViewportPolicy::clamp_extent(height)
+            changed: bool = ViewportPolicy::needs_realloc(cam.width, cam.height, w, h)
+            cam.width <- w
+            cam.height <- h
+            changed
+
+        def is_ortho(cam: Camera&) -> bool:
+            cam.projection != PERSPECTIVE
+
+        def aspect(cam: Camera&) -> f32:
+            cam.width.f32() / cam.height.f32()
+
+        def distance(cam: Camera&) -> f32:
+            step: f64 = (cam.zoom_code - ViewportPolicy::ZOOM_NEUTRAL).f64() / 8.0
+            cam.base_distance * ElisaMath::exp2(step).f32()
+
+        # Half the visible height in metres at the target plane. Orthographic
+        # views use it directly, so zooming feels the same in every view.
+        def half_height(cam: Camera&) -> f32:
+            distance(cam) * ElisaMath::tanf(cam.fov_y * 0.5)
+
+        def radians(cd: i64) -> f32:
+            (cd.f64() * 3.14159265358979323846 / 18000.0).f32()
+
+        def basis(cam: Camera&) -> Basis:
+            yaw: f32 = radians(cam.yaw_cd)
+            pitch: f32 = radians(cam.pitch_code - ViewportPolicy::PITCH_LIMIT_CD)
+            cp: f32 = ElisaMath::cosf(pitch)
+            back: Geometry::Vec3 = Geometry::Vec3{x: cp * ElisaMath::sinf(yaw), y: ElisaMath::sinf(pitch), z: cp * ElisaMath::cosf(yaw)}
+            forward: Geometry::Vec3 = Geometry::vec3_scale(back, -1.0)
+            right: Geometry::Vec3 = Geometry::Vec3{x: ElisaMath::cosf(yaw), y: 0.0, z: 0.0 - ElisaMath::sinf(yaw)}
+            up: Geometry::Vec3 = Geometry::vec3_cross(right, forward)
+            reach: f32 = ORTHO_BACKOFF if is_ortho(cam) else distance(cam)
+            Basis{eye: Geometry::vec3_add(cam.target, Geometry::vec3_scale(back, reach)), right: right, up: up, forward: forward}
+
+        # Column-major clip-from-world matrix (element [column * 4 + row]).
+        def view_projection(cam: Camera&) -> f32[16]:
+            b: Basis = basis(cam)
+            hh: f32 = half_height(cam)
+            asp: f32 = aspect(cam)
+            mutable sx: f32 = 1.0 / (hh * asp)
+            mutable sy: f32 = 1.0 / hh
+            mutable r2: f32[4] = [0.0, 0.0, 0.0, 0.0]
+            mutable r3: f32[4] = [0.0, 0.0, 0.0, 1.0]
+            ex: f32 = Geometry::vec3_dot(b.right, b.eye)
+            ey: f32 = Geometry::vec3_dot(b.up, b.eye)
+            ez: f32 = Geometry::vec3_dot(b.forward, b.eye)
+            if is_ortho(cam):
+                c: f32 = 1.0 / FAR
+                r2 <- [b.forward.x * c, b.forward.y * c, b.forward.z * c, 0.0 - ez * c]
+            else:
+                t: f32 = ElisaMath::tanf(cam.fov_y * 0.5)
+                sx <- 1.0 / (t * asp)
+                sy <- 1.0 / t
+                a: f32 = FAR / (FAR - NEAR)
+                r2 <- [b.forward.x * a, b.forward.y * a, b.forward.z * a, 0.0 - ez * a - NEAR * a]
+                r3 <- [b.forward.x, b.forward.y, b.forward.z, 0.0 - ez]
+            [
+                b.right.x * sx, b.up.x * sy, r2[0], r3[0],
+                b.right.y * sx, b.up.y * sy, r2[1], r3[1],
+                b.right.z * sx, b.up.z * sy, r2[2], r3[2],
+                0.0 - ex * sx, 0.0 - ey * sy, r2[3], r3[3],
+            ]
+
+        def project_with(m: f32[16]&, cam: Camera&, p: Geometry::Vec3) -> ScreenPoint:
+            cx: f32 = m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12]
+            cy: f32 = m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13]
+            cz: f32 = m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14]
+            cw: f32 = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15]
+            return ScreenPoint{x: 0.0, y: 0.0, depth: 1.0, view_depth: cw, in_front: false} if cw <= 0.000001
+            nx: f32 = cx / cw
+            ny: f32 = cy / cw
+            ScreenPoint{x: (nx * 0.5 + 0.5) * cam.width.f32(), y: (0.5 - ny * 0.5) * cam.height.f32(), depth: cz / cw, view_depth: cw, in_front: cz >= 0.0 and cz <= cw}
+
+        def project(cam: Camera&, p: Geometry::Vec3) -> ScreenPoint:
+            m: f32[16] = view_projection(cam)
+            project_with(&m, cam, p)
+
+        # World metres covered by one pixel at `view_depth` along the view.
+        def world_per_pixel(cam: Camera&, view_depth: f32) -> f32:
+            return 2.0 * half_height(cam) / cam.height.f32() if is_ortho(cam)
+            2.0 * view_depth * ElisaMath::tanf(cam.fov_y * 0.5) / cam.height.f32()
+
+        # The world ray under pixel (px, py). Orthographic rays are parallel
+        # to the view and start ORTHO_BACKOFF behind the target plane.
+        def ray(cam: Camera&, px: f32, py: f32) -> Geometry::Ray3:
+            b: Basis = basis(cam)
+            nx: f32 = (px / cam.width.f32()) * 2.0 - 1.0
+            ny: f32 = 1.0 - (py / cam.height.f32()) * 2.0
+            hh: f32 = half_height(cam)
+            asp: f32 = aspect(cam)
+            if is_ortho(cam):
+                offset: Geometry::Vec3 = Geometry::vec3_add(Geometry::vec3_scale(b.right, nx * hh * asp), Geometry::vec3_scale(b.up, ny * hh))
+                return Geometry::Ray3{origin: Geometry::vec3_add(b.eye, offset), direction: b.forward}
+            t: f32 = ElisaMath::tanf(cam.fov_y * 0.5)
+            dir: Geometry::Vec3 = Geometry::vec3_add(b.forward, Geometry::vec3_add(Geometry::vec3_scale(b.right, nx * t * asp), Geometry::vec3_scale(b.up, ny * t)))
+            Geometry::Ray3{origin: b.eye, direction: Geometry::vec3_normalize(dir)}
+
+        # Drag by (dx, dy) pixels: yaw follows x, pitch follows y. Returns
+        # true when the camera changed (orthographic views do not orbit).
+        def orbit(cam: mutable Camera&, dx: i64, dy: i64) -> bool:
+            return false if is_ortho(cam)
+            return false if dx < -100000 or dx > 100000 or dy < -100000 or dy > 100000
+            yaw: i64 = ViewportPolicy::wrap_yaw(cam.yaw_cd - dx * ORBIT_CD_PER_PIXEL)
+            pitch: i64 = ViewportPolicy::clamp_pitch_code(cam.pitch_code + dy * ORBIT_CD_PER_PIXEL)
+            changed: bool = yaw != cam.yaw_cd or pitch != cam.pitch_code
+            cam.yaw_cd <- yaw
+            cam.pitch_code <- pitch
+            changed
+
+        # Drag by (dx, dy) pixels: the point under the cursor at the target
+        # depth stays under the cursor.
+        def pan(cam: mutable Camera&, dx: f32, dy: f32) -> bool:
+            return false if dx != dx or dy != dy
+            return false if dx == 0.0 and dy == 0.0
+            b: Basis = basis(cam)
+            wpp: f32 = world_per_pixel(cam, distance(cam))
+            shift: Geometry::Vec3 = Geometry::vec3_add(Geometry::vec3_scale(b.right, 0.0 - dx * wpp), Geometry::vec3_scale(b.up, dy * wpp))
+            cam.target <- Geometry::vec3_add(cam.target, shift)
+            true
+
+        # Wheel notches: positive moves closer.
+        def zoom(cam: mutable Camera&, notches: i64) -> bool:
+            return false if notches < -1000 or notches > 1000
+            code: i64 = ViewportPolicy::clamp_zoom_code(cam.zoom_code - notches * ZOOM_STEPS_PER_NOTCH)
+            changed: bool = code != cam.zoom_code
+            cam.zoom_code <- code
+            changed
+
+        # Fit the given points (for example the selected joints) in view with
+        # `margin` extra room (1.2 = 20%). Returns false, leaving the camera
+        # alone, when there is nothing finite to frame.
+        def frame_points(cam: mutable Camera&, points: darray[Geometry::Vec3]&, margin: f32) -> bool:
+            mutable lo: Geometry::Vec3 = Geometry::vec3_zero()
+            mutable hi: Geometry::Vec3 = Geometry::vec3_zero()
+            mutable any: bool = false
+            for k in 0..<points.count:
+                p: Geometry::Vec3 = points[k]
+                continue if not Geometry::vec3_is_finite(p)
+                if not any:
+                    lo <- p
+                    hi <- p
+                    any <- true
+                else:
+                    lo <- Geometry::Vec3{x: min_f(lo.x, p.x), y: min_f(lo.y, p.y), z: min_f(lo.z, p.z)}
+                    hi <- Geometry::Vec3{x: max_f(hi.x, p.x), y: max_f(hi.y, p.y), z: max_f(hi.z, p.z)}
+            return false if not any
+            center: Geometry::Vec3 = Geometry::vec3_scale(Geometry::vec3_add(lo, hi), 0.5)
+            mutable radius: f32 = 0.0
+            for k in 0..<points.count:
+                p: Geometry::Vec3 = points[k]
+                continue if not Geometry::vec3_is_finite(p)
+                radius <- max_f(radius, Geometry::vec3_distance(p, center))
+            radius <- max_f(radius, 0.05) * (margin if margin >= 1.0 else 1.0)
+            # Smallest half-angle of the view decides the fit.
+            t: f32 = ElisaMath::tanf(cam.fov_y * 0.5)
+            asp: f32 = aspect(cam)
+            t_min: f32 = t * asp if asp < 1.0 else t
+            mutable need: f32 = 0.0
+            if is_ortho(cam):
+                need <- radius / t_min
+            else:
+                need <- radius * ElisaMath::sqrtf(1.0 + t_min * t_min) / t_min
+            steps: f64 = ElisaMath::ceil(8.0 * ElisaMath::log2((need / cam.base_distance).f64()))
+            code: i64 = ViewportPolicy::clamp_zoom_code(steps.i64() + ViewportPolicy::ZOOM_NEUTRAL)
+            cam.target <- center
+            cam.zoom_code <- code
+            true
+
+    private:
+        def min_f(a: f32, b: f32) -> f32:
+            a if a <= b else b
+
+        def max_f(a: f32, b: f32) -> f32:
+            a if a >= b else b

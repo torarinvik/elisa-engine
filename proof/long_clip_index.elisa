@@ -1,0 +1,19 @@
+include "../src/animation/long_clip_index.elisa"
+
+extend LongClipIndex:
+    # Any frame the sampler reads is a frame the clip holds.
+    def prove_clamp(frame: i64, count: i64) -> i64:
+        ensure result >= 0
+        ensure count <= 0 or result < count
+        clamp_frame(frame, count)
+
+    def prove_next(frame: i64, count: i64) -> i64:
+        ensure result >= 0
+        ensure count <= 0 or result < count
+        next_frame(frame, count)
+
+    # An accepted shape is within the stated limits.
+    def prove_bones(bones: i64) -> bool:
+        ensure not result or bones <= MAX_BONES
+        ensure not result or bones >= 1
+        bones_fit(bones)

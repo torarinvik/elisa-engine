@@ -1,0 +1,15 @@
+include "../src/assets/glb_layout.elisa"
+
+extend GlbLayout:
+    # A chunk or view the loader accepts is inside the bytes it was given.
+    def prove_range(start: i64, length: i64, total: i64) -> bool:
+        ensure not result or start + length <= total
+        ensure not result or start >= 0
+        range_fits(start, length, total)
+
+    # An accepted accessor's bytes stay inside the BIN chunk, so decoding
+    # and in-place rewriting never leave it.
+    def prove_accessor(view_offset: i64, view_length: i64, accessor_offset: i64, span_bytes: i64, bin_length: i64) -> bool:
+        ensure not result or accessor_offset + span_bytes <= bin_length - view_offset
+        ensure not result or view_offset >= 0
+        accessor_fits(view_offset, view_length, accessor_offset, span_bytes, bin_length)

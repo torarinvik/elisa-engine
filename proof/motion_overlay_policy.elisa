@@ -1,0 +1,32 @@
+include "../src/viewport/motion_overlay_policy.elisa"
+
+extend MotionOverlayPolicy:
+    # Both window ends lie in the clip for any frame and spans.
+    def prove_window_first(frame: i64, before: i64, count: i64) -> i64:
+        requires count >= 1
+        requires count <= 1000000000
+        ensure result >= 0
+        ensure result < count
+        window_first(frame, before, count)
+
+    def prove_window_last(frame: i64, after: i64, count: i64) -> i64:
+        requires count >= 1
+        requires count <= 1000000000
+        ensure result >= 0
+        ensure result < count
+        window_last(frame, after, count)
+
+    def prove_ghost(frame: i64, offset: i64, count: i64) -> i64:
+        requires count >= 1
+        requires count <= 1000000000
+        ensure result >= 0
+        ensure result < count
+        ghost_frame(frame, offset, count)
+
+    def prove_bucket(scaled: i64, buckets: i64) -> i64:
+        ensure result >= 0
+        ensure result < 64
+        heat_bucket(scaled, buckets)
+
+    # in_contact's own ensures (never a contact above either limit) are
+    # checked with the module; a caller lemma for it left a certificate gap.

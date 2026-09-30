@@ -1,0 +1,118 @@
+# Live pose override (plan M02). The app supplies bone local transforms each
+# frame; bones it does not override come from clip playback or, with no clip,
+# from the rest pose. Seeding the overrides from playback makes switching
+# from playback to override (and back) pop-free: an unchanged seeded override
+# evaluates to exactly the playback pose. Rigs are not capped at
+# AnimationLimits::MAX_JOINTS; they take LongClipIndex::MAX_BONES.
+include "../math/geometry.elisa"
+include "./long_clip.elisa"
+include "./long_clip_index.elisa"
+
+module PoseOverride:
+    public:
+        error OverrideError:
+            BoneCapacity
+            InvalidParent
+            ShapeMismatch
+
+        affine struct Rig:
+            private:
+                parents: mutable darray[i64]
+                rest: mutable darray[Geometry::Transform]
+
+        affine struct Overrides:
+            private:
+                locals: mutable darray[Geometry::Transform]
+                active: mutable darray[bool]
+
+        def Rig() -> Rig:
+            Rig{parents: [], rest: []}
+
+        # Append a bone. Parents come first, so `parent` is -1 or an index
+        # already added.
+        def rig_add(rig: mutable Rig&, parent: i64, rest: Geometry::Transform) -> usize error[OverrideError]:
+            raise OverrideError.BoneCapacity if rig.parents.count.i64() >= LongClipIndex::MAX_BONES
+            raise OverrideError.InvalidParent if parent < -1 or parent >= rig.parents.count.i64()
+            rig.parents.push(parent)
+            rig.rest.push(rest)
+            rig.parents.count - 1
+
+        def rig_bone_count(rig: Rig&) -> usize:
+            rig.parents.count
+
+        def rig_parent(rig: Rig&, bone: usize) -> i64:
+            return -1 if bone >= rig.parents.count
+            rig.parents[bone]
+
+        def rig_rest(rig: Rig&, bone: usize) -> Geometry::Transform:
+            return Geometry::transform_identity() if bone >= rig.rest.count
+            rig.rest[bone]
+
+        # No bone overridden; locals start at the rest pose.
+        def overrides(rig: Rig&) -> Overrides:
+            mutable held: Overrides = Overrides{locals: [], active: []}
+            for b in 0..<rig.rest.count:
+                held.locals.push(rig.rest[b])
+                held.active.push(false)
+            return move held
+
+        def set_override(held: mutable Overrides&, bone: usize, value: Geometry::Transform) -> bool:
+            return false if bone >= held.locals.count
+            return false if not Geometry::vec3_is_finite(value.position) or not Geometry::quat_is_finite(value.rotation) or not Geometry::vec3_is_finite(value.scale)
+            held.locals[bone] <- value
+            held.active[bone] <- true
+            true
+
+        def clear_override(held: mutable Overrides&, bone: usize):
+            held.active[bone] <- false if bone < held.active.count
+
+        def clear_all(held: mutable Overrides&):
+            for b in 0..<held.active.count:
+                held.active[b] <- false
+
+        def is_overridden(held: Overrides&, bone: usize) -> bool:
+            bone < held.active.count and held.active[bone]
+
+        def override_local(held: Overrides&, bone: usize) -> Geometry::Transform:
+            return Geometry::transform_identity() if bone >= held.locals.count
+            held.locals[bone]
+
+        # Take over every bone at the playback pose of `clip` at `seconds`,
+        # so the first overridden frame matches the last played one.
+        def seed_from_clip(held: mutable Overrides&, clip: LongClip::Clip&, seconds: f32) -> bool error[OverrideError]:
+            raise OverrideError.ShapeMismatch if LongClip::bone_count(clip) != held.locals.count
+            for b in 0..<held.locals.count:
+                held.locals[b] <- LongClip::sample(clip, seconds, b)
+                held.active[b] <- true
+            true
+
+        # Model transforms into `models`: override where set, otherwise the
+        # clip sample at `seconds`.
+        def evaluate(rig: Rig&, held: Overrides&, clip: LongClip::Clip&, seconds: f32, models: mutable darray[Geometry::Transform]&) -> usize error[OverrideError]:
+            count: usize = rig.parents.count
+            raise OverrideError.ShapeMismatch if held.locals.count != count or LongClip::bone_count(clip) != count
+            models.clear()
+            for b in 0..<count:
+                mutable local: Geometry::Transform = LongClip::sample(clip, seconds, b)
+                local <- held.locals[b] if held.active[b]
+                parent: i64 = rig.parents[b]
+                if parent < 0:
+                    models.push(local)
+                else:
+                    models.push(Geometry::transform_compose(models[parent.usize()], local))
+            count
+
+        # Model transforms with no clip: override where set, rest otherwise.
+        def evaluate_rest(rig: Rig&, held: Overrides&, models: mutable darray[Geometry::Transform]&) -> usize error[OverrideError]:
+            count: usize = rig.parents.count
+            raise OverrideError.ShapeMismatch if held.locals.count != count
+            models.clear()
+            for b in 0..<count:
+                mutable local: Geometry::Transform = rig.rest[b]
+                local <- held.locals[b] if held.active[b]
+                parent: i64 = rig.parents[b]
+                if parent < 0:
+                    models.push(local)
+                else:
+                    models.push(Geometry::transform_compose(models[parent.usize()], local))
+            count

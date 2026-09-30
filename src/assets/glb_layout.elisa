@@ -1,0 +1,53 @@
+# Bounds policy for GLB containers and the accessors inside their BIN chunk
+# (plan M06). Integer-only and free of allocation, so the prover can show
+# that every range the loader accepts lies inside the bytes it was given
+# (proof/glb_layout.elisa). The document loader checks every chunk and every
+# accessor through these before it reads a single byte of either.
+module GlbLayout:
+    public:
+        # A glTF accessor never holds more elements than this. It keeps
+        # `count * element_bytes` far inside i64, so the span cannot wrap.
+        const MAX_COUNT: i64 = 268435456
+        const MAX_ELEMENT_BYTES: i64 = 64
+
+        # True when `[start, start + length)` lies inside `[0, total)`.
+        def range_fits(start: i64, length: i64, total: i64) -> bool:
+            ensure not result or start >= 0
+            ensure not result or length >= 0
+            ensure not result or start + length <= total
+            return false if start < 0 or length < 0 or total < 0
+            return false if start > total
+            return false if length > total - start
+            true
+
+        # Byte length of `count` elements of `element_bytes`, or -1 when either
+        # is out of the supported range.
+        # The product stays below 2^34, far inside i64.
+        def span(count: i64, element_bytes: i64) -> i64:
+            return -1 if count < 0 or count > MAX_COUNT
+            return -1 if element_bytes <= 0 or element_bytes > MAX_ELEMENT_BYTES
+            count * element_bytes
+
+        # True when an accessor of `span_bytes` bytes at `accessor_offset`
+        # inside a view at `[view_offset, view_offset + view_length)` lies in a
+        # BIN chunk of `bin_length` bytes. The view must be inside the chunk
+        # and the accessor inside the view; on success the accessor's bytes
+        # start at `view_offset + accessor_offset`.
+        def accessor_fits(view_offset: i64, view_length: i64, accessor_offset: i64, span_bytes: i64, bin_length: i64) -> bool:
+            ensure not result or view_offset >= 0
+            ensure not result or accessor_offset >= 0
+            ensure not result or span_bytes >= 0
+            ensure not result or accessor_offset + span_bytes <= bin_length - view_offset
+            ensure not result or accessor_offset + span_bytes <= view_length
+            return false if span_bytes < 0
+            return false if bin_length < 0
+            return false if view_offset < 0
+            return false if view_length < 0
+            return false if accessor_offset < 0
+            return false if view_offset > bin_length
+            return false if view_length > bin_length - view_offset
+            return false if accessor_offset > view_length
+            return false if span_bytes > view_length - accessor_offset
+            # Implied by the two checks above; stated so the bound is direct.
+            return false if accessor_offset + span_bytes > bin_length - view_offset
+            true
