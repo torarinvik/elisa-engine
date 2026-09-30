@@ -1,0 +1,45 @@
+# Capacity and frame-index policy for long clips (plan M02). Integer-only so
+# the prover can show that an accepted clip shape stays inside the limits and
+# that every sampled frame index lands inside the clip
+# (proof/long_clip_index.elisa).
+module LongClipIndex:
+    public:
+        # 256 bones is four times a Mixamo rig; 1,048,576 frames is 2.4 hours
+        # at 120 Hz. The sample budget below is the real memory limit.
+        const MAX_BONES: i64 = 256
+        const MAX_FRAMES: i64 = 1048576
+        # Bone-frame samples one clip may hold: 16,777,216 samples x 40 bytes
+        # is 640 MiB.
+        const MAX_SAMPLES: i64 = 16777216
+
+        def bones_fit(bones: i64) -> bool:
+            ensure not result or bones >= 1
+            ensure not result or bones <= MAX_BONES
+            return false if bones < 1
+            return false if bones > MAX_BONES
+            true
+
+        def frames_fit(frames: i64) -> bool:
+            ensure not result or frames >= 1
+            ensure not result or frames <= MAX_FRAMES
+            return false if frames < 1
+            return false if frames > MAX_FRAMES
+            true
+
+        # `frame` clamped into `[0, count)`; 0 when the clip is empty.
+        def clamp_frame(frame: i64, count: i64) -> i64:
+            ensure result >= 0
+            ensure count <= 0 or result < count
+            return 0 if count <= 0
+            return 0 if frame < 0
+            return count - 1 if frame >= count
+            frame
+
+        # The frame after `frame`, held at the last frame.
+        def next_frame(frame: i64, count: i64) -> i64:
+            ensure result >= 0
+            ensure count <= 0 or result < count
+            return 0 if count <= 0
+            return 0 if frame < 0
+            return count - 1 if frame >= count - 1
+            frame + 1
