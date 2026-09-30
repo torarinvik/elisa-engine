@@ -65,3 +65,9 @@ yet reason that floor division is monotone.
   consumed.
 - Sounds are not spatialised to the guide.
 - No audible listening test was run in this session.
+
+2026-09-30: `test/audio_anim_events.elisa` had been missing from the shared
+gate's unit-test list. It is listed now, as is `test/audio_music.elisa` for
+music transitions. A sweep of the test files no script references found no
+other pure tests outside the gate: the rest are included by native mains or
+need native symbols.
