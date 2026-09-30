@@ -16,3 +16,13 @@ test/world_save.elisa is gated. It covers the round trip (kinds, hierarchy, worl
 positions, gameplay), capacity, corruption, version, truncation, resealed cycles and
 reload refusal. A negative control that skips the checksum comparison fails with 14.
 Rehydrating native render/physics state from a loaded world is still open.
+
+## Presentation rehydration
+
+`WorldSaveRendering::rehydrate` (src/runtime/world_save_rendering.elisa) rebinds a
+loaded world's presentation: every live entity gets its kind's visual and render ID
+`base + live index`. Records keep live order, so the IDs match those of the saved world.
+It refuses populated bindings, so rows from the replaced world cannot survive the swap.
+test/world_save_rendering.elisa (gated) extracts render snapshots from the saved and
+the loaded world and checks that IDs, meshes and poses match. A control that maps
+guards to the structure visual fails with 12. Physics bodies are not yet rebuilt from a save.
