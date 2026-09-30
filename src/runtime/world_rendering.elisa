@@ -179,6 +179,12 @@ module WorldRendering:
             bindings.rows[bindings.count] <- zeroed
             true
 
+        # Drop every row, e.g. before rebinding a world swapped in from a save.
+        def clear(bindings: mutable Bindings&) -> void:
+            for index in 0..<bindings.count |bindings|:
+                bindings.rows[index] <- zeroed
+            bindings.count <- 0
+
         # Rebuild into a fresh snapshot after validating the private binding
         # table. Dead or old-world entities are omitted and pruned in place.
         def extract(world: World::World&, bindings: mutable Bindings&,

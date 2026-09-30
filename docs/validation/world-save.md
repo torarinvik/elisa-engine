@@ -52,3 +52,16 @@ epoch, fresh IDs, stale old references and the preserved hierarchy. A control wi
 the staging check fails with 4. The rollback-after-failed-rebuild branch has no direct
 test (staging makes it unreachable with current inputs). No shipped game drives
 swap, then render and physics rehydration, end to end yet.
+
+## End-to-end load
+
+`WorldSaveLoad::load` (src/runtime/world_save_load.elisa) is the single load path for a
+running game. It swaps the save into the live World, destroys the physics bodies of the
+replaced entities, clears the render rows (new `WorldRendering::clear`), then rebuilds
+render and physics for the loaded entities. A rejected save changes nothing. The native
+smoke `world-save-physics-smoke` now also runs a live world with a bound crate through a
+corrupt load (world and both binding tables untouched) and a good load (three entities,
+three render rows starting at the chosen base, three bodies at the saved poses).
+A control that skips destroying the old bodies fails with status 34. Physics bodies bound
+to entities that were already dead before the load are not tracked, so they trip
+`PhysicsCleanupFailed` after the swap; the course does not yet use this path.
