@@ -45,7 +45,8 @@ sample-bound. The C++ bridge in this harness is built at `-O0`.
   `native/cooked_geometry_limits.h`), matching the native pose limit.
   `scripts/gltf_skin_limit_test.py` (in the gate) cooks 70- and 200-joint
   chains and checks that 257 joints are rejected without a partial package.
-  The FBX importer still caps skins at 64 joints.
+  The FBX importer now takes its skin cap from the same shared constant
+  (`scripts/test_fbx_import.py` passes).
 - The native bridge only accepts a submitted pose whose bone and morph counts
   equal the instance skeleton's, and each submission must be completed before
   the next.
