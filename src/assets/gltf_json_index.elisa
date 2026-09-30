@@ -1,0 +1,66 @@
+# Integer rules for GltfJson and GltfAnimationMap, split out so the prover
+# can check them: bounded integer literals, nesting depth and accessor spans.
+module GltfJsonIndex:
+    public:
+        # glTF counts and offsets are unsigned 32-bit; larger literals fail.
+        const MAX_INTEGER: i64 = 4294967295
+        const MAX_DEPTH: i64 = 64
+
+        # `value` with one more decimal digit, or -1 on a bad digit, a bad
+        # value or a result past MAX_INTEGER.
+        def append_digit(value: i64, digit: i64) -> i64:
+            ensure result >= -1
+            ensure result <= MAX_INTEGER
+            return -1 if value < 0
+            return -1 if value > MAX_INTEGER
+            return -1 if digit < 0
+            return -1 if digit > 9
+            next: i64 = value * 10 + digit
+            return -1 if next > MAX_INTEGER
+            next
+
+        def depth_ok(depth: i64) -> bool:
+            ensure not result or depth <= MAX_DEPTH
+            ensure not result or depth >= 0
+            return false if depth < 0
+            return false if depth > MAX_DEPTH
+            true
+
+        # Bytes per component for a glTF componentType, or 0 if unknown.
+        def component_bytes(component_type: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 4
+            return 1 if component_type == 5120
+            return 1 if component_type == 5121
+            return 2 if component_type == 5122
+            return 2 if component_type == 5123
+            return 4 if component_type == 5125
+            return 4 if component_type == 5126
+            0
+
+        # Bytes one accessor spans (`count` elements of `element` bytes), or
+        # -1 when the inputs are out of range.
+        def span(count: i64, element: i64) -> i64:
+            ensure result >= -1
+            ensure result <= 4294967295 * 64 or result < 0
+            return -1 if count < 0
+            return -1 if count > MAX_INTEGER
+            return -1 if element <= 0
+            return -1 if element > 64
+            count * element
+
+        # The accessor's offset inside its buffer view, or -1 when its
+        # `span_bytes` bytes at `accessor_offset` do not fit the view's
+        # `view_length` bytes. The BIN offset is the view offset plus this.
+        def accessor_offset_in_view(view_length: i64, accessor_offset: i64, span_bytes: i64) -> i64:
+            requires view_length >= 0
+            requires view_length <= MAX_INTEGER
+            requires accessor_offset >= 0
+            requires accessor_offset <= MAX_INTEGER
+            requires span_bytes >= 0
+            requires span_bytes <= MAX_INTEGER
+            ensure result <= view_length - span_bytes or result < 0
+            ensure result == accessor_offset or result < 0
+            ensure result == -1 or result >= 0
+            return -1 if accessor_offset > view_length - span_bytes
+            accessor_offset

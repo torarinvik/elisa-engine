@@ -1,0 +1,215 @@
+# Maps a glTF animation channel to the bytes of its output accessor inside
+# the GLB BIN payload, so an edit to one bone rewrites only that channel's
+# keys (M06). Sparse accessors, strided views and external buffers are
+# rejected rather than guessed at.
+include "./gltf_json.elisa"
+
+module GltfAnimationMap:
+    private:
+        def word_animations() -> darray[u8]:
+            [97, 110, 105, 109, 97, 116, 105, 111, 110, 115]
+
+        def word_channels() -> darray[u8]:
+            [99, 104, 97, 110, 110, 101, 108, 115]
+
+        def word_samplers() -> darray[u8]:
+            [115, 97, 109, 112, 108, 101, 114, 115]
+
+        def word_sampler() -> darray[u8]:
+            [115, 97, 109, 112, 108, 101, 114]
+
+        def word_target() -> darray[u8]:
+            [116, 97, 114, 103, 101, 116]
+
+        def word_node() -> darray[u8]:
+            [110, 111, 100, 101]
+
+        def word_path() -> darray[u8]:
+            [112, 97, 116, 104]
+
+        def word_output() -> darray[u8]:
+            [111, 117, 116, 112, 117, 116]
+
+        def word_accessors() -> darray[u8]:
+            [97, 99, 99, 101, 115, 115, 111, 114, 115]
+
+        def word_buffer_views() -> darray[u8]:
+            [98, 117, 102, 102, 101, 114, 86, 105, 101, 119, 115]
+
+        def word_buffer_view() -> darray[u8]:
+            [98, 117, 102, 102, 101, 114, 86, 105, 101, 119]
+
+        def word_byte_offset() -> darray[u8]:
+            [98, 121, 116, 101, 79, 102, 102, 115, 101, 116]
+
+        def word_byte_length() -> darray[u8]:
+            [98, 121, 116, 101, 76, 101, 110, 103, 116, 104]
+
+        def word_byte_stride() -> darray[u8]:
+            [98, 121, 116, 101, 83, 116, 114, 105, 100, 101]
+
+        def word_buffer() -> darray[u8]:
+            [98, 117, 102, 102, 101, 114]
+
+        def word_count() -> darray[u8]:
+            [99, 111, 117, 110, 116]
+
+        def word_component_type() -> darray[u8]:
+            [99, 111, 109, 112, 111, 110, 101, 110, 116, 84, 121, 112, 101]
+
+        def word_type() -> darray[u8]:
+            [116, 121, 112, 101]
+
+        def word_sparse() -> darray[u8]:
+            [115, 112, 97, 114, 115, 101]
+
+        def word_translation() -> darray[u8]:
+            [116, 114, 97, 110, 115, 108, 97, 116, 105, 111, 110]
+
+        def word_rotation() -> darray[u8]:
+            [114, 111, 116, 97, 116, 105, 111, 110]
+
+        def word_scale() -> darray[u8]:
+            [115, 99, 97, 108, 101]
+
+        def word_weights() -> darray[u8]:
+            [119, 101, 105, 103, 104, 116, 115]
+
+        def word_s_c_a_l_a_r() -> darray[u8]:
+            [83, 67, 65, 76, 65, 82]
+
+        def word_v_e_c2() -> darray[u8]:
+            [86, 69, 67, 50]
+
+        def word_v_e_c3() -> darray[u8]:
+            [86, 69, 67, 51]
+
+        def word_v_e_c4() -> darray[u8]:
+            [86, 69, 67, 52]
+
+        def word_m_a_t4() -> darray[u8]:
+            [77, 65, 84, 52]
+
+        def word_is(bytes: darray[u8]&, begin: i64, end: i64, word: darray[u8]&) -> bool:
+            return false if end - begin != word.count.i64()
+            differ: mutable i64 = 0
+            for i in 0..<word.count |differ, bytes, word, begin|:
+                x: u8 = bytes[begin.usize() + i]
+                y: u8 = word[i]
+                differ <- differ + 1 if x != y else differ
+            differ == 0
+
+        def type_components(bytes: darray[u8]&, doc: GltfJson::Doc&, node: i64) -> i64:
+            return 0 if node < 0 or doc.kind[node.usize()] != GltfJson::STRING
+            a: i64 = doc.start[node.usize()]
+            b: i64 = doc.stop[node.usize()]
+            return 1 if word_is(bytes, a, b, word_s_c_a_l_a_r())
+            return 2 if word_is(bytes, a, b, word_v_e_c2())
+            return 3 if word_is(bytes, a, b, word_v_e_c3())
+            return 4 if word_is(bytes, a, b, word_v_e_c4())
+            return 16 if word_is(bytes, a, b, word_m_a_t4())
+            0
+
+        def path_code(bytes: darray[u8]&, doc: GltfJson::Doc&, node: i64) -> i64:
+            return -1 if node < 0 or doc.kind[node.usize()] != GltfJson::STRING
+            a: i64 = doc.start[node.usize()]
+            b: i64 = doc.stop[node.usize()]
+            return GltfAnimationMap::TRANSLATION if word_is(bytes, a, b, word_translation())
+            return GltfAnimationMap::ROTATION if word_is(bytes, a, b, word_rotation())
+            return GltfAnimationMap::SCALE if word_is(bytes, a, b, word_scale())
+            return GltfAnimationMap::WEIGHTS if word_is(bytes, a, b, word_weights())
+            -1
+
+    public:
+        const TRANSLATION: i64 = 0
+        const ROTATION: i64 = 1
+        const SCALE: i64 = 2
+        const WEIGHTS: i64 = 3
+
+        error MapError:
+            MissingAnimation
+            MissingChannel
+            BadSampler
+            BadAccessor
+            BadBufferView
+            SparseAccessor
+            StridedView
+            ExternalBuffer
+
+        # Where one channel's output keys live. `bin_offset` is relative to
+        # the BIN payload; `path` is one of the constants above or -1.
+        struct ChannelBytes:
+            target_node: i64
+            path: i64
+            bin_offset: i64
+            byte_length: i64
+            count: i64
+            component_type: i64
+            components: i64
+
+        # The member of `object` named `key`, or -1.
+        def member(doc: GltfJson::Doc&, bytes: darray[u8]&, object: i64, key: darray[u8]&) -> i64:
+            return -1 if object < 0 or object >= GltfJson::node_count(doc)
+            return -1 if doc.kind[object.usize()] != GltfJson::OBJECT
+            found: mutable i64 = -1
+            for n in (object + 1).usize()..<doc.kind.count |found, doc, bytes, object, key|:
+                hit: bool = found < 0 and doc.parent[n] == object and word_is(bytes, doc.key_start[n], doc.key_stop[n], key)
+                found <- n.i64() if hit else found
+            found
+
+        # The `index`th element of `array`, or -1.
+        def item(doc: GltfJson::Doc&, array: i64, index: i64) -> i64:
+            return -1 if array < 0 or array >= GltfJson::node_count(doc) or index < 0
+            return -1 if doc.kind[array.usize()] != GltfJson::ARRAY
+            seen: mutable i64 = 0
+            found: mutable i64 = -1
+            for n in (array + 1).usize()..<doc.kind.count |seen, found, doc, array, index|:
+                child: bool = doc.parent[n] == array
+                found <- n.i64() if child and seen == index and found < 0 else found
+                seen <- seen + 1 if child else seen
+            found
+
+        # A non-negative integer node's value, `fallback` when `node` is -1,
+        # or -1 for anything else.
+        def integer_or(doc: GltfJson::Doc&, node: i64, fallback: i64) -> i64:
+            return fallback if node < 0
+            return -1 if doc.kind[node.usize()] != GltfJson::INTEGER
+            doc.integer[node.usize()]
+
+        def channel_bytes(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64) -> ChannelBytes error[MapError]:
+            root: i64 = 0
+            anim: i64 = item(doc, member(doc, bytes, root, word_animations()), animation)
+            raise MapError.MissingAnimation if anim < 0
+            chan: i64 = item(doc, member(doc, bytes, anim, word_channels()), channel)
+            raise MapError.MissingChannel if chan < 0
+            target: i64 = member(doc, bytes, chan, word_target())
+            target_node: i64 = integer_or(doc, member(doc, bytes, target, word_node()), -1)
+            path: i64 = path_code(bytes, doc, member(doc, bytes, target, word_path()))
+            sampler_index: i64 = integer_or(doc, member(doc, bytes, chan, word_sampler()), -1)
+            sampler: i64 = item(doc, member(doc, bytes, anim, word_samplers()), sampler_index)
+            raise MapError.BadSampler if sampler < 0
+            output: i64 = integer_or(doc, member(doc, bytes, sampler, word_output()), -1)
+            accessor: i64 = item(doc, member(doc, bytes, root, word_accessors()), output)
+            raise MapError.BadAccessor if accessor < 0
+            raise MapError.SparseAccessor if member(doc, bytes, accessor, word_sparse()) >= 0
+            view_index: i64 = integer_or(doc, member(doc, bytes, accessor, word_buffer_view()), -1)
+            count: i64 = integer_or(doc, member(doc, bytes, accessor, word_count()), -1)
+            component_type: i64 = integer_or(doc, member(doc, bytes, accessor, word_component_type()), -1)
+            components: i64 = type_components(bytes, doc, member(doc, bytes, accessor, word_type()))
+            accessor_offset: i64 = integer_or(doc, member(doc, bytes, accessor, word_byte_offset()), 0)
+            component: i64 = GltfJsonIndex::component_bytes(component_type)
+            raise MapError.BadAccessor if count <= 0 or components <= 0 or component <= 0 or accessor_offset < 0
+            element: i64 = components * component
+            span_bytes: i64 = GltfJsonIndex::span(count, element)
+            raise MapError.BadAccessor if span_bytes < 0 or span_bytes > GltfJsonIndex::MAX_INTEGER
+            view: i64 = item(doc, member(doc, bytes, root, word_buffer_views()), view_index)
+            raise MapError.BadBufferView if view < 0
+            raise MapError.ExternalBuffer if integer_or(doc, member(doc, bytes, view, word_buffer()), -1) != 0
+            view_offset: i64 = integer_or(doc, member(doc, bytes, view, word_byte_offset()), 0)
+            view_length: i64 = integer_or(doc, member(doc, bytes, view, word_byte_length()), -1)
+            stride: i64 = integer_or(doc, member(doc, bytes, view, word_byte_stride()), element)
+            raise MapError.StridedView if stride != element
+            raise MapError.BadBufferView if view_offset < 0 or view_length < 0
+            inside: i64 = GltfJsonIndex::accessor_offset_in_view(view_length, accessor_offset, span_bytes)
+            raise MapError.BadAccessor if inside < 0
+            ChannelBytes{target_node: target_node, path: path, bin_offset: view_offset + inside, byte_length: span_bytes, count: count, component_type: component_type, components: components}

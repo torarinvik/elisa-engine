@@ -1,0 +1,229 @@
+# A bounded JSON reader for the glTF JSON chunk. It records one node per
+# value (kind, byte range, parent and member key range) without copying or
+# decoding strings, so an editor can find accessors and leave every other
+# byte of the file alone. Integers up to 2^32 - 1 are decoded; other numbers
+# are kept as byte ranges.
+include "./gltf_json_index.elisa"
+
+module GltfJson:
+    private:
+        const module Mode:
+            VALUE: i64 = 0
+            AFTER: i64 = 1
+            KEY_OR_CLOSE: i64 = 2
+            KEY: i64 = 3
+            VALUE_OR_CLOSE: i64 = 4
+            STRING: i64 = 5
+            ESCAPE: i64 = 6
+            NUMBER: i64 = 7
+            COLON: i64 = 8
+            FAILED: i64 = 9
+
+        def space(b: i64) -> bool:
+            b == 32 or b == 9 or b == 10 or b == 13
+
+        def number_byte(b: i64) -> bool:
+            (b >= 48 and b <= 57) or b == 45 or b == 43 or b == 46 or b == 101 or b == 69
+
+        # 1 when `bytes` holds the ASCII `word` at `at`, else 0.
+        def literal_at(bytes: darray[u8]&, at: i64, stop: i64, word: darray[u8]&) -> bool:
+            return false if at + word.count.i64() > stop
+            differ: mutable i64 = 0
+            for i in 0..<word.count |differ, bytes, word, at|:
+                x: u8 = bytes[at.usize() + i]
+                y: u8 = word[i]
+                differ <- differ + 1 if x != y else differ
+            differ == 0
+
+    public:
+        const OBJECT: i64 = 0
+        const ARRAY: i64 = 1
+        const STRING: i64 = 2
+        const INTEGER: i64 = 3
+        const REAL: i64 = 4
+        const TRUE: i64 = 5
+        const FALSE: i64 = 6
+        const NULL: i64 = 7
+        const MAX_NODES: i64 = 1000000
+
+        error JsonError:
+            Malformed
+            TooDeep
+            TooManyNodes
+            Truncated
+
+        # Parallel arrays, one entry per value. `start`/`stop` bound the value
+        # (strings exclude their quotes); `key_start`/`key_stop` bound the
+        # member name inside its quotes, or are -1 outside objects.
+        struct Doc:
+            kind: darray[i64]
+            start: darray[i64]
+            stop: darray[i64]
+            parent: darray[i64]
+            key_start: darray[i64]
+            key_stop: darray[i64]
+            integer: darray[i64]
+
+        def node_count(doc: Doc&) -> i64:
+            doc.kind.count.i64()
+
+        # Parses `length` bytes of `bytes` from `offset`. Offsets in the
+        # result are offsets into `bytes`.
+        def parse(bytes: darray[u8]&, offset: i64, length: i64) -> Doc error[JsonError]:
+            raise JsonError.Truncated if offset < 0 or length <= 0 or offset > bytes.count.i64() - length
+            stop_at: i64 = offset + length
+            word_true: darray[u8] = [116, 114, 117, 101]
+            word_false: darray[u8] = [102, 97, 108, 115, 101]
+            word_null: darray[u8] = [110, 117, 108, 108]
+            kind: mutable darray[i64] = []
+            start: mutable darray[i64] = []
+            stop: mutable darray[i64] = []
+            parent: mutable darray[i64] = []
+            key_start: mutable darray[i64] = []
+            key_stop: mutable darray[i64] = []
+            integer: mutable darray[i64] = []
+            mode: mutable i64 = Mode::VALUE
+            current: mutable i64 = -1
+            depth: mutable i64 = 0
+            skip: mutable i64 = 0
+            string_is_key: mutable bool = false
+            pending_key_start: mutable i64 = -1
+            pending_key_stop: mutable i64 = -1
+            token_start: mutable i64 = 0
+            number_value: mutable i64 = 0
+            number_integral: mutable bool = true
+            number_digits: mutable i64 = 0
+            roots: mutable i64 = 0
+            failure: mutable i64 = 0
+            for p in offset..<stop_at |kind, start, stop, parent, key_start, key_stop, integer, mode, current, depth, skip, string_is_key, pending_key_start, pending_key_stop, token_start, number_value, number_integral, number_digits, roots, failure, bytes, word_true, word_false, word_null, stop_at|:
+                b: i64 = bytes[p.usize()].i64()
+                handled: mutable bool = skip > 0 or mode == Mode::FAILED
+                skip <- skip - 1 if skip > 0 else skip
+                # A number ends at the first byte that cannot continue it;
+                # that byte is then read as whatever follows a value.
+                if not handled and mode == Mode::NUMBER:
+                    if number_byte(b):
+                        digit_ok: bool = b >= 48 and b <= 57
+                        number_integral <- false if not digit_ok and b != 45 else number_integral
+                        number_digits <- number_digits + 1 if digit_ok else number_digits
+                        number_value <- GltfJsonIndex::append_digit(number_value, b - 48) if digit_ok and number_integral and number_value >= 0 else number_value
+                        handled <- true
+                    else:
+                        last: i64 = kind.count.i64() - 1
+                        kind[last.usize()] <- GltfJson::INTEGER if number_integral and number_value >= 0 and number_digits > 0 else GltfJson::REAL
+                        integer[last.usize()] <- number_value if number_integral and number_digits > 0 else -1
+                        stop[last.usize()] <- p
+                        mode <- Mode::AFTER if number_digits > 0 else Mode::FAILED
+                if not handled and mode == Mode::ESCAPE:
+                    mode <- Mode::STRING
+                    handled <- true
+                if not handled and mode == Mode::STRING:
+                    if b == 92:
+                        mode <- Mode::ESCAPE
+                    elif b == 34 and string_is_key:
+                        pending_key_start <- token_start
+                        pending_key_stop <- p
+                        mode <- Mode::COLON
+                    elif b == 34:
+                        last: i64 = kind.count.i64() - 1
+                        stop[last.usize()] <- p
+                        mode <- Mode::AFTER
+                    elif b < 32:
+                        mode <- Mode::FAILED
+                    handled <- true
+                if not handled and space(b):
+                    handled <- true
+                if not handled and mode == Mode::COLON:
+                    mode <- Mode::VALUE if b == 58 else Mode::FAILED
+                    handled <- true
+                if not handled and (mode == Mode::KEY_OR_CLOSE or mode == Mode::KEY):
+                    if b == 34:
+                        string_is_key <- true
+                        token_start <- p + 1
+                        mode <- Mode::STRING
+                    elif b == 125 and mode == Mode::KEY_OR_CLOSE:
+                        stop[current.usize()] <- p + 1
+                        current <- parent[current.usize()]
+                        depth <- depth - 1
+                        mode <- Mode::AFTER
+                    else:
+                        mode <- Mode::FAILED
+                    handled <- true
+                if not handled and mode == Mode::VALUE_OR_CLOSE and b == 93:
+                    stop[current.usize()] <- p + 1
+                    current <- parent[current.usize()]
+                    depth <- depth - 1
+                    mode <- Mode::AFTER
+                    handled <- true
+                if not handled and mode == Mode::AFTER:
+                    container: i64 = kind[current.usize()] if current >= 0 else -1
+                    if current < 0:
+                        mode <- Mode::FAILED
+                    elif b == 44:
+                        mode <- Mode::KEY if container == GltfJson::OBJECT else Mode::VALUE
+                    elif (b == 125 and container == GltfJson::OBJECT) or (b == 93 and container == GltfJson::ARRAY):
+                        stop[current.usize()] <- p + 1
+                        current <- parent[current.usize()]
+                        depth <- depth - 1
+                    else:
+                        mode <- Mode::FAILED
+                    handled <- true
+                # Anything left starts a value.
+                if not handled:
+                    in_object: bool = current >= 0 and kind[current.usize()] == GltfJson::OBJECT
+                    kind.push(GltfJson::NULL)
+                    start.push(p)
+                    stop.push(p + 1)
+                    parent.push(current)
+                    key_start.push(pending_key_start if in_object else -1)
+                    key_stop.push(pending_key_stop if in_object else -1)
+                    integer.push(-1)
+                    last: i64 = kind.count.i64() - 1
+                    roots <- roots + 1 if current < 0 else roots
+                    mode <- Mode::AFTER
+                    if roots > 1 or last >= GltfJson::MAX_NODES:
+                        failure <- 2 if last >= GltfJson::MAX_NODES else failure
+                        mode <- Mode::FAILED
+                    elif b == 123 or b == 91:
+                        kind[last.usize()] <- GltfJson::OBJECT if b == 123 else GltfJson::ARRAY
+                        current <- last
+                        depth <- depth + 1
+                        mode <- Mode::KEY_OR_CLOSE if b == 123 else Mode::VALUE_OR_CLOSE
+                        if not GltfJsonIndex::depth_ok(depth):
+                            failure <- 1
+                            mode <- Mode::FAILED
+                    elif b == 34:
+                        kind[last.usize()] <- GltfJson::STRING
+                        start[last.usize()] <- p + 1
+                        string_is_key <- false
+                        mode <- Mode::STRING
+                    elif (b >= 48 and b <= 57) or b == 45:
+                        number_value <- 0 if b == 45 else b - 48
+                        number_integral <- b != 45
+                        number_digits <- 0 if b == 45 else 1
+                        mode <- Mode::NUMBER
+                    elif b == 116 and literal_at(bytes, p, stop_at, word_true):
+                        kind[last.usize()] <- GltfJson::TRUE
+                        stop[last.usize()] <- p + 4
+                        skip <- 3
+                    elif b == 102 and literal_at(bytes, p, stop_at, word_false):
+                        kind[last.usize()] <- GltfJson::FALSE
+                        stop[last.usize()] <- p + 5
+                        skip <- 4
+                    elif b == 110 and literal_at(bytes, p, stop_at, word_null):
+                        stop[last.usize()] <- p + 4
+                        skip <- 3
+                    else:
+                        mode <- Mode::FAILED
+            raise JsonError.TooDeep if failure == 1
+            raise JsonError.TooManyNodes if failure == 2
+            raise JsonError.Malformed if mode == Mode::FAILED
+            # Only a trailing number can still be open at the end.
+            closed: bool = mode == Mode::AFTER or (mode == Mode::NUMBER and number_digits > 0)
+            raise JsonError.Truncated if not closed or current >= 0 or roots != 1 or skip > 0
+            if mode == Mode::NUMBER:
+                last: i64 = kind.count.i64() - 1
+                kind[last.usize()] <- GltfJson::INTEGER if number_integral and number_value >= 0 else GltfJson::REAL
+                integer[last.usize()] <- number_value if number_integral else -1
+                stop[last.usize()] <- stop_at
+            Doc{kind: kind, start: start, stop: stop, parent: parent, key_start: key_start, key_stop: key_stop, integer: integer}
