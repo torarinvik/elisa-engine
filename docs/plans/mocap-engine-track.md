@@ -1,0 +1,38 @@
+# Mocap-cleanup engine track (M)
+
+**Requested:** 2026-09-30 by the user, through the boxing-animation session. Its purpose is to support a new Cascadeur-style mocap-cleanup app in `../mocap-cleaner`, with its UI in elisa-ui and possibly elisa-designer. **Status:** this is a plan only. No M item has started, and the user confirms before each large item begins.
+
+## Where the work lives
+
+- **Engine capabilities (M01–M08)** go in this repository (`elisa-engine`, branch `main`). They are general engine services: embeddable viewports, pose override, picking, gizmos, overlays, glTF round-trip, headless rendering and animation math. An editor, a game or the app can all use them, so they do not belong on a game branch.
+- **`../elisa-engine-boxing` (`boxing-branch`)** stays the home for boxing-game-only engine changes, as that repo's AGENTS.md says. It picks up M work by merging `main`, and is not where M work is developed.
+- **`../mocap-cleaner`** owns the timeline, curve editor, undo, tool panels, cleanup presets and project files. It holds the cleanup *tools* built on top of M08's math, so filter policy, the grounded-foot pivot and presets live there.
+- **elisa-ui** is the GUI toolkit for the whole app: every tool control, panel, timeline and curve editor, as in Cascadeur. The product is Cascadeur-like but focused entirely on mocap cleanup. The engine supplies only the 3D view and the math behind the tools. M01 defines how an engine viewport sits inside an elisa-ui window next to those controls, and M04 defines how gizmo drags report back so elisa-ui tool state stays in charge.
+
+## Already in the engine (starting points, not completion)
+
+- `RenderScene::set_bone_transform` / `submit_animation_pose` (src/runtime/render_scene_animation_submission.elisa) already push bone transforms per frame. M02 grows this into a full pose-override path.
+- `RenderScene::debug_line/box/text` (src/runtime/render_scene_debug.elisa) is the base for M05.
+- `src/animation/pose.elisa` (skeleton, evaluation, nlerp blend) and `src/animation/ik.elisa` (two-bone solve and knee placement) are the base for M08.
+- Render-scene pixel/capture probes and `src/runtime/headless_game.elisa` are the base for M07.
+- The existing cooked glTF/FBX path (A-section) is the base for M06 loading. There is no glTF writer yet.
+
+## Ordered queue
+
+Each item follows the main plan's execution contract: a public Elisa API, positive and adversarial tests, native evidence, a proof for its pure policy, and a `docs/validation/` note.
+
+- [ ] **M01 · Embeddable viewports.** Render into an engine-owned texture or child surface that an elisa-ui panel shows, rather than owning the window. Several viewports share one scene: perspective plus orthographic front and side views. Includes an orbit/pan/zoom/frame-selection camera controller, a floor grid, and redraw on demand (no frames while idle and nothing is playing). *Done:* three viewports inside an elisa-ui layout resize independently. Idle CPU/GPU cost is close to zero. Frame-selection fits the selected bones. **Hosting decision (2026-09-30, relayed from the user by the boxing-animation session):** a shared Metal texture. The engine renders each viewport into a Metal texture that elisa-ui composites into its panel. It was chosen for performance and as the better long-term design, over an SDL child window. First step: find out how elisa-ui displays external Metal textures, and how the two sides agree on texture lifetime, resize and frame sync.
+- [ ] **M02 · Live pose override and long clips.** A skinned instance is evaluated from bone local transforms the app supplies each frame, with cooked playback optional. Clip storage holds long 120 Hz takes (thousands of frames × ~70 bones) in memory with random-access scrubbing. *Done:* scrubbing a 10,000-frame take is smooth; record p95 frame time. The override and playback paths switch without a pop. Bone count and frame capacity limits fail in a typed way.
+- [ ] **M03 · Skeleton display and picking.** Bones and joints are drawn over the mesh, with selection and hover highlights. Ray-picking returns a joint or bone plus the hit distance. Toggles cover mesh visibility, x-ray (bones through the mesh) and wireframe. *Done:* picking is correct in every M01 viewport, including orthographic ones. Overlapping joints resolve nearest-first.
+- [ ] **M04 · Manipulation gizmos.** Rotate and translate gizmos in world or local space, with axis and plane constraints and screen-constant size. A drag callback lets the app run IK while dragging, and the engine applies the result as a pose override. *Done:* dragging a foot effector with the app's IK hook moves the chain live. Cancelling a drag restores the pre-drag pose exactly.
+- [ ] **M05 · Overlay drawing API.** Batched lines, points and labels. Joint motion trails over a frame window, such as foot and hand paths. Ground-contact markers. Per-segment velocity or acceleration heat colouring. Onion-skin ghosts at other frames. *Done:* trails for 4 joints × 600 frames plus 3 onion ghosts stay within the frame budget. A synthetic spike is visibly flagged by the heat colouring in a captured PNG.
+- [ ] **M06 · Editable animation load and GLB round-trip.** Load glTF/GLB, and FBX through the existing cook path, into an editable skeleton with per-bone key tracks. Export edited GLB with untouched nodes, meshes, skins and buffers byte-identical, rewriting only the edited animation channels. *Done:* load → export with no edits is byte-identical, and editing one bone changes only that channel's accessor data. Malformed files are rejected without partial state.
+- [ ] **M07 · Headless mode.** The same load, filter and export pipeline runs without a window for batch cleanup and CI. An offscreen render of a chosen frame is written to PNG for thumbnails and regression images. *Done:* a CLI batch run cleans a folder of takes with no display. PNG output is deterministic within a stated tolerance on the reference machine.
+- [ ] **M08 · Animation math (engine-side, reusable).** Quaternion slerp, swing/twist split and hinge decomposition. Two-bone IK with pole and knee-pole limits, then multi-bone (FABRIK/CCD). Signal filters: Gaussian, running-median de-spike and Butterworth low-pass applied to quaternion and position tracks with continuity handling. *Done:* each function is checked against `tools/clean_leg_motion.py` in the boxing repo, matching median de-spike, grounded foot pivot about heel or ball, the knee-pole limit that stops ankle wringing, and pelvis path smoothing within stated tolerances. Proofs cover filter window bounds and quaternion normalisation.
+  Progress on 2026-09-30: `MotionFilters` (Gaussian, median, de-spike, zero-phase Butterworth, quaternion continuity) matches the numpy output of clean_leg_motion.py to 1e-9. `MotionQuat` adds slerp, swing/twist, hinge angle and aim. The filter-tap bounds are proved. IK, the grounded-pivot and pelvis checks, and quaternion-normalisation proofs are still open. See docs/validation/motion-filters.md.
+
+**Suggested first slice** (to confirm with the user first): M08 math and M02 pose override. They are headless-testable, unblock the app's first de-spike tool, and need no UI decision. M01 follows, using the shared-Metal-texture hosting decided for it.
+
+## Out of engine scope
+
+Timeline, curve editor, undo/redo, tool panels, presets and project management belong to `../mocap-cleaner` and elisa-ui.

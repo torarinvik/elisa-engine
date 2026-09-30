@@ -1,0 +1,8 @@
+include "../src/animation/motion_filter_index.elisa"
+
+extend MotionFilterIndex:
+    # Every filter tap, edge-clamped or wrapped, reads inside the signal.
+    def prove_padded(index: i64, n: i64, wrap: bool) -> i64:
+        ensure result >= 0
+        ensure result < n or n <= 0
+        padded(index, n, wrap)

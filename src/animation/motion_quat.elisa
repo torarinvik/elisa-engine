@@ -1,0 +1,138 @@
+# Double-precision rotation math for motion-capture cleanup (plan M08):
+# slerp, swing/twist split, signed hinge angle and the two-axis "aim" the
+# boxing game's clean_leg_motion.py uses to rebuild limb rotations. Runtime
+# pose code keeps Geometry's f32 types; convert at the edges.
+include "../math/geometry.elisa"
+include "../vendor/elisa_math.elisa"
+
+module MotionQuat:
+    private:
+        const module Tune:
+            EPSILON: f64 = 0.000000001
+            NEAR_ONE: f64 = 0.9995
+
+    public:
+        struct Q:
+            x: f64
+            y: f64
+            z: f64
+            w: f64
+
+        struct V:
+            x: f64
+            y: f64
+            z: f64
+
+        struct SwingTwist:
+            swing: Q
+            twist: Q
+
+        def identity() -> Q:
+            Q{x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+
+        def from_geometry(q: Geometry::Quat) -> Q:
+            Q{x: q.x.f64(), y: q.y.f64(), z: q.z.f64(), w: q.w.f64()}
+
+        def to_geometry(q: Q) -> Geometry::Quat:
+            Geometry::Quat{x: q.x.f32(), y: q.y.f32(), z: q.z.f32(), w: q.w.f32()}
+
+        def dot(a: Q, b: Q) -> f64:
+            a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
+
+        def normalize(q: Q) -> Q:
+            length: f64 = ElisaMath::sqrt(dot(q, q))
+            return identity() if length <= Tune::EPSILON
+            Q{x: q.x / length, y: q.y / length, z: q.z / length, w: q.w / length}
+
+        def mul(a: Q, b: Q) -> Q:
+            Q{
+                x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+                y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+                z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+                w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+            }
+
+        def conjugate(q: Q) -> Q:
+            Q{x: -q.x, y: -q.y, z: -q.z, w: q.w}
+
+        def vdot(a: V, b: V) -> f64:
+            a.x * b.x + a.y * b.y + a.z * b.z
+
+        def cross(a: V, b: V) -> V:
+            V{x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x}
+
+        def vnormalize(v: V) -> V:
+            length: f64 = ElisaMath::sqrt(vdot(v, v))
+            return V{x: 0.0, y: 0.0, z: 0.0} if length <= Tune::EPSILON
+            V{x: v.x / length, y: v.y / length, z: v.z / length}
+
+        def rotate(q: Q, v: V) -> V:
+            p: Q = mul(mul(q, Q{x: v.x, y: v.y, z: v.z, w: 0.0}), conjugate(q))
+            V{x: p.x, y: p.y, z: p.z}
+
+        def axis_angle(axis: V, angle: f64) -> Q:
+            a: V = vnormalize(axis)
+            s: f64 = ElisaMath::sin(angle * 0.5)
+            Q{x: a.x * s, y: a.y * s, z: a.z * s, w: ElisaMath::cos(angle * 0.5)}
+
+        # Constant-speed interpolation along the shorter arc; nearly equal
+        # rotations fall back to normalized lerp, where slerp loses precision.
+        def slerp(a: Q, b: Q, t: f64) -> Q:
+            raw: f64 = dot(a, b)
+            sign: f64 = -1.0 if raw < 0.0 else 1.0
+            c: f64 = raw * sign
+            if c > Tune::NEAR_ONE:
+                return normalize(Q{x: a.x + (b.x * sign - a.x) * t, y: a.y + (b.y * sign - a.y) * t, z: a.z + (b.z * sign - a.z) * t, w: a.w + (b.w * sign - a.w) * t})
+            theta: f64 = ElisaMath::acos(c)
+            s: f64 = ElisaMath::sin(theta)
+            wa: f64 = ElisaMath::sin((1.0 - t) * theta) / s
+            wb: f64 = ElisaMath::sin(t * theta) / s * sign
+            Q{x: a.x * wa + b.x * wb, y: a.y * wa + b.y * wb, z: a.z * wa + b.z * wb, w: a.w * wa + b.w * wb}
+
+        # q = swing * twist, where twist turns about `axis` only and swing
+        # moves the axis. A rotation that swings the axis a half turn has no
+        # defined twist; the identity is returned for it.
+        def swing_twist(q: Q, axis: V) -> SwingTwist:
+            a: V = vnormalize(axis)
+            along: f64 = q.x * a.x + q.y * a.y + q.z * a.z
+            raw: Q = Q{x: a.x * along, y: a.y * along, z: a.z * along, w: q.w}
+            degenerate: bool = dot(raw, raw) <= Tune::EPSILON
+            twist: Q = identity() if degenerate else normalize(raw)
+            SwingTwist{swing: mul(q, conjugate(twist)), twist: twist}
+
+        # Signed angle of the twist about `axis`, in (-pi, pi]: the flex of a
+        # hinge joint such as a knee or elbow.
+        def hinge_angle(q: Q, axis: V) -> f64:
+            t: Q = swing_twist(q, axis).twist
+            a: V = vnormalize(axis)
+            along: f64 = t.x * a.x + t.y * a.y + t.z * a.z
+            angle: f64 = 2.0 * ElisaMath::atan2(along, t.w)
+            angle - 6.283185307179586 if angle > 3.141592653589793 else (angle + 6.283185307179586 if angle <= -3.141592653589793 else angle)
+
+        # Rotation taking local +Y and the local hinge onto the world ones.
+        # Both hinges are first made perpendicular to their +Y axis.
+        def aim(y_world: V, hinge_world: V, hinge_local: V) -> Q:
+            up: V = V{x: 0.0, y: 1.0, z: 0.0}
+            y: V = vnormalize(y_world)
+            hl_dot: f64 = vdot(hinge_local, up)
+            hl: V = vnormalize(V{x: hinge_local.x - up.x * hl_dot, y: hinge_local.y - up.y * hl_dot, z: hinge_local.z - up.z * hl_dot})
+            hw_dot: f64 = vdot(hinge_world, y)
+            hw: V = vnormalize(V{x: hinge_world.x - y.x * hw_dot, y: hinge_world.y - y.y * hw_dot, z: hinge_world.z - y.z * hw_dot})
+            local_back: Q = frame_quat(hl, up, cross(hl, up))
+            target: Q = frame_quat(hw, y, cross(hw, y))
+            normalize(mul(target, conjugate(local_back)))
+
+        # Quaternion of the rotation whose matrix columns are c0, c1, c2.
+        def frame_quat(c0: V, c1: V, c2: V) -> Q:
+            trace: f64 = c0.x + c1.y + c2.z
+            if trace > 0.0:
+                s: f64 = ElisaMath::sqrt(trace + 1.0) * 2.0
+                return normalize(Q{x: (c1.z - c2.y) / s, y: (c2.x - c0.z) / s, z: (c0.y - c1.x) / s, w: 0.25 * s})
+            if c0.x > c1.y and c0.x > c2.z:
+                s: f64 = ElisaMath::sqrt(1.0 + c0.x - c1.y - c2.z) * 2.0
+                return normalize(Q{x: 0.25 * s, y: (c1.x + c0.y) / s, z: (c2.x + c0.z) / s, w: (c1.z - c2.y) / s})
+            if c1.y > c2.z:
+                s: f64 = ElisaMath::sqrt(1.0 + c1.y - c0.x - c2.z) * 2.0
+                return normalize(Q{x: (c1.x + c0.y) / s, y: 0.25 * s, z: (c2.y + c1.z) / s, w: (c2.x - c0.z) / s})
+            s: f64 = ElisaMath::sqrt(1.0 + c2.z - c0.x - c1.y) * 2.0
+            normalize(Q{x: (c2.x + c0.z) / s, y: (c2.y + c1.z) / s, z: 0.25 * s, w: (c0.y - c1.x) / s})

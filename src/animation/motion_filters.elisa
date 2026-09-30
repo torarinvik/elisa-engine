@@ -1,0 +1,145 @@
+# Offline curve filters for motion-capture cleanup (plan M08). Each filter
+# reads one channel and writes another of the same length; neither aliases.
+# Edges either repeat the end samples ("edge") or wrap for looping clips,
+# matching tools/clean_leg_motion.py in the boxing game, which these mirror.
+include "../vendor/elisa_math.elisa"
+include "./motion_filter_index.elisa"
+module MotionFilters:
+    private:
+        const module Tune:
+            CAPACITY: usize = 2048
+            MAX_WINDOW: usize = 255
+
+        def sample_at(signal: Signal&, index: i64, wrap: bool) -> f64:
+            signal.values[MotionFilterIndex::padded(index, signal.count.i64(), wrap).usize()]
+
+        # Median of the first `count` scratch entries by insertion sort; the
+        # window is at most MAX_WINDOW, so this stays cheap per sample.
+        def median_of(scratch: mutable Window&, count: usize) -> f64:
+            for i in 1..<count |scratch|:
+                key: f64 = scratch.values[i]
+                mutable j: usize = i
+                while j > 0 and scratch.values[j - 1] > key:
+                    scratch.values[j] <- scratch.values[j - 1]
+                    j <- j - 1
+                scratch.values[j] <- key
+            scratch.values[count / 2]
+
+    public:
+        struct Signal:
+            values: mutable f64[Tune::CAPACITY]
+            count: mutable usize
+
+        struct Window:
+            values: mutable f64[Tune::MAX_WINDOW]
+
+        def capacity() -> usize:
+            Tune::CAPACITY
+
+        def Signal() -> Signal:
+            Signal{values: zeroed, count: 0}
+
+        def push(signal: mutable Signal&, value: f64) -> bool:
+            return false if signal.count >= Tune::CAPACITY
+            signal.values[signal.count] <- value
+            signal.count <- signal.count + 1
+            true
+
+        # Gaussian smoothing with a kernel truncated at three sigma and
+        # normalized to unit sum. A sigma at or below zero copies the input.
+        def gaussian(source: Signal&, target: mutable Signal&, sigma: f64, wrap: bool) -> bool:
+            return false if source.count == 0 or sigma > 80.0
+            target.count <- source.count
+            radius: i64 = (3.0 * sigma).i64() if sigma > 0.0 else 0
+            mutable total: f64 = 0.0
+            for k in -radius..=radius |total|:
+                t: f64 = k.f64() / sigma if sigma > 0.0 else 0.0
+                total <- total + ElisaMath::exp(-0.5 * t * t)
+            for i in 0..<source.count |source, target, radius, total, sigma, wrap|:
+                mutable sum: f64 = 0.0
+                for k in -radius..=radius |sum, source, i, sigma, wrap|:
+                    t: f64 = k.f64() / sigma if sigma > 0.0 else 0.0
+                    sum <- sum + ElisaMath::exp(-0.5 * t * t) * sample_at(source, i.i64() + k, wrap)
+                target.values[i] <- sum / total
+            true
+
+        # Running median over an odd window: out-and-back excursions shorter
+        # than about half the window vanish, longer deliberate moves stay.
+        def median(source: Signal&, target: mutable Signal&, window: usize, wrap: bool) -> bool:
+            return false if source.count == 0 or window == 0 or window > Tune::MAX_WINDOW or window % 2 == 0
+            target.count <- source.count
+            radius: i64 = (window / 2).i64()
+            mutable scratch: Window = Window{values: zeroed}
+            for i in 0..<source.count |source, target, radius, window, wrap, scratch|:
+                for k in 0..<window |scratch, source, i, radius, wrap|:
+                    scratch.values[k] <- sample_at(source, i.i64() - radius + k.i64(), wrap)
+                target.values[i] <- median_of(&scratch, window)
+            true
+
+        # The boxing tool's de-spike: a running median, then light smoothing.
+        def despike(source: Signal&, target: mutable Signal&, window: usize, sigma: f64, wrap: bool) -> bool:
+            mutable middle: Signal = Signal()
+            return false if not median(source, &middle, window, wrap)
+            gaussian(&middle, target, sigma, wrap)
+
+        # Second-order Butterworth low-pass, run forward then backward so the
+        # result has no phase lag. Each pass starts at rest on its first
+        # sample, so a constant signal passes through unchanged.
+        def butterworth(source: Signal&, target: mutable Signal&, cutoff_hz: f64, rate_hz: f64) -> bool:
+            return false if source.count == 0 or cutoff_hz <= 0.0 or rate_hz <= 0.0 or cutoff_hz * 2.0 >= rate_hz
+            k: f64 = ElisaMath::tan(3.141592653589793 * cutoff_hz / rate_hz)
+            root2: f64 = ElisaMath::sqrt(2.0)
+            norm: f64 = 1.0 / (1.0 + root2 * k + k * k)
+            b0: f64 = k * k * norm
+            a1: f64 = 2.0 * (k * k - 1.0) * norm
+            a2: f64 = (1.0 - root2 * k + k * k) * norm
+            n: usize = source.count
+            target.count <- n
+            mutable forward: Signal = Signal()
+            forward.count <- n
+            first: f64 = source.values[0]
+            mutable x1: f64 = first
+            mutable x2: f64 = first
+            mutable y1: f64 = first
+            mutable y2: f64 = first
+            for i in 0..<n |source, forward, x1, x2, y1, y2, b0, a1, a2|:
+                x: f64 = source.values[i]
+                y: f64 = b0 * x + 2.0 * b0 * x1 + b0 * x2 - a1 * y1 - a2 * y2
+                forward.values[i] <- y
+                x2 <- x1
+                x1 <- x
+                y2 <- y1
+                y1 <- y
+            last: f64 = forward.values[n - 1]
+            mutable p1: f64 = last
+            mutable p2: f64 = last
+            mutable q1: f64 = last
+            mutable q2: f64 = last
+            for j in 0..<n |forward, target, p1, p2, q1, q2, b0, a1, a2, n|:
+                i: usize = n - 1 - j
+                x: f64 = forward.values[i]
+                y: f64 = b0 * x + 2.0 * b0 * p1 + b0 * p2 - a1 * q1 - a2 * q2
+                target.values[i] <- y
+                p2 <- p1
+                p1 <- x
+                q2 <- q1
+                q1 <- y
+            true
+
+        # Quaternion channels (x, y, z, w) are flipped sample by sample so
+        # each lies in the same hemisphere as the one before it. Filtering
+        # the four channels afterwards then cannot cross the q/-q seam.
+        # Returns how many samples were flipped.
+        def quat_continuity(x: mutable Signal&, y: mutable Signal&, z: mutable Signal&, w: mutable Signal&) -> usize:
+            n: usize = x.count
+            return 0 if y.count != n or z.count != n or w.count != n
+            mutable flips: usize = 0
+            for i in 1..<n |x, y, z, w, flips|:
+                dot: f64 = x.values[i] * x.values[i - 1] + y.values[i] * y.values[i - 1] + z.values[i] * z.values[i - 1] + w.values[i] * w.values[i - 1]
+                if dot < 0.0:
+                    x.values[i] <- -x.values[i]
+                    y.values[i] <- -y.values[i]
+                    z.values[i] <- -z.values[i]
+                    w.values[i] <- -w.values[i]
+                    flips <- flips + 1
+            flips
