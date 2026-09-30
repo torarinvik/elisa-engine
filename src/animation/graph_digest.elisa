@@ -1,0 +1,20 @@
+# Replay digest of an animation graph runtime, for ReplaySubsystems slot 4
+# (animation). It folds every field that shapes the next pose: the current
+# and previous state, blend progress, the blend start weight and the
+# interruption count. So a replay names the tick where a blend first went a
+# different way, not only the tick where a pose later drifted.
+include "./graph.elisa"
+
+module AnimGraphDigest:
+    public:
+        def graph_fold(digest: i64, value: i64) -> i64:
+            (digest * 1000003 + value % 1000000007 + 1000000007) % 1000000007
+
+        def graph_runtime_digest(r: AnimGraph::Runtime&) -> i64:
+            mutable d: i64 = 17
+            d <- graph_fold(d, r.current)
+            d <- graph_fold(d, r.previous)
+            d <- graph_fold(d, r.elapsed_ms)
+            d <- graph_fold(d, r.blend_total_ms)
+            d <- graph_fold(d, r.start_permille)
+            graph_fold(d, r.interruptions)
