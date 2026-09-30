@@ -7,6 +7,8 @@ skinned self-test panel; its presented frame becomes the backdrop of a 320x240
 engine viewport, and the shared-scene skeleton draws over it. The test itself
 checks redraw-on-demand and the selected-joint overlay; this script checks the
 composited viewport reproduces the Wicked frame wherever the overlay is absent.
+The test also drives Wicked's camera from viewport cameras and checks that
+Wicked's picking rays match the viewport's, so backdrop and overlays line up.
 """
 
 from __future__ import annotations

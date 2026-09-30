@@ -8,6 +8,7 @@ include "../src/runtime/application_capture.elisa"
 include "../src/runtime/render_scene.elisa"
 include "../src/math/geometry.elisa"
 include "../src/viewport/viewport_scene.elisa"
+include "../src/viewport/viewport_wicked.elisa"
 include "../src/viewport/png_writer.elisa"
 
 const module Backdrop:
@@ -16,6 +17,8 @@ const module Backdrop:
     # presented frame that must differ from its corner (background) colour.
     MAX_WAIT: usize = 240
     MIN_MESH: i64 = 400
+    # Allowed ray mismatch in micro-units (1e-6 of cos or of a metre).
+    MAX_RAY_MISMATCH: i64 = 50
     # The viewport clear colour.
     CLEAR_R: i64 = 38
     CLEAR_G: i64 = 40
@@ -105,6 +108,60 @@ def foreground(frame: darray[u8]&) -> i64:
     return 0 if frame.count < 4
     count_near(frame, frame[0].i64(), frame[1].i64(), frame[2].i64()) * -1 + (frame.count / 4).i64()
 
+# Worst mismatch, in micro-units, between Wicked's camera ray and the
+# viewport camera's picking ray over a 5x5 grid of pixels: the larger of
+# 1 - cos(angle) between directions and the distance from Wicked's origin to
+# the viewport ray. -1 when Wicked cannot build a ray.
+def ray_mismatch(cam: ViewportCamera::Camera&) -> i64:
+    mutable worst: i64 = 0
+    mutable k: i64 = 0
+    while k < 25:
+        one: i64 = sample_mismatch(cam, (8 + (k % 5) * 76).f32(), (8 + (k / 5) * 56).f32())
+        return -1 if one < 0
+        worst <- one if one > worst
+        k <- k + 1
+    worst
+
+def sample_mismatch(cam: ViewportCamera::Camera&, px: f32, py: f32) -> i64:
+    mine: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+    theirs: Geometry::Ray3 = catch RenderScene::camera_ray(px, py):
+        value: value
+        error failure: return -1
+    d0: Geometry::Vec3 = Geometry::vec3_normalize(mine.direction)
+    d1: Geometry::Vec3 = Geometry::vec3_normalize(theirs.direction)
+    bend: f32 = 1.0 - Geometry::vec3_dot(d0, d1)
+    gap: Geometry::Vec3 = Geometry::vec3_sub(theirs.origin, mine.origin)
+    along: f32 = Geometry::vec3_dot(gap, d0)
+    miss: f32 = Geometry::vec3_length(Geometry::vec3_sub(gap, Geometry::vec3_scale(d0, along)))
+    mutable worst: f32 = bend
+    worst <- miss if miss > worst
+    (worst * 1000000.0).i64()
+
+# Drive Wicked from `cam`, present a frame so it takes effect, and measure.
+def synced_mismatch(cam: ViewportCamera::Camera&) -> i64:
+    synced: i32 = catch ViewportWicked::sync_camera(cam):
+        ok: 0
+        error failure: 1
+    return -2 if synced != 0
+    return -3 if Application::pump() != Application::PumpStatus.Running
+    ray_mismatch(cam)
+
+def align() -> i32:
+    mutable cam: ViewportCamera::Camera = ViewportCamera::create(320, 240)
+    cam.target <- v(-1.8, 0.5, 0.2)
+    cam.yaw_cd <- 2000
+    cam.pitch_code <- cam.pitch_code + 700
+    persp: i64 = synced_mismatch(cam)
+    ortho_front: i64 = synced_mismatch(ViewportCamera::create_ortho(320, 240, ViewportCamera::FRONT))
+    ortho_side: i64 = synced_mismatch(ViewportCamera::create_ortho(320, 240, ViewportCamera::SIDE))
+    _ = ViewportCamera::orbit(&cam, 40, -25)
+    _ = ViewportCamera::zoom(&cam, 3)
+    moved: i64 = synced_mismatch(cam)
+    return 40 if persp < 0 or ortho_front < 0 or ortho_side < 0 or moved < 0
+    return 41 if persp > Backdrop::MAX_RAY_MISMATCH or moved > Backdrop::MAX_RAY_MISMATCH
+    return 42 if ortho_front > Backdrop::MAX_RAY_MISMATCH or ortho_side > Backdrop::MAX_RAY_MISMATCH
+    0
+
 def exercise() -> i32:
     setup: i32 = wicked_scene()
     return setup if setup != 0
@@ -120,6 +177,8 @@ def exercise() -> i32:
     fw: i64 = Application::presented_width()
     fh: i64 = Application::presented_height()
     return 12 if fw < 320 or fh < 240 or frame.count.i64() != fw * fh * 4
+    aligned: i32 = align()
+    return aligned if aligned != 0
     composite(frame, fw, fh)
 
 def main() -> i32:

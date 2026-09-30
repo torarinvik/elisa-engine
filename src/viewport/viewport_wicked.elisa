@@ -1,0 +1,17 @@
+# Keep the Wicked renderer's main camera on a ViewportCamera (plan M01), so
+# the Wicked frame used as a viewport backdrop (Viewport::set_backdrop) lines
+# up with the overlays the viewport draws from the same camera.
+include "../runtime/render_scene.elisa"
+include "./viewport_camera.elisa"
+
+module ViewportWicked:
+    public:
+        # Copy projection, field of view or orthographic height, clip range
+        # and eye/target/up from `cam` to Wicked's main camera.
+        def sync_camera(cam: ViewportCamera::Camera&) -> void error[RenderScene::RenderSceneError]:
+            b: ViewportCamera::Basis = ViewportCamera::basis(cam)
+            if ViewportCamera::is_ortho(cam):
+                try RenderScene::set_camera_orthographic_height(2.0 * ViewportCamera::half_height(cam))
+            else:
+                try RenderScene::set_camera_perspective(cam.fov_y, ViewportCamera::NEAR, ViewportCamera::FAR)
+            try RenderScene::set_camera_look_at(b.eye, cam.target, b.up)

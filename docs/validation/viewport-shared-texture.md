@@ -88,7 +88,7 @@ Both are registered in `scripts/check.elisascript`. The second is linked by `scr
 
 ## Still open
 
-- **Camera sync with the Wicked view.** The backdrop is the Wicked frame as rendered by the Wicked camera; the viewport's overlays use the viewport camera. Driving `RenderScene::set_camera_look_at` from `ViewportCamera` so the two line up is the next step, and it is a copy through the CPU, not zero-copy.
+- **The backdrop is a CPU copy.** The Wicked frame goes through a readback and an upload each time it changes; a GPU-side blit from Wicked's Metal texture into the ring would remove the copy.
 - **On-screen compositing inside elisa-ui.** This is added in the elisa-ui `mocap-viewport` worktree; see that branch's notes.
 
 ## Shared scene (2026-10-01)
@@ -98,3 +98,7 @@ Both are registered in `scripts/check.elisascript`. The second is linked by `scr
 ## Skinned mesh backdrop (2026-10-01)
 
 `Viewport::set_backdrop` uploads an RGBA8 frame that every later render stretches over the target before the draw list; `clear_backdrop` removes it. The Wicked side gained `elisa_application_v1_read_rgba` with `presented_width`/`presented_height` (`Application::read_presented`), which copies the last presented frame. `scripts/viewport_backdrop_smoke.py` builds `test/viewport_wicked_backdrop_main.elisa` through the render-scene harness with `build/viewport_metal.o` linked in (new `ELISA_RENDER_SCENE_EXTRA_OBJECTS`). Wicked draws the skinned panel at 640x480; the test waits until the mesh is on screen, sets it as the backdrop of a 320x240 viewport sharing a `ViewportScene`, and checks one redraw on the backdrop change, none while idle, the orange selected joint on top, and the plain clear colour back after `clear_backdrop`. Across three runs the script finds 99.35% of viewport pixels match the Wicked frame. A mutant that skips the backdrop draw is caught (exit 28). The first version waited a fixed six frames and sometimes captured before the mesh streamed in; the wait is now on the frame content.
+
+## Camera sync (2026-10-01)
+
+`ViewportWicked::sync_camera` (src/viewport/viewport_wicked.elisa) copies a `ViewportCamera` to Wicked's main camera: perspective field of view and clip range, or orthographic height `2 * half_height`, then eye, target and up. The backdrop test drives Wicked from a perspective camera, the front and side orthographic cameras, and the perspective camera again after an orbit and zoom. At 25 pixels per view, Wicked's `RenderScene::camera_ray` must agree with `ViewportCamera::ray`: 1 - cos of the angle between directions, and the distance of Wicked's origin from the viewport ray, must both stay under 50e-6. The measured mismatch rounds to 0 at 1e-6. A 10% field-of-view mutant is caught (exit 41), and a 0.75x orthographic-height mutant is caught (exit 42). The first version of the check accumulated its worst value in nested `for` loops and always reported 0 even for the mutants. It now uses one `while` loop with a per-sample helper; the Elisa discarded-accumulator quirk is suspected.
