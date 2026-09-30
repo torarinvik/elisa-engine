@@ -19,6 +19,13 @@ int main() {
         std::fprintf(stderr, "portable keyboard mapping failed\n");
         return 7;
     }
+    if (physical_key_code(SDL_SCANCODE_W) != KEY_W || physical_key_code(SDL_SCANCODE_Q) != KEY_Q ||
+        physical_key_code(SDL_SCANCODE_SEMICOLON) != KEY_SEMICOLON ||
+        physical_key_code(SDL_SCANCODE_KP_ENTER) != KEY_KP_ENTER ||
+        physical_key_code(SDL_SCANCODE_PRINTSCREEN) != 0) {
+        std::fprintf(stderr, "physical key mapping failed\n");
+        return 17;
+    }
     if (gamepad_button_code(SDL_GAMEPAD_BUTTON_SOUTH) != GAMEPAD_BUTTON_SOUTH ||
         gamepad_button_code(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) != GAMEPAD_BUTTON_DPAD_RIGHT ||
         gamepad_button_code(SDL_GAMEPAD_BUTTON_MISC1) != 0) {

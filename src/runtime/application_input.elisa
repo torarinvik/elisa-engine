@@ -357,6 +357,9 @@ extend Application:
             # Zero for unassigned devices; gamepads use stable one-based
             # connection slots so local players can route controllers.
             device_slot: mutable i32
+            # Key events only: the portable code of the key at this physical
+            # position on a US layout, or 0.
+            physical_code: mutable i64
 
         struct PointerEvent:
             kind: mutable PointerEventKind
@@ -527,8 +530,11 @@ extend Application:
             if kind == Application::InputTokenKind::GAMEPAD_AXIS:
                 event.code <- (encoded >> InputTokenLayout::AXIS_CODE_SHIFT) & InputTokenLayout::AXIS_CODE_MASK
                 event.value <- ((encoded >> InputTokenLayout::PAYLOAD_SHIFT) & InputTokenLayout::AXIS_VALUE_MASK).f32() / InputTokenLayout::AXIS_VALUE_MAX
+                event.physical_code <- 0
             else:
                 event.code <- (encoded >> InputTokenLayout::PAYLOAD_SHIFT) & InputTokenLayout::DIGITAL_CODE_MASK
+                event.physical_code <- (event.code >> 16) if kind == Application::InputTokenKind::KEY else 0
+                event.code <- event.code & 65535 if kind == Application::InputTokenKind::KEY
                 event.value <- 1.0 if event.pressed else 0.0
             event.chord_down <- false
             true

@@ -18,6 +18,15 @@ module ActionInputRecording:
                 chord_down: event.chord_down,
             })
 
+        def recording_key_event(log: mutable ActionInputReplay::Log&,
+            input: mutable ActionInput::Input&, tick: i64, event: Application::InputEvent) -> bool:
+            layout: bool = true if event.code == 0 else recording_device_event(log, input, tick, ActionInput::Device.Keyboard, event)
+            return layout if event.physical_code == 0
+            physical: mutable Application::InputEvent = event
+            physical.code <- ActionInputRuntime::physical_key(event.physical_code)
+            positioned: bool = recording_device_event(log, input, tick, ActionInput::Device.Keyboard, physical)
+            layout and positioned
+
         def recording_clear_all(log: mutable ActionInputReplay::Log&,
             input: mutable ActionInput::Input&, tick: i64) -> bool:
             keyboard: bool = ActionInputReplay::feed_clear(log, input, tick, ActionInput::Device.Keyboard)
@@ -34,7 +43,7 @@ module ActionInputRecording:
             event: Application::InputEvent) -> bool:
             match event.kind:
                 Application::InputEventKind.Key:
-                    return recording_device_event(log, input, tick, ActionInput::Device.Keyboard, event)
+                    return recording_key_event(log, input, tick, event)
                 Application::InputEventKind.MouseButton:
                     return recording_device_event(log, input, tick, ActionInput::Device.Mouse, event)
                 Application::InputEventKind.GamepadButton:

@@ -15,12 +15,30 @@ module ActionInputRuntime:
                 chord_down: event.chord_down,
             })
 
+        # A key event reaches layout bindings by its code and physical
+        # bindings by `physical_key(physical_code)`.
+        def apply_key_event(input: mutable ActionInput::Input&, event: Application::InputEvent) -> void:
+            apply_device_event(input, ActionInput::Device.Keyboard, event) if event.code != 0
+            if event.physical_code != 0:
+                physical: mutable Application::InputEvent = event
+                physical.code <- physical_key(event.physical_code)
+                apply_device_event(input, ActionInput::Device.Keyboard, physical)
+
         def clear_transient_state(input: mutable ActionInput::Input&) -> void:
             ActionInput::clear_device_state(input, ActionInput::Device.Keyboard)
             ActionInput::clear_device_state(input, ActionInput::Device.Mouse)
             ActionInput::clear_device_state(input, ActionInput::Device.Gamepad)
 
     public:
+        # Physical key bindings use codes above this base, so a binding to the
+        # W position and one to the W character never collide.
+        const PHYSICAL_KEY_BASE: i64 = 10000
+
+        # The binding code for the key at a physical position, given the
+        # portable code of the key there on a US layout.
+        def physical_key(code: i64) -> i64:
+            PHYSICAL_KEY_BASE + code
+
         # Poll once per application frame. Clearing edges before draining keeps
         # every queued transition visible to simulation code for that frame.
         def begin_frame(input: mutable ActionInput::Input&) -> usize:
@@ -42,7 +60,7 @@ module ActionInputRuntime:
             event: Application::InputEvent, gamepad_slot: i32,
             include_keyboard: bool) -> void:
             if event.kind == Application::InputEventKind.Key:
-                apply_device_event(input, ActionInput::Device.Keyboard, event) if include_keyboard
+                apply_key_event(input, event) if include_keyboard
             elif event.kind == Application::InputEventKind.MouseButton:
                 apply_device_event(input, ActionInput::Device.Mouse, event) if include_keyboard
             elif event.kind == Application::InputEventKind.GamepadButton:
@@ -64,7 +82,7 @@ module ActionInputRuntime:
             event: Application::InputEvent) -> void:
             match event.kind:
                 Application::InputEventKind.Key:
-                    apply_device_event(input, ActionInput::Device.Keyboard, event)
+                    apply_key_event(input, event)
                 Application::InputEventKind.MouseButton:
                     apply_device_event(input, ActionInput::Device.Mouse, event)
                 Application::InputEventKind.GamepadButton:

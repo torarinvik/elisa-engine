@@ -53,3 +53,17 @@ PrintScreen is still left unmapped, so the OS keeps it.
 
 scripts/test_input_codes.py checks parity, enum-arm coverage and switch coverage. The C++ test now also checks KP_0, KP_ENTER (and that it is not ENTER) and MENU.
 Negative control: mapping numpad Enter to the main Enter code makes the script fail. character-course-smoke still passes.
+
+## Physical key positions (scancodes)
+
+Every key event now also carries the key's physical position. The native host maps `event.key.scancode` through `probe::physical_key_code` to the portable code of the key at that position on a US layout. The table has the same 103 keys as the layout table. The key token carries the layout code in the low 16 payload bits and the physical code above them. `Application::InputEvent.physical_code` exposes it for key events and is 0 otherwise.
+
+`ActionInputRuntime::physical_key(code)` (`PHYSICAL_KEY_BASE` 10000 + code) is the binding code for a position. `apply_application_event`, `apply_player_event` and `ActionInputRecording` apply a key event twice: once under its layout code and once under its physical code. So "the key where US W is" and "the key labelled W" are separate bindings that never collide. A key missing from the layout table can still bind by position. Focus loss clears physical keys with the rest of the keyboard, and recordings replay both effects.
+
+Checks:
+
+- `test/action_input_physical.elisa` covers an AZERTY-style event pair, a position-only key, focus loss, player keyboard routing and record-then-replay. It passed.
+- `scripts/test_input_codes.py` checks the scancode table: W, Q, `;`, KP Enter, and PrintScreen mapping to 0. It passed.
+- A control that skips the physical apply fails the Elisa test with code 2.
+
+No non-US hardware layout was exercised.
