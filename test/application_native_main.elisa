@@ -6,6 +6,7 @@ include "./physics_app_probe.elisa"
 include "./application_clipboard_probe.elisa"
 include "./application_displays_probe.elisa"
 include "./audio_devices_probe.elisa"
+include "./device_settings_probe.elisa"
 include "./physics_primitives_probe.elisa"
 include "./runtime_services_probe.elisa"
 include "./user_data_probe.elisa"
@@ -417,6 +418,8 @@ def exercise_application() -> i32:
     return audio_devices if audio_devices != 0
     audio_open: i32 = AudioDevicesProbe::open_by_name()
     return audio_open if audio_open != 0
+    device_settings: i32 = DeviceSettingsProbe::run()
+    return device_settings if device_settings != 0
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0

@@ -579,6 +579,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-30: display enumeration (bounds, refresh, scale, primary, contains-by-id) with a native smoke probe; see docs/validation/displays.md. Audio-device enumeration, permissions and applying saved choices on restart remain.
   Progress on 2026-09-30: playback-device enumeration (names, default flag, missing-index) independent of the mixer; see docs/validation/audio-devices.md. Opening a chosen device, permission results and restart application of saved choices remain.
   Progress on 2026-09-30: open_preferred opens the mixer on a saved device by name and falls back to the default when it is gone (docs/validation/audio-devices.md). Permission results and restart application of saved display/audio choices remain.
+  Progress on 2026-09-30: DeviceSettings saves display bounds + output name and apply() reapplies them at startup with DeviceChoice/default fallback and damaged-record rejection; window-to-display move added (docs/validation/device-settings.md). Permission results, a two-process relaunch check and a client consumer remain.
 - [ ] **I04 · P1 · Unicode text and font assets** — After: I02, A04.
   Integrate FreeType/HarfBuzz with fallback fonts, glyph atlases, shaping caches, and justified ICU segmentation/bidi support. Done: mixed-direction, ligature, combining-mark, and fallback-font fixtures render and hit-test correctly without treating code units as glyph indices.
 - [ ] **I05 · P1 · Editable text and IME** — After: I04, I01.

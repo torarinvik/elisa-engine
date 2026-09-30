@@ -10,6 +10,12 @@ module ApplicationDisplays:
         @callconv(c)
         extern elisa_application_v1_display_info(index: u32, fields: mutable i32&) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_move_window_to_display(id: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_window_display(id: mutable i32&) -> i32
+
     public:
         const MAX_DISPLAYS: usize = 8
 
@@ -58,3 +64,13 @@ module ApplicationDisplays:
             for i in 0..<displays.count |found, displays|:
                 found <- true if displays.items[i].id == id
             found
+
+        # Centres the window on the connected display `id`.
+        def move_window_to(id: i32) -> bool:
+            elisa_application_v1_move_window_to_display(id) == 0
+
+        # The display that holds the window, or 0 when unknown.
+        def window_display() -> i32:
+            id: mutable i32 = 0
+            return 0 if elisa_application_v1_window_display(&id) != 0
+            id

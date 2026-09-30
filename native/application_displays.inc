@@ -48,3 +48,31 @@ extern "C" int32_t elisa_application_v1_display_info(uint32_t index, int32_t* fi
     fields[7] = SDL_GetPrimaryDisplay() == id ? 1 : 0;
     return ELISA_APPLICATION_OK;
 }
+
+// Centres the window on the display with `id`. INVALID_ARGUMENT when that
+// display is not connected.
+extern "C" int32_t elisa_application_v1_move_window_to_display(int32_t id) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized || service.host.window() == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    SDL_Rect bounds{};
+    if (id <= 0 || !SDL_GetDisplayBounds(static_cast<SDL_DisplayID>(id), &bounds)) {
+        return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    const int position = static_cast<int>(SDL_WINDOWPOS_CENTERED_DISPLAY(static_cast<SDL_DisplayID>(id)));
+    return SDL_SetWindowPosition(service.host.window(), position, position) ? ELISA_APPLICATION_OK
+                                                                           : ELISA_APPLICATION_UNSUPPORTED;
+}
+
+// The id of the display that holds the window, or 0 when unknown.
+extern "C" int32_t elisa_application_v1_window_display(int32_t* id) {
+    if (id == nullptr) return ELISA_APPLICATION_INVALID_ARGUMENT;
+    *id = 0;
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized || service.host.window() == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    *id = static_cast<int32_t>(SDL_GetDisplayForWindow(service.host.window()));
+    return ELISA_APPLICATION_OK;
+}

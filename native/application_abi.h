@@ -138,6 +138,9 @@ int32_t elisa_application_v1_clipboard_text(uint8_t* out, uint32_t capacity, uin
 // width, height, refresh in millihertz, content scale in permille, primary.
 int32_t elisa_application_v1_display_count(uint32_t* count);
 int32_t elisa_application_v1_display_info(uint32_t index, int32_t* fields);
+// Centres the window on a connected display; reports the window's display.
+int32_t elisa_application_v1_move_window_to_display(int32_t id);
+int32_t elisa_application_v1_window_display(int32_t* id);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);
