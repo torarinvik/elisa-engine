@@ -35,3 +35,49 @@ Not covered:
 - shaping (Arabic joining forms);
 - wiring into the overlay text renderer, which still draws bytes in
   logical order.
+
+## Course captions in display order (2026-09-30)
+
+Wicked's font renderer draws glyphs left to right in byte order and does no
+bidi of its own. `src/ui/bidi_utf8.elisa` (`UiBidiUtf8`) therefore works on
+wrapped UTF-8 one line at a time: it decodes each line (malformed bytes
+become U+FFFD), orders it with `UiBidi` and encodes it again. A line over 64
+codepoints is passed through unchanged. The course's `wrapped_caption`
+applies it after wrapping, with a right-to-left paragraph for Arabic.
+
+Tests:
+- `test/ui_bidi_utf8.elisa` (in the gate's unit-test list) covers Hebrew in
+  a two-line caption in both paragraph directions, a stray continuation
+  byte and empty text. Control: joining lines at the newline fails with 2.
+- Course code 172 checks that the Arabic jump caption reaches the renderer
+  with the same byte count but reordered, and that English passes through
+  unchanged. Control: skipping the reorder in `wrapped_caption` fails the
+  course smoke with 172.
+
+Arabic letter shaping (joining forms) is still missing.
+
+## Arabic shaping (2026-09-30)
+
+`src/ui/arabic_shaping.elisa` (`UiArabicShaping`) turns U+0621..U+064A into
+isolated, final, initial or medial presentation forms (U+FE80..U+FEF4). It
+also makes the four lam-alef ligatures (U+FEF5..U+FEFC). Harakat are
+transparent, hamza never joins, and tatweel joins on both sides.
+`UiBidiUtf8` shapes each line in logical order before `UiBidi` reorders it.
+Course code 172 now accepts that the byte count changes.
+
+Tests:
+- `test/ui_arabic_shaping.elisa` (in the gate's unit-test list) covers
+  joining, right-joining letters, both ligature forms, transparency, hamza,
+  a space break and tatweel.
+- Every letter's four form slots were checked against Python's
+  `unicodedata` names, with no mismatches.
+- `test/ui_bidi_utf8.elisa` case 8 checks that shaped Arabic is then
+  reversed.
+- Control: treating harakat as letters fails with code 7.
+- Both course smokes pass.
+
+**Open:** Wicked's only built-in font is Liberation Sans, which has no
+Arabic glyphs, so shaped Arabic captions still render without glyphs. An
+Arabic-capable font has to be bundled and registered with
+`wi::font::AddFontStyle`. Persian and Urdu letters outside U+0621..U+064A
+are left unshaped.

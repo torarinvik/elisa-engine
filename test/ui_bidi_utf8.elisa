@@ -1,0 +1,53 @@
+include "../src/ui/bidi_utf8.elisa"
+
+def bu_push(t: mutable UiLocaleData::Utf8&, b: u8) -> void:
+    t.bytes[t.length.usize()] <- b
+    t.length <- t.length + 1u32
+
+# Hebrew alef/bet/gimel are D7 90, D7 91, D7 92.
+def bu_hebrew(t: mutable UiLocaleData::Utf8&, k: u8) -> void:
+    bu_push(t, 215u8)
+    bu_push(t, 144u8 + k)
+
+def main() -> i32:
+    # "ab <alef bet>\n<gimel> cd" in LTR -> "ab <bet alef>\n<gimel> cd".
+    mutable t: UiLocaleData::Utf8 = UiLocaleData::Utf8()
+    bu_push(&t, 97u8)
+    bu_push(&t, 98u8)
+    bu_push(&t, 32u8)
+    bu_hebrew(&t, 0u8)
+    bu_hebrew(&t, 1u8)
+    bu_push(&t, 10u8)
+    bu_hebrew(&t, 2u8)
+    bu_push(&t, 32u8)
+    bu_push(&t, 99u8)
+    bu_push(&t, 100u8)
+    decoded: UiMessageFormat::Text = UiBidiUtf8::bidi_utf8_decode(&t, 0, 7)
+    return 1 if decoded.len != 5 or decoded.cp[3] != 1488 or decoded.cp[4] != 1489
+    v: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(t, false)
+    return 2 if v.length != t.length
+    return 3 if v.bytes[0] != 97u8 or v.bytes[3] != 215u8 or v.bytes[4] != 145u8 or v.bytes[6] != 144u8
+    # The newline stays between the lines, and line two is unchanged.
+    return 4 if v.bytes[7] != 10u8 or v.bytes[9] != 146u8 or v.bytes[10] != 32u8 or v.bytes[12] != 100u8
+    # RTL paragraph: line two "<gimel> cd" shows as "cd <gimel>".
+    r: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(t, true)
+    return 5 if r.bytes[8] != 99u8 or r.bytes[9] != 100u8 or r.bytes[10] != 32u8 or r.bytes[12] != 146u8
+    # A stray continuation byte decodes to U+FFFD.
+    mutable bad: UiLocaleData::Utf8 = UiLocaleData::Utf8()
+    bu_push(&bad, 128u8)
+    bu_push(&bad, 65u8)
+    d2: UiMessageFormat::Text = UiBidiUtf8::bidi_utf8_decode(&bad, 0, 2)
+    return 6 if d2.len != 2 or d2.cp[0] != 65533 or d2.cp[1] != 65
+    # Empty text stays empty.
+    e: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(UiLocaleData::Utf8(), true)
+    return 7 if e.length != 0u32
+    # Arabic beh beh (D8 A8 D8 A8) is shaped, then reversed: final beh
+    # (U+FE90, EF BA 90) comes first, initial beh (U+FE91, EF BA 91) second.
+    mutable ar: UiLocaleData::Utf8 = UiLocaleData::Utf8()
+    bu_push(&ar, 216u8)
+    bu_push(&ar, 168u8)
+    bu_push(&ar, 216u8)
+    bu_push(&ar, 168u8)
+    sa: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(ar, true)
+    return 8 if sa.length != 6u32 or sa.bytes[0] != 239u8 or sa.bytes[2] != 144u8 or sa.bytes[5] != 145u8
+    return 0
