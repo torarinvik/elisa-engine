@@ -26,3 +26,14 @@ It refuses populated bindings, so rows from the replaced world cannot survive th
 test/world_save_rendering.elisa (gated) extracts render snapshots from the saved and
 the loaded world and checks that IDs, meshes and poses match. A control that maps
 guards to the structure visual fails with 12. Physics bodies are not yet rebuilt from a save.
+
+## Physics rehydration
+
+`WorldSavePhysics::rehydrate` (src/runtime/world_save_physics.elisa) creates a box body
+per live entity of a loaded world, at its restored pose, from a per-kind body spec. It
+refuses populated bindings and unknown kinds, and a failed creation destroys the bodies
+this pass already made. The native smoke `world-save-physics-smoke`
+(test/world_save_physics_native_main.elisa) loads a saved world under Jolt, checks
+three bodies, the guard body's pose, refusal of a second pass, and that references from
+the replaced world resolve to no body. A control without the empty-bindings guard fails
+with status 16. Swapping a loaded world into a running game is still open.
