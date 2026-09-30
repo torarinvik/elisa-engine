@@ -337,6 +337,8 @@ def write_launcher(path: Path, binary_name: str,
     # stderr first so every log names the build that produced it.
     title, width, height = window
     announce = f"printf '%s\\n' {shlex.quote(identity)} >&2 || :\n" if identity else ""
+    crash_ips_pattern = shlex.quote(f"{path.name}*.ips")
+    crash_legacy_pattern = shlex.quote(f"{path.name}*.crash")
     script = f"""#!/bin/sh
 set -eu
 resources=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")/../Resources\" && pwd)\"
@@ -383,6 +385,25 @@ else
         status=0
     else
         status=$?
+    fi
+fi
+if [ \"$status\" -ne 0 ]; then
+    home_directory=\"$(/usr/bin/printenv HOME 2>/dev/null || :)\"
+    diagnostic_reports=\"$home_directory/Library/Logs/DiagnosticReports\"
+    if [ -n \"$home_directory\" ] && [ -d \"$diagnostic_reports\" ]; then
+        if [ -n \"$log_file\" ]; then
+            {{
+                printf '%s\\n' 'recent macOS crash report candidates (match timestamps to started_utc):'
+                find \"$diagnostic_reports\" -type f \\
+                    \\( -name {crash_ips_pattern} -o -name {crash_legacy_pattern} \\) \\
+                    -mtime -1 -print
+            }} >> \"$log_file\" 2>/dev/null || :
+        else
+            printf '%s\\n' 'recent macOS crash report candidates (match timestamps to this run):' >&2 || :
+            find \"$diagnostic_reports\" -type f \\
+                \\( -name {crash_ips_pattern} -o -name {crash_legacy_pattern} \\) \\
+                -mtime -1 -print >&2 2>/dev/null || :
+        fi
     fi
 fi
 printf 'Elisa process exit status: %s\\n' \"$status\" >&2 || :

@@ -209,6 +209,30 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertIn("process_exit_status=143", log.read_text(encoding="utf-8"))
         self.assertIn("Elisa process exit status: 143", result.stderr)
 
+    def test_launcher_links_recent_matching_macos_crash_reports(self) -> None:
+        binary = self.project / "build" / "game"
+        binary.write_text("#!/bin/sh\nexit 139\n", encoding="utf-8")
+        os.chmod(binary, 0o755)
+        app = self.package(self.write_manifest({"package": {"resources": []}}))
+        diagnostic_reports = Path(self.tempdir.name) / "Library/Logs/DiagnosticReports"
+        matching = diagnostic_reports / "Game-2026-09-30-120000.ips"
+        stale = diagnostic_reports / "Game-old.crash"
+        unrelated = diagnostic_reports / "OtherGame-2026-09-30-120000.ips"
+        touch(matching)
+        touch(stale)
+        touch(unrelated)
+        os.utime(stale, (0, 0))
+        result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
+            capture_output=True, text=True, check=False, cwd=self.tempdir.name,
+            env={**os.environ, "HOME": self.tempdir.name})
+        log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
+        content = log.read_text(encoding="utf-8")
+        self.assertEqual(result.returncode, 139)
+        self.assertIn("recent macOS crash report candidates", content)
+        self.assertIn(str(matching), content)
+        self.assertNotIn(str(stale), content)
+        self.assertNotIn(str(unrelated), content)
+
     def test_unsafe_bundle_identifier_is_rejected(self) -> None:
         with self.assertRaises(packager.PackageError):
             packager.package_app(self.project, self.project / "build/game", self.output,
