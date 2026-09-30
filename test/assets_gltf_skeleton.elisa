@@ -1,0 +1,124 @@
+include "../src/assets/glb_container.elisa"
+include "../src/assets/gltf_skeleton.elisa"
+include "./assets_gltf_channel_fixture.elisa"
+
+# {"nodes":[{"children":[1]},{},{"children":[1]}]}
+def text_shared_child() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 49, 93, 125, 44, 123, 125, 44, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 49, 93, 125, 93, 125]
+
+# {"nodes":[{"children":[0]}]}
+def text_self_child() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 48, 93, 125, 93, 125]
+
+# {"nodes":[{"children":[4]}]}
+def text_outside_child() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 52, 93, 125, 93, 125]
+
+# {"nodes":[{"children":[1]},{"children":[0]}]}
+def text_cycle() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 49, 93, 125, 44, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 48, 93, 125, 93, 125]
+
+# {"scenes":[]}
+def text_no_nodes() -> darray[u8]:
+    [123, 34, 115, 99, 101, 110, 101, 115, 34, 58, 91, 93, 125]
+
+# {"nodes":[]}
+def text_empty_nodes() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 93, 125]
+
+# {"nodes":[{"children":[1]},{}]}
+def text_no_animation() -> darray[u8]:
+    [123, 34, 110, 111, 100, 101, 115, 34, 58, 91, 123, 34, 99, 104, 105, 108, 100, 114, 101, 110, 34, 58, 91, 49, 93, 125, 44, 123, 125, 93, 125]
+
+def word_node_key() -> darray[u8]:
+    [34, 110, 111, 100, 101, 34, 58]
+
+def doc_of(bytes: darray[u8]&, offset: i64, length: i64) -> GltfJson::Doc:
+    catch GltfJson::parse(bytes, offset, length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def skeleton_of(doc: GltfJson::Doc&, bytes: darray[u8]&) -> GltfSkeleton::Skeleton:
+    catch GltfSkeleton::build(doc, bytes, 0):
+        value: value
+        error failure: GltfSkeleton::Skeleton{node_count: -1, channel_count: -1, parent: [], track: []}
+
+def build_code(doc: GltfJson::Doc&, bytes: darray[u8]&) -> i32:
+    catch GltfSkeleton::build(doc, bytes, 0):
+        ok: 0
+        GltfSkeleton::SkeletonError.MissingNodes: 1
+        GltfSkeleton::SkeletonError.TooManyNodes: 2
+        GltfSkeleton::SkeletonError.BadChild: 3
+        GltfSkeleton::SkeletonError.Cycle: 4
+        GltfSkeleton::SkeletonError.MissingAnimation: 5
+        GltfSkeleton::SkeletonError.BadChannel: 6
+        GltfSkeleton::SkeletonError.DuplicateChannel: 7
+        error failure: 9
+
+def text_code(text: darray[u8]) -> i32:
+    doc: GltfJson::Doc = doc_of(text, 0, text.count.i64())
+    return 8 if GltfJson::node_count(doc) <= 0
+    build_code(doc, text)
+
+# Byte index just past the `nth` `"node":` in [start, stop), or -1.
+def node_digit(bytes: darray[u8]&, start: i64, stop: i64, nth: i64) -> i64:
+    key: darray[u8] = word_node_key()
+    seen: mutable i64 = 0
+    found: mutable i64 = -1
+    for i in start.usize()..<(stop - 7).usize() |seen, found, bytes, key, nth|:
+        hit: mutable bool = true
+        for k in 0..<7 |hit, bytes, key, i|:
+            a: u8 = bytes[i + k]
+            b: u8 = key[k]
+            hit <- hit and a == b
+        found <- (i + 7).i64() if hit and seen == nth else found
+        seen <- seen + 1 if hit else seen
+    found
+
+# The fixture with the target of channel `nth` rewritten to digit `digit`.
+def retargeted(nth: i64, digit: u8) -> i32:
+    bytes: mutable darray[u8] = fixture_glb()
+    layout: GlbContainer::Layout = layout_of(bytes)
+    at: i64 = node_digit(bytes, layout.json_start, layout.json_start + layout.json_length, nth)
+    return 90 if at < 0
+    bytes[at.usize()] <- digit
+    doc: GltfJson::Doc = doc_of(bytes, layout.json_start, layout.json_length)
+    build_code(doc, bytes)
+
+def main() -> i32:
+    bytes: darray[u8] = fixture_glb()
+    layout: GlbContainer::Layout = layout_of(bytes)
+    doc: GltfJson::Doc = doc_of(bytes, layout.json_start, layout.json_length)
+    return 1 if build_code(doc, bytes) != 0
+    skeleton: GltfSkeleton::Skeleton = skeleton_of(doc, bytes)
+    # knee (0) under hip (1) under Armature (2).
+    return 2 if skeleton.node_count != 3 or skeleton.channel_count != 6
+    return 3 if GltfSkeleton::parent_of(skeleton, 0) != 1 or GltfSkeleton::parent_of(skeleton, 1) != 2 or GltfSkeleton::parent_of(skeleton, 2) != -1
+    return 4 if GltfSkeleton::depth_of(skeleton, 0) != 2 or GltfSkeleton::depth_of(skeleton, 2) != 0 or GltfSkeleton::depth_of(skeleton, 3) != -1
+    # Tracks agree with the channel map in fixture_channels().
+    expected: darray[i64] = fixture_channels()
+    for c in 0..<fixture_channel_count().usize():
+        node: i64 = expected[c * 6]
+        path: i64 = expected[c * 6 + 1]
+        return 5 if GltfSkeleton::track_of(skeleton, node, path) != c.i64()
+    return 6 if GltfSkeleton::track_of(skeleton, 0, GltfAnimationMap::WEIGHTS) != -1 or GltfSkeleton::track_of(skeleton, 2, 0) != -1
+    return 7 if GltfSkeleton::track_of(skeleton, 3, 0) != -1 or GltfSkeleton::track_of(skeleton, 0, 4) != -1
+
+    return 10 if text_code(text_shared_child()) != 3
+    return 11 if text_code(text_self_child()) != 3
+    return 12 if text_code(text_outside_child()) != 3
+    return 13 if text_code(text_cycle()) != 4
+    return 14 if text_code(text_no_nodes()) != 1
+    return 15 if text_code(text_empty_nodes()) != 1
+    return 16 if text_code(text_no_animation()) != 5
+    # Channel 1 (hip rotation) retargeted to the knee duplicates channel 4;
+    # retargeted to node 7 it points outside the three nodes.
+    return 17 if retargeted(1, 48) != 7
+    return 18 if retargeted(1, 55) != 6
+    return 19 if retargeted(1, 49) != 0
+    0

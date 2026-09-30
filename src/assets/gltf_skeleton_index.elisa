@@ -1,0 +1,49 @@
+# Integer rules for GltfSkeleton, split out so the prover can check them:
+# node references, parent links and the per-node track table.
+module GltfSkeletonIndex:
+    public:
+        const MAX_NODES: i64 = 65536
+        const PATHS: i64 = 4
+
+        # Whether `node` names one of `node_count` nodes.
+        def node_ok(node: i64, node_count: i64) -> bool:
+            ensure not result or node >= 0
+            ensure not result or node < node_count
+            return false if node < 0
+            return false if node >= node_count
+            true
+
+        # Whether `child` may be linked under `parent`: both in range, not
+        # the same node, and `child` not yet parented (`current` is -1).
+        def link_ok(child: i64, parent: i64, current: i64, node_count: i64) -> bool:
+            ensure not result or child != parent
+            ensure not result or current == -1
+            ensure not result or child >= 0
+            ensure not result or parent >= 0
+            ensure not result or child < node_count
+            ensure not result or parent < node_count
+            return false if not node_ok(child, node_count)
+            return false if not node_ok(parent, node_count)
+            return false if child == parent
+            return false if current != -1
+            true
+
+        # Index of (node, path) in the track table, or -1.
+        def track_slot(node: i64, path: i64, node_count: i64) -> i64:
+            requires node_count >= 0
+            requires node_count <= MAX_NODES
+            ensure result == -1 or result >= 0
+            return -1 if node < 0
+            return -1 if node >= node_count
+            return -1 if path < 0
+            return -1 if path > 3
+            node * 4 + path
+
+        # Whether a parent walk that has taken `steps` steps over
+        # `node_count` nodes can still be acyclic.
+        def walk_ok(steps: i64, node_count: i64) -> bool:
+            ensure not result or steps <= node_count
+            ensure not result or steps >= 0
+            return false if steps < 0
+            return false if steps > node_count
+            true

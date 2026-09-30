@@ -1,0 +1,125 @@
+# Assembles the node hierarchy and per-node key tracks of one glTF
+# animation (M06): each node's parent, and which channel drives its
+# translation, rotation, scale or weights. Shared children, cycles,
+# duplicate channels and bad targets are rejected.
+include "./gltf_animation_map.elisa"
+include "./gltf_skeleton_index.elisa"
+
+module GltfSkeleton:
+    private:
+        def word_nodes() -> darray[u8]:
+            [110, 111, 100, 101, 115]
+
+        def word_children() -> darray[u8]:
+            [99, 104, 105, 108, 100, 114, 101, 110]
+
+        def word_animations() -> darray[u8]:
+            [97, 110, 105, 109, 97, 116, 105, 111, 110, 115]
+
+        def word_channels() -> darray[u8]:
+            [99, 104, 97, 110, 110, 101, 108, 115]
+
+        # Elements of a JSON array node, or 0 when it is not one.
+        def item_count(doc: GltfJson::Doc&, array: i64) -> i64:
+            return 0 if array < 0 or array >= GltfJson::node_count(doc)
+            return 0 if doc.kind[array.usize()] != GltfJson::ARRAY
+            count: mutable i64 = 0
+            for n in (array + 1).usize()..<doc.kind.count |count, doc, array|:
+                count <- count + 1 if doc.parent[n] == array else count
+            count
+
+        def mapped(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64) -> GltfAnimationMap::ChannelBytes:
+            catch GltfAnimationMap::channel_bytes(doc, bytes, animation, channel):
+                value: value
+                error failure: GltfAnimationMap::ChannelBytes{target_node: -1, path: -1, bin_offset: -1, byte_length: -1, count: -1, component_type: -1, components: -1}
+
+    public:
+        error SkeletonError:
+            MissingNodes
+            TooManyNodes
+            BadChild
+            Cycle
+            MissingAnimation
+            BadChannel
+            DuplicateChannel
+
+        # `parent[n]` is node n's parent or -1; `track[n * 4 + path]` is the
+        # channel index animating that path of node n, or -1.
+        struct Skeleton:
+            node_count: i64
+            channel_count: i64
+            parent: darray[i64]
+            track: darray[i64]
+
+        def build(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64) -> Skeleton error[SkeletonError]:
+            root: i64 = 0
+            nodes: i64 = GltfAnimationMap::member(doc, bytes, root, word_nodes())
+            raise SkeletonError.MissingNodes if nodes < 0
+            node_count: i64 = item_count(doc, nodes)
+            raise SkeletonError.MissingNodes if node_count <= 0
+            raise SkeletonError.TooManyNodes if node_count > GltfSkeletonIndex::MAX_NODES
+            parent: mutable darray[i64] = []
+            track: mutable darray[i64] = []
+            for n in 0..<node_count.usize() |parent, track|:
+                parent.push(-1)
+                for p in 0..<4 |track|:
+                    track.push(-1)
+            bad: mutable bool = false
+            for n in 0..<node_count.usize() |parent, bad, doc, bytes, nodes, node_count|:
+                children: i64 = GltfAnimationMap::member(doc, bytes, GltfAnimationMap::item(doc, nodes, n.i64()), word_children())
+                for k in 0..<item_count(doc, children).usize() |parent, bad, doc, children, n, node_count|:
+                    child: i64 = GltfAnimationMap::integer_or(doc, GltfAnimationMap::item(doc, children, k.i64()), -1)
+                    current: i64 = parent[child.usize()] if GltfSkeletonIndex::node_ok(child, node_count) else -1
+                    ok: bool = GltfSkeletonIndex::link_ok(child, n.i64(), current, node_count)
+                    bad <- bad or not ok
+                    if ok:
+                        parent[child.usize()] <- n.i64()
+            raise SkeletonError.BadChild if bad
+            # Every parent walk must reach a root within node_count steps.
+            cyclic: mutable bool = false
+            for n in 0..<node_count.usize() |cyclic, parent, node_count|:
+                at: mutable i64 = n.i64()
+                for step in 0..<(node_count + 1).usize() |at, parent|:
+                    up: i64 = parent[at.usize()] if at >= 0 else -1
+                    at <- up
+                cyclic <- cyclic or at >= 0
+            raise SkeletonError.Cycle if cyclic
+            anim: i64 = GltfAnimationMap::item(doc, GltfAnimationMap::member(doc, bytes, root, word_animations()), animation)
+            raise SkeletonError.MissingAnimation if anim < 0
+            channel_count: i64 = item_count(doc, GltfAnimationMap::member(doc, bytes, anim, word_channels()))
+            bad_channel: mutable bool = false
+            duplicate: mutable bool = false
+            for c in 0..<channel_count.usize() |track, bad_channel, duplicate, doc, bytes, animation, node_count|:
+                channel: GltfAnimationMap::ChannelBytes = mapped(doc, bytes, animation, c.i64())
+                slot: i64 = GltfSkeletonIndex::track_slot(channel.target_node, channel.path, node_count)
+                inside: bool = slot >= 0 and slot < track.count.i64()
+                bad_channel <- bad_channel or not inside
+                existing: i64 = track[slot.usize()] if inside else -1
+                duplicate <- duplicate or existing >= 0
+                if inside:
+                    track[slot.usize()] <- c.i64()
+            raise SkeletonError.BadChannel if bad_channel
+            raise SkeletonError.DuplicateChannel if duplicate
+            Skeleton{node_count: node_count, channel_count: channel_count, parent: parent, track: track}
+
+        # The channel animating `path` of `node`, or -1.
+        def track_of(skeleton: Skeleton&, node: i64, path: i64) -> i64:
+            slot: i64 = GltfSkeletonIndex::track_slot(node, path, skeleton.node_count)
+            return -1 if slot < 0 or slot >= skeleton.track.count.i64()
+            skeleton.track[slot.usize()]
+
+        # Node's parent, or -1 for a root or an unknown node.
+        def parent_of(skeleton: Skeleton&, node: i64) -> i64:
+            return -1 if not GltfSkeletonIndex::node_ok(node, skeleton.parent.count.i64())
+            skeleton.parent[node.usize()]
+
+        # Links from `node` up to its root, or -1 for an unknown node.
+        def depth_of(skeleton: Skeleton&, node: i64) -> i64:
+            return -1 if not GltfSkeletonIndex::node_ok(node, skeleton.parent.count.i64())
+            at: mutable i64 = node
+            depth: mutable i64 = 0
+            for step in 0..<skeleton.parent.count |at, depth, skeleton|:
+                up: i64 = skeleton.parent[at.usize()] if at >= 0 else -1
+                depth <- depth + 1 if up >= 0 else depth
+                at <- up
+            depth

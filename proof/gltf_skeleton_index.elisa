@@ -1,0 +1,30 @@
+include "../src/assets/gltf_skeleton_index.elisa"
+
+extend GltfSkeletonIndex:
+    def prove_node_in_range(node: i64, node_count: i64) -> bool:
+        ensure not result or node >= 0
+        ensure not result or node < node_count
+        node_ok(node, node_count)
+
+    def prove_link_distinct(child: i64, parent: i64, current: i64, node_count: i64) -> bool:
+        ensure not result or child != parent
+        ensure not result or current == -1
+        link_ok(child, parent, current, node_count)
+
+    def prove_link_in_range(child: i64, parent: i64, current: i64, node_count: i64) -> bool:
+        ensure not result or child >= 0
+        ensure not result or parent >= 0
+        ensure not result or child < node_count
+        ensure not result or parent < node_count
+        link_ok(child, parent, current, node_count)
+
+    def prove_track_slot_sign(node: i64, path: i64, node_count: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        ensure result == -1 or result >= 0
+        track_slot(node, path, node_count)
+
+    def prove_walk_bounded(steps: i64, node_count: i64) -> bool:
+        ensure not result or steps <= node_count
+        ensure not result or steps >= 0
+        walk_ok(steps, node_count)
