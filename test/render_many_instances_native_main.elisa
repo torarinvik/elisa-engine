@@ -1,0 +1,191 @@
+# Q01 many-instance and lit-material fixture: fill the render scene's
+# instance table to capacity, then read every instance's world position and
+# material back from Wicked after frames, move them all, relight half of them
+# with PBR parameters, and tear everything down to the baseline.
+include "../src/runtime/public.elisa"
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+module RenderManyInstances:
+    private:
+        const module Tune:
+            FRAMES: i32 = 2
+            SIDE: usize = 64
+            LIFT: f32 = 3.0
+            TOLERANCE: f32 = 0.001
+
+        def pump(frames: i32) -> bool:
+            for _ in 0..<frames |ok: bool = true| -> ok:
+                ok <- ok and elisa_application_v1_pump() == 1
+
+        def counts() -> RenderScene::ResourceCounts:
+            catch RenderScene::resource_counts():
+                value: value
+                error failure: RenderScene::ResourceCounts{instances: -1, lights: -1, scene_entities: -1}
+
+        def near(a: f32, b: f32) -> bool:
+            a - b <= Tune::TOLERANCE and b - a <= Tune::TOLERANCE
+
+        def grid_point(index: usize, lift: f32) -> Geometry::Vec3:
+            Geometry::Vec3{x: (index % Tune::SIDE).f32() * 1.5, y: lift, z: (index / Tune::SIDE).f32() * 1.5}
+
+        def pose(index: usize, lift: f32) -> Geometry::Transform:
+            Geometry::transform_translate(Geometry::transform_identity(), grid_point(index, lift))
+
+        def roughness_for(index: usize) -> f32:
+            (index % 11).f32() / 10.0
+
+        def metallic_for(index: usize) -> f32:
+            (index % 3).f32() / 2.0
+
+        def make_box(batch: mutable RenderScene::InstanceBatch&, index: usize) -> bool:
+            created: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box, pose(index, 0.0),
+                RenderScene::Color{red: 0.8, green: 0.7, blue: 0.5, alpha: 1.0}):
+                value: value
+                error failure: return false
+            catch RenderScene::batch_append(batch, created):
+                ok: true
+                error failure: false
+
+        def refused_extra() -> bool:
+            catch RenderScene::create(RenderScene::Primitive.Box, pose(0, 9.0),
+                RenderScene::Color{red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0}):
+                value: false
+                error failure: true
+
+        def handle_at(batch: RenderScene::InstanceBatch&, index: usize) -> RenderScene::InstanceHandle:
+            catch RenderScene::batch_get(batch, index):
+                value: value
+                error failure: RenderScene::empty_instance_handle()
+
+        # Every instance sits at its grid point; odd ones carry their PBR values
+        # when lit is expected, even ones stay unlit.
+        def matches(handle: RenderScene::InstanceHandle, index: usize, lift: f32, lit_expected: bool) -> bool:
+            probe: RenderScene::InstanceProbe = catch RenderScene::probe_instance(handle):
+                value: value
+                error failure: return false
+            want: Geometry::Vec3 = grid_point(index, lift)
+            return false if not (near(probe.position.x, want.x) and near(probe.position.y, want.y) and near(probe.position.z, want.z))
+            lit: bool = lit_expected and index % 2 == 1
+            return probe.lit == false if not lit
+            probe.lit and near(probe.roughness, roughness_for(index)) and near(probe.metallic, metallic_for(index))
+
+        def verify_all(batch: RenderScene::InstanceBatch&, total: usize, lift: f32, lit_expected: bool) -> bool:
+            for index in 0..<total |ok: bool = true| -> ok:
+                ok <- ok and matches(handle_at(batch, index), index, lift, lit_expected)
+
+        def move_one(handle: RenderScene::InstanceHandle, index: usize) -> bool:
+            catch RenderScene::update_transform(handle, pose(index, Tune::LIFT)):
+                ok: true
+                error failure: false
+
+        def light_one(handle: RenderScene::InstanceHandle, index: usize) -> bool:
+            return true if index % 2 == 0
+            catch RenderScene::set_lit_material(handle, roughness_for(index), metallic_for(index)):
+                ok: true
+                error failure: false
+
+        def drop_one(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::destroy(handle):
+                ok: true
+                error failure: false
+
+        def sun() -> Lighting::Light:
+            Lighting::Light{
+                kind: Lighting::LightKind.Directional,
+                color: Geometry::Vec3{x: 1.0, y: 1.0, z: 0.9},
+                position: Geometry::vec3_zero(),
+                direction: Geometry::Vec3{x: 0.3, y: -1.0, z: 0.2},
+                intensity: 3.0,
+                range: 100.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: true,
+                shadow_resolution: 1024,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }
+
+        def fill(boxes: mutable RenderScene::InstanceBatch&, room: usize) -> bool:
+            for index in 0..<room |ok: bool = true, boxes| -> ok:
+                ok <- ok and make_box(boxes, index)
+
+        def exercise() -> i32:
+            return 30 if not pump(Tune::FRAMES)
+            baseline: RenderScene::ResourceCounts = counts()
+            return 31 if baseline.instances < 0
+            room: usize = RenderScene::MAX_INSTANCES - baseline.instances.usize()
+            boxes: mutable RenderScene::InstanceBatch = RenderScene::InstanceBatch()
+            return 40 if not fill(&boxes, room)
+            return 41 if not refused_extra()
+            return 42 if not pump(Tune::FRAMES)
+            return 43 if counts().instances != RenderScene::MAX_INSTANCES.i32()
+            return 44 if not verify_all(&boxes, room, 0.0, false)
+            sun_handle: RenderScene::LightHandle = catch RenderScene::create_light(sun()):
+                value: value
+                error failure: return 45
+            mutable changed: usize = 0
+            for index in 0..<room |boxes, changed|:
+                handle: RenderScene::InstanceHandle = handle_at(&boxes, index)
+                changed <- changed + 1 if move_one(handle, index) and light_one(handle, index)
+            return 46 if changed != room
+            return 47 if not pump(Tune::FRAMES)
+            return 48 if not verify_all(&boxes, room, Tune::LIFT, true)
+            mutable dropped: usize = 0
+            for index in 0..<room |boxes, dropped|:
+                dropped <- dropped + 1 if drop_one(handle_at(&boxes, index))
+            return 49 if dropped != room
+            released: bool = catch RenderScene::destroy_light(sun_handle):
+                ok: true
+                error failure: false
+            return 50 if not released
+            return 51 if not pump(Tune::FRAMES)
+            after: RenderScene::ResourceCounts = counts()
+            return 52 if after.instances != baseline.instances or after.lights != baseline.lights or after.scene_entities != baseline.scene_entities
+            0
+
+        def execute() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Render Many Instances Smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            startup.services[0] <- Capabilities::BackendFeature.Rendering
+            startup.services[1] <- Capabilities::BackendFeature.NativeWindow
+            startup.service_count <- 2
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if (opened != RuntimeServices::OpenStatus.Ready and
+                opened != RuntimeServices::OpenStatus.FallbackRequired):
+                _ = RuntimeServices::shutdown(&session)
+                return 20
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            result: mutable i32 = 21
+            if init_status == 0:
+                result <- exercise()
+                closed_scene: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                result <- 22 if result == 0 and not closed_scene else result
+            closed: bool = RuntimeServices::shutdown(&session)
+            return result if result != 0
+            return 23 if not closed
+            0
+
+    public:
+        def run() -> i32:
+            RenderManyInstances::execute()
+
+def main() -> i32:
+    RenderManyInstances::run()
