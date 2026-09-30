@@ -1,0 +1,83 @@
+include "../src/runtime/action_pointer_replay.elisa"
+
+const LOOK_X: i64 = 1
+const LOOK_Y: i64 = 2
+const ZOOM: i64 = 3
+const TICKS: i64 = 8
+
+def pointer(kind: Application::PointerEventKind, dx: f32, dy: f32) -> Application::PointerEvent:
+    Application::PointerEvent{kind: kind, button: 0, x: 0.0, y: 0.0, delta_x: dx,
+        delta_y: dy, buttons: 0, pressed: false}
+
+def bound_axes() -> ActionPointerAxes::Axes:
+    mutable axes: ActionPointerAxes::Axes = ActionPointerAxes::Axes()
+    ActionPointerAxes::pointer_axis_bind(&axes, ActionPointerAxes::AxisBinding{action: LOOK_X, source: ActionPointerAxes::Source.MotionX, scale: 0.37, live: true})
+    ActionPointerAxes::pointer_axis_bind(&axes, ActionPointerAxes::AxisBinding{action: LOOK_Y, source: ActionPointerAxes::Source.MotionY, scale: -0.5, live: true})
+    ActionPointerAxes::pointer_axis_bind(&axes, ActionPointerAxes::AxisBinding{action: ZOOM, source: ActionPointerAxes::Source.WheelY, scale: 1.0, live: true})
+    axes
+
+# The events a host would deliver at `tick` (a button press is mixed in and
+# must be ignored; tick 5 loses focus mid-frame).
+def feed(log: mutable ActionPointerReplay::Log&, axes: mutable ActionPointerAxes::Axes&, tick: i64) -> void:
+    t: f32 = tick.f32()
+    ActionPointerReplay::pointer_record(log, axes, tick, pointer(Application::PointerEventKind.Motion, 1.3 * t + 0.011, 2.0 - t))
+    ActionPointerReplay::pointer_record(log, axes, tick, pointer(Application::PointerEventKind.Button, 50.0, 50.0))
+    ActionPointerReplay::pointer_record(log, axes, tick, pointer(Application::PointerEventKind.Wheel, 0.0, 1.0)) if tick % 3 == 0
+    ActionPointerReplay::pointer_record(log, axes, tick, pointer(Application::PointerEventKind.FocusLost, 0.0, 0.0)) if tick == 5
+    ActionPointerReplay::pointer_record(log, axes, tick, pointer(Application::PointerEventKind.Motion, 0.5, 0.25)) if tick == 5
+
+# Exact per-frame fingerprint: the three axis values at full f32 precision.
+def digest(axes: ActionPointerAxes::Axes&) -> f64:
+    a: f64 = ActionPointerAxes::pointer_axis_value(axes, LOOK_X).f64()
+    b: f64 = ActionPointerAxes::pointer_axis_value(axes, LOOK_Y).f64()
+    c: f64 = ActionPointerAxes::pointer_axis_value(axes, ZOOM).f64()
+    a * 1000003.0 + b * 1009.0 + c
+
+def main() -> i32:
+    mutable live: ActionPointerAxes::Axes = bound_axes()
+    mutable log: ActionPointerReplay::Log = ActionPointerReplay::Log()
+    mutable digests: f64[8] = zeroed
+    for tick in 0..<TICKS |live, log, digests|:
+        ActionPointerAxes::pointer_axis_begin_frame(&live)
+        feed(&log, &live, tick.i64())
+        digests[tick] <- digest(&live)
+    return 1 if log.dropped != 0
+    return 2 if log.count != 8 + 3 + 2
+    # Focus loss on tick 5 cleared the earlier motion; only the later one counts.
+    ActionPointerAxes::pointer_axis_begin_frame(&live)
+    feed(&log, &live, 5)
+    scale: f32 = 0.37
+    return 3 if ActionPointerAxes::pointer_axis_value(&live, LOOK_X) != 0.5 * scale
+    # Re-feeding tick 5 after tick 7 runs backwards: applied live, not logged.
+    return 3 if log.dropped != 3
+
+    bytes: ActionPointerReplay::Bytes = ActionPointerReplay::pointer_encode(&log)
+    mutable loaded: ActionPointerReplay::Log = ActionPointerReplay::Log()
+    return 4 if ActionPointerReplay::pointer_decode(&bytes, &loaded) != ActionPointerReplay::DecodeStatus.Ok
+    return 5 if loaded.count != log.count
+
+    mutable replayed: ActionPointerAxes::Axes = bound_axes()
+    mutable cursor: usize = 0
+    mutable mismatch: i64 = 0
+    for tick in 0..<TICKS |replayed, cursor, mismatch|:
+        cursor <- ActionPointerReplay::pointer_replay_tick(&loaded, &replayed, tick.i64(), cursor)
+        mismatch <- tick.i64() + 1 if mismatch == 0 and digest(&replayed) != digests[tick]
+    return 6 if mismatch != 0
+    return 7 if digests[4] == digests[3]
+
+    mutable bad: ActionPointerReplay::Bytes = bytes
+    mutable scratch: ActionPointerReplay::Log = ActionPointerReplay::Log()
+    bad.data[1] <- 0
+    return 8 if ActionPointerReplay::pointer_decode(&bad, &scratch) != ActionPointerReplay::DecodeStatus.BadMagic
+    bad <- bytes
+    bad.count <- bad.count + 1
+    return 9 if ActionPointerReplay::pointer_decode(&bad, &scratch) != ActionPointerReplay::DecodeStatus.BadLength
+    bad <- bytes
+    bad.data[8 + 4] <- 9
+    return 10 if ActionPointerReplay::pointer_decode(&bad, &scratch) != ActionPointerReplay::DecodeStatus.BadField
+    bad <- bytes
+    bad.data[8 + 12] <- 99
+    return 11 if ActionPointerReplay::pointer_decode(&bad, &scratch) != ActionPointerReplay::DecodeStatus.NonMonotonicTick
+    return 12 if scratch.count != 0
+    return 13 if ActionPointerReplay::quantize_delta(1000.0) != 32767 or ActionPointerReplay::quantize_delta(-0.00390625) != -1
+    0
