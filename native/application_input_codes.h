@@ -113,6 +113,60 @@ enum ElisaKeyboardCode : int32_t {
     KEY_RIGHT_CONTROL = 2027,
     KEY_J = 2028,
     KEY_L = 2029,
+    KEY_B = 2030,
+    KEY_F = 2031,
+    KEY_G = 2032,
+    KEY_I = 2033,
+    KEY_K = 2034,
+    KEY_M = 2035,
+    KEY_N = 2036,
+    KEY_O = 2037,
+    KEY_T = 2038,
+    KEY_U = 2039,
+    KEY_Y = 2040,
+    KEY_DIGIT_0 = 2041,
+    KEY_DIGIT_4 = 2042,
+    KEY_DIGIT_5 = 2043,
+    KEY_DIGIT_6 = 2044,
+    KEY_DIGIT_7 = 2045,
+    KEY_DIGIT_8 = 2046,
+    KEY_DIGIT_9 = 2047,
+    KEY_F1 = 2048,
+    KEY_F2 = 2049,
+    KEY_F3 = 2050,
+    KEY_F4 = 2051,
+    KEY_F5 = 2052,
+    KEY_F6 = 2053,
+    KEY_F7 = 2054,
+    KEY_F8 = 2055,
+    KEY_F9 = 2056,
+    KEY_F10 = 2057,
+    KEY_F11 = 2058,
+    KEY_F12 = 2059,
+    KEY_ENTER = 2060,
+    KEY_BACKSPACE = 2061,
+    KEY_DELETE = 2062,
+    KEY_INSERT = 2063,
+    KEY_HOME = 2064,
+    KEY_END = 2065,
+    KEY_PAGE_UP = 2066,
+    KEY_PAGE_DOWN = 2067,
+    KEY_LEFT_ALT = 2068,
+    KEY_RIGHT_ALT = 2069,
+    KEY_LEFT_SUPER = 2070,
+    KEY_RIGHT_SUPER = 2071,
+    KEY_CAPS_LOCK = 2072,
+    KEY_MINUS = 2073,
+    KEY_EQUALS = 2074,
+    KEY_LEFT_BRACKET = 2075,
+    KEY_RIGHT_BRACKET = 2076,
+    KEY_BACKSLASH = 2077,
+    KEY_SEMICOLON = 2078,
+    KEY_APOSTROPHE = 2079,
+    KEY_GRAVE = 2080,
+    KEY_COMMA = 2081,
+    KEY_PERIOD = 2082,
+    KEY_SLASH = 2083,
 };
 
 constexpr int32_t keyboard_key_code(SDL_Keycode key) {
@@ -146,6 +200,60 @@ constexpr int32_t keyboard_key_code(SDL_Keycode key) {
     case SDLK_RIGHT: return KEY_ARROW_RIGHT;
     case SDLK_UP: return KEY_ARROW_UP;
     case SDLK_DOWN: return KEY_ARROW_DOWN;
+    case SDLK_B: return KEY_B;
+    case SDLK_F: return KEY_F;
+    case SDLK_G: return KEY_G;
+    case SDLK_I: return KEY_I;
+    case SDLK_K: return KEY_K;
+    case SDLK_M: return KEY_M;
+    case SDLK_N: return KEY_N;
+    case SDLK_O: return KEY_O;
+    case SDLK_T: return KEY_T;
+    case SDLK_U: return KEY_U;
+    case SDLK_Y: return KEY_Y;
+    case SDLK_0: return KEY_DIGIT_0;
+    case SDLK_4: return KEY_DIGIT_4;
+    case SDLK_5: return KEY_DIGIT_5;
+    case SDLK_6: return KEY_DIGIT_6;
+    case SDLK_7: return KEY_DIGIT_7;
+    case SDLK_8: return KEY_DIGIT_8;
+    case SDLK_9: return KEY_DIGIT_9;
+    case SDLK_F1: return KEY_F1;
+    case SDLK_F2: return KEY_F2;
+    case SDLK_F3: return KEY_F3;
+    case SDLK_F4: return KEY_F4;
+    case SDLK_F5: return KEY_F5;
+    case SDLK_F6: return KEY_F6;
+    case SDLK_F7: return KEY_F7;
+    case SDLK_F8: return KEY_F8;
+    case SDLK_F9: return KEY_F9;
+    case SDLK_F10: return KEY_F10;
+    case SDLK_F11: return KEY_F11;
+    case SDLK_F12: return KEY_F12;
+    case SDLK_RETURN: return KEY_ENTER;
+    case SDLK_BACKSPACE: return KEY_BACKSPACE;
+    case SDLK_DELETE: return KEY_DELETE;
+    case SDLK_INSERT: return KEY_INSERT;
+    case SDLK_HOME: return KEY_HOME;
+    case SDLK_END: return KEY_END;
+    case SDLK_PAGEUP: return KEY_PAGE_UP;
+    case SDLK_PAGEDOWN: return KEY_PAGE_DOWN;
+    case SDLK_LALT: return KEY_LEFT_ALT;
+    case SDLK_RALT: return KEY_RIGHT_ALT;
+    case SDLK_LGUI: return KEY_LEFT_SUPER;
+    case SDLK_RGUI: return KEY_RIGHT_SUPER;
+    case SDLK_CAPSLOCK: return KEY_CAPS_LOCK;
+    case SDLK_MINUS: return KEY_MINUS;
+    case SDLK_EQUALS: return KEY_EQUALS;
+    case SDLK_LEFTBRACKET: return KEY_LEFT_BRACKET;
+    case SDLK_RIGHTBRACKET: return KEY_RIGHT_BRACKET;
+    case SDLK_BACKSLASH: return KEY_BACKSLASH;
+    case SDLK_SEMICOLON: return KEY_SEMICOLON;
+    case SDLK_APOSTROPHE: return KEY_APOSTROPHE;
+    case SDLK_GRAVE: return KEY_GRAVE;
+    case SDLK_COMMA: return KEY_COMMA;
+    case SDLK_PERIOD: return KEY_PERIOD;
+    case SDLK_SLASH: return KEY_SLASH;
     default: return 0;
     }
 }
