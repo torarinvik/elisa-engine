@@ -1,6 +1,6 @@
 # Native gate for rebuilding physics bodies after a whole-world load.
 include "../src/world/world_save.elisa"
-include "../src/runtime/world_save_physics.elisa"
+include "../src/runtime/world_save_load.elisa"
 include "../src/runtime/application.elisa"
 include "../src/backend/requirements.elisa"
 
@@ -17,6 +17,86 @@ def rehydrate_code(session: RuntimeServices::Session&, world: World::World&,
         ok: 0
         WorldSavePhysics::WorldSavePhysicsError.BindingsNotEmpty: 1
         error failure: 2
+
+def visual(mesh: u64) -> Assets::VisualAsset:
+    Assets::VisualAsset{
+        mesh: Assets::AssetId{high: 7, low: mesh},
+        material: Assets::AssetId{high: 7, low: 90},
+        local_bounds: Geometry::Bounds3{
+            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+        },
+    }
+
+def load_code(session: RuntimeServices::Session&, world: mutable World::World&,
+    render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
+    presentation: WorldSaveLoad::Presentation, bytes: u8&, length: usize) -> i32:
+    catch WorldSaveLoad::load(session, world, render, physics, presentation, bytes, length):
+        ok: 0
+        WorldSaveLoad::WorldSaveLoadError.Rejected: 1
+        error failure: 2
+
+# A running game with its own bound crate loads the save end to end.
+def load_probe(session: RuntimeServices::Session&, bytes: mutable u8&, length: usize) -> i32:
+    live: mutable World::World = catch World::World():
+        value: value
+        error failure: return 30
+    crate: World::EntityRef = catch World::world_spawn(&live, World::StaticObject.Structure):
+        value: value
+        error failure: return 30
+    presentation: WorldSaveLoad::Presentation = WorldSaveLoad::Presentation{
+        visuals: WorldSaveRendering::KindVisuals{actor: visual(1), enemy: visual(2), structure: visual(3)},
+        bodies: WorldSavePhysics::KindBodies{
+            actor: box(PhysicsRuntime::BodyKind.Kinematic, 1.0),
+            enemy: box(PhysicsRuntime::BodyKind.Kinematic, 1.0),
+            structure: box(PhysicsRuntime::BodyKind.Static, 0.0),
+        },
+        render_id_base: 500,
+    }
+    render: mutable WorldRendering::Bindings = WorldRendering::Bindings()
+    physics: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+    bound: bool = catch WorldPhysics::bind(session, &live, &physics, crate, PhysicsRuntime::BodyKind.Static, Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 0.0):
+        ok: true
+        error failure: false
+    drawn: bool = catch WorldRendering::bind(&render, &live, crate, 42, visual(3), Geometry::transform_identity()):
+        ok: true
+        error failure: false
+    return 31 if not bound or not drawn
+    # A body left bound to an entity despawned before the load is still torn down.
+    orphan: World::EntityRef = catch World::world_spawn(&live, World::StaticObject.Structure):
+        value: value
+        error failure: return 31
+    orphan_bound: bool = catch WorldPhysics::bind(session, &live, &physics, orphan, PhysicsRuntime::BodyKind.Static, Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 0.0):
+        ok: true
+        error failure: false
+    orphan_gone: bool = catch World::world_despawn(&live, orphan):
+        ok: true
+        error failure: false
+    return 31 if not orphan_bound or not orphan_gone
+    # A corrupt save leaves the running game's world and bindings alone.
+    bytes[30] <- bytes[30] ^ 1u8
+    rejected: i32 = load_code(session, &live, &render, &physics, presentation, bytes, length)
+    bytes[30] <- bytes[30] ^ 1u8
+    return 32 if rejected != 1 or not World::world_is_live(&live, crate)
+    return 33 if WorldRendering::binding_count(&render) != 1 or WorldPhysics::binding_count(&physics) != 2
+    return 34 if load_code(session, &live, &render, &physics, presentation, bytes, length) != 0
+    return 35 if World::world_live_count(&live) != 3 or World::world_is_live(&live, crate)
+    return 36 if WorldRendering::binding_count(&render) != 3 or WorldPhysics::binding_count(&physics) != 3
+    view: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+    extracted: bool = catch WorldRendering::extract(&live, &render, &view):
+        ok: true
+        error failure: false
+    return 37 if not extracted or RenderSnapshot::snapshot_count(&view) != 3
+    entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(&view, 1)
+    return 38 if entry.render_id != 501 or not near(entry.transform.position.x, 7.0)
+    guard: World::EntityRef = catch World::world_live_reference_at(&live, 1):
+        value: value
+        error failure: return 39
+    pose: PhysicsRuntime::BodyPose = catch WorldPhysics::body_pose(session, &physics, guard):
+        value: value
+        error failure: return 39
+    return 39 if not near(pose.position.z, -2.0)
+    0
 
 def probe(session: RuntimeServices::Session&) -> i32:
     world: mutable World::World = catch World::World():
@@ -72,7 +152,7 @@ def probe(session: RuntimeServices::Session&) -> i32:
         value: 0
         error failure: 19
     return 19 if stale == 0
-    0
+    load_probe(session, &bytes[0], length)
 
 def main() -> i32:
     config: Application::Config = Application::Config{

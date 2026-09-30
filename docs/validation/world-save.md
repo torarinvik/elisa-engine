@@ -37,3 +37,31 @@ this pass already made. The native smoke `world-save-physics-smoke`
 three bodies, the guard body's pose, refusal of a second pass, and that references from
 the replaced world resolve to no body. A control without the empty-bindings guard fails
 with status 16. Swapping a loaded world into a running game is still open.
+
+## In-place swap
+
+`World::SaveSwap::replace_world` (src/world/world_save_swap.elisa) swaps a save into the
+running World. It first loads the payload into a throwaway staging world, so malformed
+or cyclic saves are rejected before anything changes. It then captures a rollback
+snapshot, despawns every live entity leaves-first, compacts, and respawns the saved
+entities. The live world keeps its epoch and identity allocator, so the new IDs sit
+above the old high-water mark and pre-swap references go stale instead of aliasing.
+If the rebuild fails, the snapshot is restored. test/world_save_swap.elisa (gated)
+covers corrupt-payload rejection with the live world intact, kind counts, the same
+epoch, fresh IDs, stale old references and the preserved hierarchy. A control without
+the staging check fails with 4. The rollback-after-failed-rebuild branch has no direct
+test (staging makes it unreachable with current inputs). No shipped game drives
+swap, then render and physics rehydration, end to end yet.
+
+## End-to-end load
+
+`WorldSaveLoad::load` (src/runtime/world_save_load.elisa) is the single load path for a
+running game. It swaps the save into the live World, destroys the physics bodies of the
+replaced entities, clears the render rows (new `WorldRendering::clear`), then rebuilds
+render and physics for the loaded entities. A rejected save changes nothing. The native
+smoke `world-save-physics-smoke` now also runs a live world with a bound crate through a
+corrupt load (world and both binding tables untouched) and a good load (three entities,
+three render rows starting at the chosen base, three bodies at the saved poses).
+A control that skips destroying the old bodies fails with status 34. Old bodies are torn down with the new
+`WorldPhysics::unbind_all`, so a body left bound to an already-despawned entity is also
+destroyed (the smoke covers one); the course does not yet use this path.

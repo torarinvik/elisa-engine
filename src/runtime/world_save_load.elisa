@@ -1,0 +1,59 @@
+# One load path for a running game: swap a save into the live World, drop
+# the replaced world's render rows and physics bodies, and rebuild both for
+# the loaded entities. A rejected save changes nothing; the swap happens only
+# after the payload has loaded into a staging world.
+include "../world/world_save_swap.elisa"
+include "./world_save_rendering.elisa"
+include "./world_save_physics.elisa"
+
+module WorldSaveLoad:
+    public:
+        error WorldSaveLoadError:
+            Rejected
+            SwapFailed
+            PhysicsCleanupFailed
+            RenderFailed
+            PhysicsFailed
+
+        struct Presentation:
+            visuals: WorldSaveRendering::KindVisuals
+            bodies: WorldSavePhysics::KindBodies
+            render_id_base: i64
+
+    private:
+        def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
+            catch World::SaveSwap::replace_world(world, bytes, length):
+                ok: 0
+                World::SaveSwap::SaveSwapError.Rejected: 1
+                error failure: 2
+
+        def saveload_unbind_all(session: RuntimeServices::Session&,
+            bindings: mutable WorldPhysics::Bindings&) -> void:
+            _ = catch WorldPhysics::unbind_all(session, bindings):
+                ok: true
+                error failure: false
+
+        def saveload_render(bindings: mutable WorldRendering::Bindings&, world: World::World&,
+            presentation: Presentation) -> bool:
+            catch WorldSaveRendering::rehydrate(bindings, world, presentation.visuals, presentation.render_id_base):
+                ok: true
+                error failure: false
+
+        def saveload_physics(session: RuntimeServices::Session&, world: World::World&,
+            bindings: mutable WorldPhysics::Bindings&, presentation: Presentation) -> bool:
+            catch WorldSavePhysics::rehydrate(session, world, bindings, presentation.bodies):
+                ok: true
+                error failure: false
+
+    public:
+        def load(session: RuntimeServices::Session&, world: mutable World::World&,
+            render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
+            presentation: Presentation, bytes: u8&, length: usize) -> void error[WorldSaveLoadError]:
+            swapped: i32 = saveload_swap(world, bytes, length)
+            raise WorldSaveLoadError.Rejected if swapped == 1
+            raise WorldSaveLoadError.SwapFailed if swapped != 0
+            saveload_unbind_all(session, physics)
+            raise WorldSaveLoadError.PhysicsCleanupFailed if WorldPhysics::binding_count(physics) != 0
+            WorldRendering::clear(render)
+            raise WorldSaveLoadError.RenderFailed if not saveload_render(render, world, presentation)
+            raise WorldSaveLoadError.PhysicsFailed if not saveload_physics(session, world, physics, presentation)
