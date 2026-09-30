@@ -1,0 +1,127 @@
+# Poses a glTF skeleton at one time (M06): each node's local transform is
+# its rest translation, rotation and scale with any animated channel
+# sampled over it, and its world matrix is the parent chain composed down
+# to it. Matrices are column-major 4x4, as in glTF.
+include "./gltf_rest_pose.elisa"
+include "./gltf_skeleton.elisa"
+include "./gltf_track_sample.elisa"
+include "./gltf_world_index.elisa"
+
+module GltfWorldPose:
+    private:
+        def mapped(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64, times: bool) -> GltfAnimationMap::ChannelBytes:
+            catch GltfAnimationMap::sampler_bytes(doc, bytes, animation, channel, times):
+                value: value
+                error failure: GltfAnimationMap::ChannelBytes{target_node: -1, path: -1, bin_offset: -1, byte_length: -1, count: -1, component_type: -1, components: -1}
+
+        def keys(bytes: darray[u8]&, layout: GlbContainer::Layout&, range: GltfAnimationMap::ChannelBytes&) -> darray[f64]:
+            catch GltfKeyTrack::load(bytes, layout, range):
+                value: value.values
+                error failure: []
+
+        def sampled(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64, time: f64) -> darray[f64]:
+            catch GltfTrackSample::sample(times, values, components, path, mode, time):
+                value: value
+                error failure: []
+
+        # One channel sampled at `time`, or empty when it cannot be read.
+        def channel_at(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, animation: i64, channel: i64, time: f64) -> darray[f64]:
+            output: GltfAnimationMap::ChannelBytes = mapped(doc, bytes, animation, channel, false)
+            input: GltfAnimationMap::ChannelBytes = mapped(doc, bytes, animation, channel, true)
+            return [] if output.count < 0 or input.count < 0
+            times: darray[f64] = keys(bytes, layout, input)
+            values: darray[f64] = keys(bytes, layout, output)
+            mode: i64 = GltfTrackSample::interpolation(doc, bytes, animation, channel)
+            sampled(times, values, output.components, output.path, mode, time)
+
+        def pick(got: darray[f64]&, index: i64, use: bool, fallback: f64) -> f64:
+            return fallback if not use or index < 0 or index >= got.count.i64()
+            got[index.usize()]
+
+    public:
+        error PoseError:
+            Mismatch
+            Unreadable
+
+        # Local TRS (10 per node, as in GltfRestPose) and world matrices (16 per node).
+        struct Pose:
+            node_count: i64
+            local: darray[f64]
+            world: darray[f64]
+
+        # Column-major T * R * S from ten TRS values starting at `at`.
+        def matrix(trs: darray[f64]&, at: i64) -> darray[f64]:
+            b: usize = at.usize()
+            tx: f64 = trs[b]
+            ty: f64 = trs[b + 1]
+            tz: f64 = trs[b + 2]
+            x: f64 = trs[b + 3]
+            y: f64 = trs[b + 4]
+            z: f64 = trs[b + 5]
+            w: f64 = trs[b + 6]
+            sx: f64 = trs[b + 7]
+            sy: f64 = trs[b + 8]
+            sz: f64 = trs[b + 9]
+            out: darray[f64] = [(1.0 - 2.0 * (y * y + z * z)) * sx, 2.0 * (x * y + z * w) * sx, 2.0 * (x * z - y * w) * sx, 0.0, 2.0 * (x * y - z * w) * sy, (1.0 - 2.0 * (x * x + z * z)) * sy, 2.0 * (y * z + x * w) * sy, 0.0, 2.0 * (x * z + y * w) * sz, 2.0 * (y * z - x * w) * sz, (1.0 - 2.0 * (x * x + y * y)) * sz, 0.0, tx, ty, tz, 1.0]
+            out
+
+        # Column-major product a * b.
+        def multiply(a: darray[f64]&, b: darray[f64]&) -> darray[f64]:
+            out: mutable darray[f64] = []
+            for i in 0..<16 |out, a, b|:
+                row: i64 = i.i64() % 4
+                column: i64 = i.i64() / 4
+                sum: mutable f64 = 0.0
+                for k in 0..<4 |sum, a, b, row, column|:
+                    sum <- sum + a[GltfWorldIndex::entry(row, k.i64()).usize()] * b[GltfWorldIndex::entry(k.i64(), column).usize()]
+                out.push(sum)
+            out
+
+        # Local tables with every animated channel sampled at `time`, or
+        # empty when a channel cannot be read.
+        def locals(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, skeleton: GltfSkeleton::Skeleton&, rest: GltfRestPose::Rest&, animation: i64, time: f64) -> darray[f64]:
+            return [] if skeleton.node_count != rest.node_count
+            out: mutable darray[f64] = []
+            broken: mutable bool = false
+            for n in 0..<rest.node_count.usize() |out, broken, doc, bytes, layout, skeleton, rest, animation, time|:
+                for path in 0..<3 |out, broken, doc, bytes, layout, skeleton, rest, animation, time, n|:
+                    channel: i64 = GltfSkeleton::track_of(skeleton, n.i64(), path.i64())
+                    got: darray[f64] = channel_at(doc, bytes, layout, animation, channel, time) if channel >= 0 else []
+                    arity: i64 = GltfRestIndex::arity(path.i64())
+                    broken <- broken or (channel >= 0 and got.count.i64() != arity)
+                    for c in 0..<arity.usize() |out, rest, n, path, got, channel, arity|:
+                        use: bool = channel >= 0 and got.count.i64() == arity
+                        out.push(pick(got, c.i64(), use, GltfRestPose::value_of(rest, n.i64(), path.i64(), c.i64())))
+            return [] if broken
+            out
+
+        # World matrices from local tables, walking each node's parent chain.
+        def compose(skeleton: GltfSkeleton::Skeleton&, local: darray[f64]&) -> darray[f64]:
+            count: i64 = skeleton.node_count
+            world: mutable darray[f64] = []
+            for n in 0..<count.usize() |world, skeleton, local, count|:
+                current: mutable darray[f64] = matrix(local, n.i64() * GltfRestIndex::FIELDS)
+                up: mutable i64 = GltfSkeleton::parent_of(skeleton, n.i64())
+                steps: mutable i64 = 0
+                for s in 0..<count.usize() |current, up, steps, skeleton, local, count|:
+                    go: bool = GltfWorldIndex::walk_on(up, steps, count)
+                    above: darray[f64] = matrix(local, (up if go else 0) * GltfRestIndex::FIELDS)
+                    current <- multiply(above, current) if go else current
+                    up <- GltfSkeleton::parent_of(skeleton, up) if go else -1
+                    steps <- steps + 1
+                for e in 0..<16 |world, current|:
+                    world.push(current[e])
+            world
+
+        def pose(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, skeleton: GltfSkeleton::Skeleton&, rest: GltfRestPose::Rest&, animation: i64, time: f64) -> Pose error[PoseError]:
+            raise PoseError.Mismatch if skeleton.node_count != rest.node_count
+            local: darray[f64] = locals(doc, bytes, layout, skeleton, rest, animation, time)
+            raise PoseError.Unreadable if local.count.i64() != rest.node_count * GltfRestIndex::FIELDS
+            world: darray[f64] = compose(skeleton, local)
+            Pose{node_count: rest.node_count, local: local, world: world}
+
+        # One world matrix entry, or NaN outside the pose.
+        def world_at(pose: Pose&, node: i64, row: i64, column: i64) -> f64:
+            at: i64 = GltfWorldIndex::slot(pose.node_count, node, GltfWorldIndex::entry(row, column))
+            return 0.0 / 0.0 if at < 0
+            pose.world[at.usize()]

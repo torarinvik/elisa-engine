@@ -1,0 +1,47 @@
+include "../src/assets/gltf_world_index.elisa"
+
+extend GltfWorldIndex:
+    def prove_entry_inside(row: i64, column: i64) -> i64:
+        ensure result >= -1
+        ensure result < 16
+        entry(row, column)
+
+    def prove_entry_rejects_negative_row(row: i64, column: i64) -> i64:
+        requires row < 0
+        ensure result == -1
+        entry(row, column)
+
+    def prove_entry_rejects_wide_column(row: i64, column: i64) -> i64:
+        requires column >= 4
+        ensure result == -1
+        entry(row, column)
+
+    def prove_slot_signed(node_count: i64, node: i64, index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        ensure result >= -1
+        slot(node_count, node, index)
+
+    def prove_slot_rejects_past_node(node_count: i64, node: i64, index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        requires node >= node_count
+        ensure result == -1
+        slot(node_count, node, index)
+
+    def prove_slot_rejects_past_entry(node_count: i64, node: i64, index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        requires index >= 16
+        ensure result == -1
+        slot(node_count, node, index)
+
+    def prove_walk_stops_at_root(parent: i64, steps: i64, node_count: i64) -> bool:
+        requires parent < 0
+        ensure not result
+        walk_on(parent, steps, node_count)
+
+    def prove_walk_bounded(parent: i64, steps: i64, node_count: i64) -> bool:
+        requires steps >= node_count
+        ensure not result
+        walk_on(parent, steps, node_count)

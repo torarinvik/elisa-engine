@@ -1,0 +1,44 @@
+# Integer rules for GltfWorldPose, split out so the prover can check them:
+# column-major 4x4 matrices, sixteen entries per node, and a bounded walk
+# up the parent chain.
+module GltfWorldIndex:
+    public:
+        const ENTRIES: i64 = 16
+        const MAX_NODES: i64 = 65536
+
+        # Column-major entry of (row, column), or -1 outside the matrix.
+        def entry(row: i64, column: i64) -> i64:
+            ensure result >= -1
+            ensure result < ENTRIES
+            ensure row >= 0 or result == -1
+            ensure column < 4 or result == -1
+            return -1 if row < 0
+            return -1 if row >= 4
+            return -1 if column < 0
+            return -1 if column >= 4
+            column * 4 + row
+
+        # Slot of a node's matrix entry in the flat world array, or -1.
+        def slot(node_count: i64, node: i64, index: i64) -> i64:
+            requires node_count >= 0
+            requires node_count <= MAX_NODES
+            ensure result >= -1
+            ensure node < node_count or result == -1
+            ensure index < ENTRIES or result == -1
+            return -1 if node < 0
+            return -1 if node >= node_count
+            return -1 if index < 0
+            return -1 if index >= ENTRIES
+            node * ENTRIES + index
+
+        # Whether a parent walk may take another step: `steps` taken so far
+        # stays below the node count, so a walk ends even on a bad table.
+        def walk_on(parent: i64, steps: i64, node_count: i64) -> bool:
+            ensure not result or parent >= 0
+            ensure parent >= 0 or not result
+            ensure not result or steps < node_count
+            ensure steps < node_count or not result
+            return false if parent < 0
+            return false if parent >= node_count
+            return false if steps >= node_count
+            true

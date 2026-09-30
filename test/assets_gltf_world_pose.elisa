@@ -1,0 +1,105 @@
+include "../src/assets/gltf_world_pose.elisa"
+include "./assets_gltf_channel_fixture.elisa"
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def doc_of(bytes: darray[u8]&, layout: GlbContainer::Layout&) -> GltfJson::Doc:
+    catch GltfJson::parse(bytes, layout.json_start, layout.json_length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def skeleton_of(doc: GltfJson::Doc&, bytes: darray[u8]&) -> GltfSkeleton::Skeleton:
+    catch GltfSkeleton::build(doc, bytes, 0):
+        value: value
+        error failure: GltfSkeleton::Skeleton{node_count: -1, channel_count: -1, parent: [], track: []}
+
+def rest_of(doc: GltfJson::Doc&, bytes: darray[u8]&) -> GltfRestPose::Rest:
+    catch GltfRestPose::build(doc, bytes):
+        value: value
+        error failure: GltfRestPose::Rest{node_count: -1, values: []}
+
+def pose_of(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, skeleton: GltfSkeleton::Skeleton&, rest: GltfRestPose::Rest&, time: f64) -> GltfWorldPose::Pose:
+    catch GltfWorldPose::pose(doc, bytes, layout, skeleton, rest, 0, time):
+        value: value
+        error failure: GltfWorldPose::Pose{node_count: -1, local: [], world: []}
+
+def pose_code(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, skeleton: GltfSkeleton::Skeleton&, rest: GltfRestPose::Rest&) -> i32:
+    catch GltfWorldPose::pose(doc, bytes, layout, skeleton, rest, 0, 0.1):
+        ok: 0
+        GltfWorldPose::PoseError.Mismatch: 1
+        GltfWorldPose::PoseError.Unreadable: 2
+        error failure: 9
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.0000001 and d > -0.0000001
+
+def same(got: darray[f64]&, want: darray[f64]&) -> bool:
+    ok: mutable bool = got.count == want.count
+    for i in 0..<want.count |ok, got, want|:
+        x: f64 = got[i] if i < got.count else 1000.0
+        ok <- ok and near(x, want[i])
+    ok
+
+def main() -> i32:
+    # Rotating +X by 90 degrees about +Y gives -Z; translation lands in column 3.
+    trs: darray[f64] = [1.0, 2.0, 3.0, 0.0, 0.7071067811865476, 0.0, 0.7071067811865476, 2.0, 1.0, 1.0]
+    m: darray[f64] = GltfWorldPose::matrix(trs, 0)
+    turned: darray[f64] = [0.0, 0.0, -2.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 1.0]
+    return 1 if not same(m, turned)
+    unit: darray[f64] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    identity: darray[f64] = GltfWorldPose::matrix(unit, 0)
+    left: darray[f64] = GltfWorldPose::multiply(identity, m)
+    right: darray[f64] = GltfWorldPose::multiply(m, identity)
+    return 2 if not same(left, m) or not same(right, m)
+    # Order matters: T(1,0,0) * S(2) moves by 1; S(2) * T(1,0,0) moves by 2.
+    shift: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    grow: darray[f64] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 2.0, 2.0, 2.0]
+    mm: darray[f64] = GltfWorldPose::matrix(shift, 0)
+    gm: darray[f64] = GltfWorldPose::matrix(grow, 0)
+    moved_first: darray[f64] = GltfWorldPose::multiply(mm, gm)
+    grown_first: darray[f64] = GltfWorldPose::multiply(gm, mm)
+    return 3 if moved_first[12] != 1.0 or grown_first[12] != 2.0
+    bytes: darray[u8] = fixture_glb()
+    layout: GlbContainer::Layout = layout_of(bytes)
+    doc: GltfJson::Doc = doc_of(bytes, layout)
+    skeleton: GltfSkeleton::Skeleton = skeleton_of(doc, bytes)
+    rest: GltfRestPose::Rest = rest_of(doc, bytes)
+    return 4 if skeleton.node_count != 3 or rest.node_count != 3
+    return 5 if pose_code(doc, bytes, layout, skeleton, rest) != 0
+    # World matrices match an independent Python sampler and composer.
+    want10: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.9555565837879207, 0.2948075512814748, 0.0, 0.0, -0.2948075512814748, 0.9555565837879207, 0.0, 0.0, 1.0149626409565717, 0.10074815194387099, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.9950124065261081, 0.09975064910805363, 0.0, 0.0, -0.09975064910805363, 0.9950124065261081, 0.0, 0.0, 0.009999999776482582, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    pose10: GltfWorldPose::Pose = pose_of(doc, bytes, layout, skeleton, rest, 0.0)
+    return 10 if not same(pose10.world, want10)
+    want11: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.7591731017240047, 0.6508886885199541, 0.0, 0.0, -0.6508886885199541, 0.7591731017240047, 0.0, 0.0, 1.0189621067140446, 0.2421285403024472, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.9716427057629208, 0.23645365597432044, 0.0, 0.0, -0.23645365597432044, 0.9716427057629208, 0.0, 0.0, 0.023999999105930314, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    pose11: GltfWorldPose::Pose = pose_of(doc, bytes, layout, skeleton, rest, 0.1)
+    return 11 if not same(pose11.world, want11)
+    want12: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.20438308516962517, 0.9788909279100667, 0.0, 0.0, -0.9788909279100667, 0.20438308516962517, 0.0, 0.0, 0.98192436865164, 0.47548806496030566, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.891149304866241, 0.45371003596457377, 0.0, 0.0, -0.45371003596457377, 0.891149304866241, 0.0, 0.0, 0.04800000113248854, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    pose12: GltfWorldPose::Pose = pose_of(doc, bytes, layout, skeleton, rest, 0.2)
+    return 12 if not same(pose12.world, want12)
+    want13: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, -0.09282248454901854, 0.9956826974490184, 0.0, 0.0, -0.9956826974490184, -0.09282248454901854, 0.0, 0.0, 0.9449541249334069, 0.5834861509155089, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.8348624225413843, 0.5504586714559636, 0.0, 0.0, -0.5504586714559636, 0.8348624225413843, 0.0, 0.0, 0.05999999865889549, 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+    pose13: GltfWorldPose::Pose = pose_of(doc, bytes, layout, skeleton, rest, 0.3)
+    return 13 if not same(pose13.world, want13)
+    # Entries read back by row and column; NaN outside the pose.
+    last: GltfWorldPose::Pose = pose_of(doc, bytes, layout, skeleton, rest, 0.0)
+    return 20 if GltfWorldPose::world_at(last, 0, 1, 3) != last.world[13] or GltfWorldPose::world_at(last, 2, 3, 3) != 1.0
+    beyond: f64 = GltfWorldPose::world_at(last, 3, 0, 0)
+    wide: f64 = GltfWorldPose::world_at(last, 0, 0, 4)
+    return 21 if beyond == beyond or wide == wide
+    # A rest table from another document is rejected.
+    short: GltfRestPose::Rest = GltfRestPose::Rest{node_count: 2, values: []}
+    return 22 if pose_code(doc, bytes, layout, skeleton, short) != 1
+    # A three-level chain with general rotations and non-uniform scale,
+    # checked against Python (whose matrices were checked by rotating
+    # basis vectors with the quaternion directly).
+    chain_local: darray[f64] = [1.0, 2.0, 3.0, 0.0916432938695913, 0.1832865877391826, 0.2749298816087739, 0.9393727128473789, 1.5, 0.5, 2.0, 0.5, -1.0, 0.25, -0.3550036306807638, 0.1775018153403819, 0.7100072613615276, 0.5816830894638836, 1.0, 2.0, 1.0, -2.0, 0.0, 1.0, -0.263036585495563, 0.8767886183185435, -0.1753577236637087, 0.3623577544766736, 0.75, 0.75, 1.25]
+    chain_parent: darray[i64] = [-1, 0, 1]
+    chain_track: darray[i64] = [-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+    chain: GltfSkeleton::Skeleton = GltfSkeleton::Skeleton{node_count: 3, channel_count: 0, parent: chain_parent, track: chain_track}
+    chain_want: darray[f64] = [1.1724587608605375, 0.8251758460565375, -0.44093681765787085, 0.0, -0.2414646421071061, 0.41601506688731726, 0.13647816944415717, 0.0, 0.7894795963475996, -0.1427849988357517, 1.8320301337746345, 0.0, 1.0, 2.0, 3.0, 1.0, -0.8135496546918703, 0.33388194382791697, -1.1749181707044378, 0.0, -2.3608517883853004, -1.7417742356182428, 0.17881397515605035, 0.0, 0.031215701592781697, -0.0667064037759523, 1.476807252717884, 0.0, 2.025063921624275, 1.9608766064320136, 3.101060955170566, 1.0, 1.3945177349085256, 0.6457398238815409, -0.1526748218898162, 0.0, -1.2244924734036564, -1.103983797847966, -0.14995939305589417, 0.0, -0.42146058044993584, 0.6145200708011855, -2.3425244029733587, 0.0, 3.683378932600797, 1.2264063150002273, 6.927704549297326, 1.0]
+    chain_world: darray[f64] = GltfWorldPose::compose(chain, chain_local)
+    return 23 if not same(chain_world, chain_want)
+    0
