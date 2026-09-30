@@ -415,6 +415,8 @@ def exercise_application() -> i32:
     return displays if displays != 0
     audio_devices: i32 = AudioDevicesProbe::run()
     return audio_devices if audio_devices != 0
+    audio_open: i32 = AudioDevicesProbe::open_by_name()
+    return audio_open if audio_open != 0
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0

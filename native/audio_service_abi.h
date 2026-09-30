@@ -102,6 +102,9 @@ int32_t elisa_audio_v1_shutdown(void);
 int32_t elisa_audio_v1_playback_device_count(uint32_t* count);
 int32_t elisa_audio_v1_playback_device(uint32_t index, uint8_t* name, uint32_t capacity,
     uint32_t* length, int32_t* is_default);
+// Opens the mixer on the playback device named exactly `name` (UTF-8, no NUL).
+int32_t elisa_audio_v1_initialize_named(uint32_t sample_rate, uint32_t channels,
+    const uint8_t* name, uint32_t length);
 
 #if defined(ELISA_AUDIO_TEST_PROBE)
 int32_t elisa_audio_v1_test_request_device_recovery(void);

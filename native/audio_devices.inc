@@ -55,3 +55,21 @@ extern "C" int32_t elisa_audio_v1_playback_device(uint32_t index, uint8_t* name,
     });
     return ok ? status : ELISA_AUDIO_DEVICE_UNAVAILABLE;
 }
+
+// Opens the mixer on the playback device whose name matches exactly. Settings
+// persist the name, which survives reordering; DEVICE_UNAVAILABLE means the
+// device is gone and the caller should fall back to the default.
+extern "C" int32_t elisa_audio_v1_initialize_named(uint32_t sample_rate, uint32_t channels,
+    const uint8_t* name, uint32_t length) {
+    if (name == nullptr || length == 0) return ELISA_AUDIO_INVALID_ARGUMENT;
+    ma_device_id chosen{};
+    bool found = false;
+    const bool ok = visit_playback_devices([&](const ma_device_info& info, ma_uint32, ma_uint32) {
+        if (!found && std::strlen(info.name) == length && std::memcmp(info.name, name, length) == 0) {
+            chosen = info.id;
+            found = true;
+        }
+    });
+    if (!ok || !found) return ELISA_AUDIO_DEVICE_UNAVAILABLE;
+    return initialize_audio(sample_rate, channels, false, &chosen);
+}
