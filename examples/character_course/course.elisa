@@ -7,6 +7,8 @@ include "./beacons.elisa"
 include "./text.elisa"
 include "./access.elisa"
 include "./look.elisa"
+include "../../src/runtime/action_input_recording.elisa"
+include "../../src/runtime/action_input_store.elisa"
 include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
@@ -17,6 +19,9 @@ include "../../src/ui/bidi_utf8.elisa"
 
 module CharacterCourse:
     private:
+        # User-data key of the last play session's input recording.
+        const RECORDING_KEY: cstr = "course-input-recording"
+
         const module Tune:
             CHARACTER_LAYER: u32 = 0
             CHARACTER_RADIUS: f32 = 0.25
@@ -349,6 +354,7 @@ module CharacterCourse:
         include "./pointer_test.inc"
         include "./pad_test.inc"
         include "./look_test.inc"
+        include "./recording_test.inc"
         include "./audio_mix_test.inc"
         include "./stress_test.inc"
         include "./replay_test.inc"
@@ -432,6 +438,8 @@ module CharacterCourse:
                 return pad_status if pad_status != 0
                 look_status: i32 = look_test()
                 return look_status if look_status != 0
+                recording_status: i32 = recording_test()
+                return recording_status if recording_status != 0
                 mix_status: i32 = audio_mix_test(session)
                 return mix_status if mix_status != 0
                 replay_status: i32 = try replay_digest_test(session)

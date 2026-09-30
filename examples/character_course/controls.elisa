@@ -483,11 +483,15 @@ module CourseControls:
 
         # Drains the frame's events into gameplay input and reports focus loss
         # so the game can pause; focus loss also clears every held action.
-        def drain_gameplay(input: mutable ActionInput::Input&) -> bool:
+        # Every effect is also recorded at `tick` for the session recording
+        # saved on quit. The live input is updated even
+        # when the log is full; the log then reports itself untrusted.
+        def drain_gameplay_recorded(input: mutable ActionInput::Input&,
+            log: mutable ActionInputReplay::Log&, tick: i64) -> bool:
             ActionInput::begin_frame(input)
             focus_lost: mutable bool = false
             event: mutable Application::InputEvent = zeroed
-            while Application::next_input_event(&event) |focus_lost, event, input|:
-                ActionInputRuntime::apply_application_event(input, event)
+            while Application::next_input_event(&event) |focus_lost, event, input, log|:
+                _ = ActionInputRecording::record_application_event(log, input, tick, event)
                 focus_lost <- true if event.kind == Application::InputEventKind.FocusLost
             focus_lost

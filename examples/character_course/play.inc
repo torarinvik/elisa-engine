@@ -286,6 +286,10 @@
             # platform is asked once per change, not every frame.
             look: mutable CourseLook::Look = CourseLook::Look()
             look_held: mutable bool = false
+            # Gameplay input is recorded by frame and saved on quit, so a
+            # session can be replayed through ActionInputStore::load_recording.
+            recording: mutable ActionInputReplay::Log = ActionInputReplay::Log()
+            recording_tick: mutable i64 = 0
             # Sound is optional: a failed start releases what it loaded and
             # the course plays silently. `sound_tick` counts fixed steps.
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
@@ -309,7 +313,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads, look, look_held|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -371,7 +375,8 @@
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
                         look <- CourseLook::drain(look)
-                        focus_lost: bool = CourseControls::drain_gameplay(input)
+                        focus_lost: bool = CourseControls::drain_gameplay_recorded(input, recording, recording_tick)
+                        recording_tick <- recording_tick + 1
                         if focus_lost and state.phase == Phase.Playing:
                             toggle_pause(&state)
                             Runtime::set_paused(&clock, true)
@@ -519,6 +524,8 @@
                         resize_serial <- frame.resize_serial
             if look_held:
                 _ = Application::set_relative_mouse(false)
+            no_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
+            _ = ActionInputStore::save_recording(RECORDING_KEY, &recording, &no_pointer)
             _ = CourseSounds::stop(&sounds)
             try CourseBeacons::release(&beacons)
             try release_legend(&legend)
