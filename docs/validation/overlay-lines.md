@@ -25,6 +25,21 @@ test/animation_overlay_lines.elisa runs in the check gate on a 600-frame four-jo
 
 The mutation check caught every non-equivalent mutant. One survivor is equivalent: `step < 0` for `step < 1`, because a zero distance never has a ghost.
 
+## Points
+
+`points(xyz, rgba, size)` draws each point as a three-axis star of half-size
+`size` in one colour: three records per point, so points share the line batch
+and its all-or-nothing submission. It draws nothing for a ragged point list, a
+colour that is not four values, a size that is not positive and finite, or more
+than 65,536 points. `OverlayLineIndex::point_lines` is the shape and budget
+check. Its bounds are proved: the result is at least 0, at most 196,608, and
+either 0 or the value count. The exact ragged and whole cases are tested only,
+because the prover times out on `%`. The test checks star coordinates and
+alpha, and every rejection. The mutation check caught every mutant: the size,
+ragged, colour, alpha and budget-edge mutants, some through the postcondition.
+
 ## Still open
 
-The native debug bridge takes 128 commands per flush, and the budget case needs 2,418 lines. Next come a batched native line submission, the frame-budget run and the captured PNG.
+Batched native lines, the frame-budget run and the captured PNG are done (see
+[`debug-drawing.md`](debug-drawing.md) and [`overlay-budget.md`](overlay-budget.md)).
+Labels still go through the 128-command text path, one call each.

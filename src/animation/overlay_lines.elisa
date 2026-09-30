@@ -92,3 +92,22 @@ module OverlayLines:
                 push_line(out, x - dx1, y - dy1, z - dz1, x + dx1, y + dy1, z + dz1, orange, 1.0)
                 push_line(out, x - dx2, y - dy2, z - dz2, x + dx2, y + dy2, z + dz2, orange, 1.0)
             out
+
+        # Each point (xyz triples) as a three-axis star of half-size `size`
+        # in one `rgba` colour: three records per point, so points share the
+        # line batch. Empty for a ragged or oversized point list, a colour that is not
+        # four values, or a size that is not positive and finite.
+        def points(xyz: darray[f64]&, rgba: darray[f64]&, size: f64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if OverlayLineIndex::point_lines(xyz.count.i64()) != xyz.count.i64() or rgba.count != 4 or not (size > 0.0 and size < 1.0e30)
+            rgb: darray[f64] = [rgba[0], rgba[1], rgba[2]]
+            alpha: f64 = rgba[3]
+            n: i64 = xyz.count.i64() / 3
+            for p in 0..<n.usize() |out, xyz, size, rgb, alpha|:
+                x: f64 = xyz[p * 3]
+                y: f64 = xyz[p * 3 + 1]
+                z: f64 = xyz[p * 3 + 2]
+                push_line(out, x - size, y, z, x + size, y, z, rgb, alpha)
+                push_line(out, x, y - size, z, x, y + size, z, rgb, alpha)
+                push_line(out, x, y, z - size, x, y, z + size, rgb, alpha)
+            out

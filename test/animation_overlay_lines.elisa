@@ -70,4 +70,19 @@ def main() -> i32:
     # The budget formula rejects bad sizes.
     return 20 if OverlayLineIndex::frame_lines(-1, 600, 6, 3, 2) != 0 or OverlayLineIndex::frame_lines(4, 0, 0, 0, 0) != 0
     return 21 if OverlayLineIndex::frame_lines(4, 1, 0, 0, 1) != 2 or OverlayLineIndex::slot(2, 9, 3) != 29 or OverlayLineIndex::slot(3, 0, 3) != -1
+    # Points are three-axis stars in one colour; bad input draws nothing.
+    dots: darray[f64] = [1.0, 2.0, 3.0, -1.0, 0.0, 0.5]
+    white: darray[f64] = [1.0, 1.0, 1.0, 0.5]
+    star: darray[f64] = OverlayLines::points(dots, white, 0.25)
+    return 22 if star.count != 60 or star[0] != 0.75 or star[3] != 1.25 or star[1] != 2.0 or star[4] != 2.0 or star[9] != 0.5
+    return 23 if star[11] != 1.75 or star[14] != 2.25 or star[10] != 1.0 or star[22] != 2.75 or star[25] != 3.25 or star[21] != 2.0 or star[19] != 0.5 or star[29] != 0.5
+    return 24 if star[30] != -1.25 or star[33] != -0.75 or star[52] != 0.25 or star[55] != 0.75 or star[36] != 1.0
+    ragged: darray[f64] = [1.0, 2.0, 3.0, 4.0]
+    rgb_only: darray[f64] = [1.0, 1.0, 1.0]
+    return 25 if OverlayLines::points(ragged, white, 0.25).count != 0 or OverlayLines::points(dots, rgb_only, 0.25).count != 0
+    nan: f64 = 0.0 / 0.0
+    return 26 if OverlayLines::points(dots, white, 0.0).count != 0 or OverlayLines::points(dots, white, nan).count != 0 or OverlayLines::points(dots, white, 1.0e300).count != 0
+    # The point budget: three lines per point, up to 65,536 points.
+    return 27 if OverlayLineIndex::point_lines(196608) != 196608 or OverlayLineIndex::point_lines(196611) != 0
+    return 28 if OverlayLineIndex::point_lines(-3) != 0 or OverlayLineIndex::point_lines(7) != 0 or OverlayLineIndex::point_lines(0) != 0
     0

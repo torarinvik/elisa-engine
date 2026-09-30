@@ -1,11 +1,13 @@
 # Integer rules for OverlayLines, split out so the prover can check them:
 # the value slots of a line record (start xyz, end xyz, rgba), which parent
-# links draw a ghost bone, and how many lines a frame of overlays needs.
+# links draw a ghost bone, and how many lines a frame of overlays or a
+# point list needs.
 module OverlayLineIndex:
     public:
         const VALUES: i64 = 10
         const MAX_LINES: i64 = 1048576
         const MAX_JOINTS: i64 = 256
+        const MAX_POINTS: i64 = 65536
 
         # Slot of value `k` of line `line` in a record buffer of `lines`
         # lines, or -1.
@@ -42,3 +44,14 @@ module OverlayLineIndex:
             return 0 if markers < 0 or markers > 65536
             segments: i64 = samples - 1 if samples > 0 else 0
             trails * segments + ghosts * bones + markers * 2
+
+        # Lines for a point list of `values` xyz values: three per point, so
+        # the same number as values. Zero for a negative, ragged or oversized
+        # list (more than MAX_POINTS points).
+        def point_lines(values: i64) -> i64:
+            ensure result >= 0
+            ensure result <= MAX_POINTS * 3
+            ensure result == 0 or result == values
+            return 0 if values < 0 or values > MAX_POINTS * 3
+            return 0 if values % 3 != 0
+            values

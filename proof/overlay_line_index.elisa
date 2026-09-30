@@ -31,3 +31,8 @@ extend OverlayLineIndex:
     def prove_frame_lines_signed(trails: i64, samples: i64, ghosts: i64, bones: i64, markers: i64) -> i64:
         ensure result >= 0
         frame_lines(trails, samples, ghosts, bones, markers)
+
+    def prove_point_lines_bounded(values: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 196608
+        point_lines(values)
