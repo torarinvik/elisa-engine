@@ -103,8 +103,10 @@ class PackageMacosAppTests(unittest.TestCase):
             "echo \"$ELISA_ENGINE_SHADER_MANIFEST\"\n"
             "echo \"$ELISA_PROJECT_TITLE $ELISA_PROJECT_WIDTH $ELISA_PROJECT_HEIGHT\"\n",
             encoding="utf-8")
+        home = Path(self.tempdir.name) / "home"
         result = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
-            capture_output=True, text=True, check=True, cwd=self.tempdir.name)
+            capture_output=True, text=True, check=True, cwd=self.tempdir.name,
+            env={**os.environ, "HOME": str(home)})
         resources = (app / "Contents" / "Resources").resolve()
         self.assertEqual(result.stdout.splitlines(),
             [str(resources), "found", str(resources / "shaders"),
@@ -114,8 +116,31 @@ class PackageMacosAppTests(unittest.TestCase):
             f"Elisa package: Game 1.2.3 (org.elisa.game) executable-sha256={executable_hash} source=unknown"])
         override = subprocess.run([str(app / "Contents" / "MacOS" / "Game")],
             capture_output=True, text=True, check=True, cwd=self.tempdir.name,
-            env={**os.environ, "ELISA_PROJECT_WIDTH": "640"})
+            env={**os.environ, "HOME": str(home), "ELISA_PROJECT_WIDTH": "640"})
         self.assertEqual(override.stdout.splitlines()[-1], "Game 640 820")
+
+    def test_launcher_configures_local_crash_reports(self) -> None:
+        app = self.package(self.write_manifest({"application": {"title": "Game"}}))
+        binary = app / "Contents" / "Resources" / "Game.bin"
+        binary.write_text("#!/bin/sh\necho \"${ELISA_CRASH_DIR:-off}\"\necho \"$ELISA_BUILD_IDENTITY\"\n",
+            encoding="utf-8")
+        launcher = str(app / "Contents" / "MacOS" / "Game")
+        home = Path(self.tempdir.name) / "home"
+        result = subprocess.run([launcher], capture_output=True, text=True, check=True,
+            env={**os.environ, "HOME": str(home)})
+        crash_dir, identity = result.stdout.splitlines()
+        self.assertEqual(crash_dir, str(home / "Library/Logs/Game"))
+        self.assertTrue((home / "Library/Logs/Game").is_dir())
+        self.assertEqual(identity, result.stderr.splitlines()[0])
+        chosen = Path(self.tempdir.name) / "chosen reports"
+        explicit = subprocess.run([launcher], capture_output=True, text=True, check=True,
+            env={**os.environ, "HOME": str(home), "ELISA_CRASH_DIR": str(chosen)})
+        self.assertEqual(explicit.stdout.splitlines()[0], str(chosen))
+        blocker = Path(self.tempdir.name) / "blocker"
+        blocker.write_text("file", encoding="utf-8")
+        unusable = subprocess.run([launcher], capture_output=True, text=True, check=True,
+            env={**os.environ, "HOME": str(home), "ELISA_CRASH_DIR": str(blocker / "sub")})
+        self.assertEqual(unusable.stdout.splitlines()[0], "off")
 
     def test_external_shader_library_and_asset_local_cooks(self) -> None:
         shutil.rmtree(self.project / "build/cooked")
