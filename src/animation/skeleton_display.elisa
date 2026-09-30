@@ -1,0 +1,52 @@
+# Line records for the M03 skeleton display: one bone line from each joint
+# to its parent and an optional three-axis star per joint, coloured by the
+# selection and hover highlight. The records share the overlay line batch;
+# pass `SkeletonDisplayIndex::depth_tested(xray)` when submitting them.
+include "./overlay_lines.elisa"
+include "./skeleton_display_index.elisa"
+
+module SkeletonDisplay:
+    public:
+        # RGBA of a highlight role: pale blue, yellow when hovered, orange
+        # when selected.
+        def role_color(role: i64) -> darray[f64]:
+            return [1.0, 0.5, 0.1, 1.0] if role == SkeletonDisplayIndex::SELECTED
+            return [1.0, 0.9, 0.3, 1.0] if role == SkeletonDisplayIndex::HOVERED
+            [0.55, 0.75, 1.0, 1.0]
+
+        # Records for one pose: `joints` holds xyz per joint and `parents`
+        # each joint's parent (roots have a parent outside the skeleton). A
+        # bone takes its child joint's highlight. Joint stars have half-size
+        # `joint_size` and are left out when it is 0. Empty for a shape
+        # mismatch, more than 256 joints, or a size that is negative or not
+        # finite.
+        def lines(joints: darray[f64]&, parents: darray[i64]&, selected: i64, hovered: i64, joint_size: f64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            count: i64 = parents.count.i64()
+            return out if count > SkeletonDisplayIndex::MAX_JOINTS or joints.count.i64() != count * 3
+            return out if not (joint_size >= 0.0 and joint_size < 1.0e30)
+            for j in 0..<parents.count |out, joints, parents, selected, hovered, count|:
+                joint: i64 = j.i64()
+                parent: i64 = parents[j]
+                if OverlayLineIndex::has_bone(joint, parent, count):
+                    rgba: darray[f64] = role_color(SkeletonDisplayIndex::role(joint, selected, hovered, count))
+                    a: usize = (joint * 3).usize()
+                    b: usize = (parent * 3).usize()
+                    out.push(joints[a])
+                    out.push(joints[a + 1])
+                    out.push(joints[a + 2])
+                    out.push(joints[b])
+                    out.push(joints[b + 1])
+                    out.push(joints[b + 2])
+                    out.push(rgba[0])
+                    out.push(rgba[1])
+                    out.push(rgba[2])
+                    out.push(rgba[3])
+            return out if joint_size == 0.0
+            for j in 0..<parents.count |out, joints, selected, hovered, count, joint_size|:
+                rgba: darray[f64] = role_color(SkeletonDisplayIndex::role(j.i64(), selected, hovered, count))
+                at: darray[f64] = [joints[j * 3], joints[j * 3 + 1], joints[j * 3 + 2]]
+                star: darray[f64] = OverlayLines::points(at, rgba, joint_size)
+                for v in 0..<star.count |out, star|:
+                    out.push(star[v])
+            out

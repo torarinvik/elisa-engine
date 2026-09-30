@@ -1,0 +1,25 @@
+include "../src/animation/skeleton_display_index.elisa"
+
+extend SkeletonDisplayIndex:
+    # role and display_lines carry the exact selection, hover, other-joint
+    # and bones-only rules as their own proved ensures; these wrappers
+    # restate the bounds a caller relies on.
+    def prove_role_range(joint: i64, selected: i64, hovered: i64, joints: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 2
+        role(joint, selected, hovered, joints)
+
+    def prove_outside_normal(joint: i64, selected: i64, hovered: i64, joints: i64) -> i64:
+        requires joint >= joints
+        ensure result == 0
+        role(joint, selected, hovered, joints)
+
+    def prove_lines_bounded(joints: i64, bones: i64, show_joints: bool) -> i64:
+        ensure result >= 0
+        ensure result <= 1024
+        display_lines(joints, bones, show_joints)
+
+    def prove_xray_off(xray: bool) -> bool:
+        requires xray
+        ensure not result
+        depth_tested(xray)

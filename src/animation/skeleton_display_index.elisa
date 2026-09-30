@@ -1,0 +1,43 @@
+# Integer rules for SkeletonDisplay, split out so the prover can check them:
+# which highlight a joint shows, how many line records a skeleton draws, and
+# how the x-ray toggle maps to depth testing.
+module SkeletonDisplayIndex:
+    public:
+        const NORMAL: i64 = 0
+        const HOVERED: i64 = 1
+        const SELECTED: i64 = 2
+        const MAX_JOINTS: i64 = 256
+
+        # Highlight of `joint`: SELECTED when it is the selected joint,
+        # HOVERED when it is only hovered, else NORMAL. Selection wins over
+        # hover, and a joint outside the skeleton is NORMAL.
+        def role(joint: i64, selected: i64, hovered: i64, joints: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 2
+            ensure joint >= 0 or result == 0
+            ensure joint < joints or result == 0
+            ensure joint == selected or joint == hovered or result == 0
+            ensure joint < 0 or joint >= joints or joint != selected or result == 2
+            ensure joint < 0 or joint >= joints or joint != hovered or joint == selected or result == 1
+            return NORMAL if joint < 0 or joint >= joints
+            return SELECTED if joint == selected
+            return HOVERED if joint == hovered
+            NORMAL
+
+        # Line records for a skeleton of `joints` joints with `bones` bones:
+        # one per bone plus a three-line star per joint when joints are
+        # shown. Zero for a negative or oversized skeleton or more bones than
+        # joints.
+        def display_lines(joints: i64, bones: i64, show_joints: bool) -> i64:
+            ensure result >= 0
+            ensure result <= 1024
+            ensure show_joints or result == bones or joints < 0 or joints > 256 or bones < 0 or bones > joints
+            return 0 if joints < 0 or joints > MAX_JOINTS or bones < 0 or bones > joints
+            return bones + joints * 3 if show_joints
+            bones
+
+        # X-ray draws bones through the mesh, so it turns depth testing off.
+        def depth_tested(xray: bool) -> bool:
+            ensure result or xray
+            ensure not result or not xray
+            not xray
