@@ -1,0 +1,598 @@
+# Editable GLB animation document (plan M06). A binary glTF is loaded as its
+# exact bytes plus an index over them: the node hierarchy with rest TRS, and
+# every animation's channels with their key times and values decoded to f32
+# tracks. Edits write through to both the decoded track and the accessor's
+# own bytes in the BIN chunk, in place and at the same length, so export is
+# the byte buffer itself: nothing is re-serialised, untouched nodes, meshes,
+# skins and buffers stay byte-identical, and an unedited document exports
+# the file it was loaded from.
+#
+# A document exists only once the whole file has been validated. Every
+# chunk and every accessor range goes through the proved GlbLayout policy
+# (proof/glb_layout.elisa) before a byte of it is read, and any failure
+# raises a GlbError with no partially built document left behind.
+#
+# Supported: glTF 2.0 GLB with the animation data in the embedded BIN chunk
+# as tightly packed f32 accessors. Sparse, strided, normalized-integer or
+# external-buffer animation accessors are refused (UnsupportedLayout or
+# UnsupportedComponentType) rather than half-decoded. Accessors no animation
+# uses (meshes, skins, images) are never touched.
+include "../math/geometry.elisa"
+include "./glb_layout.elisa"
+include "./gltf_json.elisa"
+
+module GlbDocument:
+    public:
+        const MAGIC: u32 = 1179937895
+        const VERSION: u32 = 2
+        const CHUNK_JSON: u32 = 1313821514
+        const CHUNK_BIN: u32 = 5130562
+        const COMPONENT_FLOAT: i64 = 5126
+        const MAX_NODES: usize = 65536
+        const MAX_BYTES: usize = 2147483648
+
+        error GlbError:
+            OpenFailed
+            ReadFailed
+            WriteFailed
+            BadMagic
+            UnsupportedVersion
+            LengthMismatch
+            Truncated
+            BadChunk
+            BadJson
+            MissingField
+            IndexOutOfRange
+            AccessorOutOfRange
+            UnsupportedComponentType
+            UnsupportedLayout
+            AccessorShape
+            InvalidHierarchy
+            Capacity
+
+        enum TargetPath:
+            Translation
+            Rotation
+            Scale
+            Weights
+
+        enum Interpolation:
+            Linear
+            Step
+            CubicSpline
+
+        struct Node:
+            name_start: usize
+            name_length: usize
+            # -1 for a root.
+            parent: mutable i64
+            rest: Geometry::Transform
+            # The node gives a matrix instead of TRS; `rest` is then identity.
+            has_matrix: bool
+
+        struct Channel:
+            node: usize
+            path: TargetPath
+            interpolation: Interpolation
+            # Track slots: key times, and the values those keys carry.
+            input: usize
+            output: usize
+
+        # One decoded f32 accessor.
+        struct Track:
+            accessor: usize
+            # File offset of the accessor's first byte.
+            byte_start: usize
+            count: usize
+            components: usize
+            value_start: usize
+
+        struct Animation:
+            name_start: usize
+            name_length: usize
+            first_channel: usize
+            channel_count: usize
+
+        affine struct Document:
+            private:
+                bytes: mutable darray[u8]
+                nodes: mutable darray[Node]
+                animations: mutable darray[Animation]
+                channels: mutable darray[Channel]
+                tracks: mutable darray[Track]
+                values: mutable darray[f32]
+                bin_start: mutable usize
+                bin_length: mutable usize
+                edits: mutable usize
+
+    private:
+        const module Io:
+            CHUNK: usize = 65536
+
+        @link_name("fopen")
+        extern c_fopen(path: u8&, mode: u8&) -> mutable heap void&? can[Blocking.IO, Memory.Allocate]
+        @link_name("fclose")
+        extern c_fclose(stream: heap void&) -> i32 can[Blocking.IO, Memory.Release]
+        @link_name("fread")
+        extern c_fread(buffer: mutable void&, size: usize, count: usize, stream: void&) -> usize can[Blocking.IO]
+        @link_name("fwrite")
+        extern c_fwrite(buffer: void&, size: usize, count: usize, stream: void&) -> usize can[Blocking.IO]
+
+        # Everything a parse needs besides the document it fills.
+        struct Index:
+            tokens: mutable darray[GltfJson::Token]
+            # Accessor index -> track slot, -1 until decoded.
+            slots: mutable darray[i64]
+            accessors: mutable i64
+            views: mutable i64
+
+        def f32_ref(value: f32&) -> f32:
+            value
+
+        def u32_ref(value: u32&) -> u32:
+            value
+
+        def bits_float(value: u32) -> f32:
+            f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
+
+        def float_bits(value: f32) -> u32:
+            u32_ref((&value).cast[u32&] can Unsafe.PointerCast)
+
+        def le_u32(bytes: darray[u8]&, at: usize) -> u32:
+            bytes[at].u32() | (bytes[at + 1].u32() << 8) | (bytes[at + 2].u32() << 16) | (bytes[at + 3].u32() << 24)
+
+        def empty_document() -> Document:
+            Document{bytes: [], nodes: [], animations: [], channels: [], tracks: [], values: [], bin_start: 0, bin_length: 0, edits: 0}
+
+        def member(doc: Document&, index: Index&, object: i64, key: sview) -> i64:
+            GltfJson::member(&doc.bytes, &index.tokens, object, key)
+
+        # An optional non-negative integer member: `fallback` when absent.
+        def optional_index(doc: Document&, index: Index&, object: i64, key: sview, fallback: i64) -> i64 error[GlbError]:
+            at: i64 = member(doc, index, object, key)
+            return fallback if at < 0
+            value: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, at)
+            raise GlbError.BadJson if value < 0
+            value
+
+        def required_index(doc: Document&, index: Index&, object: i64, key: sview) -> i64 error[GlbError]:
+            at: i64 = member(doc, index, object, key)
+            raise GlbError.MissingField if at < 0
+            value: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, at)
+            raise GlbError.BadJson if value < 0
+            value
+
+        # An optional array member: -1 when absent, BadJson when not an array.
+        def optional_array(doc: Document&, index: Index&, object: i64, key: sview) -> i64 error[GlbError]:
+            at: i64 = member(doc, index, object, key)
+            return -1 if at < 0
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, at) != GltfJson::KIND_ARRAY
+            at
+
+        def string_is(doc: Document&, index: Index&, token: i64, text: sview) -> bool:
+            return false if GltfJson::kind_of(&index.tokens, token) != GltfJson::KIND_STRING
+            GltfJson::text_is(&doc.bytes, index.tokens[token.usize()], text)
+
+        # `count` numbers of a fixed-length array member, or false.
+        def read_numbers(doc: Document&, index: Index&, array: i64, count: usize, out: mutable f64[16]&) -> bool:
+            return false if GltfJson::kind_of(&index.tokens, array) != GltfJson::KIND_ARRAY
+            return false if GltfJson::child_count(&index.tokens, array) != count
+            mutable ok: bool = true
+            for k in 0..<count:
+                out[k] <- GltfJson::number_value(&doc.bytes, &index.tokens, GltfJson::element(&index.tokens, array, k), &ok)
+            ok
+
+        def vec3_member(doc: Document&, index: Index&, object: i64, key: sview, fallback: Geometry::Vec3) -> Geometry::Vec3 error[GlbError]:
+            at: i64 = member(doc, index, object, key)
+            return fallback if at < 0
+            numbers: mutable f64[16] = zeroed
+            raise GlbError.BadJson if not read_numbers(doc, index, at, 3, &numbers)
+            Geometry::Vec3{x: numbers[0].f32(), y: numbers[1].f32(), z: numbers[2].f32()}
+
+        def quat_member(doc: Document&, index: Index&, object: i64, key: sview) -> Geometry::Quat error[GlbError]:
+            at: i64 = member(doc, index, object, key)
+            return Geometry::quat_identity() if at < 0
+            numbers: mutable f64[16] = zeroed
+            raise GlbError.BadJson if not read_numbers(doc, index, at, 4, &numbers)
+            Geometry::Quat{x: numbers[0].f32(), y: numbers[1].f32(), z: numbers[2].f32(), w: numbers[3].f32()}
+
+        # Name member as a byte range; an absent name is empty.
+        def name_range(doc: Document&, index: Index&, object: i64, start: mutable usize&, length: mutable usize&) -> bool:
+            at: i64 = member(doc, index, object, "name")
+            start <- 0
+            length <- 0
+            return true if at < 0
+            return false if GltfJson::kind_of(&index.tokens, at) != GltfJson::KIND_STRING
+            token: GltfJson::Token = index.tokens[at.usize()]
+            start <- token.start
+            length <- token.stop - token.start
+            true
+
+        def components_of(doc: Document&, index: Index&, accessor: i64) -> usize:
+            at: i64 = member(doc, index, accessor, "type")
+            return 1 if string_is(doc, index, at, "SCALAR")
+            return 2 if string_is(doc, index, at, "VEC2")
+            return 3 if string_is(doc, index, at, "VEC3")
+            return 4 if string_is(doc, index, at, "VEC4")
+            return 16 if string_is(doc, index, at, "MAT4")
+            0
+
+        # Decode accessor `which` into a track once, returning its slot.
+        def decode_track(doc: mutable Document&, index: mutable Index&, which: i64) -> usize error[GlbError]:
+            raise GlbError.IndexOutOfRange if which < 0 or which.usize() >= index.slots.count
+            known: i64 = index.slots[which.usize()]
+            return known.usize() if known >= 0
+            accessor: i64 = GltfJson::element(&index.tokens, index.accessors, which.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, accessor) != GltfJson::KIND_OBJECT
+            raise GlbError.UnsupportedLayout if member(doc, index, accessor, "sparse") >= 0
+            raise GlbError.UnsupportedLayout if member(doc, index, accessor, "bufferView") < 0
+            view_index: i64 = try required_index(doc, index, accessor, "bufferView")
+            component: i64 = try required_index(doc, index, accessor, "componentType")
+            raise GlbError.UnsupportedComponentType if component != COMPONENT_FLOAT
+            normalized: i64 = member(doc, index, accessor, "normalized")
+            raise GlbError.UnsupportedComponentType if normalized >= 0 and not GltfJson::text_is(&doc.bytes, index.tokens[normalized.usize()], "false")
+            components: usize = components_of(doc, index, accessor)
+            raise GlbError.AccessorShape if components == 0
+            count: i64 = try required_index(doc, index, accessor, "count")
+            raise GlbError.AccessorShape if count == 0
+            accessor_offset: i64 = try optional_index(doc, index, accessor, "byteOffset", 0)
+            raise GlbError.IndexOutOfRange if index.views < 0 or view_index.usize() >= GltfJson::child_count(&index.tokens, index.views)
+            view: i64 = GltfJson::element(&index.tokens, index.views, view_index.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, view) != GltfJson::KIND_OBJECT
+            buffer: i64 = try required_index(doc, index, view, "buffer")
+            raise GlbError.UnsupportedLayout if buffer != 0 or doc.bin_length == 0
+            view_offset: i64 = try optional_index(doc, index, view, "byteOffset", 0)
+            view_length: i64 = try required_index(doc, index, view, "byteLength")
+            element_bytes: i64 = (components * 4).i64()
+            stride: i64 = try optional_index(doc, index, view, "byteStride", element_bytes)
+            raise GlbError.UnsupportedLayout if stride != element_bytes
+            span_bytes: i64 = GlbLayout::span(count, element_bytes)
+            raise GlbError.AccessorOutOfRange if span_bytes < 0
+            raise GlbError.AccessorOutOfRange if not GlbLayout::accessor_fits(view_offset, view_length, accessor_offset, span_bytes, doc.bin_length.i64())
+            raise GlbError.AccessorOutOfRange if (view_offset + accessor_offset) % 4 != 0
+            start: usize = doc.bin_start + (view_offset + accessor_offset).usize()
+            slot: usize = doc.tracks.count
+            value_start: usize = doc.values.count
+            floats: usize = count.usize() * components
+            for k in 0..<floats:
+                doc.values.push(bits_float(le_u32(&doc.bytes, start + k * 4)))
+            doc.tracks.push(Track{accessor: which.usize(), byte_start: start, count: count.usize(), components: components, value_start: value_start})
+            index.slots[which.usize()] <- slot.i64()
+            slot
+
+        def read_container(doc: mutable Document&) -> usize error[GlbError]:
+            total: usize = doc.bytes.count
+            raise GlbError.Capacity if total > MAX_BYTES
+            raise GlbError.Truncated if total < 12
+            raise GlbError.BadMagic if le_u32(&doc.bytes, 0) != MAGIC
+            raise GlbError.UnsupportedVersion if le_u32(&doc.bytes, 4) != VERSION
+            raise GlbError.LengthMismatch if le_u32(&doc.bytes, 8).usize() != total
+            raise GlbError.Truncated if total < 20
+            json_length: usize = le_u32(&doc.bytes, 12).usize()
+            raise GlbError.BadChunk if le_u32(&doc.bytes, 16) != CHUNK_JSON or json_length == 0
+            raise GlbError.Truncated if not GlbLayout::range_fits(20, json_length.i64(), total.i64())
+            next: usize = 20 + json_length
+            if next < total:
+                raise GlbError.Truncated if total - next < 8
+                bin_length: usize = le_u32(&doc.bytes, next).usize()
+                raise GlbError.Truncated if not GlbLayout::range_fits((next + 8).i64(), bin_length.i64(), total.i64())
+                if le_u32(&doc.bytes, next + 4) == CHUNK_BIN:
+                    doc.bin_start <- next + 8
+                    doc.bin_length <- bin_length
+            json_length
+
+        def read_nodes(doc: mutable Document&, index: mutable Index&, root: i64) -> usize error[GlbError]:
+            array: i64 = try optional_array(doc, index, root, "nodes")
+            return 0 if array < 0
+            count: usize = GltfJson::child_count(&index.tokens, array)
+            raise GlbError.Capacity if count > MAX_NODES
+            for n in 0..<count:
+                node: i64 = GltfJson::element(&index.tokens, array, n)
+                raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, node) != GltfJson::KIND_OBJECT
+                mutable name_start: usize = 0
+                mutable name_length: usize = 0
+                raise GlbError.BadJson if not name_range(doc, index, node, &name_start, &name_length)
+                translation: Geometry::Vec3 = try vec3_member(doc, index, node, "translation", Geometry::vec3_zero())
+                rotation: Geometry::Quat = try quat_member(doc, index, node, "rotation")
+                scale: Geometry::Vec3 = try vec3_member(doc, index, node, "scale", Geometry::vec3_one())
+                has_matrix: bool = member(doc, index, node, "matrix") >= 0
+                doc.nodes.push(Node{name_start: name_start, name_length: name_length, parent: -1, rest: Geometry::Transform{position: translation, rotation: rotation, scale: scale}, has_matrix: has_matrix})
+            for n in 0..<count:
+                node: i64 = GltfJson::element(&index.tokens, array, n)
+                children: i64 = try optional_array(doc, index, node, "children")
+                for c in 0..<GltfJson::child_count(&index.tokens, children):
+                    child: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, GltfJson::element(&index.tokens, children, c))
+                    raise GlbError.BadJson if child < 0
+                    raise GlbError.IndexOutOfRange if child.usize() >= count
+                    raise GlbError.InvalidHierarchy if child.usize() == n or doc.nodes[child.usize()].parent >= 0
+                    doc.nodes[child.usize()].parent <- n.i64()
+            # With one parent each, a hierarchy is a forest unless some walk
+            # up from a node runs longer than the node count.
+            for n in 0..<count:
+                mutable at: i64 = doc.nodes[n].parent
+                mutable steps: usize = 0
+                while at >= 0 and steps <= count:
+                    at <- doc.nodes[at.usize()].parent
+                    steps <- steps + 1
+                raise GlbError.InvalidHierarchy if steps > count
+            count
+
+        def read_channel(doc: mutable Document&, index: mutable Index&, channel: i64, samplers: i64) -> Channel error[GlbError]:
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, channel) != GltfJson::KIND_OBJECT
+            sampler_index: i64 = try required_index(doc, index, channel, "sampler")
+            raise GlbError.IndexOutOfRange if sampler_index.usize() >= GltfJson::child_count(&index.tokens, samplers)
+            sampler: i64 = GltfJson::element(&index.tokens, samplers, sampler_index.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, sampler) != GltfJson::KIND_OBJECT
+            target: i64 = member(doc, index, channel, "target")
+            raise GlbError.MissingField if target < 0
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, target) != GltfJson::KIND_OBJECT
+            node: i64 = try required_index(doc, index, target, "node")
+            raise GlbError.IndexOutOfRange if node.usize() >= doc.nodes.count
+            path_token: i64 = member(doc, index, target, "path")
+            raise GlbError.MissingField if path_token < 0
+            path: TargetPath =
+                if string_is(doc, index, path_token, "translation"):
+                    TargetPath.Translation
+                elif string_is(doc, index, path_token, "rotation"):
+                    TargetPath.Rotation
+                elif string_is(doc, index, path_token, "scale"):
+                    TargetPath.Scale
+                elif string_is(doc, index, path_token, "weights"):
+                    TargetPath.Weights
+                else:
+                    raise GlbError.UnsupportedLayout
+            interpolation_token: i64 = member(doc, index, sampler, "interpolation")
+            interpolation: Interpolation =
+                if interpolation_token < 0 or string_is(doc, index, interpolation_token, "LINEAR"):
+                    Interpolation.Linear
+                elif string_is(doc, index, interpolation_token, "STEP"):
+                    Interpolation.Step
+                elif string_is(doc, index, interpolation_token, "CUBICSPLINE"):
+                    Interpolation.CubicSpline
+                else:
+                    raise GlbError.BadJson
+            input_accessor: i64 = try required_index(doc, index, sampler, "input")
+            output_accessor: i64 = try required_index(doc, index, sampler, "output")
+            input: usize = try decode_track(doc, index, input_accessor)
+            output: usize = try decode_track(doc, index, output_accessor)
+            times: Track = doc.tracks[input]
+            values: Track = doc.tracks[output]
+            raise GlbError.AccessorShape if times.components != 1
+            wanted: usize = 4 if path == TargetPath.Rotation else (1 if path == TargetPath.Weights else 3)
+            raise GlbError.AccessorShape if values.components != wanted
+            per_key: usize = 3 if interpolation == Interpolation.CubicSpline else 1
+            if path == TargetPath.Weights:
+                raise GlbError.AccessorShape if values.count % (times.count * per_key) != 0
+            else:
+                raise GlbError.AccessorShape if values.count != times.count * per_key
+            for k in 1..<times.count:
+                raise GlbError.AccessorShape if doc.values[times.value_start + k] < doc.values[times.value_start + k - 1]
+            Channel{node: node.usize(), path: path, interpolation: interpolation, input: input, output: output}
+
+        def read_animations(doc: mutable Document&, index: mutable Index&, root: i64) -> usize error[GlbError]:
+            array: i64 = try optional_array(doc, index, root, "animations")
+            return 0 if array < 0
+            count: usize = GltfJson::child_count(&index.tokens, array)
+            for a in 0..<count:
+                animation: i64 = GltfJson::element(&index.tokens, array, a)
+                raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, animation) != GltfJson::KIND_OBJECT
+                mutable name_start: usize = 0
+                mutable name_length: usize = 0
+                raise GlbError.BadJson if not name_range(doc, index, animation, &name_start, &name_length)
+                channels: i64 = try optional_array(doc, index, animation, "channels")
+                samplers: i64 = try optional_array(doc, index, animation, "samplers")
+                raise GlbError.MissingField if channels < 0 or samplers < 0
+                first: usize = doc.channels.count
+                for c in 0..<GltfJson::child_count(&index.tokens, channels):
+                    channel: Channel = try read_channel(doc, index, GltfJson::element(&index.tokens, channels, c), samplers)
+                    doc.channels.push(channel)
+                doc.animations.push(Animation{name_start: name_start, name_length: name_length, first_channel: first, channel_count: doc.channels.count - first})
+            count
+
+        def build(doc: mutable Document&) -> bool error[GlbError]:
+            json_length: usize = try read_container(doc)
+            mutable index: Index = Index{tokens: [], slots: [], accessors: -1, views: -1}
+            raise GlbError.BadJson if not GltfJson::tokenize(&doc.bytes, 20, 20 + json_length, &index.tokens)
+            root: i64 = 0
+            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, root) != GltfJson::KIND_OBJECT
+            index.accessors <- try optional_array(doc, &index, root, "accessors")
+            index.views <- try optional_array(doc, &index, root, "bufferViews")
+            for k in 0..<GltfJson::child_count(&index.tokens, index.accessors):
+                index.slots.push(-1)
+            buffers: i64 = try optional_array(doc, &index, root, "buffers")
+            first_buffer: i64 = GltfJson::element(&index.tokens, buffers, 0)
+            # Buffer 0 is the BIN chunk only when it names no external file.
+            if doc.bin_length > 0 and (first_buffer < 0 or member(doc, &index, first_buffer, "uri") >= 0):
+                doc.bin_length <- 0
+            _ = try read_nodes(doc, &index, root)
+            _ = try read_animations(doc, &index, root)
+            true
+
+    public:
+        # An empty document: no bytes, nodes or animations. Useful as the
+        # fallback arm of a `catch` around `load`.
+        def Document() -> Document:
+            empty_document()
+
+        # Validate and index a copy of `source`.
+        def from_bytes(source: darray[u8]&) -> Document error[GlbError]:
+            mutable doc: Document = empty_document()
+            for k in 0..<source.count:
+                doc.bytes.push(source[k])
+            _ = try build(&doc)
+            return move doc
+
+        def load(path: cstr) -> Document error[GlbError]:
+            mutable doc: Document = empty_document()
+            can Blocking.IO, Memory.Allocate, Memory.Release:
+                handle: mutable heap void&? = c_fopen(path.cast[u8&], "rb".cast[u8&])
+                raise GlbError.OpenFailed if handle == null
+                stream: mutable heap void& = handle
+                chunk: mutable u8[Io::CHUNK] = zeroed
+                mutable more: bool = true
+                while more:
+                    got: usize = c_fread((&chunk[0]).cast[mutable void&], 1, Io::CHUNK, stream)
+                    for k in 0..<got:
+                        doc.bytes.push(chunk[k])
+                    more <- got == Io::CHUNK and doc.bytes.count <= MAX_BYTES
+                _ = c_fclose(stream)
+            _ = try build(&doc)
+            return move doc
+
+        # Write the document, edits included, to `path`; the byte count.
+        def save(doc: Document&, path: cstr) -> usize error[GlbError]:
+            can Blocking.IO, Memory.Allocate, Memory.Release:
+                handle: mutable heap void&? = c_fopen(path.cast[u8&], "wb".cast[u8&])
+                raise GlbError.OpenFailed if handle == null
+                stream: mutable heap void& = handle
+                written: usize = c_fwrite((&doc.bytes[0]).cast[void&], 1, doc.bytes.count, stream)
+                closed: i32 = c_fclose(stream)
+                raise GlbError.WriteFailed if written != doc.bytes.count or closed != 0
+                return written
+
+        def byte_count(doc: Document&) -> usize:
+            doc.bytes.count
+
+        def byte_at(doc: Document&, at: usize) -> u8:
+            return 0 if at >= doc.bytes.count
+            doc.bytes[at]
+
+        # Offset of the first byte that differs from `other`, or -1 when the
+        # two are identical (a length difference counts at the shorter end).
+        def first_difference(doc: Document&, other: Document&) -> i64:
+            shorter: usize = doc.bytes.count if doc.bytes.count < other.bytes.count else other.bytes.count
+            mutable at: usize = 0
+            while at < shorter and doc.bytes[at] == other.bytes[at]:
+                at <- at + 1
+            return -1 if at == shorter and doc.bytes.count == other.bytes.count
+            at.i64()
+
+        # Offset of the last differing byte, or -1 when identical.
+        def last_difference(doc: Document&, other: Document&) -> i64:
+            return first_difference(doc, other) if doc.bytes.count != other.bytes.count
+            mutable at: usize = doc.bytes.count
+            while at > 0 and doc.bytes[at - 1] == other.bytes[at - 1]:
+                at <- at - 1
+            (at.i64() - 1)
+
+        def edit_count(doc: Document&) -> usize:
+            doc.edits
+
+        def bin_start(doc: Document&) -> usize:
+            doc.bin_start
+
+        def bin_length(doc: Document&) -> usize:
+            doc.bin_length
+
+        # Skeleton ---------------------------------------------------------
+
+        def node_count(doc: Document&) -> usize:
+            doc.nodes.count
+
+        def node(doc: Document&, at: usize) -> Node:
+            return Node{name_start: 0, name_length: 0, parent: -1, rest: Geometry::transform_identity(), has_matrix: false} if at >= doc.nodes.count
+            doc.nodes[at]
+
+        def node_parent(doc: Document&, at: usize) -> i64:
+            return -1 if at >= doc.nodes.count
+            doc.nodes[at].parent
+
+        def node_rest(doc: Document&, at: usize) -> Geometry::Transform:
+            return Geometry::transform_identity() if at >= doc.nodes.count
+            doc.nodes[at].rest
+
+        # The node's name as the file spells it (escapes are not decoded).
+        # Borrowed from the document; valid while it lives.
+        # Copy node `at`'s name bytes (as the file spells them) into `out`,
+        # which is cleared first. The count copied.
+        def node_name(doc: Document&, at: usize, out: mutable darray[u8]&) -> usize:
+            out.clear()
+            return 0 if at >= doc.nodes.count
+            for k in 0..<doc.nodes[at].name_length:
+                out.push(doc.bytes[doc.nodes[at].name_start + k])
+            out.count
+
+        def node_name_is(doc: Document&, at: usize, name: sview) -> bool:
+            return false if at >= doc.nodes.count
+            held: Node = doc.nodes[at]
+            GltfJson::text_is(&doc.bytes, GltfJson::Token{kind: GltfJson::KIND_STRING, start: held.name_start, stop: held.name_start + held.name_length, size: 0, after: 0}, name)
+
+        def find_node(doc: Document&, name: sview) -> i64:
+            mutable found: i64 = -1
+            for n in 0..<doc.nodes.count:
+                found <- n.i64() if found < 0 and node_name_is(doc, n, name)
+            found
+
+        # Animations -------------------------------------------------------
+
+        def animation_count(doc: Document&) -> usize:
+            doc.animations.count
+
+        def animation_name(doc: Document&, animation: usize, out: mutable darray[u8]&) -> usize:
+            out.clear()
+            return 0 if animation >= doc.animations.count
+            for k in 0..<doc.animations[animation].name_length:
+                out.push(doc.bytes[doc.animations[animation].name_start + k])
+            out.count
+
+        def find_animation(doc: Document&, name: sview) -> i64:
+            mutable found: i64 = -1
+            for a in 0..<doc.animations.count:
+                held: Animation = doc.animations[a]
+                same: bool = GltfJson::text_is(&doc.bytes, GltfJson::Token{kind: GltfJson::KIND_STRING, start: held.name_start, stop: held.name_start + held.name_length, size: 0, after: 0}, name)
+                found <- a.i64() if found < 0 and same
+            found
+
+        def channel_count(doc: Document&, animation: usize) -> usize:
+            return 0 if animation >= doc.animations.count
+            doc.animations[animation].channel_count
+
+        # Channel `at` of an animation. Out of range gives node 0 with empty
+        # slots; check channel_count first.
+        def channel(doc: Document&, animation: usize, at: usize) -> Channel:
+            return Channel{node: 0, path: TargetPath.Translation, interpolation: Interpolation.Linear, input: 0, output: 0} if animation >= doc.animations.count or at >= doc.animations[animation].channel_count
+            doc.channels[doc.animations[animation].first_channel + at]
+
+        # The channel animating `node` along `path`, or -1.
+        def find_channel(doc: Document&, animation: usize, node: usize, path: TargetPath) -> i64:
+            mutable found: i64 = -1
+            for c in 0..<channel_count(doc, animation):
+                held: Channel = channel(doc, animation, c)
+                found <- c.i64() if found < 0 and held.node == node and held.path == path
+            found
+
+        # Key tracks -------------------------------------------------------
+
+        def track_count(doc: Document&) -> usize:
+            doc.tracks.count
+
+        def track(doc: Document&, slot: usize) -> Track:
+            return Track{accessor: 0, byte_start: 0, count: 0, components: 0, value_start: 0} if slot >= doc.tracks.count
+            doc.tracks[slot]
+
+        def key_count(doc: Document&, slot: usize) -> usize:
+            track(doc, slot).count
+
+        def track_value(doc: Document&, slot: usize, key: usize, component: usize) -> f32:
+            held: Track = track(doc, slot)
+            return 0.0 if key >= held.count or component >= held.components
+            doc.values[held.value_start + key * held.components + component]
+
+        # Replace one value. The accessor's bytes are rewritten in place, so
+        # the file keeps its length and every other byte. False (and no
+        # change) when out of range or not finite.
+        def set_track_value(doc: mutable Document&, slot: usize, key: usize, component: usize, value: f32) -> bool:
+            return false if slot >= doc.tracks.count
+            held: Track = doc.tracks[slot]
+            return false if key >= held.count or component >= held.components
+            return false if value != value or value > 3.4e38 or value < -3.4e38
+            element: usize = key * held.components + component
+            doc.values[held.value_start + element] <- value
+            bits: u32 = float_bits(value)
+            at: usize = held.byte_start + element * 4
+            doc.bytes[at] <- (bits & 255).u8()
+            doc.bytes[at + 1] <- ((bits >> 8) & 255).u8()
+            doc.bytes[at + 2] <- ((bits >> 16) & 255).u8()
+            doc.bytes[at + 3] <- ((bits >> 24) & 255).u8()
+            doc.edits <- doc.edits + 1
+            true

@@ -1,0 +1,255 @@
+# A flat JSON tokenizer for the glTF chunk of a GLB (plan M06). It builds no
+# DOM: each value becomes one token holding its byte range in the caller's
+# buffer and the index of the token after its subtree, so members and
+# elements are walked by skipping. Nothing is copied or decoded, which keeps
+# the source bytes the single truth a byte-identical export writes back.
+#
+# The grammar is strict RFC 8259 except that string contents are not decoded:
+# escapes are skipped over and left as written. glTF keys never need them,
+# and names come back exactly as the file spells them.
+module GltfJson:
+    public:
+        const KIND_OBJECT: u8 = 1
+        const KIND_ARRAY: u8 = 2
+        const KIND_STRING: u8 = 3
+        const KIND_PRIMITIVE: u8 = 4
+        const MAX_DEPTH: usize = 64
+
+        struct Token:
+            kind: u8
+            # Byte range in the buffer; a string's excludes its quotes.
+            start: usize
+            stop: usize
+            # Members of an object, elements of an array.
+            size: usize
+            # The first token past this value's subtree.
+            after: usize
+
+    private:
+        const module Expect:
+            VALUE: u8 = 0
+            KEY_OR_CLOSE: u8 = 1
+            COLON: u8 = 2
+            COMMA_OR_CLOSE: u8 = 3
+            KEY: u8 = 4
+            VALUE_OR_CLOSE: u8 = 5
+            DONE: u8 = 6
+
+        @link_name("strtod")
+        extern c_strtod(nptr: u8&, endptr: u8&?) -> f64
+
+        def is_digit(c: u8) -> bool:
+            c >= 48 and c <= 57
+
+        def is_space(c: u8) -> bool:
+            c == 32 or c == 9 or c == 10 or c == 13
+
+        # End of a string whose opening quote is at `at - 1`, or `stop` when
+        # it is unterminated or holds a raw control byte.
+        def string_end(bytes: darray[u8]&, at: usize, stop: usize) -> usize:
+            mutable i: usize = at
+            mutable found: usize = stop
+            while i < stop and found == stop:
+                c: u8 = bytes[i]
+                if c == 34:
+                    found <- i
+                elif c < 32:
+                    i <- stop
+                elif c == 92:
+                    i <- i + 2
+                else:
+                    i <- i + 1
+            found
+
+        def literal_is(bytes: darray[u8]&, start: usize, stop: usize, word: sview) -> bool:
+            return false if stop - start != word.len.usize()
+            mutable same: bool = true
+            for k in 0..<word.len.usize():
+                same <- false if bytes[start + k].i64() != word[k.i64()]
+            same
+
+        # RFC 8259 number: -?(0|[1-9][0-9]*)(.[0-9]+)?([eE][+-]?[0-9]+)?
+        def number_valid(bytes: darray[u8]&, start: usize, stop: usize) -> bool:
+            mutable i: usize = start
+            i <- i + 1 if i < stop and bytes[i] == 45
+            return false if i >= stop or not is_digit(bytes[i])
+            if bytes[i] == 48:
+                i <- i + 1
+            else:
+                while i < stop and is_digit(bytes[i]):
+                    i <- i + 1
+            if i < stop and bytes[i] == 46:
+                i <- i + 1
+                return false if i >= stop or not is_digit(bytes[i])
+                while i < stop and is_digit(bytes[i]):
+                    i <- i + 1
+            if i < stop and (bytes[i] == 101 or bytes[i] == 69):
+                i <- i + 1
+                i <- i + 1 if i < stop and (bytes[i] == 43 or bytes[i] == 45)
+                return false if i >= stop or not is_digit(bytes[i])
+                while i < stop and is_digit(bytes[i]):
+                    i <- i + 1
+            i == stop
+
+        def primitive_valid(bytes: darray[u8]&, start: usize, stop: usize) -> bool:
+            return true if literal_is(bytes, start, stop, "true") or literal_is(bytes, start, stop, "false") or literal_is(bytes, start, stop, "null")
+            number_valid(bytes, start, stop)
+
+        def primitive_char(c: u8) -> bool:
+            is_digit(c) or c == 45 or c == 43 or c == 46 or (c >= 97 and c <= 122) or (c >= 65 and c <= 90)
+
+        # Count a new value against its enclosing array.
+        def count_element(tokens: mutable darray[Token]&, open_list: darray[usize]&):
+            if open_list.count > 0:
+                parent: usize = open_list[open_list.count - 1]
+                if tokens[parent].kind == KIND_ARRAY:
+                    tokens[parent].size <- tokens[parent].size + 1
+
+        def after_value(open_list: darray[usize]&) -> u8:
+            Expect::DONE if open_list.count == 0 else Expect::COMMA_OR_CLOSE
+
+    public:
+        # Tokenize `bytes[start, stop)` into `tokens`, which is cleared first.
+        # False on any syntax error, an empty_state document, or nesting deeper than
+        # MAX_DEPTH; the tokens are then meaningless.
+        def tokenize(bytes: darray[u8]&, start: usize, stop: usize, tokens: mutable darray[Token]&) -> bool:
+            tokens.clear()
+            return false if stop > bytes.count or start >= stop
+            open_list: mutable darray[usize] = []
+            mutable expect: u8 = Expect::VALUE
+            mutable i: usize = start
+            mutable ok: bool = true
+            while ok and i < stop:
+                c: u8 = bytes[i]
+                if is_space(c):
+                    i <- i + 1
+                elif c == 123 or c == 91:
+                    if (expect != Expect::VALUE and expect != Expect::VALUE_OR_CLOSE) or open_list.count >= MAX_DEPTH:
+                        ok <- false
+                    else:
+                        count_element(tokens, &open_list)
+                        kind: u8 = KIND_OBJECT if c == 123 else KIND_ARRAY
+                        open_list.push(tokens.count)
+                        tokens.push(Token{kind: kind, start: i, stop: i, size: 0, after: 0})
+                        expect <- Expect::KEY_OR_CLOSE if c == 123 else Expect::VALUE_OR_CLOSE
+                        i <- i + 1
+                elif c == 125 or c == 93:
+                    kind: u8 = KIND_OBJECT if c == 125 else KIND_ARRAY
+                    empty_state: u8 = Expect::KEY_OR_CLOSE if c == 125 else Expect::VALUE_OR_CLOSE
+                    if open_list.count == 0 or (expect != empty_state and expect != Expect::COMMA_OR_CLOSE):
+                        ok <- false
+                    else:
+                        top: usize = open_list[open_list.count - 1]
+                        if tokens[top].kind != kind:
+                            ok <- false
+                        else:
+                            tokens[top].stop <- i + 1
+                            tokens[top].after <- tokens.count
+                            _ = open_list.pop()
+                            expect <- after_value(&open_list)
+                            i <- i + 1
+                elif c == 34:
+                    end: usize = string_end(bytes, i + 1, stop)
+                    if end >= stop:
+                        ok <- false
+                    elif expect == Expect::KEY_OR_CLOSE or expect == Expect::KEY:
+                        top: usize = open_list[open_list.count - 1]
+                        tokens[top].size <- tokens[top].size + 1
+                        tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: tokens.count + 1})
+                        expect <- Expect::COLON
+                        i <- end + 1
+                    elif expect == Expect::VALUE or expect == Expect::VALUE_OR_CLOSE:
+                        count_element(tokens, &open_list)
+                        tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: tokens.count + 1})
+                        expect <- after_value(&open_list)
+                        i <- end + 1
+                    else:
+                        ok <- false
+                elif c == 58:
+                    ok <- expect == Expect::COLON
+                    expect <- Expect::VALUE
+                    i <- i + 1
+                elif c == 44:
+                    if expect != Expect::COMMA_OR_CLOSE:
+                        ok <- false
+                    else:
+                        top: usize = open_list[open_list.count - 1]
+                        expect <- Expect::KEY if tokens[top].kind == KIND_OBJECT else Expect::VALUE
+                        i <- i + 1
+                elif primitive_char(c):
+                    mutable end: usize = i
+                    while end < stop and primitive_char(bytes[end]):
+                        end <- end + 1
+                    if (expect != Expect::VALUE and expect != Expect::VALUE_OR_CLOSE) or not primitive_valid(bytes, i, end):
+                        ok <- false
+                    else:
+                        count_element(tokens, &open_list)
+                        tokens.push(Token{kind: KIND_PRIMITIVE, start: i, stop: end, size: 0, after: tokens.count + 1})
+                        expect <- after_value(&open_list)
+                        i <- end
+                else:
+                    ok <- false
+            ok and expect == Expect::DONE
+
+        # The token's bytes equal `text`.
+        def text_is(bytes: darray[u8]&, token: Token, text: sview) -> bool:
+            literal_is(bytes, token.start, token.stop, text)
+
+        # Value token of `key` in the object at `object`, or -1.
+        def member(bytes: darray[u8]&, tokens: darray[Token]&, object: i64, key: sview) -> i64:
+            return -1 if object < 0 or object.usize() >= tokens.count
+            holder: Token = tokens[object.usize()]
+            return -1 if holder.kind != KIND_OBJECT
+            mutable at: usize = object.usize() + 1
+            mutable found: i64 = -1
+            for m in 0..<holder.size:
+                if found < 0 and at + 1 < tokens.count:
+                    found <- (at + 1).i64() if text_is(bytes, tokens[at], key) else -1
+                    at <- tokens[at + 1].after
+            found
+
+        # Element `index` of the array at `array`, or -1.
+        def element(tokens: darray[Token]&, array: i64, index: usize) -> i64:
+            return -1 if array < 0 or array.usize() >= tokens.count
+            holder: Token = tokens[array.usize()]
+            return -1 if holder.kind != KIND_ARRAY or index >= holder.size
+            mutable at: usize = array.usize() + 1
+            for k in 0..<index:
+                at <- tokens[at].after
+            at.i64()
+
+        def kind_of(tokens: darray[Token]&, token: i64) -> u8:
+            return 0 if token < 0 or token.usize() >= tokens.count
+            tokens[token.usize()].kind
+
+        def child_count(tokens: darray[Token]&, token: i64) -> usize:
+            return 0 if token < 0 or token.usize() >= tokens.count
+            tokens[token.usize()].size
+
+        # A non-negative integer written without fraction or exponent, or -1.
+        # Values past 2^40 are refused; no glTF index or length gets there.
+        def index_value(bytes: darray[u8]&, tokens: darray[Token]&, token: i64) -> i64:
+            return -1 if kind_of(tokens, token) != KIND_PRIMITIVE
+            held: Token = tokens[token.usize()]
+            return -1 if held.stop - held.start > 13
+            mutable value: i64 = 0
+            mutable ok: bool = true
+            for k in held.start..<held.stop:
+                c: u8 = bytes[k]
+                ok <- false if not is_digit(c)
+                value <- value * 10 + (c.i64() - 48) if ok
+            value if ok else -1
+
+        # A number, with `ok` cleared when the token is not one.
+        def number_value(bytes: darray[u8]&, tokens: darray[Token]&, token: i64, ok: mutable bool&) -> f64:
+            if kind_of(tokens, token) != KIND_PRIMITIVE:
+                ok <- false
+                return 0.0
+            held: Token = tokens[token.usize()]
+            if held.stop - held.start > 63 or not number_valid(bytes, held.start, held.stop):
+                ok <- false
+                return 0.0
+            text: mutable u8[64] = zeroed
+            for k in 0..<(held.stop - held.start):
+                text[k] <- bytes[held.start + k]
+            c_strtod(&text[0], null)
