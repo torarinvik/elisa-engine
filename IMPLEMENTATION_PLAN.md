@@ -64,6 +64,12 @@ existing samples. Do not restart a checked task or complete every unchecked subs
 before producing a playable result. Full task acceptance remains below; a completed
 queue slice does not imply completion of every referenced task. Every slice carries its proof work (contract items 7 and 8).
 
+**Priority change (2026-09-30):** the user asked for engine capabilities for a
+mocap-cleanup app (`../mocap-cleaner`) to come first. They are ordered as M01–M08 in
+[docs/plans/mocap-engine-track.md](docs/plans/mocap-engine-track.md), which also says where the work
+lives. Confirm with the user before starting each large M item. The queue below continues
+after, or alongside, the M work.
+
 | Order | Deliverable and next concrete work | Acceptance / stop condition |
 |---|---|---|
 | 1 | **Reproducible game gate — Q01/Q03.** After the compiler fix settles, rebuild and record one compiler product, refresh shared validation, and rerun the native gate on that exact toolchain snapshot. Then close the hosted-CI gap: retain portable/headless artifacts separately from GPU workstation evidence. | A fresh checkout can provision/build with documented commands; incompatible tools fail clearly. Retain structured failures and artifacts. GPU-unavailable jobs remain explicitly unverified. |
@@ -580,6 +586,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-30: playback-device enumeration (names, default flag, missing-index) independent of the mixer; see docs/validation/audio-devices.md. Opening a chosen device, permission results and restart application of saved choices remain.
   Progress on 2026-09-30: open_preferred opens the mixer on a saved device by name and falls back to the default when it is gone (docs/validation/audio-devices.md). Permission results and restart application of saved display/audio choices remain.
   Progress on 2026-09-30: DeviceSettings saves display bounds + output name and apply() reapplies them at startup with DeviceChoice/default fallback and damaged-record rejection; window-to-display move added (docs/validation/device-settings.md). Permission results, a two-process relaunch check and a client consumer remain.
+  Progress on 2026-09-30: the character course reapplies saved display/output at startup, remembers the window's display on quit, and a second relaunch process proves the saved choice reapplies after restart (docs/validation/device-settings.md). Permission results and an in-game device menu remain.
 - [ ] **I04 · P1 · Unicode text and font assets** — After: I02, A04.
   Integrate FreeType/HarfBuzz with fallback fonts, glyph atlases, shaping caches, and justified ICU segmentation/bidi support. Done: mixed-direction, ligature, combining-mark, and fallback-font fixtures render and hit-test correctly without treating code units as glyph indices.
 - [ ] **I05 · P1 · Editable text and IME** — After: I04, I01.

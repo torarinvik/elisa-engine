@@ -356,6 +356,7 @@ module CharacterCourse:
         include "./look_test.inc"
         include "./recording_test.inc"
         include "./audio_mix_test.inc"
+        include "./devices.inc"
         include "./stress_test.inc"
         include "./replay_test.inc"
 
@@ -400,6 +401,8 @@ module CharacterCourse:
                 return relaunched.status if relaunched.status != 0
                 access_relaunched: i32 = try access_relaunch_test()
                 return access_relaunched if access_relaunched != 0
+                devices_relaunched: i32 = devices_relaunch_test()
+                return devices_relaunched if devices_relaunched != 0
                 try NavMesh::unload(guide.mesh)
                 0
             elif mode == 1:
@@ -449,13 +452,18 @@ module CharacterCourse:
                 return stressed.status if stressed.status != 0
                 try NavMesh::unload(guide.mesh)
                 return 119 if NavMesh::live_count() != 0
+                devices_status: i32 = devices_handoff()
+                return devices_status if devices_status != 0
                 0
             else:
                 # Without a user-data directory saves report failure in-game.
                 _ = catch UserData::initialize("org.elisa.elisa-character-course"):
                     ok: true
                     error failure: false
-                interactive_loop(session, character, avatar, instruction, guide)
+                devices: DeviceSettings::Saved = devices_start()
+                played: i32 = interactive_loop(session, character, avatar, instruction, guide)
+                _ = devices_quit(&devices)
+                played
 
     public:
         def run(self_test: bool) -> i32:

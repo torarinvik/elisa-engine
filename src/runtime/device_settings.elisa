@@ -110,13 +110,45 @@ module DeviceSettings:
             id: i32 = displays.items[(choice.id - 1).usize()].id if choice.id > 0 else 0
             Applied{display: choice.source, display_id: id, audio: AudioDevices::Opened.Failed}
 
-        # Startup: moves the window to the resolved display and opens the
-        # mixer on the saved output (or the default when none is saved or it
-        # is gone). The mixer must not already be open.
-        def apply(saved: Saved&, sample_rate: u32, channels: u32) -> Applied:
+        # Moves the window to the resolved saved display.
+        def apply_display(saved: Saved&) -> Applied:
             listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
             resolved: Applied = resolve_display(saved, &listing.displays)
             if resolved.display_id != 0:
                 _ = ApplicationDisplays::move_window_to(resolved.display_id)
+            resolved
+
+        # Startup: moves the window to the resolved display and opens the
+        # mixer on the saved output (or the default when none is saved or it
+        # is gone). The mixer must not already be open.
+        def apply(saved: Saved&, sample_rate: u32, channels: u32) -> Applied:
+            resolved: Applied = apply_display(saved)
             opened: AudioDevices::Opened = AudioDevices::open_preferred(sample_rate, channels, &saved.audio)
             Applied{display: resolved.display, display_id: resolved.display_id, audio: opened}
+
+        # For hosts that opened the default mixer already: closes it and opens
+        # the saved output. Call before any clip is decoded. When no output
+        # opens, the silent device keeps sound state honest and Failed is
+        # reported.
+        def reopen_audio(saved: Saved&, sample_rate: u32, channels: u32) -> AudioDevices::Opened:
+            _ = catch AudioRuntime::shutdown():
+                value: 0
+                error failure: 1
+            opened: AudioDevices::Opened = AudioDevices::open_preferred(sample_rate, channels, &saved.audio)
+            if opened == AudioDevices::Opened.Failed:
+                _ = catch AudioRuntime::initialize_silent(sample_rate, channels):
+                    value: 0
+                    error failure: 1
+            opened
+
+        # Saves the display that holds the window now, keeping `audio`.
+        def save_window(key: cstr, audio: AudioDevices::Device&) -> bool:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            id: i32 = ApplicationDisplays::window_display()
+            found: mutable ApplicationDisplays::Display = listing.displays.items[0]
+            has: mutable bool = false
+            for i in 0..<listing.displays.count |found, has, listing, id|:
+                if listing.displays.items[i].id == id:
+                    found <- listing.displays.items[i]
+                    has <- true
+            save(key, &found, has, audio)
