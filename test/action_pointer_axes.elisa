@@ -1,0 +1,59 @@
+include "../src/runtime/action_pointer_axes.elisa"
+
+const LOOK_X: i64 = 1
+const LOOK_Y: i64 = 2
+const ZOOM: i64 = 3
+
+def pointer(kind: Application::PointerEventKind, dx: f32, dy: f32) -> Application::PointerEvent:
+    Application::PointerEvent{kind: kind, button: 0, x: 100.0, y: 100.0, delta_x: dx,
+        delta_y: dy, buttons: 0, pressed: false}
+
+def bind(axes: mutable ActionPointerAxes::Axes&, action: i64, source: ActionPointerAxes::Source, scale: f32) -> bool:
+    ActionPointerAxes::pointer_axis_bind(axes, ActionPointerAxes::AxisBinding{action: action,
+        source: source, scale: scale, live: true})
+
+def main() -> i32:
+    mutable axes: ActionPointerAxes::Axes = ActionPointerAxes::Axes()
+    return 1 if not bind(&axes, LOOK_X, ActionPointerAxes::Source.MotionX, 0.5)
+    return 1 if not bind(&axes, LOOK_Y, ActionPointerAxes::Source.MotionY, 0.5)
+    return 1 if not bind(&axes, ZOOM, ActionPointerAxes::Source.WheelY, 1.0)
+    return 2 if bind(&axes, LOOK_X, ActionPointerAxes::Source.MotionX, 2.0)
+    return 2 if bind(&axes, 0, ActionPointerAxes::Source.MotionX, 1.0)
+    return 2 if bind(&axes, 9, ActionPointerAxes::Source.WheelX, 0.0)
+
+    # Two motion events in one frame accumulate; the wheel only feeds zoom.
+    ActionPointerAxes::pointer_axis_begin_frame(&axes)
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 4.0, -2.0))
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 6.0, 1.0))
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Wheel, 0.0, 3.0))
+    return 3 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_X) != 5.0
+    return 4 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_Y) != -0.5
+    return 5 if ActionPointerAxes::pointer_axis_value(&axes, ZOOM) != 3.0
+
+    # The next frame starts at zero: motion is not held.
+    ActionPointerAxes::pointer_axis_begin_frame(&axes)
+    return 6 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_X) != 0.0
+
+    # Inverted look is a scale change, not a code path.
+    return 7 if not ActionPointerAxes::pointer_axis_set_scale(&axes, LOOK_Y, ActionPointerAxes::Source.MotionY, -0.5)
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 0.0, 4.0))
+    return 8 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_Y) != -2.0
+
+    # Focus loss drops the partial frame; a disabled map ignores motion.
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.FocusLost, 0.0, 0.0))
+    return 9 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_Y) != 0.0
+    ActionPointerAxes::pointer_axis_set_enabled(&axes, false)
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 8.0, 8.0))
+    return 10 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_X) != 0.0
+    ActionPointerAxes::pointer_axis_set_enabled(&axes, true)
+
+    # A flung mouse is clamped per frame.
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 30000.0, 0.0))
+    ActionPointerAxes::pointer_axis_apply(&axes, pointer(Application::PointerEventKind.Motion, 30000.0, 0.0))
+    return 11 if ActionPointerAxes::pointer_axis_value(&axes, LOOK_X) != ActionPointerAxes::MAX_FRAME_VALUE
+
+    # Capacity: eight bindings, then refusal.
+    for i in 0..<5 |axes|:
+        bind(&axes, 20 + i.i64(), ActionPointerAxes::Source.WheelX, 1.0)
+    return 12 if axes.count != 8 or bind(&axes, 40, ActionPointerAxes::Source.WheelX, 1.0)
+    0
