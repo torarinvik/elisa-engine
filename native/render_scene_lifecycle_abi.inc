@@ -50,3 +50,26 @@ extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     std::lock_guard<std::mutex> guard(state.mutex);
     return state.initialized ? 1 : 0;
 }
+
+// Live resource totals for leak checks: engine-owned instance slots, live
+// lights, and every transform-bearing entity in the Wicked scene.
+extern "C" int32_t elisa_render_scene_v1_resource_counts(int32_t* instances,
+    int32_t* lights, int32_t* scene_entities) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (instances == nullptr || lights == nullptr || scene_entities == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    int32_t live_instances = 0;
+    for (const InstanceSlot& slot : state.instances) {
+        live_instances += slot.entity != wi::ecs::INVALID_ENTITY ? 1 : 0;
+    }
+    int32_t live_lights = 0;
+    for (const RenderLightSlot& light : state.lights) live_lights += light.live ? 1 : 0;
+    *instances = live_instances;
+    *lights = live_lights;
+    *scene_entities = static_cast<int32_t>(state.scene->transforms.GetCount());
+    return ELISA_RENDER_SCENE_OK;
+}

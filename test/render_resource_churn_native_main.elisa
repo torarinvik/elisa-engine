@@ -1,0 +1,157 @@
+# Q01 resource-churn fixture: repeated create/render/destroy rounds of
+# primitives and lights on a live Wicked scene must return every live
+# resource total to its baseline, not merely produce frames.
+include "../src/runtime/public.elisa"
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+module RenderResourceChurn:
+    private:
+        const module Tune:
+            ROUNDS: usize = 6
+            BOXES: usize = 64
+            LIGHTS: usize = 8
+            FRAMES: i32 = 2
+
+        def pump(frames: i32) -> bool:
+            for _ in 0..<frames |ok: bool = true| -> ok:
+                ok <- ok and elisa_application_v1_pump() == 1
+
+        def counts() -> RenderScene::ResourceCounts:
+            catch RenderScene::resource_counts():
+                value: value
+                error failure: RenderScene::ResourceCounts{instances: -1, lights: -1, scene_entities: -1}
+
+        def same(a: RenderScene::ResourceCounts, b: RenderScene::ResourceCounts) -> bool:
+            a.instances == b.instances and a.lights == b.lights and a.scene_entities == b.scene_entities
+
+        def point_light(index: usize) -> Lighting::Light:
+            Lighting::Light{
+                kind: Lighting::LightKind.Point,
+                color: Geometry::Vec3{x: 1.0, y: 0.8, z: 0.6},
+                position: Geometry::Vec3{x: index.f32(), y: 2.0, z: 0.0},
+                direction: Geometry::vec3_zero(),
+                intensity: 2.0,
+                range: 6.0,
+                inner_cone: 0.0,
+                outer_cone: 0.0,
+                casts_shadow: false,
+                shadow_resolution: 0,
+                rectangle_width: 0.0,
+                rectangle_height: 0.0,
+                volumetrics_enabled: false,
+                volumetric_boost: 0.0,
+            }
+
+        def box_pose(round: usize, index: usize) -> Geometry::Transform:
+            Geometry::transform_translate(Geometry::transform_identity(),
+                Geometry::Vec3{x: (index % 8).f32() - 4.0, y: round.f32() * 0.1, z: (index / 8).f32() - 4.0})
+
+        def make_box(batch: mutable RenderScene::InstanceBatch&, round: usize, index: usize) -> bool:
+            created: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box, box_pose(round, index),
+                RenderScene::Color{red: 0.4, green: 0.6, blue: 0.9, alpha: 1.0}):
+                value: value
+                error failure: return false
+            catch RenderScene::batch_append(batch, created):
+                ok: true
+                error failure: false
+
+        def drop_box_at(batch: RenderScene::InstanceBatch&, index: usize) -> bool:
+            handle: RenderScene::InstanceHandle = catch RenderScene::batch_get(batch, index):
+                value: value
+                error failure: return false
+            drop_box(handle)
+
+        def make_light(index: usize) -> RenderScene::LightHandle:
+            catch RenderScene::create_light(point_light(index)):
+                value: value
+                error failure: RenderScene::LightHandle{id: 0}
+
+        def drop_box(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::destroy(handle):
+                ok: true
+                error failure: false
+
+        def drop_light(handle: RenderScene::LightHandle) -> bool:
+            catch RenderScene::destroy_light(handle):
+                ok: true
+                error failure: false
+
+        # One create/render/destroy round; 0 or a failure code.
+        def churn_round(round: usize, baseline: RenderScene::ResourceCounts) -> i32:
+            boxes: mutable RenderScene::InstanceBatch = RenderScene::InstanceBatch()
+            lights: mutable RenderScene::LightHandle[Tune::LIGHTS] = zeroed
+            mutable failures: usize = 0
+            for index in 0..<Tune::BOXES |boxes, failures, round|:
+                failures <- failures + 1 if not make_box(&boxes, round, index)
+            for index in 0..<Tune::LIGHTS |lights, failures|:
+                lights[index] <- make_light(index)
+                failures <- failures + 1 if lights[index].id <= 0
+            return 40 if failures != 0
+            return 41 if not pump(Tune::FRAMES)
+            peak: RenderScene::ResourceCounts = counts()
+            return 42 if peak.instances != baseline.instances + Tune::BOXES.i32() or peak.lights != baseline.lights + Tune::LIGHTS.i32()
+            return 43 if peak.scene_entities < baseline.scene_entities + Tune::BOXES.i32()
+            mutable dropped: usize = 0
+            for index in 0..<Tune::BOXES |boxes, dropped|:
+                dropped <- dropped + 1 if drop_box_at(&boxes, index)
+            for index in 0..<Tune::LIGHTS |lights, dropped|:
+                dropped <- dropped + 1 if drop_light(lights[index])
+            return 44 if dropped != Tune::BOXES + Tune::LIGHTS
+            # A destroyed handle stays dead.
+            return 45 if drop_box_at(&boxes, 0)
+            return 46 if not pump(Tune::FRAMES)
+            return 47 if not same(counts(), baseline)
+            0
+
+        def exercise() -> i32:
+            return 30 if not pump(Tune::FRAMES)
+            baseline: RenderScene::ResourceCounts = counts()
+            return 31 if baseline.instances < 0
+            for round in 0..<Tune::ROUNDS |status: i32 = 0| -> status:
+                if status == 0:
+                    status <- churn_round(round, baseline)
+
+        def execute() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Render Resource Churn Smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            startup.services[0] <- Capabilities::BackendFeature.Rendering
+            startup.services[1] <- Capabilities::BackendFeature.NativeWindow
+            startup.service_count <- 2
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if (opened != RuntimeServices::OpenStatus.Ready and
+                opened != RuntimeServices::OpenStatus.FallbackRequired):
+                _ = RuntimeServices::shutdown(&session)
+                return 20
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            result: mutable i32 = 21
+            if init_status == 0:
+                result <- exercise()
+                closed_scene: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                result <- 22 if result == 0 and not closed_scene else result
+            closed: bool = RuntimeServices::shutdown(&session)
+            return result if result != 0
+            return 23 if not closed
+            0
+
+    public:
+        def run() -> i32:
+            RenderResourceChurn::execute()
+
+def main() -> i32:
+    RenderResourceChurn::run()

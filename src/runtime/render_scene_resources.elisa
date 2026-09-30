@@ -1,0 +1,22 @@
+# Live render resource totals for leak and churn checks. Counts only; no
+# native handle or Wicked entity crosses this API.
+include "./render_scene.elisa"
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_resource_counts(instances: mutable i32&,
+            lights: mutable i32&, scene_entities: mutable i32&) -> i32
+
+    public:
+        struct ResourceCounts:
+            instances: i32
+            lights: i32
+            scene_entities: i32
+
+        def resource_counts() -> ResourceCounts error[RenderSceneError]:
+            instances: mutable i32 = 0
+            lights: mutable i32 = 0
+            scene_entities: mutable i32 = 0
+            try check_status(elisa_render_scene_v1_resource_counts(&instances, &lights, &scene_entities))
+            ResourceCounts{instances: instances, lights: lights, scene_entities: scene_entities}
