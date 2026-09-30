@@ -74,21 +74,33 @@ module OverlayTrail:
                 found <- here if less <= k and less + equal > k else found
             found
 
-        # Heat in [0, 1]: each value over `factor` times the median, so a
-        # value at `factor` medians or more is fully hot. A zero median makes
-        # any motion fully hot and stillness cold.
+        # The heat reference: the lower median of the moving values (those
+        # above 0), or 0 when nothing moves. Stillness is left out so a foot
+        # that is planted most of the time still has a real swing speed to
+        # compare against.
+        def moving_median(values: darray[f64]&) -> f64:
+            moving: mutable darray[f64] = []
+            for i in 0..<values.count |moving, values|:
+                v: f64 = values[i]
+                if v > 0.0:
+                    moving.push(v)
+            median(moving)
+
+        # Heat in [0, 1]: each value over `factor` times the moving median,
+        # so a value at `factor` references or more is fully hot. Stillness
+        # is cold.
         def heat(values: darray[f64]&, factor: f64) -> darray[f64]:
-            scale: f64 = median(values) * factor
+            scale: f64 = moving_median(values) * factor
             out: mutable darray[f64] = []
             for i in 0..<values.count |out, values, scale|:
                 v: f64 = values[i]
-                h: f64 = v / scale if scale > 0.0 else (1.0 if v > 0.0 else 0.0)
+                h: f64 = v / scale if scale > 0.0 else 0.0
                 out.push(1.0 if h > 1.0 else (0.0 if h < 0.0 else h))
             out
 
-        # Indices of values above `factor` times the median.
+        # Indices of values above `factor` times the moving median.
         def spikes(values: darray[f64]&, factor: f64) -> darray[i64]:
-            limit: f64 = median(values) * factor
+            limit: f64 = moving_median(values) * factor
             out: mutable darray[i64] = []
             for i in 0..<values.count |out, values, limit|:
                 if values[i] > limit:

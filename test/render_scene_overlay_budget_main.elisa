@@ -1,0 +1,142 @@
+# M05 overlay frame budget on a live SDL3/Metal scene. Each measured frame
+# rebuilds the whole overlay from a 600-frame, four-joint take (heat trails
+# for every joint, three onion ghosts either side of a moving frame, and
+# ground-contact crosses from FootContact), submits it through the batched
+# debug-line path and presents. The take carries a synthetic knock on joint 3
+# at frame 300; the last frame centres the ghosts there and saves a capture
+# to $ELISA_OVERLAY_BUDGET_CAPTURE. Run via scripts/overlay_budget_benchmark.py.
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_debug.elisa"
+include "../src/math/geometry.elisa"
+include "../src/animation/overlay_lines.elisa"
+include "../src/animation/foot_contact.elisa"
+
+@callconv(c)
+extern putchar(c: i32) -> i32
+@callconv(c)
+extern fflush(stream: i64) -> i32
+
+# Native mains have no print; write `frame_ns=<n>`, `work_ns=<n>` or
+# `lines=<n>` through libc.
+def emit(label: darray[i32]&, value: u64) -> bool:
+    mutable digits: u64[20] = zeroed
+    mutable n: u64 = value
+    mutable count: usize = 0
+    while count == 0 or n > 0:
+        digits[count] <- n % 10
+        n <- n / 10
+        count <- count + 1
+    for c in label:
+        _ = putchar(c)
+    while count > 0:
+        count <- count - 1
+        _ = putchar((digits[count] + 48).i32())
+    putchar(10) == 10
+
+const module Setup:
+    FRAMES: i64 = 600
+    JOINTS: i64 = 4
+    FPS: f64 = 120.0
+    GHOSTS: i64 = 3
+    GHOST_STEP: i64 = 5
+    KNOCK_FRAME: i64 = 300
+    WARMUP: i64 = 30
+    MEASURED: i64 = 600
+
+# A foot (joint 0) that plants for 60 frames and swings for 60, stepping
+# 0.5 forward each cycle, with three joints stacked above it. Joint 3 is
+# knocked 0.4 upward at the knock frame.
+def take() -> darray[f64]:
+    out: mutable darray[f64] = []
+    for f in 0..<Setup::FRAMES |out|:
+        cycle: i64 = f / 120
+        phase: i64 = f % 120
+        swing: f64 = 0.0 if phase < 60 else (phase - 60).f64() / 60.0
+        foot_x: f64 = -1.5 + 0.5 * (cycle.f64() + swing)
+        foot_y: f64 = 0.3 * ElisaMath::sin(3.141592653589793 * swing)
+        for j in 0..<Setup::JOINTS |out, f, foot_x, foot_y|:
+            knock: f64 = 0.4 if j == 3 and f == Setup::KNOCK_FRAME else 0.0
+            out.push(foot_x + 0.1 * j.i64().f64())
+            out.push(foot_y + 0.5 * j.i64().f64() + knock)
+            out.push(0.0)
+    out
+
+def overlay(clip: darray[f64]&, chain: darray[i64]&, center: i64) -> darray[f64]:
+    records: mutable darray[f64] = []
+    for j in 0..<Setup::JOINTS |records, clip|:
+        path: darray[f64] = OverlayTrail::trail(clip, Setup::FRAMES, Setup::JOINTS, j.i64(), 0, 0, Setup::FRAMES - 1)
+        heat: darray[f64] = OverlayTrail::heat(OverlayTrail::speeds(path, Setup::FPS), 3.0)
+        for v in OverlayLines::trail(path, heat) |records|:
+            records.push(v)
+    for v in OverlayLines::ghosts(clip, Setup::FRAMES, chain, center, Setup::GHOST_STEP, Setup::GHOSTS) |records|:
+        records.push(v)
+    limits: FootContact::Limits = FootContact::Limits{enter_height: 0.02, exit_height: 0.04, enter_speed: 0.2, exit_speed: 0.4, min_frames: 3}
+    found: darray[i64] = FootContact::spans(clip, Setup::FRAMES, Setup::JOINTS, 0, 1, Setup::FPS, limits)
+    markers: darray[f64] = FootContact::markers(found, clip, Setup::FRAMES, Setup::JOINTS, 0)
+    for v in OverlayLines::contacts(markers, 1, 0.08) |records|:
+        records.push(v)
+    records
+
+# One overlay frame; returns its wall time in nanoseconds, or a negative code
+# naming the failed step. `work` receives the time before presenting and
+# `lines` the number of lines queued.
+def overlay_frame(clip: darray[f64]&, chain: darray[i64]&, center: i64, chunk: mutable RenderScene::DebugLineChunk&,
+    work: mutable u64&, lines: mutable usize&) -> i64:
+    start: u64 = Application::uptime_nanos()
+    records: darray[f64] = overlay(clip, chain, center)
+    queued: usize = catch RenderScene::debug_line_records(records, false, chunk):
+        value: value
+        error failure: return -1
+    return -2 if queued * 10 != records.count
+    lines <- queued
+    work <- Application::uptime_nanos() - start
+    return -3 if Application::pump() != Application::PumpStatus.Running
+    (Application::uptime_nanos() - start).i64()
+
+def exercise_overlay() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Overlay Budget", width: 640, height: 400, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(640, 400, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: -0.3, y: 1.0, z: 2.6},
+        Geometry::Vec3{x: -0.3, y: 0.85, z: 0.0}, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    clip: darray[f64] = take()
+    chain: darray[i64] = [-1, 0, 1, 2]
+    chunk: mutable RenderScene::DebugLineChunk = RenderScene::DebugLineChunk()
+    mutable spent: u64 = 0
+    mutable lines: usize = 0
+    for step in 0..<Setup::WARMUP |clip, chain, chunk, spent, lines|:
+        warm: i64 = overlay_frame(clip, chain, (step * 7) % Setup::FRAMES, &chunk, &spent, &lines)
+        return 20 - warm.i32() if warm <= 0
+    mutable times: u64[600] = zeroed
+    mutable works: u64[600] = zeroed
+    for step in 0..<Setup::MEASURED |clip, chain, chunk, spent, lines, times, works|:
+        took: i64 = overlay_frame(clip, chain, (step * 7) % Setup::FRAMES, &chunk, &spent, &lines)
+        return 30 - took.i32() if took <= 0
+        times[step.usize()] <- took.u64()
+        works[step.usize()] <- spent
+    shown: i64 = overlay_frame(clip, chain, Setup::KNOCK_FRAME, &chunk, &spent, &lines)
+    return 40 - shown.i32() if shown <= 0
+    path: cstr = Application::environment_value("ELISA_OVERLAY_BUDGET_CAPTURE")
+    return 44 if path != "" and not Application::save_screenshot(path)
+    frame_label: darray[i32] = [102, 114, 97, 109, 101, 95, 110, 115, 61]
+    work_label: darray[i32] = [119, 111, 114, 107, 95, 110, 115, 61]
+    lines_label: darray[i32] = [108, 105, 110, 101, 115, 61]
+    return 11 if not emit(lines_label, lines.u64())
+    for i in 0..<Setup::MEASURED |times, works, frame_label, work_label|:
+        return 12 if not emit(frame_label, times[i.usize()])
+        return 13 if not emit(work_label, works[i.usize()])
+    0
+
+def main() -> i32:
+    result: i32 = exercise_overlay()
+    _ = fflush(0)
+    return 31 if not Application::shutdown()
+    result

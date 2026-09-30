@@ -5,7 +5,7 @@
 - `trail(positions, frames, joints, joint, center, before, after)` copies one joint's xyz positions out of a frame-major clip over `[center - before, center + after]`. The window is clamped to the clip. A malformed shape or joint gives an empty trail.
 - `speeds` returns one value per segment: distance × fps. `accelerations` returns one value per interior sample: the second difference × fps².
 - `median` is the lower median, found by rank counting without allocating.
-- `heat(values, factor)` is each value over `factor × median`, clamped to [0, 1]. With a zero median, any motion is fully hot and stillness is cold. `spikes` lists the indices above that limit.
+- `heat(values, factor)` is each value over `factor × moving_median`, clamped to [0, 1]. `moving_median` is the lower median of the values above 0, so stillness is left out of the reference. A foot that is planted most of the time is compared with its other moving frames: its swing is not hot and a jolt still is. Stillness is always cold, and a trail with no motion has no heat. `spikes` lists the indices above that limit. Before this rule the reference was the median of all values, so a mostly planted joint's median was near zero and every swing drew red.
 - `colour(h)` ramps blue → green (1/3) → yellow (2/3) → red (1). Out-of-range values clamp and NaN is treated as 0.
 
 `OverlayIndex` (src/animation/overlay_index.elisa) holds the integer rules: window ends, position slots and whether an onion ghost `distance` frames before or after a centre frame exists. Its proof (proof/overlay_index.elisa) is 97/97 with every obligation replayed.

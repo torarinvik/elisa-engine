@@ -73,9 +73,15 @@ def main() -> i32:
     shuffled: darray[f64] = [2.0, 1.0, 3.0]
     return 23 if OverlayTrail::median(shuffled) != 2.0
     return 21 if OverlayTrail::median(lone) != 5.0 or OverlayTrail::median(none) != 0.0
-    # Motion over a zero median is fully hot.
-    mostly_still: darray[f64] = [0.0, 0.0, 2.0]
-    return 22 if OverlayTrail::heat(mostly_still, 3.0)[2] != 1.0 or OverlayTrail::heat(mostly_still, 3.0)[0] != 0.0
+    # Stillness is left out of the reference: a mostly planted joint compares
+    # its swing against the other moving frames, so only the jolt is hot.
+    planted: darray[f64] = [0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 5.0]
+    warm: darray[f64] = OverlayTrail::heat(planted, 3.0)
+    return 22 if warm[7] != 1.0 or warm[0] != 0.0 or not near(warm[4], 0.3333333333333333, 0.000000001)
+    lifted: darray[i64] = OverlayTrail::spikes(planted, 3.0)
+    return 24 if lifted.count != 1 or lifted[0] != 7 or OverlayTrail::moving_median(planted) != 1.0
+    lone_move: darray[f64] = [0.0, 0.0, 2.0]
+    return 25 if not near(OverlayTrail::heat(lone_move, 3.0)[2], 0.3333333333333333, 0.000000001) or OverlayTrail::moving_median(none) != 0.0
     # Colour ramp stops, clamping and NaN.
     blue: darray[f64] = [0.0, 0.0, 1.0]
     green: darray[f64] = [0.0, 1.0, 0.0]
