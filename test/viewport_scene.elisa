@@ -1,0 +1,126 @@
+# Shared scene across viewports (M01): a perspective, a front and a side view
+# of one skeleton render from one ViewportScene, redraw only when the scene
+# or their own camera or size changes, resize independently, and frame the
+# selection. Build: scripts/build_viewport_native_test.sh viewport_scene
+include "../src/viewport/viewport_scene.elisa"
+include "../src/viewport/png_writer.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def open_view(w: i64, h: i64, projection: i32) -> Viewport::Viewport:
+    mutable vp: Viewport::Viewport = catch Viewport::create(w, h):
+        value: value
+        error failure: Viewport::Viewport{handle: 0, camera: ViewportCamera::create(w, h), dirty: 0, playing: false, frame: 0, published_frame: -1, published_slot: -1, acked: -1, generation: 0, clear_color: 0, rendered: 0, idle_ticks: 0}
+    if projection != ViewportCamera::PERSPECTIVE:
+        vp.camera <- ViewportCamera::create_ortho(w, h, projection)
+    vp
+
+def skeleton(scene: mutable ViewportScene::Scene&, lean: f32) -> i32:
+    joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(lean, 1.5, 0.0), v(lean, 1.8, 0.1), v(-0.15, 0.5, 0.05), v(-0.15, 0.05, 0.1), v(0.15, 0.5, -0.05), v(0.15, 0.05, -0.1)]
+    parents: darray[i64] = [-1, 0, 1, 0, 3, 0, 5]
+    catch ViewportScene::set_skeleton(scene, &joints, &parents):
+        value: 0
+        error failure: 1
+
+def shape_code(scene: mutable ViewportScene::Scene&) -> i32:
+    joints: darray[Geometry::Vec3] = [v(0.0, 0.0, 0.0), v(0.0, 1.0, 0.0)]
+    parents: darray[i64] = [-1, 1]
+    catch ViewportScene::set_skeleton(scene, &joints, &parents):
+        value: 0
+        ViewportScene::SceneError.Shape: 1
+        error failure: 2
+
+# Pixels of a colour (RGB within 12) in a view's newest frame.
+def count_color(vp: Viewport::Viewport&, r: i64, g: i64, b: i64) -> i64:
+    mutable rgba: darray[u8] = []
+    return -1 if not Viewport::read_rgba(vp, &rgba)
+    mutable hits: i64 = 0
+    for k in 0..<(rgba.count / 4):
+        dr: i64 = rgba[k * 4].i64() - r
+        dg: i64 = rgba[k * 4 + 1].i64() - g
+        db: i64 = rgba[k * 4 + 2].i64() - b
+        if dr * dr + dg * dg + db * db < 432:
+            hits <- hits + 1
+    hits
+
+def ack(vp: mutable Viewport::Viewport&):
+    _ = Viewport::acknowledge(vp, vp.published_frame)
+
+def main() -> i32:
+    mutable scene: ViewportScene::Scene = ViewportScene::create()
+    return 1 if skeleton(&scene, 0.0) != 0 or scene.revision != 1
+    return 2 if shape_code(&scene) != 1 or scene.revision != 1 or scene.joints.count != 7
+    mutable persp: Viewport::Viewport = open_view(320, 240, ViewportCamera::PERSPECTIVE)
+    mutable front: Viewport::Viewport = open_view(160, 120, ViewportCamera::FRONT)
+    mutable side: Viewport::Viewport = open_view(160, 120, ViewportCamera::SIDE)
+    return 3 if persp.handle == 0 or front.handle == 0 or side.handle == 0
+    _ = ViewportScene::frame_selection(&scene, &persp)
+    _ = ViewportScene::frame_selection(&scene, &front)
+    _ = ViewportScene::frame_selection(&scene, &side)
+    mutable s1: i64 = ViewportScene::tick(&scene, &persp, -1)
+    mutable s2: i64 = ViewportScene::tick(&scene, &front, -1)
+    mutable s3: i64 = ViewportScene::tick(&scene, &side, -1)
+    return 4 if persp.rendered != 1 or front.rendered != 1 or side.rendered != 1 or s1 != 1 or s2 != 1 or s3 != 1
+    ack(&persp)
+    ack(&front)
+    ack(&side)
+    # Every view shows bones and same-sized joint markers.
+    pb: i64 = count_color(&persp, 240, 200, 60)
+    fb: i64 = count_color(&front, 240, 200, 60)
+    sb: i64 = count_color(&side, 240, 200, 60)
+    pj: i64 = count_color(&persp, 250, 250, 250)
+    fj: i64 = count_color(&front, 250, 250, 250)
+    return 5 if pb < 40 or fb < 20 or sb < 20
+    return 6 if pj < 7 * 20 or fj < 7 * 20 or pj > 7 * 70 or fj > 7 * 70
+    # Idle: 1000 ticks each draw nothing.
+    for _ in 0..<1000:
+        s1 <- ViewportScene::tick(&scene, &persp, s1)
+        s2 <- ViewportScene::tick(&scene, &front, s2)
+        s3 <- ViewportScene::tick(&scene, &side, s3)
+    return 7 if persp.rendered != 1 or front.rendered != 1 or side.rendered != 1
+    # A scene change redraws every view exactly once.
+    return 8 if skeleton(&scene, 0.2) != 0
+    for _ in 0..<10:
+        s1 <- ViewportScene::tick(&scene, &persp, s1)
+        s2 <- ViewportScene::tick(&scene, &front, s2)
+        s3 <- ViewportScene::tick(&scene, &side, s3)
+        ack(&persp)
+        ack(&front)
+        ack(&side)
+    return 9 if persp.rendered != 2 or front.rendered != 2 or side.rendered != 2
+    # Resizing one view reallocates and redraws only that view.
+    g1: i64 = persp.generation
+    g2: i64 = front.generation
+    _ = catch Viewport::resize(&side, 200, 150):
+        value: value
+        error failure: false
+    for _ in 0..<10:
+        s1 <- ViewportScene::tick(&scene, &persp, s1)
+        s2 <- ViewportScene::tick(&scene, &front, s2)
+        s3 <- ViewportScene::tick(&scene, &side, s3)
+        ack(&side)
+    return 10 if persp.generation != g1 or front.generation != g2 or side.camera.width != 200
+    return 11 if persp.rendered != 2 or front.rendered != 2 or side.rendered != 3
+    # Selecting a joint colours it orange in every view; framing it centres it.
+    ViewportScene::select(&scene, 2)
+    return 12 if scene.revision != 3
+    _ = ViewportScene::frame_selection(&scene, &persp)
+    s1 <- ViewportScene::tick(&scene, &persp, s1)
+    s2 <- ViewportScene::tick(&scene, &front, s2)
+    return 13 if count_color(&persp, 255, 154, 0) < 20 or count_color(&front, 255, 154, 0) < 10
+    at: ViewportCamera::ScreenPoint = ViewportCamera::project(&persp.camera, scene.joints[2])
+    return 14 if at.x < 150.0 or at.x > 170.0 or at.y < 110.0 or at.y > 130.0
+    shot: darray[u8] = rgba_of(&persp)
+    _ = catch PngWriter::save("build/viewport_scene_persp.png", 320, 240, &shot):
+        value: 0
+        error failure: 0
+    Viewport::destroy(&persp)
+    Viewport::destroy(&front)
+    Viewport::destroy(&side)
+    0
+
+def rgba_of(vp: Viewport::Viewport&) -> darray[u8]:
+    mutable rgba: darray[u8] = []
+    _ = Viewport::read_rgba(vp, &rgba)
+    rgba

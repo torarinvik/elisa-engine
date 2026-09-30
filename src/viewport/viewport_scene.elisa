@@ -1,0 +1,105 @@
+# One scene shown by several viewports (plan M01): perspective plus front and
+# side views of the same skeleton. The scene is kept camera-independent, in
+# world space, and each viewport builds its own draw list from it when it
+# renders, so screen-sized joint markers stay the same size in every view.
+# A `revision` bump marks the scene changed; each viewport remembers the
+# revision it last drew and redraws once, so idle views stay idle.
+include "./viewport.elisa"
+
+module ViewportScene:
+    public:
+        error SceneError:
+            Shape
+            NotFinite
+
+        struct Scene:
+            joints: mutable darray[Geometry::Vec3]
+            parents: mutable darray[i64]
+            # Selected joint, or -1.
+            selected: mutable i64
+            revision: mutable i64
+            grid: mutable bool
+
+        def create() -> Scene:
+            Scene{joints: [], parents: [], selected: -1, revision: 0, grid: true}
+
+        # Replace the skeleton. Parents are -1 for a root or an earlier
+        # joint index; a bad shape or non-finite joint leaves the scene alone.
+        def set_skeleton(scene: mutable Scene&, joints: darray[Geometry::Vec3]&, parents: darray[i64]&) -> void error[SceneError]:
+            raise SceneError.Shape if joints.count != parents.count
+            for k in 0..<joints.count:
+                raise SceneError.Shape if parents[k] < -1 or parents[k] >= k.i64()
+                raise SceneError.NotFinite if not Geometry::vec3_is_finite(joints[k])
+            scene.joints.clear()
+            scene.parents.clear()
+            for k in 0..<joints.count:
+                scene.joints.push(joints[k])
+                scene.parents.push(parents[k])
+            scene.selected <- -1 if scene.selected >= joints.count.i64()
+            scene.revision <- scene.revision + 1
+
+        def select(scene: mutable Scene&, joint: i64):
+            held: i64 = joint
+            if held < -1 or held >= scene.joints.count.i64():
+                return
+            return if held == scene.selected
+            scene.selected <- held
+            scene.revision <- scene.revision + 1
+
+        # The draw list for one camera.
+        def build(scene: Scene&, cam: ViewportCamera::Camera&) -> ViewportDraw::List:
+            mutable list: ViewportDraw::List = ViewportDraw::create()
+            if scene.grid:
+                _ = catch ViewportDraw::grid(&list, 0.25, 8, ViewportDraw::rgba(90, 92, 100, 255)):
+                    value: 0
+                    error failure: 1
+            for k in 0..<scene.joints.count:
+                up: i64 = scene.parents[k]
+                if up >= 0:
+                    _ = catch ViewportDraw::bone(&list, scene.joints[up.usize()], scene.joints[k], BONE, ViewportDraw::TOP):
+                        value: 0
+                        error failure: 1
+                mutable color: u32 = JOINT
+                color <- SELECTED if k.i64() == scene.selected
+                _ = catch ViewportDraw::marker(&list, cam, scene.joints[k], 4.0, color, ViewportDraw::TOP):
+                    value: 0
+                    error failure: 1
+            return move list
+
+        # Tick one viewport of the scene. `seen` is the revision this view
+        # last drew (start at -1); returns the revision it has drawn now.
+        # Builds a draw list only when the view will actually render.
+        def tick(scene: Scene&, vp: mutable Viewport::Viewport&, seen: i64) -> i64:
+            if seen != scene.revision:
+                Viewport::invalidate(vp, ViewportPolicy::DIRTY_SCENE)
+            return scene.revision if not ViewportPolicy::should_render(vp.dirty, vp.playing)
+            list: ViewportDraw::List = build(scene, &vp.camera)
+            drew: bool = tick_code(vp, &list)
+            return seen if not drew and vp.dirty != 0
+            scene.revision
+
+        # Fit the selected joint (or the whole skeleton) in this view.
+        def frame_selection(scene: Scene&, vp: mutable Viewport::Viewport&) -> bool:
+            mutable points: darray[Geometry::Vec3] = []
+            if scene.selected >= 0:
+                points.push(scene.joints[scene.selected.usize()])
+            else:
+                for k in 0..<scene.joints.count:
+                    points.push(scene.joints[k])
+            mutable cam: ViewportCamera::Camera = vp.camera
+            return false if not ViewportCamera::frame_points(&cam, &points, 1.2)
+            vp.camera <- cam
+            Viewport::invalidate(vp, ViewportPolicy::DIRTY_CAMERA)
+            true
+
+    private:
+        # ViewportDraw::rgba packing: rgba(240, 200, 60, 255),
+        # rgba(250, 250, 250, 255) and orange rgba(255, 154, 0, 255).
+        const BONE: u32 = 4282173680
+        const JOINT: u32 = 4294638330
+        const SELECTED: u32 = 4278229503
+
+        def tick_code(vp: mutable Viewport::Viewport&, list: ViewportDraw::List&) -> bool:
+            catch Viewport::tick(vp, list):
+                value: value
+                error failure: false

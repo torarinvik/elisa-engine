@@ -89,5 +89,8 @@ Both are registered in `scripts/check.elisascript`. The second is linked by `scr
 ## Still open
 
 - **The skinned mesh is not drawn into this texture.** The Wicked renderer draws only into its SDL swapchain, and there is no Wicked render-to-IOSurface path. For now the viewport draws engine draw lists: grid, skeleton and overlays. Routing Wicked's scene render into the ring needs a native change in `render_scene_abi.cpp`, and it cannot be validated headlessly because Wicked needs its window.
-- **Several viewports sharing one scene.** Each `Viewport` is independent (its own device queue and ring). Three viewports work side by side, but there is no shared-scene object yet.
 - **On-screen compositing inside elisa-ui.** This is added in the elisa-ui `mocap-viewport` worktree; see that branch's notes.
+
+## Shared scene (2026-10-01)
+
+`ViewportScene` (src/viewport/viewport_scene.elisa) holds one skeleton, selection and grid flag with a revision counter. Each `Viewport` keeps the last revision it drew; `tick` invalidates only when the revision moved and builds a draw list only when the viewport will render. `test/viewport_scene.elisa` drives a perspective view plus front and side orthographic views from one scene: each renders once, 1000 idle ticks render nothing, one scene change redraws every view exactly once, resizing the side view changes only its generation, and selecting a joint turns it orange in all three views and frame-selection centres it within 10 px. A mutant that drops the revision invalidate is caught (exit 9).
