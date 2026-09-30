@@ -95,6 +95,60 @@ extend Application:
             KEY_RIGHT_CONTROL: i64 = 2027
             KEY_J: i64 = 2028
             KEY_L: i64 = 2029
+            KEY_B: i64 = 2030
+            KEY_F: i64 = 2031
+            KEY_G: i64 = 2032
+            KEY_I: i64 = 2033
+            KEY_K: i64 = 2034
+            KEY_M: i64 = 2035
+            KEY_N: i64 = 2036
+            KEY_O: i64 = 2037
+            KEY_T: i64 = 2038
+            KEY_U: i64 = 2039
+            KEY_Y: i64 = 2040
+            KEY_DIGIT_0: i64 = 2041
+            KEY_DIGIT_4: i64 = 2042
+            KEY_DIGIT_5: i64 = 2043
+            KEY_DIGIT_6: i64 = 2044
+            KEY_DIGIT_7: i64 = 2045
+            KEY_DIGIT_8: i64 = 2046
+            KEY_DIGIT_9: i64 = 2047
+            KEY_F1: i64 = 2048
+            KEY_F2: i64 = 2049
+            KEY_F3: i64 = 2050
+            KEY_F4: i64 = 2051
+            KEY_F5: i64 = 2052
+            KEY_F6: i64 = 2053
+            KEY_F7: i64 = 2054
+            KEY_F8: i64 = 2055
+            KEY_F9: i64 = 2056
+            KEY_F10: i64 = 2057
+            KEY_F11: i64 = 2058
+            KEY_F12: i64 = 2059
+            KEY_ENTER: i64 = 2060
+            KEY_BACKSPACE: i64 = 2061
+            KEY_DELETE: i64 = 2062
+            KEY_INSERT: i64 = 2063
+            KEY_HOME: i64 = 2064
+            KEY_END: i64 = 2065
+            KEY_PAGE_UP: i64 = 2066
+            KEY_PAGE_DOWN: i64 = 2067
+            KEY_LEFT_ALT: i64 = 2068
+            KEY_RIGHT_ALT: i64 = 2069
+            KEY_LEFT_SUPER: i64 = 2070
+            KEY_RIGHT_SUPER: i64 = 2071
+            KEY_CAPS_LOCK: i64 = 2072
+            KEY_MINUS: i64 = 2073
+            KEY_EQUALS: i64 = 2074
+            KEY_LEFT_BRACKET: i64 = 2075
+            KEY_RIGHT_BRACKET: i64 = 2076
+            KEY_BACKSLASH: i64 = 2077
+            KEY_SEMICOLON: i64 = 2078
+            KEY_APOSTROPHE: i64 = 2079
+            KEY_GRAVE: i64 = 2080
+            KEY_COMMA: i64 = 2081
+            KEY_PERIOD: i64 = 2082
+            KEY_SLASH: i64 = 2083
 
         @callconv(c)
         extern elisa_application_v1_next_input_event_token() -> i64
@@ -199,6 +253,60 @@ extend Application:
             ArrowRight
             ArrowUp
             ArrowDown
+            B
+            F
+            G
+            I
+            K
+            M
+            N
+            O
+            T
+            U
+            Y
+            Digit0
+            Digit4
+            Digit5
+            Digit6
+            Digit7
+            Digit8
+            Digit9
+            F1
+            F2
+            F3
+            F4
+            F5
+            F6
+            F7
+            F8
+            F9
+            F10
+            F11
+            F12
+            Enter
+            Backspace
+            Delete
+            Insert
+            Home
+            End
+            PageUp
+            PageDown
+            LeftAlt
+            RightAlt
+            LeftSuper
+            RightSuper
+            CapsLock
+            Minus
+            Equals
+            LeftBracket
+            RightBracket
+            Backslash
+            Semicolon
+            Apostrophe
+            Grave
+            Comma
+            Period
+            Slash
 
         enum GamepadButtonCode:
             South
@@ -301,6 +409,60 @@ extend Application:
                 KeyboardKeyCode.ArrowRight: PortableInputCodes::KEY_ARROW_RIGHT
                 KeyboardKeyCode.ArrowUp: PortableInputCodes::KEY_ARROW_UP
                 KeyboardKeyCode.ArrowDown: PortableInputCodes::KEY_ARROW_DOWN
+                KeyboardKeyCode.B: PortableInputCodes::KEY_B
+                KeyboardKeyCode.F: PortableInputCodes::KEY_F
+                KeyboardKeyCode.G: PortableInputCodes::KEY_G
+                KeyboardKeyCode.I: PortableInputCodes::KEY_I
+                KeyboardKeyCode.K: PortableInputCodes::KEY_K
+                KeyboardKeyCode.M: PortableInputCodes::KEY_M
+                KeyboardKeyCode.N: PortableInputCodes::KEY_N
+                KeyboardKeyCode.O: PortableInputCodes::KEY_O
+                KeyboardKeyCode.T: PortableInputCodes::KEY_T
+                KeyboardKeyCode.U: PortableInputCodes::KEY_U
+                KeyboardKeyCode.Y: PortableInputCodes::KEY_Y
+                KeyboardKeyCode.Digit0: PortableInputCodes::KEY_DIGIT_0
+                KeyboardKeyCode.Digit4: PortableInputCodes::KEY_DIGIT_4
+                KeyboardKeyCode.Digit5: PortableInputCodes::KEY_DIGIT_5
+                KeyboardKeyCode.Digit6: PortableInputCodes::KEY_DIGIT_6
+                KeyboardKeyCode.Digit7: PortableInputCodes::KEY_DIGIT_7
+                KeyboardKeyCode.Digit8: PortableInputCodes::KEY_DIGIT_8
+                KeyboardKeyCode.Digit9: PortableInputCodes::KEY_DIGIT_9
+                KeyboardKeyCode.F1: PortableInputCodes::KEY_F1
+                KeyboardKeyCode.F2: PortableInputCodes::KEY_F2
+                KeyboardKeyCode.F3: PortableInputCodes::KEY_F3
+                KeyboardKeyCode.F4: PortableInputCodes::KEY_F4
+                KeyboardKeyCode.F5: PortableInputCodes::KEY_F5
+                KeyboardKeyCode.F6: PortableInputCodes::KEY_F6
+                KeyboardKeyCode.F7: PortableInputCodes::KEY_F7
+                KeyboardKeyCode.F8: PortableInputCodes::KEY_F8
+                KeyboardKeyCode.F9: PortableInputCodes::KEY_F9
+                KeyboardKeyCode.F10: PortableInputCodes::KEY_F10
+                KeyboardKeyCode.F11: PortableInputCodes::KEY_F11
+                KeyboardKeyCode.F12: PortableInputCodes::KEY_F12
+                KeyboardKeyCode.Enter: PortableInputCodes::KEY_ENTER
+                KeyboardKeyCode.Backspace: PortableInputCodes::KEY_BACKSPACE
+                KeyboardKeyCode.Delete: PortableInputCodes::KEY_DELETE
+                KeyboardKeyCode.Insert: PortableInputCodes::KEY_INSERT
+                KeyboardKeyCode.Home: PortableInputCodes::KEY_HOME
+                KeyboardKeyCode.End: PortableInputCodes::KEY_END
+                KeyboardKeyCode.PageUp: PortableInputCodes::KEY_PAGE_UP
+                KeyboardKeyCode.PageDown: PortableInputCodes::KEY_PAGE_DOWN
+                KeyboardKeyCode.LeftAlt: PortableInputCodes::KEY_LEFT_ALT
+                KeyboardKeyCode.RightAlt: PortableInputCodes::KEY_RIGHT_ALT
+                KeyboardKeyCode.LeftSuper: PortableInputCodes::KEY_LEFT_SUPER
+                KeyboardKeyCode.RightSuper: PortableInputCodes::KEY_RIGHT_SUPER
+                KeyboardKeyCode.CapsLock: PortableInputCodes::KEY_CAPS_LOCK
+                KeyboardKeyCode.Minus: PortableInputCodes::KEY_MINUS
+                KeyboardKeyCode.Equals: PortableInputCodes::KEY_EQUALS
+                KeyboardKeyCode.LeftBracket: PortableInputCodes::KEY_LEFT_BRACKET
+                KeyboardKeyCode.RightBracket: PortableInputCodes::KEY_RIGHT_BRACKET
+                KeyboardKeyCode.Backslash: PortableInputCodes::KEY_BACKSLASH
+                KeyboardKeyCode.Semicolon: PortableInputCodes::KEY_SEMICOLON
+                KeyboardKeyCode.Apostrophe: PortableInputCodes::KEY_APOSTROPHE
+                KeyboardKeyCode.Grave: PortableInputCodes::KEY_GRAVE
+                KeyboardKeyCode.Comma: PortableInputCodes::KEY_COMMA
+                KeyboardKeyCode.Period: PortableInputCodes::KEY_PERIOD
+                KeyboardKeyCode.Slash: PortableInputCodes::KEY_SLASH
 
         def gamepad_axis_code(axis: GamepadAxisCode) -> i64:
             match axis:

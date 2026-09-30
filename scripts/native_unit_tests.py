@@ -20,6 +20,7 @@ def main() -> int:
         (ROOT / "scripts/save_journal.py", "--self-test"),
         (ROOT / "scripts/test_jolt_shape_cache.py",),
         (ROOT / "scripts/test_crash_report.py",),
+        (ROOT / "scripts/test_input_codes.py",),
     )
     for command in tests:
         result = subprocess.run([sys.executable, *(str(part) for part in command)], check=False)

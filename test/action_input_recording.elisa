@@ -12,7 +12,7 @@ def event(kind: Application::InputEventKind, code: i64, value: f32, pressed: boo
 
 def bound_input() -> ActionInput::Input:
     mutable input: ActionInput::Input = ActionInput::Input()
-    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.W)
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.Slash)
     stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXPositive)
     ActionInput::bind_checked(&input, ActionInput::Binding{action: JUMP, device: ActionInput::Device.Keyboard,
         code: space, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
@@ -36,7 +36,7 @@ def tick_digest(input: ActionInput::Input&) -> i64:
 # Application events for one tick; ticks 0-13 cover holds, focus loss,
 # overflow, and a gamepad unplugged mid-push then reconnected.
 def tick_event(tick: i64, slot: i64) -> Application::InputEvent:
-    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.W)
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.Slash)
     stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXPositive)
     none: Application::InputEvent = event(Application::InputEventKind.Key, 0, 0.0, false, false, false)
     if slot == 0:
