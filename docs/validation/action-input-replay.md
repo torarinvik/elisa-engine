@@ -36,9 +36,23 @@ fail with code 3. A first control mutated `apply_entry`, which live and replay
 share, so it could not fail; the recorded control mutates the replay side
 only.
 
+## Byte form
+
+`src/runtime/action_input_replay_codec.elisa` writes the log as "EIR1", a
+u32 count and 16 bytes per entry, up to 16,392 bytes in total. The test now
+replays from the decoded bytes. Decoding fills the log only when every entry
+is valid, and each of these damaged inputs is refused with an empty log:
+
+- a truncated length (BadLength);
+- an unknown kind byte (BadField);
+- a tick that moves backwards (NonMonotonicTick);
+- a wrong magic (BadMagic).
+
+Negative control: decoding the pressed flag from the released bit makes the
+replay diverge with code 3.
+
 ## Gaps
 
-- The log is in memory only. There is no byte codec yet, and it is not merged
-  into `Replay::Recorder`.
+- The log is not merged into `Replay::Recorder`.
 - `ActionInputRuntime` does not feed through it yet, so native-host
   recording still needs its own call sites.
