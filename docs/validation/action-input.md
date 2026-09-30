@@ -93,3 +93,15 @@ keys (portable codes 2018 to 2024), so games can bind camera, style, and
 quick-select actions without native code. `test/action_input.elisa` checks
 the Elisa codes and `test/application_gamepad_codes.cpp` checks the SDL
 mapping; both passed after the addition.
+
+## Local multiplayer routing
+
+`test/action_input_players.elisa` gives two players their own `ActionInput::Input`. Player one owns gamepad slot 1 and the keyboard; player two owns slot 2. Every event goes through `ActionInputRuntime::apply_player_event` for both players. The test checks:
+
+- slot 2's South button reaches only player two;
+- the keyboard reaches only player one;
+- unplugging slot 2 releases player two while player one keeps holding;
+- a controller in unassigned slot 3 drives nobody;
+- focus loss clears every player.
+
+A control that drops the slot check fails with code 1. Controller events are synthetic; no physical controllers were used.
