@@ -1,0 +1,38 @@
+# Slot addressing for an animation pose, kept free of floating point so the
+# prover can bound it (proof/animation_pose_index.elisa). The limits mirror
+# RenderSceneAnimationSubmission and the native ABI header.
+module AnimationPoseIndex:
+    public:
+        const BONES: usize = 256
+        const MORPHS: usize = 32
+        const MATRIX: usize = 16
+
+        # Offset of one matrix element in the flat bone buffer. An index or
+        # component out of range maps to slot 0; callers reject it first.
+        def bone_element(index: usize, component: usize) -> usize:
+            ensure result < 4096
+            return 0 if index >= 256
+            return 0 if component >= 16
+            index * 16 + component
+
+        # The submitted bone count after writing `index`: it never shrinks
+        # and never passes the limit.
+        def grown_count(current: usize, index: usize) -> usize:
+            ensure result >= current or current > 256
+            ensure result <= 256 or current > 256
+            ensure result > index or index >= 256 or current > 256
+            return current if current > 256
+            return current if index >= 256
+            next: usize = index + 1
+            return current if next <= current
+            next
+
+        # The same for morph weights.
+        def grown_morph_count(current: usize, index: usize) -> usize:
+            ensure result >= current or current > 32
+            ensure result <= 32 or current > 32
+            return current if current > 32
+            return current if index >= 32
+            next: usize = index + 1
+            return current if next <= current
+            next

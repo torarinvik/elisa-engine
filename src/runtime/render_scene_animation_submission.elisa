@@ -3,12 +3,13 @@
 # Wicked's double-buffered bridge only at the checked ABI boundary.
 include "./render_scene.elisa"
 include "../math/geometry.elisa"
+include "./animation_pose_index.elisa"
 
 module RenderSceneAnimationSubmission:
     public:
         const API_VERSION: i32 = 1
-        const MAX_BONES: usize = 256
-        const MAX_MORPHS: usize = 32
+        const MAX_BONES: usize = AnimationPoseIndex::BONES
+        const MAX_MORPHS: usize = AnimationPoseIndex::MORPHS
 
 extend RenderScene:
     private:
@@ -36,11 +37,10 @@ extend RenderScene:
         def set_bone_matrix(pose: mutable AnimationPose&, index: usize,
             matrix: f32[Geometry::MATRIX_ELEMENTS]) -> void error[RenderSceneError]:
             raise RenderSceneError.InvalidValue if index >= RenderSceneAnimationSubmission::MAX_BONES
-            base: usize = index * Geometry::MATRIX_ELEMENTS
-            for component in 0..<Geometry::MATRIX_ELEMENTS |pose, matrix, base, component|:
-                pose.native.bones[base + component] <- matrix[component]
-            count: u32 = index.u32() + 1
-            pose.native.bone_count <- count if count > pose.native.bone_count
+            # Slot offsets and the grown count are proved in proof/animation_pose_index.elisa.
+            for component in 0..<Geometry::MATRIX_ELEMENTS |pose, matrix, index, component|:
+                pose.native.bones[AnimationPoseIndex::bone_element(index, component)] <- matrix[component]
+            pose.native.bone_count <- AnimationPoseIndex::grown_count(pose.native.bone_count.usize(), index).u32()
 
         def set_bone_transform(pose: mutable AnimationPose&, index: usize,
             transform: Geometry::Transform) -> void error[RenderSceneError]:
@@ -51,8 +51,7 @@ extend RenderScene:
             raise RenderSceneError.InvalidValue if index >= RenderSceneAnimationSubmission::MAX_MORPHS
             raise RenderSceneError.InvalidValue if weight != weight or weight < 0.0 or weight > 1.0
             pose.native.morphs[index] <- weight
-            count: u32 = index.u32() + 1
-            pose.native.morph_count <- count if count > pose.native.morph_count
+            pose.native.morph_count <- AnimationPoseIndex::grown_morph_count(pose.native.morph_count.usize(), index).u32()
 
         def submit_animation_pose(handle: InstanceHandle,
             pose: mutable AnimationPose&) -> void error[RenderSceneError]:
