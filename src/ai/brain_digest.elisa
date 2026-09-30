@@ -1,0 +1,27 @@
+# Replay digest of an AI brain, for ReplaySubsystems slot 3 (AI, Exact
+# scope). The brain's own digest only changes on a mode transition. This one
+# also folds the time in mode, the patrol waypoint and whether a last-seen
+# point is held, so a replay catches a brain that drifts without switching
+# modes. Positions are left out: they are f32 and belong to the physics and
+# world slots.
+include "./brain.elisa"
+
+module AiBrainDigest:
+    public:
+        def brain_fold(digest: i64, value: i64) -> i64:
+            (digest * 16777619 + value % 1000000007 + 1000000007) % 1000000007
+
+        def brain_mode_number(mode: AiBrain::Mode) -> i64:
+            return 0 if mode == AiBrain::Mode.Patrol
+            return 1 if mode == AiBrain::Mode.Chase
+            return 2 if mode == AiBrain::Mode.Search
+            3
+
+        def brain_tick_digest(b: AiBrain::Brain&) -> i64:
+            mutable d: i64 = brain_fold(1469598103, b.digest)
+            d <- brain_fold(d, brain_mode_number(b.mode))
+            d <- brain_fold(d, brain_mode_number(b.previous))
+            d <- brain_fold(d, b.ticks_in_mode.i64())
+            d <- brain_fold(d, b.transitions.i64())
+            d <- brain_fold(d, b.patrol_index.i64())
+            brain_fold(d, 1 if b.has_last_seen else 0)
