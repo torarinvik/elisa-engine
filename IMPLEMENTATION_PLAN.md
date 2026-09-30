@@ -201,6 +201,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-30: ReplaySubsystemsCodec gives per-subsystem traces a validated, checksummed byte form (replay-trace-codec.md); course persistence and live-play recording remain.
   Progress on 2026-09-30: the course saves and reloads its per-subsystem trace through UserData and the reload still matches a fresh run (course-replay-digests.md); live-play recording and animation/AI digests remain.
   Progress on 2026-09-30: AnimGraphDigest records animation-graph state in replay slot 4; a changed blend length is found in animation at the transition tick and an input spike in input first ([animation-replay-digest.md](docs/validation/animation-replay-digest.md)); course recording of slot 4 and AI digests remain.
+  Progress on 2026-09-30: AiBrainDigest records per-tick brain state in replay slot 3 (Exact scope); a changed sight range is found in AI at the first differing sighting ([ai-replay-digest.md](docs/validation/ai-replay-digest.md)); course recording of slots 3 and 4 remains.
 - [ ] **W10 · P2 · Storage scale and world proofs** — After: W03, W07.
   Benchmark hot iteration, spawn/despawn, lookup, and compaction; improve measured layouts and grow implementation-linked proofs where supported. Done: representative small/large worlds show before/after timings and memory, and proof claims name exact invariants rather than claiming whole-engine safety. Proofs of other subsystems now grow with each slice (contract item 8); W10 keeps the storage and world invariants.
 

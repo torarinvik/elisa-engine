@@ -1,0 +1,45 @@
+include "../src/ai/brain_digest.elisa"
+include "../src/runtime/replay_subsystems.elisa"
+
+# The agent stands at the origin facing +x; the target walks in from x = 16
+# one metre per tick. Input slot 0 records the target position in decimetres.
+def abr_x(tick: i64, jump_at: i64) -> f32:
+    x: f32 = 16.0 - tick.f32()
+    x + 20.0 if tick == jump_at else x
+
+def abr_run(sight: f32, jump_at: i64) -> ReplaySubsystems::Trace:
+    mutable tuning: AiBrain::Tuning = AiBrain::default_tuning()
+    tuning.sight_range <- sight
+    mutable brain: AiBrain::Brain = AiBrain::Brain()
+    mutable t: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    for tick in 0..<16 |brain, t|:
+        x: f32 = abr_x(tick.i64(), jump_at)
+        percept: AiBrain::Percept = AiBrain::perceive(&tuning, 0.0, 0.0, 1.0, 0.0, x, 0.0, 0.0, true)
+        decision: AiBrain::Decision = AiBrain::think(brain, &percept, &tuning, false, tick.u64())
+        brain <- decision.brain
+        ok: bool = ReplaySubsystems::begin_tick(&t)
+        a: bool = ReplaySubsystems::record(&t, 0, (x * 10.0).i64())
+        b: bool = ReplaySubsystems::record(&t, 3, AiBrainDigest::brain_tick_digest(&brain))
+    t
+
+def main() -> i32:
+    base: ReplaySubsystems::Trace = abr_run(12.0, -1)
+    again: ReplaySubsystems::Trace = abr_run(12.0, -1)
+    return 1 if base.ticks != 16 or ReplaySubsystems::judge(&base, &again, false) != ReplaySubsystems::Verdict.Match
+    # Shorter sight, same input: the brains agree while both patrol, and the
+    # first difference is in AI at tick 4, when x = 12 is seen by one only.
+    short: ReplaySubsystems::Trace = abr_run(8.0, -1)
+    d: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&base, &short, false)
+    return 2 if d.tick != 4 or d.subsystem != 3
+    # AI is Exact scope, so it is compared across builds too.
+    return 3 if ReplaySubsystems::judge(&base, &short, false) != ReplaySubsystems::Verdict.Diverged
+    # A target that jumps away at tick 2 is found in input first.
+    jumped: ReplaySubsystems::Trace = abr_run(12.0, 2)
+    e: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&base, &jumped, false)
+    return 4 if e.tick != 2 or e.subsystem != 0
+    # Time in mode alone changes the digest, unlike the brain's own digest.
+    mutable b: AiBrain::Brain = AiBrain::Brain()
+    before: i64 = AiBrainDigest::brain_tick_digest(&b)
+    b.ticks_in_mode <- 1
+    return 5 if AiBrainDigest::brain_tick_digest(&b) == before
+    return 0
