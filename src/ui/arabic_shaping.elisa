@@ -1,0 +1,80 @@
+# Arabic contextual shaping for a renderer without OpenType shaping: each
+# letter in U+0621..U+064A becomes its isolated, final, initial or medial
+# presentation form (U+FE80..U+FEF4), and lam followed by an alef becomes one
+# lam-alef ligature (U+FEF5..U+FEFC). Harakat (U+064B..U+065F) are
+# transparent: they neither join nor break a join. Tatweel (U+0640) joins on
+# both sides and stays itself. Runs in logical order, before UiBidi.
+include "./message_format.elisa"
+
+module UiArabicShaping:
+    public:
+        # Forms per letter: 0 not Arabic, 1 hamza (never joins), 2 joins only
+        # to the previous letter, 4 joins on both sides.
+        def shape_forms(cp: i64) -> i64:
+            return 0 if cp < 1569 or cp > 1610 or (cp >= 1595 and cp <= 1600)
+            return 1 if cp == 1569
+            return 2 if (cp >= 1570 and cp <= 1573) or cp == 1575 or cp == 1577 or (cp >= 1583 and cp <= 1586) or cp == 1608 or cp == 1609
+            4
+
+        # First presentation form of `cp`: the block is laid out in letter
+        # order, each letter taking as many slots as it has forms.
+        def shape_base(cp: i64) -> i64:
+            mutable at: i64 = 65152
+            for k in 1569..<1611 |at|:
+                counts: bool = k.i64() < cp and shape_forms(k.i64()) > 0
+                at <- at + shape_forms(k.i64()) if counts else at
+            at
+
+        def shape_transparent(cp: i64) -> bool:
+            cp >= 1611 and cp <= 1631
+
+        def shape_joins_next(cp: i64) -> bool:
+            shape_forms(cp) == 4 or cp == 1600
+
+        def shape_joins_prev(cp: i64) -> bool:
+            shape_forms(cp) >= 2 or cp == 1600
+
+        def shape_is_alef(cp: i64) -> i64:
+            return 0 if cp == 1570
+            return 1 if cp == 1571
+            return 2 if cp == 1573
+            return 3 if cp == 1575
+            0 - 1
+
+        def shape_text(text: UiMessageFormat::Text&) -> UiMessageFormat::Text:
+            out: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: 0}
+            # prev_join: the last non-transparent letter joins forward.
+            mutable prev_join: bool = false
+            mutable skip: bool = false
+            for i in 0..<64 |out, prev_join, skip|:
+                if i.i64() < text.len and skip:
+                    skip <- false
+                elif i.i64() < text.len:
+                    cp: i64 = text.cp[i]
+                    # Next non-transparent codepoint, or 0 at the end.
+                    mutable next: i64 = 0
+                    mutable next_at: i64 = 0 - 1
+                    for k in 0..<64 |next, next_at|:
+                        later: bool = k > i and k.i64() < text.len and next_at < 0
+                        if later and not shape_transparent(text.cp[k]):
+                            next <- text.cp[k]
+                            next_at <- k.i64()
+                    alef: i64 = shape_is_alef(next) if cp == 1604 and next_at == i.i64() + 1 else 0 - 1
+                    if alef >= 0:
+                        out.cp[out.len.usize()] <- 65269 + alef * 2 + (1 if prev_join else 0)
+                        out.len <- out.len + 1
+                        prev_join <- false
+                        skip <- true
+                    elif shape_transparent(cp):
+                        out.cp[out.len.usize()] <- cp
+                        out.len <- out.len + 1
+                    else:
+                        forms: i64 = shape_forms(cp)
+                        joined_prev: bool = prev_join and shape_joins_prev(cp)
+                        joined_next: bool = shape_joins_next(cp) and shape_joins_prev(next)
+                        slot: i64 = 3 if joined_prev and joined_next else (1 if joined_prev else (2 if joined_next else 0))
+                        usable: i64 = slot if slot < forms else (1 if joined_prev and forms >= 2 else 0)
+                        out.cp[out.len.usize()] <- cp if forms == 0 else shape_base(cp) + usable
+                        out.len <- out.len + 1
+                        prev_join <- shape_joins_next(cp)
+            out

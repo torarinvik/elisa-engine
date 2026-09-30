@@ -1,0 +1,33 @@
+include "../src/ui/arabic_shaping.elisa"
+
+def as_text(a: i64[8], len: i64) -> UiMessageFormat::Text:
+    t: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: len}
+    for i in 0..<8 |t|:
+        t.cp[i] <- a[i]
+    t
+
+def main() -> i32:
+    # Base slots from the Presentation Forms-B layout.
+    return 1 if UiArabicShaping::shape_base(1569) != 65152 or UiArabicShaping::shape_base(1575) != 65165 or UiArabicShaping::shape_base(1576) != 65167
+    return 2 if UiArabicShaping::shape_base(1601) != 65233 or UiArabicShaping::shape_base(1604) != 65245 or UiArabicShaping::shape_base(1610) != 65265
+    # beh beh beh: initial, medial, final.
+    s1: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1576, 1576, 0, 0, 0, 0, 0], 3))
+    return 3 if s1.len != 3 or s1.cp[0] != 65169 or s1.cp[1] != 65170 or s1.cp[2] != 65168
+    # beh dal beh: dal joins only back, so the last beh is isolated.
+    s2: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1583, 1576, 0, 0, 0, 0, 0], 3))
+    return 4 if s2.cp[0] != 65169 or s2.cp[1] != 65194 or s2.cp[2] != 65167
+    # lam alef -> the isolated ligature; beh lam alef -> the final ligature.
+    s3: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1604, 1575, 0, 0, 0, 0, 0, 0], 2))
+    return 5 if s3.len != 1 or s3.cp[0] != 65275
+    s4: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1604, 1575, 0, 0, 0, 0, 0], 3))
+    return 6 if s4.len != 2 or s4.cp[0] != 65169 or s4.cp[1] != 65276
+    # A fatha between two behs is transparent: they still join.
+    s5: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1614, 1576, 0, 0, 0, 0, 0], 3))
+    return 7 if s5.cp[0] != 65169 or s5.cp[1] != 1614 or s5.cp[2] != 65168
+    # Hamza never joins; a space breaks joining; Latin is untouched.
+    s6: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1569, 1576, 32, 1576, 97, 0, 0], 6))
+    return 8 if s6.cp[0] != 65167 or s6.cp[1] != 65152 or s6.cp[2] != 65167 or s6.cp[3] != 32 or s6.cp[4] != 65167 or s6.cp[5] != 97
+    # Tatweel joins both sides and stays itself: beh tatweel beh.
+    s7: UiMessageFormat::Text = UiArabicShaping::shape_text(as_text([1576, 1600, 1576, 0, 0, 0, 0, 0], 3))
+    return 9 if s7.cp[0] != 65169 or s7.cp[1] != 1600 or s7.cp[2] != 65168
+    return 0

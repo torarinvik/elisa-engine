@@ -41,4 +41,13 @@ def main() -> i32:
     # Empty text stays empty.
     e: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(UiLocaleData::Utf8(), true)
     return 7 if e.length != 0u32
+    # Arabic beh beh (D8 A8 D8 A8) is shaped, then reversed: final beh
+    # (U+FE90, EF BA 90) comes first, initial beh (U+FE91, EF BA 91) second.
+    mutable ar: UiLocaleData::Utf8 = UiLocaleData::Utf8()
+    bu_push(&ar, 216u8)
+    bu_push(&ar, 168u8)
+    bu_push(&ar, 216u8)
+    bu_push(&ar, 168u8)
+    sa: UiLocaleData::Utf8 = UiBidiUtf8::bidi_utf8_lines(ar, true)
+    return 8 if sa.length != 6u32 or sa.bytes[0] != 239u8 or sa.bytes[2] != 144u8 or sa.bytes[5] != 145u8
     return 0

@@ -1,10 +1,12 @@
 # Display order for wrapped UTF-8 captions. The overlay renderer draws
 # glyphs left to right in byte order and does no bidi of its own, so each
 # line (split at '\n') is decoded, put in visual order by UiBidi and encoded
-# again. Malformed bytes decode to U+FFFD. A line longer than 64 codepoints
+# again, with Arabic letters shaped into presentation forms first.
+# Malformed bytes decode to U+FFFD. A line longer than 64 codepoints
 # is left as it is rather than cut.
 include "./locale_data.elisa"
 include "./bidi.elisa"
+include "./arabic_shaping.elisa"
 
 module UiBidiUtf8:
     public:
@@ -51,7 +53,8 @@ module UiBidiUtf8:
                     if line.len >= 64:
                         bidi_utf8_append(&out, &text, start, at)
                     else:
-                        visual: UiMessageFormat::Text = UiBidi::bidi_visual(&line, rtl_paragraph)
+                        shaped: UiMessageFormat::Text = UiArabicShaping::shape_text(&line)
+                        visual: UiMessageFormat::Text = UiBidi::bidi_visual(&shaped, rtl_paragraph)
                         encoded: UiLocaleData::Utf8 = UiLocaleData::encode(&visual)
                         bidi_utf8_append(&out, &encoded, 0, encoded.length.i64())
                     if at < n:
