@@ -1,0 +1,209 @@
+# Embeddable viewport (M01): Metal offscreen render into the shared IOSurface
+# ring, redraw on demand, frame-sync ring, resize generations, readback
+# compared with the CPU rasterizer, and PNG output.
+# Build: scripts/build_viewport_native_test.sh viewport_render
+include "../src/viewport/viewport.elisa"
+include "../src/viewport/viewport_raster.elisa"
+include "../src/viewport/png_writer.elisa"
+
+@link_name("clock_gettime_nsec_np")
+extern c_clock_ns(clock: i32) -> u64 can[Blocking.IO]
+@link_name("putchar")
+extern c_putchar(c: i32) -> i32 can[Blocking.IO]
+
+# The stage1 backend declines f-strings here, so digits go out one by one.
+def print_number(label: sview, value: i64):
+    for c in label:
+        _ = c_putchar(c.i32())
+    mutable digits: darray[i32] = []
+    mutable rest: i64 = value
+    digits.push((rest % 10).i32())
+    rest <- rest / 10
+    while rest > 0:
+        digits.push((rest % 10).i32())
+        rest <- rest / 10
+    for k in 0..<digits.count:
+        _ = c_putchar(48 + digits[digits.count - 1 - k])
+    _ = c_putchar(10)
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def scene(cam: ViewportCamera::Camera&) -> ViewportDraw::List:
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    _ = catch ViewportDraw::grid(&list, 0.25, 8, ViewportDraw::rgba(90, 92, 100, 255)):
+        value: 0
+        error failure: 1
+    # A small stick figure: hips, spine, head, two legs.
+    joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.0), v(-0.15, 0.5, 0.05), v(-0.15, 0.05, 0.1), v(0.15, 0.5, -0.05), v(0.15, 0.05, -0.1)]
+    parents: darray[i64] = [-1, 0, 1, 0, 3, 0, 5]
+    for k in 0..<joints.count:
+        if parents[k] >= 0:
+            _ = catch ViewportDraw::bone(&list, joints[parents[k].usize()], joints[k], ViewportDraw::rgba(240, 200, 60, 255), ViewportDraw::TOP):
+                value: 0
+                error failure: 1
+        _ = catch ViewportDraw::marker(&list, cam, joints[k], 4.0, ViewportDraw::rgba(250, 250, 250, 255), ViewportDraw::TOP):
+            value: 0
+            error failure: 1
+    # A depth-tested floor patch that the grid lines sit on.
+    _ = catch ViewportDraw::triangle(&list, v(-0.5, -0.001, -0.5), v(0.5, -0.001, -0.5), v(0.5, -0.001, 0.5), ViewportDraw::rgba(60, 120, 80, 255), ViewportDraw::DEPTH):
+        value: 0
+        error failure: 1
+    return move list
+
+def draw_code(list: mutable ViewportDraw::List&, a: Geometry::Vec3, layer: i32) -> i32:
+    catch ViewportDraw::line(list, a, v(0.0, 0.0, 0.0), 0, layer):
+        value: 0
+        ViewportDraw::DrawError.Capacity: 1
+        ViewportDraw::DrawError.BadLayer: 2
+        ViewportDraw::DrawError.NotFinite: 3
+        error failure: 9
+
+def create_code(w: i64, h: i64) -> i32:
+    catch Viewport::create(w, h):
+        value: 0
+        Viewport::ViewportError.NoDevice: 1
+        Viewport::ViewportError.BadSize: 2
+        error failure: 9
+
+def tick(vp: mutable Viewport::Viewport&, list: ViewportDraw::List&) -> i32:
+    catch Viewport::tick(vp, list):
+        value: 1 if value else 0
+        error failure: 9
+
+# Fraction of pixels (per 10,000) whose colours differ by more than 48 in
+# any channel.
+def mismatch(a: darray[u8]&, b: darray[u8]&) -> i64:
+    mutable bad: i64 = 0
+    n: usize = a.count / 4
+    for k in 0..<n:
+        mutable far: bool = false
+        for c in 0..<3:
+            d: i64 = a[k * 4 + c].i64() - b[k * 4 + c].i64()
+            far <- far or d > 48 or d < -48
+        bad <- bad + 1 if far else bad
+    bad * 10000 / n.i64()
+
+def adversarial() -> i32:
+    return 1 if create_code(0, 10) != 2 or create_code(10, 20000) != 2 or create_code(-3, -3) != 2
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    return 2 if draw_code(&list, v(0.0 / 0.0, 0.0, 0.0), ViewportDraw::TOP) != 3
+    return 3 if draw_code(&list, v(1.0, 0.0, 0.0), 7) != 2
+    return 4 if ViewportDraw::vertex_count(&list) != 0
+    mutable bad: i32 = 0
+    _ = catch ViewportDraw::grid(&list, -1.0, 4, 0):
+        value: 0
+        error failure: 1
+    return 5 if ViewportDraw::vertex_count(&list) != 0
+    0
+
+def png_checks() -> i32:
+    pixels: darray[u8] = [255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 128]
+    a: darray[u8] = catch PngWriter::encode(2, 2, &pixels):
+        value: value
+        error failure: []
+    b: darray[u8] = catch PngWriter::encode(2, 2, &pixels):
+        value: value
+        error failure: []
+    return 40 if a.count < 60 or a.count != b.count
+    for k in 0..<a.count:
+        return 41 if a[k] != b[k]
+    return 42 if a[0] != 137 or a[1] != 80 or a[12] != 73 or a[15] != 82
+    # IEND's CRC is the fixed AE 42 60 82.
+    n: usize = a.count
+    return 43 if a[n - 4] != 0xae or a[n - 3] != 0x42 or a[n - 2] != 0x60 or a[n - 1] != 0x82
+    short: darray[u8] = [1, 2, 3]
+    code: i32 = catch PngWriter::encode(2, 2, &short):
+        value: 0
+        PngWriter::PngError.ShortPixels: 1
+        error failure: 9
+    return 44 if code != 1
+    code2: i32 = catch PngWriter::encode(0, 2, &pixels):
+        value: 0
+        PngWriter::PngError.BadSize: 1
+        error failure: 9
+    return 45 if code2 != 1
+    0
+
+def main() -> i32:
+    a: i32 = adversarial()
+    return a if a != 0
+    p: i32 = png_checks()
+    return p if p != 0
+    mutable vp: Viewport::Viewport = catch Viewport::create(320, 240):
+        value: value
+        error failure: return 10
+    list: ViewportDraw::List = scene(&vp.camera)
+    gen0: i64 = vp.generation
+    # Redraw on demand: the first tick renders, idle ticks do not.
+    return 11 if tick(&vp, &list) != 1 or vp.published_frame != 0 or Viewport::published_surface(&vp) == 0
+    return 12 if Viewport::published_surface_id(&vp) == 0
+    start: u64 = c_clock_ns(4)
+    for _ in 0..<10000:
+        return 13 if tick(&vp, &list) != 0
+    idle_ns: u64 = c_clock_ns(4) - start
+    return 14 if vp.rendered != 1 or vp.idle_ticks != 10000
+    # 10,000 idle ticks must cost well under a millisecond each (they are a
+    # branch); fail above 50 ms total.
+    return 15 if idle_ns > 50000000
+    # Readback matches the CPU rasterizer of the same list and camera.
+    mutable gpu: darray[u8] = []
+    return 16 if not Viewport::read_rgba(&vp, &gpu)
+    mutable cpu: ViewportRaster::Image = ViewportRaster::create(320, 240)
+    ViewportRaster::clear(&cpu, vp.clear_color)
+    ViewportRaster::render(&cpu, &vp.camera, &list)
+    diff: i64 = mismatch(&gpu, &cpu.rgba)
+    print_number("gpu/cpu mismatch per 10000 px: ", diff)
+    print_number("10000 idle ticks ns: ", idle_ns.i64())
+    return 17 if diff > 150
+    # Not trivially equal: the picture has content (grid, bones, joints).
+    mutable lit: i64 = 0
+    for k in 0..<(gpu.count / 4):
+        lit <- lit + 1 if gpu[k * 4] > 200 and gpu[k * 4 + 1] > 180 else lit
+    return 18 if lit < 30
+    _ = catch PngWriter::save("build/viewport_render_gpu.png", 320, 240, &gpu):
+        value: 0
+        error failure: return 19
+    _ = catch PngWriter::save("build/viewport_render_cpu.png", 320, 240, &cpu.rgba):
+        value: 0
+        error failure: return 20
+    # Frame sync: without acknowledgements the producer stops two frames
+    # ahead and keeps the dirty bits.
+    Viewport::invalidate(&vp, ViewportPolicy::DIRTY_CAMERA)
+    return 21 if tick(&vp, &list) != 1
+    Viewport::invalidate(&vp, ViewportPolicy::DIRTY_CAMERA)
+    return 22 if tick(&vp, &list) != 0 or vp.dirty == 0
+    # Stale and future acknowledgements are ignored.
+    return 23 if Viewport::acknowledge(&vp, 5) or not Viewport::acknowledge(&vp, 1) or Viewport::acknowledge(&vp, 0)
+    return 24 if tick(&vp, &list) != 1 or vp.published_slot != 2
+    # Invalid dirty masks are ignored; playing renders every tick.
+    Viewport::invalidate(&vp, 99)
+    return 25 if vp.dirty != 0
+    Viewport::set_playing(&vp, true)
+    _ = Viewport::acknowledge(&vp, 2)
+    return 26 if tick(&vp, &list) != 1
+    _ = Viewport::acknowledge(&vp, 3)
+    return 27 if tick(&vp, &list) != 1
+    Viewport::set_playing(&vp, false)
+    # Resize: same size keeps the generation; a new size bumps it and
+    # unpublishes until the next frame.
+    same: bool = catch Viewport::resize(&vp, 320, 240):
+        value: value
+        error failure: true
+    return 28 if same or vp.generation != gen0
+    grown: bool = catch Viewport::resize(&vp, 400, 300):
+        value: value
+        error failure: false
+    return 29 if not grown or vp.generation == gen0 or Viewport::published_surface(&vp) != 0
+    _ = Viewport::acknowledge(&vp, vp.published_frame)
+    return 30 if tick(&vp, &list) != 1 or Viewport::published_surface(&vp) == 0
+    mutable big: darray[u8] = []
+    return 31 if not Viewport::read_rgba(&vp, &big) or big.count != 400 * 300 * 4
+    # A zero-size panel keeps a one-pixel texture instead of failing.
+    _ = catch Viewport::resize(&vp, 0, 0):
+        value: value
+        error failure: return 32
+    return 33 if vp.camera.width != 1
+    Viewport::destroy(&vp)
+    return 34 if tick(&vp, &list) != 9 or Viewport::published_surface(&vp) != 0
+    0

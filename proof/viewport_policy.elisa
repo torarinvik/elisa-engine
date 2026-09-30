@@ -1,0 +1,69 @@
+include "../src/viewport/viewport_policy.elisa"
+
+extend ViewportPolicy:
+    # An accepted or clamped texture side is always allocatable.
+    def prove_extent(extent: i64) -> bool:
+        ensure not result or extent >= 1
+        ensure not result or extent <= 16384
+        extent_fits(extent)
+
+    def prove_clamp_extent(extent: i64) -> i64:
+        ensure result >= 1
+        ensure result <= 16384
+        clamp_extent(extent)
+
+    # needs_realloc's own ensures state that it reallocates exactly when the
+    # size changes; they are verified with the policy module.
+
+    def prove_generation(generation: i64) -> i64:
+        ensure result >= 1
+        next_generation(generation)
+
+    # The orbit basis never degenerates: the pitch code stays inside
+    # [0, 17800], i.e. pitch within +-89 degrees of the horizon.
+    def prove_pitch(code: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 17800
+        clamp_pitch_code(code)
+
+    def prove_yaw(yaw_cd: i64) -> i64:
+        ensure result >= 0
+        ensure result < 36000
+        wrap_yaw(yaw_cd)
+
+    def prove_zoom(code: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 320
+        clamp_zoom_code(code)
+
+    # Every frame maps into the ring.
+    def prove_slot(frame: i64) -> i64:
+        ensure result >= 0
+        ensure result < 3
+        slot_for_frame(frame)
+
+    # A frame the producer may begin is strictly newer than the displayed one
+    # and at most two ahead, so with three slots its slot is never the one
+    # on screen.
+    def prove_can_begin(frame: i64, acked: i64) -> bool:
+        requires frame >= -1
+        requires frame <= 4611686018427387904
+        requires acked >= -1
+        requires acked <= 4611686018427387904
+        ensure not result or frame > acked
+        ensure not result or frame <= acked + 2
+        can_begin(frame, acked)
+
+    # Idle and not playing means no frame; playing always renders.
+    def prove_idle(mask: i64) -> bool:
+        ensure mask != 0 or not result
+        should_render(mask, false)
+
+    def prove_playing(mask: i64) -> bool:
+        ensure result
+        should_render(mask, true)
+
+    def prove_mask(mask: i64) -> bool:
+        ensure not result or mask <= 15
+        ensure not result or mask >= 0
+        mask_valid(mask)

@@ -1,0 +1,146 @@
+# Integer policy behind embeddable viewports (plan M01). Everything here is
+# pure and integer-only, so proof/viewport_policy.elisa can show that:
+#   - an accepted texture extent is inside the limits;
+#   - a camera pitch never reaches a pole, a yaw stays in one turn, and a zoom
+#     step stays in range;
+#   - the frame-sync ring never hands the producer the slot the consumer is
+#     reading, and every slot index lands in the ring;
+#   - redraw-on-demand renders exactly when something is dirty or playing.
+#
+# Texture lifetime protocol (shared Metal texture, see
+# docs/validation/viewport-shared-texture.md):
+#   - The engine owns every texture. A viewport has RING_SLOTS IOSurface-backed
+#     textures of one size and a `generation` that changes whenever they are
+#     reallocated (resize). The host (elisa-ui) never frees them.
+#   - Frame `f` is written into slot `slot_for_frame(f)`. When it is complete
+#     the engine publishes it; the host shows the newest published frame and
+#     acknowledges the frame it is displaying.
+#   - The producer may start frame `f` only when `can_begin(f, acked)`; a
+#     skipped frame keeps its dirty bits and is retried on the next tick.
+#   - A host that sees a new generation drops its references to the old
+#     surfaces before the engine frees them on the following publish.
+module ViewportPolicy:
+    public:
+        const MIN_EXTENT: i64 = 1
+        # Largest Metal 2D texture side on Apple-family GPUs.
+        const MAX_EXTENT: i64 = 16384
+
+        # Frames in flight: one displayed, one queued, one being drawn.
+        const RING_SLOTS: i64 = 3
+
+        # Pitch is held in centidegrees short of the poles so the orbit basis
+        # never degenerates; yaw wraps into one turn. Pitch and zoom are
+        # stored as non-negative codes (value + offset) so every stored value
+        # is a plain range [0, span].
+        const PITCH_LIMIT_CD: i64 = 8900
+        const PITCH_SPAN: i64 = 17800
+        const TURN_CD: i64 = 36000
+        # Zoom is an integer step count; distance = base * 2^((code - 160) / 8).
+        const ZOOM_NEUTRAL: i64 = 160
+        const ZOOM_SPAN: i64 = 320
+        # Frame counters stay below 2^62 so frame arithmetic cannot overflow.
+        const MAX_FRAME: i64 = 4611686018427387904
+
+        # Dirty reasons for redraw-on-demand.
+        const DIRTY_CAMERA: i64 = 1
+        const DIRTY_SCENE: i64 = 2
+        const DIRTY_SIZE: i64 = 4
+        const DIRTY_OVERLAY: i64 = 8
+        const DIRTY_ALL: i64 = 15
+
+        def extent_fits(extent: i64) -> bool:
+            ensure not result or extent >= MIN_EXTENT
+            ensure not result or extent <= MAX_EXTENT
+            return false if extent < MIN_EXTENT
+            return false if extent > MAX_EXTENT
+            true
+
+        # A panel may shrink to nothing while a layout animates; the texture
+        # still has at least one pixel and never exceeds the limit.
+        def clamp_extent(extent: i64) -> i64:
+            ensure result >= MIN_EXTENT
+            ensure result <= MAX_EXTENT
+            return MIN_EXTENT if extent < MIN_EXTENT
+            return MAX_EXTENT if extent > MAX_EXTENT
+            extent
+
+        # Textures are exactly the panel's pixel size, so any change
+        # reallocates (and bumps the generation).
+        def needs_realloc(width: i64, height: i64, want_width: i64, want_height: i64) -> bool:
+            ensure result or (width == want_width and height == want_height)
+            ensure not result or width != want_width or height != want_height
+            return true if width != want_width
+            return true if height != want_height
+            false
+
+        def next_generation(generation: i64) -> i64:
+            ensure result >= 1
+            return 1 if generation < 1
+            return 1 if generation >= 2147483647
+            generation + 1
+
+        # Pitch code = pitch_cd + PITCH_LIMIT_CD.
+        def clamp_pitch_code(code: i64) -> i64:
+            ensure result >= 0
+            ensure result <= PITCH_SPAN
+            return 0 if code < 0
+            return PITCH_SPAN if code > PITCH_SPAN
+            code
+
+        def wrap_yaw(yaw_cd: i64) -> i64:
+            ensure result >= 0
+            ensure result < TURN_CD
+            return yaw_cd if yaw_cd >= 0 and yaw_cd < TURN_CD
+            r: i64 = yaw_cd % TURN_CD
+            return r if r >= 0 and r < TURN_CD
+            s: i64 = r + TURN_CD
+            return s if s >= 0 and s < TURN_CD
+            0
+
+        # Zoom code = step + ZOOM_NEUTRAL.
+        def clamp_zoom_code(code: i64) -> i64:
+            ensure result >= 0
+            ensure result <= ZOOM_SPAN
+            return 0 if code < 0
+            return ZOOM_SPAN if code > ZOOM_SPAN
+            code
+
+        def slot_for_frame(frame: i64) -> i64:
+            ensure result >= 0
+            ensure result < RING_SLOTS
+            return 0 if frame < 0
+            r: i64 = frame % RING_SLOTS
+            return 0 if r < 0 or r >= RING_SLOTS
+            r
+
+        # The producer may draw frame `frame` while the host displays frame
+        # `acked` (-1 before the first acknowledgement) only if that does not
+        # reuse the displayed slot: at most RING_SLOTS - 1 frames ahead.
+        # Counters outside [-1, MAX_FRAME] are refused.
+        def can_begin(frame: i64, acked: i64) -> bool:
+            ensure not result or frame > acked
+            ensure not result or acked >= -1
+            ensure not result or acked <= MAX_FRAME
+            ensure not result or frame <= acked + 2
+            return false if acked < -1
+            return false if acked > MAX_FRAME
+            return false if frame <= acked
+            return false if frame > acked + RING_SLOTS - 1
+            true
+
+        def mask_valid(mask: i64) -> bool:
+            ensure not result or mask >= 0
+            ensure not result or mask <= DIRTY_ALL
+            return false if mask < 0
+            return false if mask > DIRTY_ALL
+            true
+
+        # Redraw on demand: render only when a reason is pending or a clip is
+        # playing. An idle viewport costs no frames.
+        def should_render(mask: i64, playing: bool) -> bool:
+            ensure not result or playing or mask != 0
+            ensure result or (not playing and mask == 0)
+            ensure result or not playing
+            return true if playing
+            return true if mask != 0
+            false

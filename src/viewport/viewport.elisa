@@ -1,0 +1,155 @@
+# Embeddable viewport (plan M01): an engine-owned Metal render target that a
+# UI toolkit shows in a panel, with redraw on demand and the frame-sync
+# protocol of ViewportPolicy (proved in proof/viewport_policy.elisa).
+#
+# Host loop (elisa-ui side, see docs/validation/viewport-shared-texture.md):
+#   1. forward panel size and pointer input: `resize`, `orbit`/`pan`/`zoom`
+#      via ViewportCamera on `vp.camera`, then `invalidate(DIRTY_CAMERA)`;
+#   2. once per UI frame build the draw list and call `tick`; it renders only
+#      when something is dirty or playing and the ring has a free slot;
+#   3. after `tick` returns true, show `published_surface` (an IOSurfaceRef)
+#      and `acknowledge(published_frame)` once it is on screen;
+#   4. when `generation` changes, drop the old surfaces before the next tick.
+#
+# Needs a Metal device, not a window: it works headless and in CI on a Mac.
+# Link native/viewport_metal.m with -framework Metal -framework IOSurface
+# -framework Foundation.
+include "./viewport_camera.elisa"
+include "./viewport_draw.elisa"
+include "./viewport_policy.elisa"
+
+module Viewport:
+    public:
+        error ViewportError:
+            NoDevice
+            BadSize
+            RenderFailed
+            Destroyed
+
+        struct Viewport:
+            handle: mutable usize
+            camera: mutable ViewportCamera::Camera
+            dirty: mutable i64
+            playing: mutable bool
+            # Next frame number to render; frames start at 0.
+            frame: mutable i64
+            # Newest completed frame and its ring slot (-1 before the first).
+            published_frame: mutable i64
+            published_slot: mutable i64
+            # Frame the host reports on screen (-1 before the first).
+            acked: mutable i64
+            generation: mutable i64
+            clear_color: mutable u32
+            # Frames actually rendered and ticks that rendered nothing.
+            rendered: mutable i64
+            idle_ticks: mutable i64
+
+        def create(width: i64, height: i64) -> Viewport error[ViewportError]:
+            raise ViewportError.BadSize if not ViewportPolicy::extent_fits(width) or not ViewportPolicy::extent_fits(height)
+            handle: usize = c_create(width.i32(), height.i32())
+            raise ViewportError.NoDevice if handle == 0
+            Viewport{handle: handle, camera: ViewportCamera::create(width, height), dirty: ViewportPolicy::DIRTY_ALL, playing: false, frame: 0, published_frame: -1, published_slot: -1, acked: -1, generation: c_generation(handle), clear_color: ViewportDraw::rgba(38, 40, 46, 255), rendered: 0, idle_ticks: 0}
+
+        def destroy(vp: mutable Viewport&):
+            c_destroy(vp.handle) if vp.handle != 0
+            vp.handle <- 0
+
+        def invalidate(vp: mutable Viewport&, reason: i64):
+            return if not ViewportPolicy::mask_valid(reason)
+            vp.dirty <- vp.dirty | reason
+
+        def set_playing(vp: mutable Viewport&, playing: bool):
+            vp.playing <- playing
+
+        # Match the panel's pixel size. Reallocates the ring (new generation)
+        # only when the size changed; a zero-size panel keeps one pixel.
+        def resize(vp: mutable Viewport&, width: i64, height: i64) -> bool error[ViewportError]:
+            raise ViewportError.Destroyed if vp.handle == 0
+            changed: bool = ViewportCamera::resize(&vp.camera, width, height)
+            return false if not changed
+            raise ViewportError.RenderFailed if c_resize(vp.handle, vp.camera.width.i32(), vp.camera.height.i32()) == 0
+            vp.generation <- c_generation(vp.handle)
+            # Old slots are gone; nothing is published for this generation.
+            vp.published_slot <- -1
+            vp.dirty <- vp.dirty | ViewportPolicy::DIRTY_SIZE
+            true
+
+        # Render if needed. Returns true when a new frame was published.
+        def tick(vp: mutable Viewport&, list: ViewportDraw::List&) -> bool error[ViewportError]:
+            raise ViewportError.Destroyed if vp.handle == 0
+            if not ViewportPolicy::should_render(vp.dirty, vp.playing):
+                vp.idle_ticks <- vp.idle_ticks + 1
+                return false
+            # The host has not caught up: keep the dirty bits for next tick.
+            return false if not ViewportPolicy::can_begin(vp.frame, vp.acked)
+            slot: i64 = ViewportPolicy::slot_for_frame(vp.frame)
+            m: f32[16] = ViewportCamera::view_projection(&vp.camera)
+            mutable positions: darray[f32] = []
+            mutable colors: darray[u32] = []
+            append(&positions, &colors, &list.depth_tris)
+            append(&positions, &colors, &list.depth_lines)
+            append(&positions, &colors, &list.top_tris)
+            append(&positions, &colors, &list.top_lines)
+            # Never hand the bridge an empty array's address.
+            positions.push(0.0)
+            colors.push(0)
+            ok: i32 = c_render(vp.handle, slot.i32(), (&m[0]).cast[void&], (&positions[0]).cast[void&], (&colors[0]).cast[void&], list.depth_tris.colors.count.i64(), list.depth_lines.colors.count.i64(), list.top_tris.colors.count.i64(), list.top_lines.colors.count.i64(), vp.clear_color)
+            raise ViewportError.RenderFailed if ok == 0
+            vp.published_frame <- vp.frame
+            vp.published_slot <- slot
+            vp.frame <- vp.frame + 1
+            vp.dirty <- 0
+            vp.rendered <- vp.rendered + 1
+            true
+
+        # The host reports the frame it now shows. Unknown or stale frames
+        # are ignored, so a late acknowledgement cannot move `acked` back.
+        def acknowledge(vp: mutable Viewport&, frame: i64) -> bool:
+            return false if frame > vp.published_frame or frame <= vp.acked
+            vp.acked <- frame
+            true
+
+        # IOSurfaceRef of the newest published frame (0 when none is ready
+        # for the current generation). Borrowed: CFRetain what you keep.
+        def published_surface(vp: Viewport&) -> usize:
+            return 0 if vp.handle == 0 or vp.published_slot < 0
+            c_surface(vp.handle, vp.published_slot.i32())
+
+        def published_surface_id(vp: Viewport&) -> u32:
+            return 0 if vp.handle == 0 or vp.published_slot < 0
+            c_surface_id(vp.handle, vp.published_slot.i32())
+
+        # Read the newest published frame back as RGBA8 (for PNG output and
+        # tests). Returns false when nothing is published.
+        def read_rgba(vp: Viewport&, out: mutable darray[u8]&) -> bool:
+            return false if vp.handle == 0 or vp.published_slot < 0
+            n: usize = (vp.camera.width * vp.camera.height * 4).usize()
+            out.clear()
+            for _ in 0..<n:
+                out.push(0)
+            got: i64 = c_read(vp.handle, vp.published_slot.i32(), (&out[0]).cast[mutable void&], n.i64())
+            got == n.i64()
+
+    private:
+        @link_name("elisa_viewport_metal_create")
+        extern c_create(width: i32, height: i32) -> usize can[Memory.Allocate]
+        @link_name("elisa_viewport_metal_destroy")
+        extern c_destroy(handle: usize) can[Memory.Release]
+        @link_name("elisa_viewport_metal_resize")
+        extern c_resize(handle: usize, width: i32, height: i32) -> i32 can[Memory.Allocate]
+        @link_name("elisa_viewport_metal_generation")
+        extern c_generation(handle: usize) -> i64
+        @link_name("elisa_viewport_metal_surface")
+        extern c_surface(handle: usize, slot: i32) -> usize
+        @link_name("elisa_viewport_metal_surface_id")
+        extern c_surface_id(handle: usize, slot: i32) -> u32
+        @link_name("elisa_viewport_metal_render")
+        extern c_render(handle: usize, slot: i32, matrix: void&, positions: void&, colors: void&, depth_tris: i64, depth_lines: i64, top_tris: i64, top_lines: i64, clear: u32) -> i32 can[Memory.Allocate]
+        @link_name("elisa_viewport_metal_read_rgba")
+        extern c_read(handle: usize, slot: i32, out: mutable void&, capacity: i64) -> i64
+
+        def append(positions: mutable darray[f32]&, colors: mutable darray[u32]&, batch: ViewportDraw::Batch&):
+            for k in 0..<batch.positions.count:
+                positions.push(batch.positions[k])
+            for k in 0..<batch.colors.count:
+                colors.push(batch.colors[k])

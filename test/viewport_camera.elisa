@@ -1,0 +1,130 @@
+include "../src/viewport/viewport_camera.elisa"
+
+def near(a: f32, b: f32, tol: f32) -> bool:
+    d: f32 = a - b
+    d < tol and d > 0.0 - tol
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+# Project the point `depth` metres along the ray under (px, py) and check it
+# lands back on the same pixel.
+def round_trip(cam: ViewportCamera::Camera&, px: f32, py: f32, depth: f32) -> bool:
+    r: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+    p: Geometry::Vec3 = Geometry::ray3_at(r, depth)
+    s: ViewportCamera::ScreenPoint = ViewportCamera::project(cam, p)
+    s.in_front and near(s.x, px, 0.01) and near(s.y, py, 0.01)
+
+def projection() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create(800, 600)
+    c: ViewportCamera::ScreenPoint = ViewportCamera::project(&cam, cam.target)
+    return 1 if not c.in_front or not near(c.x, 400.0, 0.01) or not near(c.y, 300.0, 0.01)
+    return 2 if not near(c.view_depth, ViewportCamera::distance(&cam), 0.001)
+    # Up in the world is up on screen; right of the camera is right.
+    b: ViewportCamera::Basis = ViewportCamera::basis(&cam)
+    above: ViewportCamera::ScreenPoint = ViewportCamera::project(&cam, Geometry::vec3_add(cam.target, b.up))
+    beside: ViewportCamera::ScreenPoint = ViewportCamera::project(&cam, Geometry::vec3_add(cam.target, b.right))
+    return 3 if above.y >= c.y or beside.x <= c.x
+    # Behind the eye is not in front.
+    behind: ViewportCamera::ScreenPoint = ViewportCamera::project(&cam, Geometry::vec3_add(b.eye, Geometry::vec3_scale(b.forward, -1.0)))
+    return 4 if behind.in_front
+    for k in 0..<20:
+        return 5 if not round_trip(&cam, (k * 37 % 800).f32() + 0.5, (k * 53 % 600).f32() + 0.5, 0.5 + k.f32() * 0.4)
+    front: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    side: ViewportCamera::Camera = ViewportCamera::create_ortho(480, 640, ViewportCamera::SIDE)
+    for k in 0..<20:
+        return 6 if not round_trip(&front, (k * 31 % 640).f32(), (k * 17 % 480).f32(), 100.0 + k.f32() * 30.0)
+        return 7 if not round_trip(&side, (k * 29 % 480).f32(), (k * 41 % 640).f32(), 100.0 + k.f32() * 30.0)
+    # Orthographic rays are parallel; the front view looks down -Z and the
+    # side view down -X.
+    fr: Geometry::Ray3 = ViewportCamera::ray(&front, 10.0, 10.0)
+    sr: Geometry::Ray3 = ViewportCamera::ray(&side, 400.0, 20.0)
+    return 8 if not near(fr.direction.z, -1.0, 0.0001) or not near(sr.direction.x, -1.0, 0.0001)
+    # Orthographic size does not depend on depth.
+    a: ViewportCamera::ScreenPoint = ViewportCamera::project(&front, v(0.5, 1.0, 5.0))
+    z: ViewportCamera::ScreenPoint = ViewportCamera::project(&front, v(0.5, 1.0, -5.0))
+    return 9 if not near(a.x, z.x, 0.001) or not near(a.y, z.y, 0.001)
+    0
+
+def controls() -> i32:
+    mutable cam: ViewportCamera::Camera = ViewportCamera::create(800, 600)
+    # A huge downward drag stops short of the pole; the basis stays finite.
+    return 10 if not ViewportCamera::orbit(&cam, 0, 100000)
+    return 11 if cam.pitch_code != ViewportPolicy::PITCH_SPAN
+    b: ViewportCamera::Basis = ViewportCamera::basis(&cam)
+    return 12 if not Geometry::vec3_is_finite(b.up) or b.up.y <= 0.0
+    return 13 if ViewportCamera::orbit(&cam, 0, 10)
+    _ = ViewportCamera::orbit(&cam, 0, -100000)
+    return 14 if cam.pitch_code != 0
+    # Yaw wraps into one turn both ways.
+    _ = ViewportCamera::orbit(&cam, 2000, 0)
+    return 15 if cam.yaw_cd < 0 or cam.yaw_cd >= 36000
+    _ = ViewportCamera::orbit(&cam, -5000, 0)
+    return 16 if cam.yaw_cd < 0 or cam.yaw_cd >= 36000
+    # Adversarial drags are refused.
+    return 17 if ViewportCamera::orbit(&cam, 9223372036854775807, 0)
+    # Zoom: in moves closer, clamps at the limits, and refuses absurd input.
+    mutable z: ViewportCamera::Camera = ViewportCamera::create(800, 600)
+    d0: f32 = ViewportCamera::distance(&z)
+    return 18 if not ViewportCamera::zoom(&z, 8) or not near(ViewportCamera::distance(&z), d0 * 0.5, 0.0001)
+    _ = ViewportCamera::zoom(&z, 1000)
+    return 19 if z.zoom_code != 0 or ViewportCamera::zoom(&z, 1)
+    return 20 if ViewportCamera::zoom(&z, 1000000)
+    # Orthographic views ignore orbit but pan and zoom.
+    mutable f: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    return 21 if ViewportCamera::orbit(&f, 50, 50)
+    # Pan keeps the grabbed point under the cursor.
+    mutable p: ViewportCamera::Camera = ViewportCamera::create(800, 600)
+    before: ViewportCamera::ScreenPoint = ViewportCamera::project(&p, p.target)
+    fixed: Geometry::Vec3 = p.target
+    return 22 if not ViewportCamera::pan(&p, 40.0, -25.0)
+    after: ViewportCamera::ScreenPoint = ViewportCamera::project(&p, fixed)
+    return 23 if not near(after.x - before.x, 40.0, 0.05) or not near(after.y - before.y, -25.0, 0.05)
+    return 24 if ViewportCamera::pan(&p, 0.0 / 0.0, 1.0) or ViewportCamera::pan(&p, 0.0, 0.0)
+    return 25 if not ViewportCamera::pan(&f, 10.0, 0.0)
+    # Resize: same size is not a change; zero is clamped to one pixel.
+    return 26 if ViewportCamera::resize(&p, 800, 600)
+    return 27 if not ViewportCamera::resize(&p, 0, -5) or p.width != 1 or p.height != 1
+    return 28 if not ViewportCamera::resize(&p, 999999, 20) or p.width != ViewportPolicy::MAX_EXTENT
+    0
+
+def all_inside(cam: ViewportCamera::Camera&, points: darray[Geometry::Vec3]&) -> bool:
+    for k in 0..<points.count:
+        s: ViewportCamera::ScreenPoint = ViewportCamera::project(cam, points[k])
+        return false if not s.in_front
+        return false if s.x < 0.0 or s.y < 0.0 or s.x > cam.width.f32() or s.y > cam.height.f32()
+    true
+
+def framing() -> i32:
+    points: darray[Geometry::Vec3] = [v(-8.0, 0.1, 9.0), v(-8.4, 0.9, 9.2), v(-7.8, 0.05, 8.6)]
+    for proj in [ViewportCamera::PERSPECTIVE, ViewportCamera::FRONT, ViewportCamera::SIDE]:
+        for size in [0, 1]:
+            w: i64 = 900 if size == 0 else 300
+            h: i64 = 300 if size == 0 else 900
+            mutable cam: ViewportCamera::Camera = ViewportCamera::create(w, h) if proj == ViewportCamera::PERSPECTIVE else ViewportCamera::create_ortho(w, h, proj)
+            return 30 if all_inside(&cam, &points) and proj == ViewportCamera::PERSPECTIVE
+            return 31 if not ViewportCamera::frame_points(&cam, &points, 1.1)
+            return 32 if not all_inside(&cam, &points)
+            # The fit is tight: one zoom step closer loses a point for at
+            # least one layout (checked below on the widest case).
+    mutable cam: ViewportCamera::Camera = ViewportCamera::create(800, 600)
+    _ = ViewportCamera::frame_points(&cam, &points, 1.0)
+    d_fit: f32 = ViewportCamera::distance(&cam)
+    return 33 if d_fit > 5.0
+    # Nothing finite to frame leaves the camera untouched.
+    empty: darray[Geometry::Vec3] = []
+    nan: darray[Geometry::Vec3] = [v(0.0 / 0.0, 0.0, 0.0)]
+    before: i64 = cam.zoom_code
+    return 34 if ViewportCamera::frame_points(&cam, &empty, 1.2) or ViewportCamera::frame_points(&cam, &nan, 1.2)
+    return 35 if cam.zoom_code != before
+    # A single joint frames with a minimum radius instead of zooming to zero.
+    one: darray[Geometry::Vec3] = [v(0.0, 1.5, 0.0)]
+    return 36 if not ViewportCamera::frame_points(&cam, &one, 1.2) or ViewportCamera::distance(&cam) < 0.05
+    0
+
+def main() -> i32:
+    r: i32 = projection()
+    return r if r != 0
+    c: i32 = controls()
+    return c if c != 0
+    framing()
