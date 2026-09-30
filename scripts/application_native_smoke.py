@@ -11,12 +11,14 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 import wave
 import zlib
 import shutil
 from pathlib import Path
 
 import cook_physics_collision
+import native_smoke_artifacts
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -252,7 +254,14 @@ def main() -> int:
             environment["ELISA_PHYSICS_120HZ_FRAME_CAPTURE_DIR"] = str(frame_capture_dirs["120hz"])
             environment["ELISA_HIERARCHY_BEFORE_CAPTURE_PATH"] = str(physics_captures / "hierarchy-before.png")
             environment["ELISA_HIERARCHY_AFTER_CAPTURE_PATH"] = str(physics_captures / "hierarchy-after.png")
-            status = subprocess.run(command, env=environment, check=False).returncode
+            started = time.monotonic()
+            completed = subprocess.run(command, env=environment, check=False,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+            sys.stdout.write(completed.stdout)
+            sys.stdout.flush()
+            status = completed.returncode
+            artifact = native_smoke_artifacts.record(ROOT / "build/native-smoke", name, Path(entry), status,
+                time.monotonic() - started, completed.stdout)
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
                 if header != PNG_SIGNATURE:
@@ -350,7 +359,7 @@ def main() -> int:
                     return 1
                 print(f"Hierarchy-to-Wicked sample moved across {changed_pixels} pixels at {before[0]}x{before[1]}.")
             if status != 0:
-                print(f"Native application smoke {name} failed with status {status}.", file=sys.stderr)
+                print(f"Native application smoke {name} failed with status {status}; see {artifact}.", file=sys.stderr)
                 return status
             print(f"Native application smoke {name} passed.")
     return 0
