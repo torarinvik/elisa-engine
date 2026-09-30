@@ -25,3 +25,23 @@ extend GltfSampleIndex:
         requires count <= 4294967295
         ensure result == -1 or result >= 0
         value_slot(key, component, components, count)
+
+    def prove_cubic_slot_signed(key: i64, part: i64, component: i64, components: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 4294967295
+        ensure result == -1 or result >= 0
+        cubic_slot(key, part, component, components, count)
+
+    def prove_cubic_slot_rejects_negative_part(key: i64, part: i64, component: i64, components: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 4294967295
+        requires part < 0
+        ensure result == -1
+        cubic_slot(key, part, component, components, count)
+
+    def prove_cubic_slot_rejects_fourth_part(key: i64, part: i64, component: i64, components: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 4294967295
+        requires part >= 3
+        ensure result == -1
+        cubic_slot(key, part, component, components, count)

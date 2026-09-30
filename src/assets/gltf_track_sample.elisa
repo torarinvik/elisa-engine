@@ -1,10 +1,11 @@
 # Samples one glTF animation channel at a time (M06): finds the bracketing
 # keys and interpolates. Translation, scale and weights interpolate
 # linearly, and rotation uses shortest-arc slerp with a normalized result.
-# STEP holds the earlier key, and CUBICSPLINE is rejected with a typed error
-# for now.
+# STEP holds the earlier key, and CUBICSPLINE evaluates the Hermite curve
+# in GltfCubicSample.
 include "../vendor/elisa_math.elisa"
 include "./gltf_key_track.elisa"
+include "./gltf_cubic_sample.elisa"
 include "./gltf_sample_index.elisa"
 
 module GltfTrackSample:
@@ -90,11 +91,12 @@ module GltfTrackSample:
         # Why a sample would fail: 0 none, 1 Unsupported, 2 Mismatch,
         # 3 Unordered, 4 BadWidth.
         def problem(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64) -> i64:
-            return 1 if mode != LINEAR and mode != STEP
+            return 1 if mode != LINEAR and mode != STEP and mode != CUBICSPLINE
             return 4 if components != 1 and components != 3 and components != 4
             return 4 if path == GltfAnimationMap::ROTATION and components != 4
             count: i64 = times.count.i64()
-            return 2 if count < 1 or values.count.i64() != count * components
+            width: i64 = components * 3 if mode == CUBICSPLINE else components
+            return 2 if count < 1 or values.count.i64() != count * width
             return 3 if not ordered(times)
             0
 
@@ -116,6 +118,7 @@ module GltfTrackSample:
             raise SampleError.Mismatch if fault == 2
             raise SampleError.Unordered if fault == 3
             raise SampleError.BadWidth if fault == 4
+            return GltfCubicSample::spline(times, values, components, path == GltfAnimationMap::ROTATION, time) if mode == CUBICSPLINE
             count: i64 = times.count.i64()
             at_or_before: mutable i64 = 0
             for i in 0..<times.count |at_or_before, times, time|:

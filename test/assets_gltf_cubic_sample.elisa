@@ -1,0 +1,70 @@
+include "../src/assets/gltf_track_sample.elisa"
+
+def sampled(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, time: f64) -> darray[f64]:
+    catch GltfTrackSample::sample(times, values, components, path, GltfTrackSample::CUBICSPLINE, time):
+        value: value
+        error failure: []
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000000000001 and d > -0.000000000001
+
+def cube(t: f64) -> f64:
+    t * t * t - 2.0 * t * t + 0.5 * t + 3.0
+
+def slope(t: f64) -> f64:
+    3.0 * t * t - 4.0 * t + 0.5
+
+def main() -> i32:
+    # Keys taken from a cubic with its exact derivatives as tangents: the
+    # Hermite curve reproduces the cubic everywhere between keys, including
+    # over segments of different length.
+    times: darray[f64] = [0.0, 0.5, 2.0, 2.25]
+    values: mutable darray[f64] = []
+    for i in 0..<times.count |values, times|:
+        t: f64 = times[i]
+        values.push(slope(t))
+        values.push(cube(t))
+        values.push(slope(t))
+    probes: darray[f64] = [0.0, 0.1, 0.25, 0.5, 0.75, 1.3, 1.999, 2.1, 2.25]
+    for i in 0..<probes.count |times, values, probes|:
+        t: f64 = probes[i]
+        got: darray[f64] = sampled(times, values, 1, GltfAnimationMap::WEIGHTS, t)
+        return 1 if got.count != 1
+        return 2 if not near(got[0], cube(t))
+    # Outside the keys the end values are held, not extrapolated.
+    early: darray[f64] = sampled(times, values, 1, GltfAnimationMap::WEIGHTS, -1.0)
+    late: darray[f64] = sampled(times, values, 1, GltfAnimationMap::WEIGHTS, 9.0)
+    return 3 if early[0] != cube(0.0) or late[0] != cube(2.25)
+    # Tangents are the in- and out- entries: in-tangents of the first key and
+    # out-tangents of the last never matter.
+    edited: mutable darray[f64] = []
+    for i in 0..<values.count |edited, values|:
+        v: f64 = values[i]
+        edited.push(99.0 if i == 0 or i == 11 else v)
+    for i in 0..<probes.count |times, edited, probes|:
+        t: f64 = probes[i]
+        got: darray[f64] = sampled(times, edited, 1, GltfAnimationMap::WEIGHTS, t)
+        return 4 if not near(got[0], cube(t))
+    # A vector channel interpolates each component with its own tangents.
+    vt: darray[f64] = [1.0, 3.0]
+    vv: darray[f64] = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0, 4.0, 4.0, 4.0, 0.0, 0.0, 0.0, 5.0, 6.0, 7.0, 0.0, 0.0, 0.0]
+    mid: darray[f64] = sampled(vt, vv, 3, GltfAnimationMap::TRANSLATION, 2.0)
+    # s = 1/2, span 2: h00 = h01 = 1/2, h10 = 1/4, h11 = -1/4.
+    return 5 if mid.count != 3 or not near(mid[0], 4.0) or not near(mid[1], 5.0) or not near(mid[2], 6.0)
+    # Rotations come back unit length.
+    rt: darray[f64] = [0.0, 1.0]
+    rv: darray[f64] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.3, 0.1, 0.0, 0.2, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.7071067811865476, 0.7071067811865476, 0.0, 0.0, 0.0, 0.0]
+    q: darray[f64] = sampled(rt, rv, 4, GltfAnimationMap::ROTATION, 0.4)
+    length: f64 = q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]
+    return 6 if q.count != 4 or not near(length, 1.0)
+    return 7 if q[2] <= 0.0 or q[3] <= 0.0
+    # A lone key holds its value.
+    lone_t: darray[f64] = [0.5]
+    lone_v: darray[f64] = [9.0, 2.0, 9.0]
+    lone: darray[f64] = sampled(lone_t, lone_v, 1, GltfAnimationMap::WEIGHTS, 3.0)
+    return 8 if lone[0] != 2.0
+    # Three entries per key are required.
+    short: darray[f64] = [1.0, 2.0, 3.0, 4.0]
+    return 9 if sampled(times, short, 1, GltfAnimationMap::WEIGHTS, 0.5).count != 0
+    0

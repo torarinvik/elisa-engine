@@ -39,3 +39,24 @@ module GltfSampleIndex:
             return key * 3 + component if components == 3
             return key * 4 + component if components == 4
             -1
+
+        # Offset of part `part` (0 in-tangent, 1 value, 2 out-tangent) of
+        # component `component` of key `key` in a CUBICSPLINE value array,
+        # which stores three entries per key.
+        def cubic_slot(key: i64, part: i64, component: i64, components: i64, count: i64) -> i64:
+            requires count >= 0
+            requires count <= 4294967295
+            ensure result == -1 or result >= 0
+            ensure part >= 0 or result == -1
+            ensure part < 3 or result == -1
+            return -1 if key < 0
+            return -1 if key >= count
+            return -1 if part < 0
+            return -1 if part > 2
+            return -1 if component < 0
+            return -1 if component > 3
+            return -1 if component >= components
+            return key * 3 + part if components == 1
+            return key * 9 + part * 3 + component if components == 3
+            return key * 12 + part * 4 + component if components == 4
+            -1

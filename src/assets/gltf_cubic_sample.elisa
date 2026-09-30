@@ -1,0 +1,57 @@
+# CUBICSPLINE evaluation for glTF channels (M06): each key stores an
+# in-tangent, a value and an out-tangent, and a segment is the cubic
+# Hermite curve of the glTF specification (Appendix C), with tangents
+# scaled by the segment duration. Rotations are normalized afterwards.
+include "../vendor/elisa_math.elisa"
+include "./gltf_sample_index.elisa"
+
+module GltfCubicSample:
+    private:
+        def part(values: darray[f64]&, key: i64, which: i64, component: i64, components: i64, count: i64) -> f64:
+            slot: i64 = GltfSampleIndex::cubic_slot(key, which, component, components, count)
+            return 0.0 if slot < 0 or slot >= values.count.i64()
+            values[slot.usize()]
+
+    public:
+        # The value at `time` of a checked channel: `count` keys, three
+        # entries of `components` numbers each. Outside the keys the first or
+        # last key's value is held.
+        def spline(times: darray[f64]&, values: darray[f64]&, components: i64, rotation: bool, time: f64) -> darray[f64]:
+            count: i64 = times.count.i64()
+            at_or_before: mutable i64 = 0
+            for i in 0..<times.count |at_or_before, times, time|:
+                key_time: f64 = times[i]
+                at_or_before <- at_or_before + 1 if key_time <= time else at_or_before
+            start: i64 = GltfSampleIndex::segment_start(at_or_before, count)
+            stop: i64 = GltfSampleIndex::segment_end(start, count)
+            t0: f64 = times[start.usize()]
+            t1: f64 = times[stop.usize()]
+            before: bool = time <= t0
+            after: bool = time >= t1
+            span: f64 = t1 - t0
+            s: f64 = (time - t0) / span if stop > start else 0.0
+            s2: f64 = s * s
+            s3: f64 = s2 * s
+            h00: f64 = 2.0 * s3 - 3.0 * s2 + 1.0
+            h10: f64 = (s3 - 2.0 * s2 + s) * span
+            h01: f64 = 3.0 * s2 - 2.0 * s3
+            h11: f64 = (s3 - s2) * span
+            out: mutable darray[f64] = []
+            length_squared: mutable f64 = 0.0
+            for c in 0..<components.usize() |out, length_squared, values, start, stop, components, count, before, after, h00, h10, h01, h11|:
+                v0: f64 = part(values, start, 1, c.i64(), components, count)
+                b0: f64 = part(values, start, 2, c.i64(), components, count)
+                v1: f64 = part(values, stop, 1, c.i64(), components, count)
+                a1: f64 = part(values, stop, 0, c.i64(), components, count)
+                curve: f64 = h00 * v0 + h10 * b0 + h01 * v1 + h11 * a1
+                held: f64 = v0 if before else v1
+                q: f64 = held if before or after else curve
+                out.push(q)
+                length_squared <- length_squared + q * q
+            return out if not rotation
+            inverse: f64 = 1.0 / ElisaMath::sqrt(length_squared) if length_squared > 0.0 else 1.0
+            normalized: mutable darray[f64] = []
+            for c in 0..<4 |normalized, out, inverse|:
+                v: f64 = out[c]
+                normalized.push(v * inverse)
+            normalized

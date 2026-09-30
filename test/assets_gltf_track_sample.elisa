@@ -127,7 +127,7 @@ def main() -> i32:
     return 19 if not matches(got10, want10)
 
     one: darray[f64] = [0.0]
-    return 20 if sample_code(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::CUBICSPLINE) != 1
+    return 20 if sample_code(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::CUBICSPLINE) != 2 or sample_code(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, 7) != 1
     return 21 if sample_code(s_times, one, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR) != 2
     backwards: darray[f64] = [0.0, 2.0, 1.0]
     return 22 if sample_code(backwards, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR) != 3
