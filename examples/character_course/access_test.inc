@@ -167,6 +167,21 @@
             anchored: bool = caption_anchor_x(&arabic) == Tune::LEGEND_X + caption_width(&arabic) and caption_anchor_x(&english) == Tune::LEGEND_X
             return 184 if not captions.loaded or not anchored
             return 183 if widest <= 0.0 or widest >= caption_width(&large)
+            # 172: Arabic captions reach the renderer in display order (same
+            # bytes, reordered); English ones are passed through untouched.
+            jump: u32 = CourseSounds::EVENT_JUMP
+            em: i64 = CourseAccess::font_size(&arabic, Tune::LEGEND_FONT_SIZE).i64()
+            logical: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::AR, jump), em, caption_width(&arabic).i64())
+            shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &arabic, jump)
+            plain_em: i64 = CourseAccess::font_size(&english, Tune::LEGEND_FONT_SIZE).i64()
+            plain: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::EN, jump), plain_em, caption_width(&english).i64())
+            english_shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &english, jump)
+            mutable moved: i64 = 0
+            mutable kept: bool = plain.length == english_shown.length
+            for i in 0..<256 |moved, kept|:
+                moved <- moved + 1 if i.u32() < logical.length and logical.bytes[i] != shown.bytes[i] else moved
+                kept <- kept and (i.u32() >= plain.length or plain.bytes[i] == english_shown.bytes[i])
+            return 172 if logical.length == 0u32 or shown.length != logical.length or moved == 0 or not kept
             0
 
         def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:

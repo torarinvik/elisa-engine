@@ -582,6 +582,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-30: UTF-8 wrapping helper and UTF-8 text measurement ABI (docs/validation/locale-text-wrapping.md); course caption fitting, RTL anchoring and shaping still open.
   Progress on 2026-09-30: course captions wrap to the measured caption line at 150% in every locale and Arabic hangs right (docs/validation/course-caption-fitting.md); shaping and bidi still open.
   Progress on 2026-09-30: UiBidi orders one line of mixed Hebrew/Arabic, Latin and digits for display (reduced UAX #9: W2/W7, N1/N2, I1/I2, L2, L4 bracket mirroring) ([ui-bidi.md](docs/validation/ui-bidi.md)); embeddings, Arabic digits, shaping and renderer wiring remain.
+  Progress on 2026-09-30: course captions reach Wicked's left-to-right renderer in bidi display order per wrapped line via UiBidiUtf8 (code 172; [ui-bidi.md](docs/validation/ui-bidi.md)); Arabic shaping remains.
 
 ## T — networking and online runtime
 

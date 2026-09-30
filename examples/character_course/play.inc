@@ -157,7 +157,9 @@
         # The caption for `event` broken into lines that fit the caption line.
         def wrapped_caption(words: CourseText::Captions&, settings: CourseAccess::Settings&, event: u32) -> UiLocaleData::Utf8:
             em: i64 = CourseAccess::font_size(settings, Tune::LEGEND_FONT_SIZE).i64()
-            UiLocaleData::wrap_utf8(CourseText::line(words, settings.locale, event), em, caption_width(settings).i64())
+            wrapped: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(words, settings.locale, event), em, caption_width(settings).i64())
+            # The overlay draws bytes left to right, so lines go in display order.
+            UiBidiUtf8::bidi_utf8_lines(wrapped, UiLocale::is_rtl(settings.locale))
 
         # Right-to-left captions hang from the right edge of the legend.
         def caption_anchor_x(settings: CourseAccess::Settings&) -> f32:

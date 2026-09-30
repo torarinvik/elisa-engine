@@ -35,3 +35,23 @@ Not covered:
 - shaping (Arabic joining forms);
 - wiring into the overlay text renderer, which still draws bytes in
   logical order.
+
+## Course captions in display order (2026-09-30)
+
+Wicked's font renderer draws glyphs left to right in byte order and does no
+bidi of its own. `src/ui/bidi_utf8.elisa` (`UiBidiUtf8`) therefore works on
+wrapped UTF-8 one line at a time: it decodes each line (malformed bytes
+become U+FFFD), orders it with `UiBidi` and encodes it again. A line over 64
+codepoints is passed through unchanged. The course's `wrapped_caption`
+applies it after wrapping, with a right-to-left paragraph for Arabic.
+
+Tests:
+- `test/ui_bidi_utf8.elisa` (in the gate's unit-test list) covers Hebrew in
+  a two-line caption in both paragraph directions, a stray continuation
+  byte and empty text. Control: joining lines at the newline fails with 2.
+- Course code 172 checks that the Arabic jump caption reaches the renderer
+  with the same byte count but reordered, and that English passes through
+  unchanged. Control: skipping the reorder in `wrapped_caption` fails the
+  course smoke with 172.
+
+Arabic letter shaping (joining forms) is still missing.
