@@ -23,8 +23,8 @@ module RenderSceneSnapshotNativeTests:
             ANIMATION_STATE_MATCH_ALL: i32 = 31
 
         struct SnapshotAnimationPose:
-            bones: f32[64 * 16]
-            morphs: f32[32]
+            bones: f32[RenderSceneAnimationSubmission::MAX_BONES * Geometry::MATRIX_ELEMENTS]
+            morphs: f32[RenderSceneAnimationSubmission::MAX_MORPHS]
             bone_count: mutable u32
             morph_count: mutable u32
 
