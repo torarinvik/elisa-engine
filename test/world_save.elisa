@@ -132,4 +132,30 @@ def main() -> i32:
         ok: 0
         error failure: 17
     return 17 if cycle == 0 or World::world_live_count(&world) != 3
+    bytes[20] <- 0u8
+    reseal(&bytes[0], length)
+    # An older version, an oversized length and a record count larger than
+    # the payload (resealed, so only the count is wrong) are rejected.
+    bytes[4] <- 0u8
+    older: i32 = catch World::SaveGame::check_world_save(&bytes[0], length):
+        value: 0
+        error failure: 18
+    bytes[4] <- 1u8
+    return 18 if older == 0
+    oversized: i32 = catch World::SaveGame::check_world_save(&bytes[0], World::SaveGame::MAX_BYTES + 1):
+        value: 0
+        error failure: 19
+    return 19 if oversized == 0
+    bytes[8] <- 4u8
+    reseal(&bytes[0], length)
+    inflated: i32 = catch World::SaveGame::check_world_save(&bytes[0], length):
+        value: 0
+        error failure: 20
+    return 20 if inflated == 0
+    bytes[8] <- 3u8
+    reseal(&bytes[0], length)
+    intact: i32 = catch World::SaveGame::check_world_save(&bytes[0], length):
+        value: 0
+        error failure: 21
+    return 21 if intact != 0
     0
