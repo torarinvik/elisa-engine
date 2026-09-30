@@ -1,0 +1,88 @@
+include "../src/runtime/action_input_recording.elisa"
+
+const JUMP: i64 = 1
+const MOVE: i64 = 2
+const FIRE: i64 = 3
+
+def event(kind: Application::InputEventKind, code: i64, value: f32, pressed: bool,
+    released: bool, connected: bool) -> Application::InputEvent:
+    Application::InputEvent{kind: kind, device: 0, code: code, value: value,
+        pressed: pressed, released: released, chord_down: false,
+        connected: connected, device_slot: 0}
+
+def bound_input() -> ActionInput::Input:
+    mutable input: ActionInput::Input = ActionInput::Input()
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.W)
+    stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXPositive)
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: JUMP, device: ActionInput::Device.Keyboard,
+        code: space, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: MOVE, device: ActionInput::Device.Gamepad,
+        code: stick, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true})
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: FIRE, device: ActionInput::Device.Mouse,
+        code: 1, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+    input
+
+def bit(flag: bool, weight: i64) -> i64:
+    weight if flag else 0
+
+def tick_digest(input: ActionInput::Input&) -> i64:
+    mutable digest: i64 = 0
+    for action in 1..<4 |digest|:
+        a: i64 = action.i64()
+        flags: i64 = bit(ActionInput::action_down(input, a), 1) + bit(ActionInput::action_pressed(input, a), 2) + bit(ActionInput::action_released(input, a), 4)
+        digest <- (digest * 131 + flags * 4194304 + ActionInputReplay::quantize(ActionInput::action_value(input, a))) % 2147483629
+    digest
+
+# Application events for one tick; ticks 0-13 cover holds, focus loss,
+# overflow, and a gamepad unplugged mid-push then reconnected.
+def tick_event(tick: i64, slot: i64) -> Application::InputEvent:
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.W)
+    stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftXPositive)
+    none: Application::InputEvent = event(Application::InputEventKind.Key, 0, 0.0, false, false, false)
+    if slot == 0:
+        return event(Application::InputEventKind.Key, space, 1.0, true, false, false) if tick == 1 or tick == 5 or tick == 10
+        return event(Application::InputEventKind.GamepadAxis, stick, 0.75, true, false, false) if tick == 2 or tick == 9
+        return event(Application::InputEventKind.FocusLost, 0, 0.0, false, false, false) if tick == 3
+        return event(Application::InputEventKind.MouseButton, 1, 1.0, true, false, false) if tick == 6
+        return event(Application::InputEventKind.Overflow, 0, 0.0, false, false, false) if tick == 7
+        return event(Application::InputEventKind.GamepadDisconnected, 0, 0.0, false, false, false) if tick == 11
+        return event(Application::InputEventKind.GamepadConnected, 0, 0.0, false, false, true) if tick == 12
+    if slot == 1:
+        return event(Application::InputEventKind.GamepadAxis, stick, 0.25, true, false, false) if tick == 5
+        return event(Application::InputEventKind.Key, space, 0.0, false, true, false) if tick == 13
+    none
+
+def main() -> i32:
+    mutable direct: ActionInput::Input = bound_input()
+    mutable recorded: ActionInput::Input = bound_input()
+    mutable log: ActionInputReplay::Log = ActionInputReplay::Log()
+    mutable digests: i64[14] = zeroed
+    mutable divergent: i64 = 0
+    mutable saw_jump: i64 = 0
+    for t in 0..<14 |direct, recorded, log, digests, divergent, saw_jump|:
+        ActionInput::begin_frame(&direct)
+        ActionInput::begin_frame(&recorded)
+        for slot in 0..<2 |direct, recorded, log|:
+            e: Application::InputEvent = tick_event(t.i64(), slot.i64())
+            if e.code != 0 or e.kind != Application::InputEventKind.Key:
+                ActionInputRuntime::apply_application_event(&direct, e)
+                ActionInputRecording::record_application_event(&log, &recorded, t.i64(), e)
+        digests[t] <- tick_digest(&recorded)
+        divergent <- divergent + 1 if tick_digest(&direct) != digests[t]
+        saw_jump <- saw_jump + 1 if ActionInput::action_pressed(&recorded, JUMP)
+    # Recording must not change what the runtime would have done.
+    return 1 if divergent != 0
+    return 2 if saw_jump != 3 or not ActionInputReplay::replay_trusted(&log)
+
+    bytes: ActionInputReplayCodec::Bytes = ActionInputReplayCodec::encode(&log)
+    mutable loaded: ActionInputReplay::Log = ActionInputReplay::Log()
+    return 3 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.Ok
+    mutable replayed: ActionInput::Input = bound_input()
+    mutable cursor: usize = 0
+    mutable mismatches: i64 = 0
+    for t in 0..<14 |replayed, cursor, mismatches|:
+        ActionInput::begin_frame(&replayed)
+        cursor <- ActionInputReplay::replay_tick(&loaded, &replayed, t.i64(), cursor)
+        mismatches <- mismatches + 1 if tick_digest(&replayed) != digests[t]
+    return 4 if mismatches != 0 or cursor != loaded.count
+    0

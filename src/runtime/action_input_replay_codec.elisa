@@ -12,13 +12,15 @@ module ActionInputReplayCodec:
             return 0 if kind == ActionInputReplay::Kind.Input
             return 1 if kind == ActionInputReplay::Kind.Context
             return 2 if kind == ActionInputReplay::Kind.Connect
-            3
+            return 3 if kind == ActionInputReplay::Kind.Disconnect
+            4
 
         def air_kind_of(value: i64) -> ActionInputReplay::Kind:
             return ActionInputReplay::Kind.Input if value == 0
             return ActionInputReplay::Kind.Context if value == 1
             return ActionInputReplay::Kind.Connect if value == 2
-            ActionInputReplay::Kind.Disconnect
+            return ActionInputReplay::Kind.Disconnect if value == 3
+            ActionInputReplay::Kind.ClearDevice
 
         def air_device_byte(device: ActionInput::Device) -> i64:
             return 0 if device == ActionInput::Device.Keyboard
@@ -101,7 +103,7 @@ module ActionInputReplayCodec:
                     flags: i64 = data.data[base + 6].i64()
                     context: i64 = data.data[base + 7].i64()
                     value_q: i64 = air_get_i32(data, base + 12)
-                    bad: bool = kind > 3 or device > 2 or flags > 7 or context > 1 or value_q > 1048576 or value_q < -1048576
+                    bad: bool = kind > 4 or device > 2 or flags > 7 or context > 1 or value_q > 1048576 or value_q < -1048576
                     status <- DecodeStatus.BadField if bad
                     status <- DecodeStatus.NonMonotonicTick if not bad and tick < previous
                     if status == DecodeStatus.Ok:

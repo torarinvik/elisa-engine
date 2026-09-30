@@ -17,6 +17,9 @@ module ActionInputReplay:
             Context
             Connect
             Disconnect
+            # Held state on `device` dropped without detaching it (focus loss,
+            # queue overflow, the clear before a gamepad disconnect).
+            ClearDevice
 
         struct Entry:
             tick: i64
@@ -77,6 +80,8 @@ module ActionInputReplay:
                 ActionInput::set_connected(input, entry.device, true)
             if entry.kind == Kind.Disconnect:
                 ActionInput::set_connected(input, entry.device, false)
+            if entry.kind == Kind.ClearDevice:
+                ActionInput::clear_device_state(input, entry.device)
 
         def feed_event(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
             event: ActionInput::Event) -> bool:
@@ -102,6 +107,15 @@ module ActionInputReplay:
             entry: Entry = Entry{tick: tick, kind: Kind.Connect if connected else Kind.Disconnect,
                 device: device, code: 0, value_q: 0, pressed: false, released: false,
                 chord_down: false, context: ActionInput::Context.Gameplay}
+            recorded: bool = record(log, entry)
+            apply_entry(input, entry)
+            recorded
+
+        def feed_clear(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
+            device: ActionInput::Device) -> bool:
+            entry: Entry = Entry{tick: tick, kind: Kind.ClearDevice, device: device,
+                code: 0, value_q: 0, pressed: false, released: false, chord_down: false,
+                context: ActionInput::Context.Gameplay}
             recorded: bool = record(log, entry)
             apply_entry(input, entry)
             recorded

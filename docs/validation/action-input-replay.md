@@ -51,8 +51,33 @@ is valid, and each of these damaged inputs is refused with an empty log:
 Negative control: decoding the pressed flag from the released bit makes the
 replay diverge with code 3.
 
+## Recording Application events
+
+`src/runtime/action_input_recording.elisa` adds `record_application_event`,
+which routes events the same way as
+`ActionInputRuntime::apply_application_event`, and `begin_frame_recorded`,
+which drains the Application queue. A new `ClearDevice` entry kind (byte 4)
+records the held-state clears from focus loss, overflow and the clear before
+a gamepad disconnect.
+
+`test/action_input_recording.elisa` is in the gate list. It feeds the same
+14 ticks of Application events, in two input maps, through the plain runtime
+and through the recorder:
+
+- keyboard, mouse and stick presses;
+- focus loss while the stick is held;
+- a queue overflow;
+- a gamepad unplugged and reconnected.
+
+The two maps agree on every tick, and replaying the recording from bytes
+reproduces all 14 digests. The event values are exact at 20 bits, as the
+Application queue produces them.
+
+Negative control: skipping the gamepad clear on focus loss in the recorder
+makes the test fail with code 1.
+
 ## Gaps
 
 - The log is not merged into `Replay::Recorder`.
-- `ActionInputRuntime` does not feed through it yet, so native-host
-  recording still needs its own call sites.
+- No packaged game records a session yet, and recordings are not written to
+  disk.
