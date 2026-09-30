@@ -1,0 +1,21 @@
+include "../src/runtime/animation_pose_index.elisa"
+
+extend AnimationPoseIndex:
+    # Every bone write lands inside the 256 x 16 buffer.
+    def prove_bone_element(index: usize, component: usize) -> usize:
+        ensure result < 4096
+        bone_element(index, component)
+
+    # A bone written at a legal index stays within the submitted count.
+    def prove_written_bone_counted(current: usize, index: usize) -> usize:
+        requires index < 256
+        requires current <= 256
+        ensure result > index
+        ensure result <= 256
+        grown_count(current, index)
+
+    def prove_morph_count(current: usize, index: usize) -> usize:
+        requires current <= 32
+        ensure result >= current
+        ensure result <= 32
+        grown_morph_count(current, index)
