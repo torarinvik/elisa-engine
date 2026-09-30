@@ -1,0 +1,87 @@
+# Splits a glTF node matrix into translation, rotation and scale (M06).
+# glTF requires node matrices to be decomposable: columns orthogonal, no
+# projective row. A negative determinant is folded into the X scale.
+include "../vendor/elisa_math.elisa"
+
+module GltfMatrixTrs:
+    private:
+        def column_length(m: darray[f64]&, column: usize) -> f64:
+            x: f64 = m[column * 4]
+            y: f64 = m[column * 4 + 1]
+            z: f64 = m[column * 4 + 2]
+            ElisaMath::sqrt(x * x + y * y + z * z)
+
+        def column_dot(m: darray[f64]&, a: usize, b: usize) -> f64:
+            m[a * 4] * m[b * 4] + m[a * 4 + 1] * m[b * 4 + 1] + m[a * 4 + 2] * m[b * 4 + 2]
+
+        def magnitude(v: f64) -> f64:
+            return v * -1.0 if v < 0.0
+            v
+
+        def determinant(m: darray[f64]&) -> f64:
+            m[0] * (m[5] * m[10] - m[9] * m[6]) - m[4] * (m[1] * m[10] - m[9] * m[2]) + m[8] * (m[1] * m[6] - m[5] * m[2])
+
+    public:
+        # Whether a column-major 4x4 matrix is a TRS within `tolerance`
+        # (relative to the column lengths).
+        def decomposable(m: darray[f64]&, tolerance: f64) -> bool:
+            return false if m.count != 16
+            return false if m[3] != 0.0 or m[7] != 0.0 or m[11] != 0.0 or m[15] != 1.0
+            sx: f64 = column_length(m, 0)
+            sy: f64 = column_length(m, 1)
+            sz: f64 = column_length(m, 2)
+            return false if sx <= 0.0 or sy <= 0.0 or sz <= 0.0
+            return false if magnitude(column_dot(m, 0, 1)) > tolerance * sx * sy
+            return false if magnitude(column_dot(m, 0, 2)) > tolerance * sx * sz
+            return false if magnitude(column_dot(m, 1, 2)) > tolerance * sy * sz
+            true
+
+        # Ten values: translation xyz, rotation xyzw (w >= 0), scale xyz.
+        # Only meaningful for a decomposable matrix.
+        def decompose(m: darray[f64]&) -> darray[f64]:
+            flip: f64 = -1.0 if determinant(m) < 0.0 else 1.0
+            sx: f64 = column_length(m, 0) * flip
+            sy: f64 = column_length(m, 1)
+            sz: f64 = column_length(m, 2)
+            r00: f64 = m[0] / sx
+            r10: f64 = m[1] / sx
+            r20: f64 = m[2] / sx
+            r01: f64 = m[4] / sy
+            r11: f64 = m[5] / sy
+            r21: f64 = m[6] / sy
+            r02: f64 = m[8] / sz
+            r12: f64 = m[9] / sz
+            r22: f64 = m[10] / sz
+            trace: f64 = r00 + r11 + r22
+            x: mutable f64 = 0.0
+            y: mutable f64 = 0.0
+            z: mutable f64 = 0.0
+            w: mutable f64 = 1.0
+            if trace > 0.0:
+                s: f64 = ElisaMath::sqrt(trace + 1.0) * 2.0
+                w <- 0.25 * s
+                x <- (r21 - r12) / s
+                y <- (r02 - r20) / s
+                z <- (r10 - r01) / s
+            elif r00 > r11 and r00 > r22:
+                s: f64 = ElisaMath::sqrt(1.0 + r00 - r11 - r22) * 2.0
+                w <- (r21 - r12) / s
+                x <- 0.25 * s
+                y <- (r01 + r10) / s
+                z <- (r02 + r20) / s
+            elif r11 > r22:
+                s: f64 = ElisaMath::sqrt(1.0 + r11 - r00 - r22) * 2.0
+                w <- (r02 - r20) / s
+                x <- (r01 + r10) / s
+                y <- 0.25 * s
+                z <- (r12 + r21) / s
+            else:
+                s: f64 = ElisaMath::sqrt(1.0 + r22 - r00 - r11) * 2.0
+                w <- (r10 - r01) / s
+                x <- (r02 + r20) / s
+                y <- (r12 + r21) / s
+                z <- 0.25 * s
+            sign: f64 = -1.0 if w < 0.0 else 1.0
+            length: f64 = ElisaMath::sqrt(x * x + y * y + z * z + w * w) * sign
+            out: darray[f64] = [m[12], m[13], m[14], x / length, y / length, z / length, w / length, sx, sy, sz]
+            out

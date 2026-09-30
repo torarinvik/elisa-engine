@@ -75,7 +75,7 @@ def main() -> i32:
     bad2_doc: GltfJson::Doc = doc_of(bad2, 34)
     return 24 if GltfRestPose::problem(bad2_doc, bad2) != 4
     return 25 if rest_of(bad2_doc, bad2).node_count != -1
-    bad3_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,50,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,93,125,93,125]
+    bad3_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,49,44,48,44,48,44,48,44,49,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,93,125,93,125]
     bad3: darray[u8] = bytes_of(bad3_codes)
     bad3_doc: GltfJson::Doc = doc_of(bad3, 56)
     return 26 if GltfRestPose::problem(bad3_doc, bad3) != 5
@@ -118,4 +118,24 @@ def main() -> i32:
     return 53 if GltfRestPose::problem(more3_doc, more3) != 3
     scale_past: f64 = GltfRestPose::value_of(posed, 0, 2, 3)
     return 60 if scale_past == scale_past
+    form0_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,115,99,97,108,101,34,58,91,49,44,49,44,49,93,44,34,109,97,116,114,105,120,34,58,91,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,93,125,93,125]
+    form0: darray[u8] = bytes_of(form0_codes)
+    form0_doc: GltfJson::Doc = doc_of(form0, 72)
+    return 70 if GltfRestPose::problem(form0_doc, form0) != 5
+    form1_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,50,93,125,93,125]
+    form1: darray[u8] = bytes_of(form1_codes)
+    form1_doc: GltfJson::Doc = doc_of(form1, 56)
+    return 71 if GltfRestPose::problem(form1_doc, form1) != 5
+    # A matrix node is split into its translation, rotation and scale.
+    mat_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,48,44,50,44,48,44,48,44,45,51,44,48,44,48,44,48,44,48,44,48,44,52,44,48,44,53,44,54,44,55,44,49,93,125,93,125]
+    mat: darray[u8] = bytes_of(mat_codes)
+    mat_doc: GltfJson::Doc = doc_of(mat, 57)
+    return 72 if GltfRestPose::problem(mat_doc, mat) != 0
+    split: GltfRestPose::Rest = rest_of(mat_doc, mat)
+    split_want: darray[f64] = [5.0, 6.0, 7.0, 0.0, 0.0, 0.7071067811865475, 0.7071067811865476, 2.0, 3.0, 4.0]
+    for f in 0..<10 |split, split_want|:
+        path: i64 = 0 if f < 3 else (1 if f < 7 else 2)
+        start: i64 = 0 if path == 0 else (3 if path == 1 else 7)
+        d: f64 = GltfRestPose::value_of(split, 0, path, f.i64() - start) - split_want[f]
+        return 73 if d > 0.000000000001 or d < -0.000000000001
     0
