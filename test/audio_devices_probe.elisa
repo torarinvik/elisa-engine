@@ -1,0 +1,18 @@
+# Playback-device enumeration checks for the native application smoke. A
+# machine may have no output device, so an empty list passes; a non-empty one
+# must name every device and mark exactly one default.
+module AudioDevicesProbe:
+    public:
+        def run() -> i32:
+            total: i32 = AudioDevices::count()
+            return 207 if total < 0
+            defaults: mutable i32 = 0
+            bad: mutable bool = false
+            for i in 0..<total.usize() |defaults, bad|:
+                result: AudioDevices::Result = AudioDevices::device(i)
+                bad <- true if result.lookup != AudioDevices::Lookup.Found or result.device.name_count == 0
+                defaults <- defaults + 1 if result.device.is_default
+            return 208 if bad
+            return 209 if total > 0 and defaults != 1
+            return 210 if AudioDevices::device(total.usize() + 5).lookup != AudioDevices::Lookup.Missing
+            0

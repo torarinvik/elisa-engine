@@ -97,6 +97,12 @@ int32_t elisa_audio_v1_contended_callbacks(uint64_t* count);
 int32_t elisa_audio_v1_recover_device(int32_t prefer_default);
 int32_t elisa_audio_v1_shutdown(void);
 
+// Playback devices, enumerated independently of the running mixer. Names are
+// UTF-8 without a terminator; is_default is 1 for the system default output.
+int32_t elisa_audio_v1_playback_device_count(uint32_t* count);
+int32_t elisa_audio_v1_playback_device(uint32_t index, uint8_t* name, uint32_t capacity,
+    uint32_t* length, int32_t* is_default);
+
 #if defined(ELISA_AUDIO_TEST_PROBE)
 int32_t elisa_audio_v1_test_request_device_recovery(void);
 #endif

@@ -440,3 +440,5 @@ extern "C" int32_t elisa_audio_v1_shutdown(void) {
 extern "C" void elisa_audio_v1_shutdown_from_application(void) {
     shutdown_audio();
 }
+
+#include "audio_devices.inc"
