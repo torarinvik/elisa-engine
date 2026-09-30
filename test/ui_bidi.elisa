@@ -1,0 +1,60 @@
+include "../src/ui/bidi.elisa"
+
+# Test strings: ASCII letters stay themselves, and 'A'..'E' in `rtl` become
+# Hebrew alef..he (U+05D0..U+05D4).
+def bidi_text(ascii: i64[16], len: i64, rtl: bool) -> UiMessageFormat::Text:
+    t: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: len}
+    for i in 0..<16 |t|:
+        c: i64 = ascii[i]
+        t.cp[i] <- (1488 + c - 65) if rtl and c >= 65 and c <= 69 else c
+    t
+
+def bidi_same(t: UiMessageFormat::Text&, ascii: i64[16], len: i64) -> bool:
+    ok: mutable bool = t.len == len
+    for i in 0..<16 |ok|:
+        c: i64 = ascii[i]
+        want: i64 = (1488 + c - 65) if c >= 65 and c <= 69 else c
+        ok <- ok and (i.i64() >= len or t.cp[i] == want)
+    ok
+
+def main() -> i32:
+    # "ab ABC cd" in an LTR paragraph shows as "ab CBA cd".
+    s1: i64[16] = [97, 98, 32, 65, 66, 67, 32, 99, 100, 0, 0, 0, 0, 0, 0, 0]
+    v1: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s1, 9, true), false)
+    w1: i64[16] = [97, 98, 32, 67, 66, 65, 32, 99, 100, 0, 0, 0, 0, 0, 0, 0]
+    return 1 if not bidi_same(v1, w1, 9)
+    # "AB 12 CD" in an RTL paragraph: digits keep their order -> "DC 12 BA".
+    s2: i64[16] = [65, 66, 32, 49, 50, 32, 67, 68, 0, 0, 0, 0, 0, 0, 0, 0]
+    v2: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s2, 8, true), true)
+    w2: i64[16] = [68, 67, 32, 49, 50, 32, 66, 65, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 2 if not bidi_same(v2, w2, 8)
+    # "AB xy CD" in RTL: the Latin word keeps its order in the middle -> "DC xy BA".
+    s3: i64[16] = [65, 66, 32, 120, 121, 32, 67, 68, 0, 0, 0, 0, 0, 0, 0, 0]
+    v3: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s3, 8, true), true)
+    w3: i64[16] = [68, 67, 32, 120, 121, 32, 66, 65, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 3 if not bidi_same(v3, w3, 8)
+    # Brackets mirror at odd levels: "A(B)" in RTL shows as "(B)A".
+    s4: i64[16] = [65, 40, 66, 41, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    v4: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s4, 4, true), true)
+    w4: i64[16] = [40, 66, 41, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 4 if not bidi_same(v4, w4, 4)
+    # Pure LTR text is untouched; a neutral between two scripts takes the paragraph side.
+    s5: i64[16] = [104, 105, 33, 32, 49, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    v5: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s5, 5, false), false)
+    return 5 if not bidi_same(v5, s5, 5)
+    # "ab AB" in LTR: the space sits between L and R, so it stays at level 0 -> "ab BA".
+    s6: i64[16] = [97, 98, 32, 65, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    v6: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s6, 5, true), false)
+    w6: i64[16] = [97, 98, 32, 66, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 6 if not bidi_same(v6, w6, 5)
+    # Levels: in RTL, Hebrew is 1 and a Latin letter or digit is 2.
+    lv: UiMessageFormat::Text = UiBidi::bidi_levels(bidi_text(s3, 8, true), true)
+    return 7 if lv.cp[0] != 1 or lv.cp[3] != 2 or lv.cp[2] != 1
+    lv2: UiMessageFormat::Text = UiBidi::bidi_levels(bidi_text(s2, 8, true), true)
+    return 8 if lv2.cp[3] != 2 or lv2.cp[4] != 2
+    # Digits after Hebrew in an LTR paragraph ride with it: "AB 12" shows as "12 BA".
+    s9: i64[16] = [65, 66, 32, 49, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    v9: UiMessageFormat::Text = UiBidi::bidi_visual(bidi_text(s9, 5, true), false)
+    w9: i64[16] = [49, 50, 32, 66, 65, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    return 9 if not bidi_same(v9, w9, 5)
+    return 0
