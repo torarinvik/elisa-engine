@@ -1,0 +1,127 @@
+include "../src/assets/glb_container.elisa"
+
+def put_word(bytes: mutable darray[u8]&, value: u64) -> i64:
+    bytes.push((value % 256).u8())
+    bytes.push((value / 256 % 256).u8())
+    bytes.push((value / 65536 % 256).u8())
+    bytes.push((value / 16777216 % 256).u8())
+    4
+
+# A GLB with a 28-byte JSON chunk and, when `bin` > 0, a BIN chunk of `bin`
+# bytes holding 0, 1, 2, ...
+def image(bin: i64) -> darray[u8]:
+    json: darray[u8] = [123, 34, 97, 115, 115, 101, 116, 34, 58, 123, 34, 118, 101, 114, 115, 105, 111, 110, 34, 58, 34, 50, 46, 48, 34, 125, 125, 32]
+    total: i64 = 12 + 8 + json.count.i64() + (bin + 8 if bin > 0 else 0)
+    out: mutable darray[u8] = []
+    put_word(&out, 1179937895)
+    put_word(&out, 2)
+    put_word(&out, total.u64())
+    put_word(&out, json.count.u64())
+    put_word(&out, 1313821514)
+    for i in 0..<json.count |out, json|:
+        out.push(json[i])
+    return out if bin <= 0
+    put_word(&out, bin.u64())
+    put_word(&out, 5130562)
+    for i in 0..<bin.usize() |out|:
+        out.push((i % 256).u8())
+    out
+
+def same(a: darray[u8]&, b: darray[u8]&) -> bool:
+    return false if a.count != b.count
+    differ: mutable i64 = 0
+    for i in 0..<a.count |differ, a, b|:
+        x: u8 = a[i]
+        y: u8 = b[i]
+        differ <- differ + 1 if x != y else differ
+    differ == 0
+
+def parse_code(bytes: darray[u8]&) -> i32:
+    catch GlbContainer::parse(bytes):
+        ok: 0
+        GlbContainer::GlbError.TooShort: 1
+        GlbContainer::GlbError.BadMagic: 2
+        GlbContainer::GlbError.BadVersion: 3
+        GlbContainer::GlbError.LengthMismatch: 4
+        GlbContainer::GlbError.BadJsonChunk: 5
+        GlbContainer::GlbError.BadBinChunk: 6
+        GlbContainer::GlbError.Misaligned: 7
+        GlbContainer::GlbError.TrailingBytes: 8
+        GlbContainer::GlbError.RangeOutside: 9
+        error failure: 10
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def patch_code(bytes: mutable darray[u8]&, layout: GlbContainer::Layout&, offset: i64, data: darray[u8]&) -> i64:
+    catch GlbContainer::patch_bin(bytes, layout, offset, data):
+        value: value
+        error failure: -1
+
+def read_first(bytes: darray[u8]&, layout: GlbContainer::Layout&, offset: i64, count: i64) -> i64:
+    catch GlbContainer::read_bin(bytes, layout, offset, count):
+        value: value[0].i64() if value.count > 0 else -2
+        error failure: -1
+
+def with_word(bytes: darray[u8]&, at: i64, value: u64) -> darray[u8]:
+    out: mutable darray[u8] = []
+    for i in 0..<bytes.count |out, bytes|:
+        out.push(bytes[i])
+    out[at.usize()] <- (value % 256).u8()
+    out[at.usize() + 1] <- (value / 256 % 256).u8()
+    out[at.usize() + 2] <- (value / 65536 % 256).u8()
+    out[at.usize() + 3] <- (value / 16777216 % 256).u8()
+    out
+
+def exercise() -> i32:
+    plain: darray[u8] = image(64)
+    layout: GlbContainer::Layout = layout_of(plain)
+    return 1 if layout.total != 120 or layout.json_start != 20 or layout.json_length != 28
+    return 2 if layout.bin_start != 56 or layout.bin_length != 64
+    json_only: darray[u8] = image(0)
+    return 3 if parse_code(json_only) != 0 or GlbContainer::has_bin(layout_of(json_only))
+
+    # A load/export with no edits is byte-identical.
+    copy: mutable darray[u8] = image(64)
+    return 4 if not same(copy, plain)
+
+    # An edit rewrites exactly its range.
+    edit: darray[u8] = [200, 201, 202, 203]
+    return 5 if patch_code(&copy, layout, 8, edit) != 4
+    changed: mutable i64 = 0
+    for i in 0..<copy.count |changed, copy, plain|:
+        x: u8 = copy[i]
+        y: u8 = plain[i]
+        changed <- changed + 1 if x != y else changed
+    return 6 if changed != 4 or copy[64] != 200 or copy[67] != 203 or copy[63] != 7 or copy[68] != 12
+    return 7 if read_first(copy, layout, 8, 4) != 200 or read_first(copy, layout, 0, 1) != 0
+
+    # Ranges past either end of the payload are rejected and change nothing.
+    before: darray[u8] = image(64)
+    edited: mutable darray[u8] = image(64)
+    return 8 if patch_code(&edited, layout, 61, edit) != -1 or patch_code(&edited, layout, -1, edit) != -1
+    return 9 if not same(edited, before)
+    return 10 if read_first(plain, layout, 64, 1) != -1 or read_first(plain, layout, 0, -1) != -1
+    return 11 if patch_code(&edited, layout_of(json_only), 0, edit) != -1
+
+    # Malformed images are rejected with a typed reason.
+    empty: darray[u8] = []
+    return 12 if parse_code(empty) != 1
+    return 13 if parse_code(with_word(plain, 0, 1179937896)) != 2
+    return 14 if parse_code(with_word(plain, 4, 1)) != 3
+    return 15 if parse_code(with_word(plain, 8, 116)) != 4
+    return 16 if parse_code(with_word(plain, 12, 4000)) != 5
+    return 17 if parse_code(with_word(plain, 16, 5130562)) != 5
+    return 18 if parse_code(with_word(plain, 12, 26)) != 7
+    return 19 if parse_code(with_word(plain, 48, 60)) != 8
+    return 20 if parse_code(with_word(plain, 48, 68)) != 6
+    return 21 if parse_code(with_word(plain, 52, 1313821514)) != 6
+    return 22 if parse_code(with_word(plain, 48, 62)) != 7
+    0
+
+def main() -> i32:
+    status: i32 = exercise()
+    return status if status != 0
+    0

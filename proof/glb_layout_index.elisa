@@ -1,0 +1,42 @@
+include "../src/assets/glb_layout_index.elisa"
+
+extend GlbLayoutIndex:
+    def prove_header_size() -> i64:
+        ensure result == 8
+        chunk_header_bytes()
+
+    def prove_end_inside(offset: i64, length: i64, total: i64) -> i64:
+        requires offset >= 0
+        requires length >= 0
+        requires offset <= 4294967295
+        requires length <= 4294967295
+        ensure result <= total or result < 0
+        chunk_end(offset, length, total)
+
+    def prove_end_past_header(offset: i64, length: i64, total: i64) -> i64:
+        requires offset >= 0
+        requires length >= 0
+        requires offset <= 4294967295
+        requires length <= 4294967295
+        ensure result >= offset + 8 or result < 0
+        chunk_end(offset, length, total)
+
+    def prove_end_exact(offset: i64, length: i64, total: i64) -> i64:
+        requires offset >= 0
+        requires length >= 0
+        requires offset <= 4294967295
+        requires length <= 4294967295
+        ensure result == offset + 8 + length or result < 0
+        chunk_end(offset, length, total)
+
+    def prove_range_lower(start: i64, count: i64, payload_start: i64, payload_length: i64) -> bool:
+        ensure start >= payload_start or not result
+        range_inside(start, count, payload_start, payload_length)
+
+    def prove_range_upper(start: i64, count: i64, payload_start: i64, payload_length: i64) -> bool:
+        ensure start + count <= payload_start + payload_length or not result
+        range_inside(start, count, payload_start, payload_length)
+
+    def prove_range_nonnegative(start: i64, count: i64, payload_start: i64, payload_length: i64) -> bool:
+        ensure count >= 0 or not result
+        range_inside(start, count, payload_start, payload_length)

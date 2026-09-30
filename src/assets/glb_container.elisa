@@ -1,0 +1,89 @@
+# The binary glTF (GLB) container: a 12-byte header, a JSON chunk and an
+# optional BIN chunk. Editing keeps the image byte-identical except for the
+# BIN ranges an edit rewrites in place, so untouched nodes, meshes, skins and
+# buffers survive a load/export round trip exactly (M06).
+include "./glb_layout_index.elisa"
+
+module GlbContainer:
+    private:
+        const module Glb:
+            MAGIC: u64 = 1179937895
+            VERSION: u64 = 2
+            JSON_CHUNK: u64 = 1313821514
+            BIN_CHUNK: u64 = 5130562
+            HEADER_BYTES: i64 = 12
+
+        def word(bytes: darray[u8]&, at: i64) -> u64:
+            i: usize = at.usize()
+            bytes[i].u64() + bytes[i + 1].u64() * 256 + bytes[i + 2].u64() * 65536 + bytes[i + 3].u64() * 16777216
+
+    public:
+        error GlbError:
+            TooShort
+            BadMagic
+            BadVersion
+            LengthMismatch
+            BadJsonChunk
+            BadBinChunk
+            Misaligned
+            TrailingBytes
+            RangeOutside
+
+        # Byte offsets of the chunk payloads. `bin_length` is -1 when the
+        # file has no BIN chunk.
+        struct Layout:
+            total: i64
+            json_start: i64
+            json_length: i64
+            bin_start: i64
+            bin_length: i64
+
+        def has_bin(layout: Layout&) -> bool:
+            layout.bin_length >= 0
+
+        # Checks the header and chunk table against the image and returns
+        # where each payload lies. Nothing is copied or changed.
+        def parse(bytes: darray[u8]&) -> Layout error[GlbError]:
+            total: i64 = bytes.count.i64()
+            raise GlbError.TooShort if total < Glb::HEADER_BYTES + GlbLayoutIndex::chunk_header_bytes()
+            raise GlbError.TooShort if total > GlbLayoutIndex::MAX_BYTES
+            raise GlbError.BadMagic if word(bytes, 0) != Glb::MAGIC
+            raise GlbError.BadVersion if word(bytes, 4) != Glb::VERSION
+            raise GlbError.LengthMismatch if word(bytes, 8).i64() != total
+            json_length: i64 = word(bytes, 12).i64()
+            json_end: i64 = GlbLayoutIndex::chunk_end(Glb::HEADER_BYTES, json_length, total)
+            raise GlbError.BadJsonChunk if json_end < 0 or json_length == 0
+            raise GlbError.BadJsonChunk if word(bytes, 16) != Glb::JSON_CHUNK
+            raise GlbError.Misaligned if not GlbLayoutIndex::aligned(json_length)
+            return Layout{total: total, json_start: 20, json_length: json_length, bin_start: -1, bin_length: -1} if json_end == total
+            bin_length: i64 = word(bytes, json_end).i64() if json_end <= total - 8 else -1
+            raise GlbError.BadBinChunk if bin_length < 0
+            bin_end: i64 = GlbLayoutIndex::chunk_end(json_end, bin_length, total)
+            raise GlbError.BadBinChunk if bin_end < 0
+            raise GlbError.BadBinChunk if word(bytes, json_end + 4) != Glb::BIN_CHUNK
+            raise GlbError.Misaligned if not GlbLayoutIndex::aligned(bin_length)
+            raise GlbError.TrailingBytes if bin_end != total
+            Layout{total: total, json_start: 20, json_length: json_length, bin_start: json_end + 8, bin_length: bin_length}
+
+        # Overwrites `data.count` bytes of the BIN payload starting
+        # `offset` bytes into it. The image is unchanged when the range does
+        # not lie inside the payload. Returns the number of bytes written.
+        def patch_bin(bytes: mutable darray[u8]&, layout: Layout&, offset: i64, data: darray[u8]&) -> i64 error[GlbError]:
+            count: i64 = data.count.i64()
+            raise GlbError.RangeOutside if not has_bin(layout) or layout.total != bytes.count.i64()
+            raise GlbError.RangeOutside if not GlbLayoutIndex::range_inside(layout.bin_start + offset, count, layout.bin_start, layout.bin_length)
+            base: usize = (layout.bin_start + offset).usize()
+            for i in 0..<data.count |bytes, data, base|:
+                bytes[base + i] <- data[i]
+            count
+
+        # Reads `count` bytes of the BIN payload starting `offset` bytes into
+        # it, or nothing when the range lies outside the payload.
+        def read_bin(bytes: darray[u8]&, layout: Layout&, offset: i64, count: i64) -> darray[u8] error[GlbError]:
+            raise GlbError.RangeOutside if not has_bin(layout) or layout.total != bytes.count.i64()
+            raise GlbError.RangeOutside if not GlbLayoutIndex::range_inside(layout.bin_start + offset, count, layout.bin_start, layout.bin_length)
+            out: mutable darray[u8] = []
+            base: usize = (layout.bin_start + offset).usize()
+            for i in 0..<count.usize() |out, bytes, base|:
+                out.push(bytes[base + i])
+            out

@@ -1,0 +1,47 @@
+# Integer layout rules for GlbContainer, split out so the prover can check
+# them. Offsets and lengths are byte counts inside one GLB image.
+module GlbLayoutIndex:
+    public:
+        # GLB lengths are 32-bit.
+        const MAX_BYTES: i64 = 4294967295
+
+        # A GLB chunk starts with an 8-byte header (length, type).
+        def chunk_header_bytes() -> i64:
+            ensure result == 8
+            8
+
+        # Where a chunk whose header starts at `offset` ends, or -1 when its
+        # header or payload would run past `total` bytes.
+        def chunk_end(offset: i64, length: i64, total: i64) -> i64:
+            requires offset >= 0
+            requires length >= 0
+            requires offset <= MAX_BYTES
+            requires length <= MAX_BYTES
+            ensure result <= total or result < 0
+            ensure result >= offset + 8 or result < 0
+            ensure result == offset + 8 + length or result < 0
+            ensure result == -1 or result >= 0
+            return -1 if total > MAX_BYTES
+            return -1 if offset + 8 + length > total
+            offset + 8 + length
+
+        # True when `count` bytes at `start` lie inside a payload of
+        # `payload_length` bytes that begins at `payload_start`.
+        def range_inside(start: i64, count: i64, payload_start: i64, payload_length: i64) -> bool:
+            ensure start >= payload_start or not result
+            ensure count >= 0 or not result
+            ensure start + count <= payload_start + payload_length or not result
+            return false if count < 0
+            return false if count > MAX_BYTES
+            return false if payload_length < 0
+            return false if payload_length > MAX_BYTES
+            return false if payload_start < 0
+            return false if payload_start > MAX_BYTES
+            return false if start < payload_start
+            return false if start > payload_start + payload_length
+            return false if start + count > payload_start + payload_length
+            true
+
+        # GLB chunk lengths are multiples of four.
+        def aligned(length: i64) -> bool:
+            length >= 0 and length % 4 == 0
