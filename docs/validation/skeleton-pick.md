@@ -49,3 +49,12 @@ skeleton. The checks are:
 - a ray outside the side viewport is rejected.
 
 The run passed on 2026-09-30. A mutant that made joint picks prefer the farther hit was caught (exit 14). The smoke is run by hand and is not in the gate. These are the engine's own camera viewports; hosting them as M01 shared Metal textures is still open.
+
+## Picking in the M01 shared-texture viewports (2026-10-01)
+
+`ViewportScene::pick` casts `ViewportCamera::ray` for a pixel into `SkeletonPick::pick`. Joints catch within `PICK_PIXELS` (6) at the camera's target depth and bones within half that. `test/viewport_scene_pick.elisa` (build with `scripts/build_viewport_native_test.sh viewport_scene_pick`) renders one scene into a perspective, a front and a side IOSurface viewport and checks each view:
+- Every joint picks itself at its projected pixel, and the rendered frame shows the joint marker there (within a 3x3 block; bone lines can cover the exact centre).
+- A bone's midpoint picks the bone.
+- An empty corner picks nothing.
+
+In the side view two joints overlap exactly, and the nearer one (+x, toward the camera) wins. Picking a joint in the front view and selecting it turns that pixel orange after the redraw. Two mutants are caught with exit 112: a flipped pixel y, and swapped joint and bone radii.

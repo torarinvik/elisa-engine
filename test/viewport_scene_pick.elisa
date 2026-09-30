@@ -1,0 +1,111 @@
+# Picking in the M01 viewports (plan M03): a perspective, a front and a side
+# view of one ViewportScene. In every view, clicking a joint's projected
+# centre picks that joint, a bone's midpoint picks the bone, an empty corner
+# picks nothing, and the picked pixel is drawn as a joint marker. In the side
+# view two joints overlap exactly and the one nearer the camera wins. Picking
+# then selecting turns that pixel orange. Build:
+# scripts/build_viewport_native_test.sh viewport_scene_pick
+include "../src/viewport/viewport_scene.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def open_view(w: i64, h: i64, projection: i32) -> Viewport::Viewport:
+    mutable vp: Viewport::Viewport = catch Viewport::create(w, h):
+        value: value
+        error failure: Viewport::Viewport{handle: 0, camera: ViewportCamera::create(w, h), dirty: 0, playing: false, frame: 0, published_frame: -1, published_slot: -1, acked: -1, generation: 0, clear_color: 0, rendered: 0, idle_ticks: 0}
+    if projection != ViewportCamera::PERSPECTIVE:
+        vp.camera <- ViewportCamera::create_ortho(w, h, projection)
+    vp
+
+# The colour appears in the 3x3 block around (x, y).
+def around_rgb(rgba: darray[u8]&, w: i64, h: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> bool:
+    mutable k: i64 = 0
+    while k < 9:
+        px: i64 = x - 1 + k % 3
+        py: i64 = y - 1 + k / 3
+        if px >= 0 and py >= 0 and px < w and py < h:
+            return true if near_rgb(rgba, w, px, py, r, g, b)
+        k <- k + 1
+    false
+
+def near_rgb(rgba: darray[u8]&, w: i64, x: i64, y: i64, r: i64, g: i64, b: i64) -> bool:
+    k: usize = ((y * w + x) * 4).usize()
+    dr: i64 = rgba[k].i64() - r
+    dg: i64 = rgba[k + 1].i64() - g
+    db: i64 = rgba[k + 2].i64() - b
+    dr * dr + dg * dg + db * db < 432
+
+# 0 when every joint (except `hidden`, overlapped by a nearer one) picks
+# itself at its projected pixel and that pixel shows the marker colour.
+def joints_code(scene: ViewportScene::Scene&, vp: Viewport::Viewport&, hidden: i64) -> i32:
+    mutable rgba: darray[u8] = []
+    return 1 if not Viewport::read_rgba(vp, &rgba)
+    mutable k: i64 = 0
+    while k < scene.joints.count.i64():
+        at: ViewportCamera::ScreenPoint = ViewportCamera::project(&vp.camera, scene.joints[k.usize()])
+        hit: SkeletonPick::Hit = ViewportScene::pick(scene, &vp.camera, at.x, at.y)
+        if k != hidden:
+            return 2 if hit.kind != SkeletonPickIndex::JOINT or hit.index != k
+            return 3 if not around_rgb(rgba, vp.camera.width, vp.camera.height, at.x.i64(), at.y.i64(), 250, 250, 250)
+        k <- k + 1
+    0
+
+# A bone's midpoint picks the bone (reported by its child joint).
+def bone_code(scene: ViewportScene::Scene&, cam: ViewportCamera::Camera&, child: i64) -> i32:
+    a: Geometry::Vec3 = scene.joints[scene.parents[child.usize()].usize()]
+    b: Geometry::Vec3 = scene.joints[child.usize()]
+    mid: Geometry::Vec3 = Geometry::vec3_scale(Geometry::vec3_add(a, b), 0.5)
+    at: ViewportCamera::ScreenPoint = ViewportCamera::project(cam, mid)
+    hit: SkeletonPick::Hit = ViewportScene::pick(scene, cam, at.x, at.y)
+    return 1 if hit.kind != SkeletonPickIndex::BONE or hit.index != child
+    corner: SkeletonPick::Hit = ViewportScene::pick(scene, cam, 2.0, 2.0)
+    return 2 if corner.kind != SkeletonPickIndex::NONE
+    0
+
+def view_code(scene: mutable ViewportScene::Scene&, vp: mutable Viewport::Viewport&, hidden: i64) -> i32:
+    _ = ViewportScene::frame_selection(scene, vp)
+    _ = ViewportScene::tick(scene, vp, -1)
+    _ = Viewport::acknowledge(vp, vp.published_frame)
+    j: i32 = joints_code(scene, vp, hidden)
+    return 10 + j if j != 0
+    b: i32 = bone_code(scene, &vp.camera, 1)
+    return 20 + b if b != 0
+    0
+
+def main() -> i32:
+    mutable scene: ViewportScene::Scene = ViewportScene::create()
+    scene.grid <- false
+    # Joints 3 and 4 differ only in x, so they overlap in the side view.
+    joints: darray[Geometry::Vec3] = [v(0.0, 1.0, 0.0), v(0.0, 1.5, 0.0), v(0.0, 1.8, 0.1), v(0.15, 0.5, 0.0), v(-0.15, 0.5, 0.0)]
+    parents: darray[i64] = [-1, 0, 1, 0, 0]
+    shaped: i32 = catch ViewportScene::set_skeleton(&scene, &joints, &parents):
+        value: 0
+        error failure: 1
+    return 1 if shaped != 0
+    mutable persp: Viewport::Viewport = open_view(320, 240, ViewportCamera::PERSPECTIVE)
+    mutable front: Viewport::Viewport = open_view(160, 120, ViewportCamera::FRONT)
+    mutable side: Viewport::Viewport = open_view(160, 120, ViewportCamera::SIDE)
+    return 2 if persp.handle == 0 or front.handle == 0 or side.handle == 0
+    p: i32 = view_code(&scene, &persp, -1)
+    return 100 + p if p != 0
+    f: i32 = view_code(&scene, &front, -1)
+    return 200 + f if f != 0
+    s: i32 = view_code(&scene, &side, 4)
+    return 300 + s if s != 0
+    # Side view: the camera sits on +x, so joint 3 (x = +0.15) is nearer.
+    at: ViewportCamera::ScreenPoint = ViewportCamera::project(&side.camera, scene.joints[4])
+    hit: SkeletonPick::Hit = ViewportScene::pick(&scene, &side.camera, at.x, at.y)
+    return 3 if hit.kind != SkeletonPickIndex::JOINT or hit.index != 3
+    # Pick, select, redraw: the clicked joint turns orange.
+    click: ViewportCamera::ScreenPoint = ViewportCamera::project(&front.camera, scene.joints[2])
+    chosen: SkeletonPick::Hit = ViewportScene::pick(&scene, &front.camera, click.x, click.y)
+    ViewportScene::select(&scene, chosen.index)
+    _ = ViewportScene::tick(&scene, &front, 1)
+    mutable shot: darray[u8] = []
+    return 4 if not Viewport::read_rgba(&front, &shot)
+    return 5 if not near_rgb(shot, 160, click.x.i64(), click.y.i64(), 255, 154, 0)
+    Viewport::destroy(&persp)
+    Viewport::destroy(&front)
+    Viewport::destroy(&side)
+    0

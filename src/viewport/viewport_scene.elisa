@@ -5,6 +5,7 @@
 # A `revision` bump marks the scene changed; each viewport remembers the
 # revision it last drew and redraws once, so idle views stay idle.
 include "./viewport.elisa"
+include "../animation/skeleton_pick.elisa"
 
 module ViewportScene:
     public:
@@ -78,6 +79,21 @@ module ViewportScene:
             return seen if not drew and vp.dirty != 0
             scene.revision
 
+        # Nearest joint or bone under pixel (px, py) of `cam` (plan M03).
+        # Joints catch within PICK_PIXELS of their centre at the camera's
+        # target depth and bones within half that, so a joint drawn over a
+        # bone wins; overlapping joints resolve nearest-first.
+        def pick(scene: Scene&, cam: ViewportCamera::Camera&, px: f32, py: f32) -> SkeletonPick::Hit:
+            r: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+            ray: darray[f64] = [r.origin.x.f64(), r.origin.y.f64(), r.origin.z.f64(), r.direction.x.f64(), r.direction.y.f64(), r.direction.z.f64()]
+            mutable flat: darray[f64] = []
+            for k in 0..<scene.joints.count:
+                flat.push(scene.joints[k].x.f64())
+                flat.push(scene.joints[k].y.f64())
+                flat.push(scene.joints[k].z.f64())
+            radius: f64 = (ViewportCamera::world_per_pixel(cam, ViewportCamera::distance(cam)) * PICK_PIXELS).f64()
+            SkeletonPick::pick(flat, scene.parents, ray, radius, radius * 0.5)
+
         # Fit the selected joint (or the whole skeleton) in this view.
         def frame_selection(scene: Scene&, vp: mutable Viewport::Viewport&) -> bool:
             mutable points: darray[Geometry::Vec3] = []
@@ -91,6 +107,8 @@ module ViewportScene:
             vp.camera <- cam
             Viewport::invalidate(vp, ViewportPolicy::DIRTY_CAMERA)
             true
+
+        const PICK_PIXELS: f32 = 6.0
 
     private:
         # ViewportDraw::rgba packing: rgba(240, 200, 60, 255),
