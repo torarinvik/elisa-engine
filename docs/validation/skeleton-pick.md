@@ -27,3 +27,25 @@ pick, overlapping joints and bones resolved nearest-first, ties, misses and
 broken parent tables. A mutation pass killed every mutant except
 `first < best` in `capsule_hit`, which is equivalent: a valid side hit is never
 behind the entry of the capsule's end sphere.
+
+## Live viewports
+
+`scripts/viewport_pick_smoke.py` builds `test/render_scene_viewport_pick_main.elisa`
+on SDL3/Metal. It sets up three viewports over one scene:
+
+- a perspective primary viewport on the left;
+- an owned orthographic front camera (looking -z) at top right;
+- an owned orthographic side camera (looking -x) at bottom right.
+
+Every pixel centre of each viewport goes through `RenderScene::camera_ray` or
+`RenderScene::camera_viewport_ray` and then `SkeletonPick::pick` on a four-joint
+skeleton. The checks are:
+
+- every ray is accepted;
+- every joint hit lies on its sphere to within 1e-4;
+- perspective rays fan out and orthographic rays are parallel;
+- the perspective and front views find all four joints;
+- the side view never returns joint 1, because joint 3 sits in front of it, so nearest-first must hide it;
+- a ray outside the side viewport is rejected.
+
+The run passed on 2026-09-30. A mutant that made joint picks prefer the farther hit was caught (exit 14). The smoke is run by hand and is not in the gate. These are the engine's own camera viewports; hosting them as M01 shared Metal textures is still open.
