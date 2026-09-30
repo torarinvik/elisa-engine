@@ -1,0 +1,83 @@
+# Frame and slot addressing for MocapClip, kept free of floating point so
+# the prover can bound it (proof/mocap_clip_index.elisa). Time is in whole
+# microseconds and the sample rate in whole hertz.
+module MocapClipIndex:
+    public:
+        const CHANNELS: i64 = 7
+        const MAX_BONES: i64 = 256
+        const MAX_FRAMES: i64 = 1048576
+        const MAX_RATE: i64 = 1000
+        const MICROS: i64 = 1000000
+        # About 27 hours; later times read the last frame.
+        const MAX_TIME: i64 = 100000000000
+
+        # Microseconds scaled by the rate, saturated so it cannot overflow.
+        # Clips reject rates above MAX_RATE, and a saturated time is past
+        # the last frame of any clip.
+        def scaled_time(time_us: i64, rate_hz: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 100000000000000
+            return 0 if time_us <= 0 or rate_hz <= 0
+            return 100000000000000 if time_us > 100000000000 or rate_hz > 1000
+            time_us * rate_hz
+
+        # The frame at or before a time, inside a non-empty clip.
+        def frame_at(time_us: i64, rate_hz: i64, frames: i64) -> i64:
+            ensure result >= 0
+            ensure result < frames or frames <= 0
+            return 0 if frames <= 0
+            f: i64 = scaled_time(time_us, rate_hz) / 1000000
+            return 0 if f < 0
+            return frames - 1 if f >= frames
+            f
+
+        # How far past `frame_at` the time lies, in millionths of a frame.
+        # Zero on the last frame, where there is nothing to blend towards.
+        def blend_millionths(time_us: i64, rate_hz: i64, frames: i64) -> i64:
+            ensure result >= 0
+            ensure result < 1000000
+            return 0 if frames <= 0
+            s: i64 = scaled_time(time_us, rate_hz)
+            return 0 if s / 1000000 >= frames - 1
+            r: i64 = s % 1000000
+            return 0 if r < 0 or r >= 1000000
+            r
+
+        # The frame after `frame`, held at the end of the clip.
+        def next_frame(frame: i64, frames: i64) -> i64:
+            ensure result >= 0
+            ensure result < frames or frames <= 0
+            return 0 if frames <= 0 or frame < 0
+            return frames - 1 if frame >= frames - 1
+            frame + 1
+
+        # Whether a clip of this shape fits the limits.
+        def shape_fits(frames: i64, bones: i64) -> bool:
+            ensure not result or frames <= 1048576
+            ensure not result or bones <= 256
+            frames > 0 and frames <= 1048576 and bones > 0 and bones <= 256
+
+        # Number of stored values for a shape that fits.
+        def total(frames: i64, bones: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1879048192
+            ensure result > 0 or frames <= 0 or bones <= 0 or frames > 1048576 or bones > 256
+            return 0 if frames <= 0 or frames > 1048576
+            return 0 if bones <= 0 or bones > 256
+            frames * bones * 7
+
+        # Offset of one channel of one bone at one frame. Out-of-range input
+        # maps to slot 0; callers reject it first.
+        def element(frame: i64, bone: i64, channel: i64, frames: i64, bones: i64) -> i64:
+            ensure result >= 0
+            ensure result < frames * bones * 7 or frames <= 0 or bones <= 0 or frames > 1048576 or bones > 256
+            return 0 if frames <= 0 or frames > 1048576
+            return 0 if bones <= 0 or bones > 256
+            return 0 if frame < 0 or frame >= frames
+            return 0 if bone < 0 or bone >= bones
+            return 0 if channel < 0 or channel >= 7
+            row: i64 = frame * bones + bone
+            offset: i64 = row * 7 + channel
+            size: i64 = frames * bones * 7
+            return 0 if offset >= size
+            offset

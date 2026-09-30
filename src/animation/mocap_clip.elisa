@@ -1,0 +1,96 @@
+# Long motion-capture takes held in memory for random-access scrubbing
+# (plan M02). A clip stores every bone's local translation and rotation at
+# every frame, 7 f32 values per bone, laid out frame by frame. Slot
+# addressing lives in MocapClipIndex, which is proved in-bounds
+# (proof/mocap_clip_index.elisa).
+include "./motion_quat.elisa"
+include "./mocap_clip_index.elisa"
+module MocapClip:
+    public:
+        error MocapClipError:
+            TooManyFrames
+            TooManyBones
+            BadRate
+            AlreadySized
+
+        struct Sample:
+            t: MotionQuat::V
+            q: MotionQuat::Q
+
+        affine struct Clip:
+            private:
+                frames: mutable i64
+                bones: mutable i64
+                rate_hz: mutable i64
+                values: mutable darray[f32]
+
+        def Clip() -> Clip:
+            Clip{frames: 0, bones: 0, rate_hz: 0, values: []}
+
+        def frame_count(clip: Clip&) -> i64:
+            clip.frames
+
+        def bone_count(clip: Clip&) -> i64:
+            clip.bones
+
+        def rate(clip: Clip&) -> i64:
+            clip.rate_hz
+
+        # Length of the take in microseconds, first frame to last.
+        def duration_us(clip: Clip&) -> i64:
+            return 0 if clip.frames <= 1 or clip.rate_hz <= 0
+            (clip.frames - 1) * 1000000 / clip.rate_hz
+
+        # Size an empty clip for a take and fill it with identity poses. The
+        # clip is left unchanged when the shape is rejected; a clip is sized
+        # once, so a new take uses a new clip.
+        def reserve(clip: mutable Clip&, frames: i64, bones: i64, rate_hz: i64) -> i64 error[MocapClipError]:
+            raise MocapClipError.TooManyFrames if frames <= 0 or frames > MocapClipIndex::MAX_FRAMES
+            raise MocapClipError.TooManyBones if bones <= 0 or bones > MocapClipIndex::MAX_BONES
+            raise MocapClipError.BadRate if rate_hz <= 0 or rate_hz > MocapClipIndex::MAX_RATE
+            raise MocapClipError.AlreadySized if clip.values.count > 0
+            size: i64 = MocapClipIndex::total(frames, bones)
+            for slot in 0..<size |clip|:
+                clip.values.push(1.0 if slot % 7 == 6 else 0.0)
+            clip.frames <- frames
+            clip.bones <- bones
+            clip.rate_hz <- rate_hz
+            size
+
+        def set_local(clip: mutable Clip&, frame: i64, bone: i64, local: Sample) -> bool:
+            return false if frame < 0 or frame >= clip.frames
+            return false if bone < 0 or bone >= clip.bones
+            base: i64 = MocapClipIndex::element(frame, bone, 0, clip.frames, clip.bones)
+            clip.values[base.usize()] <- local.t.x.f32()
+            clip.values[base.usize() + 1] <- local.t.y.f32()
+            clip.values[base.usize() + 2] <- local.t.z.f32()
+            clip.values[base.usize() + 3] <- local.q.x.f32()
+            clip.values[base.usize() + 4] <- local.q.y.f32()
+            clip.values[base.usize() + 5] <- local.q.z.f32()
+            clip.values[base.usize() + 6] <- local.q.w.f32()
+            true
+
+        # The stored pose of one bone at one frame; identity when out of range.
+        def local_at(clip: Clip&, frame: i64, bone: i64) -> Sample:
+            identity: Sample = Sample{t: MotionQuat::V{x: 0.0, y: 0.0, z: 0.0}, q: MotionQuat::identity()}
+            return identity if frame < 0 or frame >= clip.frames
+            return identity if bone < 0 or bone >= clip.bones
+            base: usize = MocapClipIndex::element(frame, bone, 0, clip.frames, clip.bones).usize()
+            Sample{
+                t: MotionQuat::V{x: clip.values[base].f64(), y: clip.values[base + 1].f64(), z: clip.values[base + 2].f64()},
+                q: MotionQuat::Q{x: clip.values[base + 3].f64(), y: clip.values[base + 4].f64(), z: clip.values[base + 5].f64(), w: clip.values[base + 6].f64()},
+            }
+
+        # Scrub: the bone's pose at any time, blending the two nearest
+        # frames. Translation is linear and rotation takes the short slerp.
+        def sample(clip: Clip&, time_us: i64, bone: i64) -> Sample:
+            frame: i64 = MocapClipIndex::frame_at(time_us, clip.rate_hz, clip.frames)
+            next: i64 = MocapClipIndex::next_frame(frame, clip.frames)
+            weight: f64 = MocapClipIndex::blend_millionths(time_us, clip.rate_hz, clip.frames).f64() / 1000000.0
+            a: Sample = local_at(clip, frame, bone)
+            return a if next == frame or weight <= 0.0
+            b: Sample = local_at(clip, next, bone)
+            Sample{
+                t: MotionQuat::V{x: a.t.x + (b.t.x - a.t.x) * weight, y: a.t.y + (b.t.y - a.t.y) * weight, z: a.t.z + (b.t.z - a.t.z) * weight},
+                q: MotionQuat::slerp(a.q, b.q, weight),
+            }

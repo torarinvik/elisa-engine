@@ -1,0 +1,56 @@
+include "../src/animation/mocap_clip_index.elisa"
+
+extend MocapClipIndex:
+    # Any time reads a frame inside a non-empty clip.
+    def prove_frame_in_clip(time_us: i64, rate_hz: i64, frames: i64) -> i64:
+        requires frames > 0
+        ensure result >= 0
+        ensure result < frames
+        frame_at(time_us, rate_hz, frames)
+
+    # The blend partner stays inside the clip.
+    def prove_next_in_clip(time_us: i64, rate_hz: i64, frames: i64) -> i64:
+        requires frames > 0
+        ensure result >= 0
+        ensure result < frames
+        next_frame(frame_at(time_us, rate_hz, frames), frames)
+
+    # The blend weight is a proper fraction.
+    def prove_blend_fraction(time_us: i64, rate_hz: i64, frames: i64) -> i64:
+        ensure result >= 0
+        ensure result < 1000000
+        blend_millionths(time_us, rate_hz, frames)
+
+    # Scaling a time cannot overflow a signed 64-bit value.
+    def prove_scaled_bounded(time_us: i64, rate_hz: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 100000000000000
+        scaled_time(time_us, rate_hz)
+
+    # Accepted shapes stay inside the limits.
+    def prove_shape_limits(frames: i64, bones: i64) -> bool:
+        requires shape_fits(frames, bones)
+        ensure frames <= 1048576
+        ensure bones <= 256
+        shape_fits(frames, bones)
+
+    # Every slot is non-negative.
+    def prove_element_non_negative(frame: i64, bone: i64, channel: i64, frames: i64, bones: i64) -> i64:
+        ensure result >= 0
+        element(frame, bone, channel, frames, bones)
+
+    # Every slot of an accepted clip lies inside its storage.
+    def prove_element_in_storage(frame: i64, bone: i64, channel: i64, frames: i64, bones: i64) -> i64:
+        requires frames > 0 and frames <= 1048576
+        requires bones > 0 and bones <= 256
+        ensure result >= 0
+        ensure result < frames * bones * 7
+        element(frame, bone, channel, frames, bones)
+
+    # Storage for an accepted clip is non-empty and fits comfortably in i64.
+    def prove_total_bounded(frames: i64, bones: i64) -> i64:
+        requires frames > 0 and frames <= 1048576
+        requires bones > 0 and bones <= 256
+        ensure result > 0
+        ensure result <= 1879048192
+        total(frames, bones)

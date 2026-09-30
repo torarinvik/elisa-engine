@@ -1,0 +1,111 @@
+include "../src/animation/mocap_clip.elisa"
+
+extern clock_gettime_nsec_np(clock: u32) -> u64
+
+def close(a: f64, b: f64, tolerance: f64) -> bool:
+    d: f64 = a - b
+    d < tolerance and d > -tolerance
+
+def z_axis() -> MotionQuat::V:
+    MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}
+
+# A recognisable pose: bone b at frame f sits at x = f, y = b and turns
+# about z by a thousandth of a radian per frame.
+def pose_for(frame: i64, bone: i64) -> MocapClip::Sample:
+    MocapClip::Sample{
+        t: MotionQuat::V{x: frame.f64(), y: bone.f64(), z: 0.0},
+        q: MotionQuat::axis_angle(z_axis(), frame.f64() * 0.001),
+    }
+
+def shape_error(frames: i64, bones: i64, rate: i64) -> i32:
+    clip: mutable MocapClip::Clip = MocapClip::Clip()
+    catch MocapClip::reserve(&clip, frames, bones, rate):
+        ok: 0
+        MocapClip::MocapClipError.TooManyFrames: 1
+        MocapClip::MocapClipError.TooManyBones: 2
+        MocapClip::MocapClipError.BadRate: 3
+        MocapClip::MocapClipError.AlreadySized: 4
+        error failure: 9
+
+# The 95th-percentile cost of a value: the smallest one that at least 95%
+# of the values do not exceed.
+def percentile95(costs: darray[u64]&) -> u64:
+    need: usize = costs.count * 95 / 100
+    best: mutable u64 = 18446744073709551615
+    for i in 0..<costs.count |best, costs, need|:
+        candidate: u64 = costs[i]
+        at_most: mutable usize = 0
+        for j in 0..<costs.count |at_most, costs, candidate|:
+            at_most <- at_most + 1 if costs[j] <= candidate else at_most
+        best <- candidate if at_most >= need and candidate < best else best
+    best
+
+def scrub_p95(clip: MocapClip::Clip&, bones: i64) -> u64:
+    costs: mutable darray[u64] = []
+    checksum: mutable f64 = 0.0
+    seed: mutable i64 = 12345
+    for step in 0..<2000 |costs, checksum, seed, clip, bones|:
+        seed <- (seed * 1103515245 + 12345) % 2147483648
+        time_us: i64 = seed % (9999 * 1000000 / 120)
+        start: u64 = clock_gettime_nsec_np(4)
+        for bone in 0..<bones |checksum, clip, time_us|:
+            checksum <- checksum + MocapClip::sample(clip, time_us, bone).t.x
+        cost: u64 = clock_gettime_nsec_np(4) - start
+        costs.push(cost)
+    # The checksum keeps the sampling from being optimised away.
+    return 0 if checksum < 0.0
+    percentile95(&costs)
+
+def fill(clip: mutable MocapClip::Clip&, frames: i64, bones: i64) -> i64:
+    written: mutable i64 = 0
+    for frame in 0..<frames |clip, bones, written|:
+        for bone in 0..<bones |clip, frame, written|:
+            written <- written + 1 if MocapClip::set_local(clip, frame, bone, pose_for(frame, bone)) else written
+    written
+
+def main() -> i32:
+    # Shape limits fail in a typed way.
+    return 1 if shape_error(0, 70, 120) != 1
+    return 2 if shape_error(MocapClipIndex::MAX_FRAMES + 1, 70, 120) != 1
+    return 3 if shape_error(100, 0, 120) != 2
+    return 4 if shape_error(100, 257, 120) != 2
+    return 5 if shape_error(100, 70, 0) != 3
+    return 6 if shape_error(100, 70, 1001) != 3
+
+    frames: i64 = 10000
+    bones: i64 = 70
+    clip: mutable MocapClip::Clip = MocapClip::Clip()
+    size: i64 = catch MocapClip::reserve(&clip, frames, bones, 120):
+        value: value
+        error failure: -1
+    return 7 if size != frames * bones * 7
+    again: i32 = catch MocapClip::reserve(&clip, 10, 10, 120):
+        ok: 0
+        MocapClip::MocapClipError.AlreadySized: 4
+        error failure: 9
+    return 19 if again != 4 or MocapClip::frame_count(&clip) != frames
+    return 8 if MocapClip::duration_us(&clip) != 9999 * 1000000 / 120
+    # Fresh storage holds identity rotations.
+    fresh: MocapClip::Sample = MocapClip::local_at(&clip, 5000, 69)
+    return 9 if not close(fresh.q.w, 1.0, 0.000001)
+    return 20 if fill(&clip, frames, bones) != frames * bones
+    return 10 if MocapClip::set_local(&clip, frames, 0, pose_for(0, 0))
+    return 11 if MocapClip::set_local(&clip, 0, bones, pose_for(0, 0))
+
+    # Exact frames read back.
+    last: MocapClip::Sample = MocapClip::sample(&clip, 9999 * 1000000 / 120 + 1, 69)
+    return 12 if not close(last.t.x, 9999.0, 0.001) or not close(last.t.y, 69.0, 0.001)
+    # Halfway between frames 1200 and 1201 (10 s + 1/240 s).
+    mid: MocapClip::Sample = MocapClip::sample(&clip, 10004167, 3)
+    return 13 if not close(mid.t.x, 1200.5, 0.001)
+    return 14 if not close(MotionQuat::hinge_angle(mid.q, z_axis()), 1.2005, 0.0001)
+    # Past the end holds the last frame; before the start holds the first.
+    return 15 if not close(MocapClip::sample(&clip, 999999999999, 0).t.x, 9999.0, 0.001)
+    return 16 if not close(MocapClip::sample(&clip, -5, 0).t.x, 0.0, 0.001)
+
+    # Scrubbing: evaluate the full 70-bone pose at 2000 scattered times and
+    # keep the 95th-percentile cost per pose.
+    p95: u64 = scrub_p95(&clip, bones)
+    # A pose must scrub well inside a 120 Hz frame (8.3 ms).
+    return 18 if p95 > 2000000
+    0
