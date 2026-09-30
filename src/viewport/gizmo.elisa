@@ -1,0 +1,334 @@
+# Manipulation gizmos for editor viewports (plan M04).
+#
+# A Gizmo sits at a bone's model position. It is either TRANSLATE (three
+# axis arrows plus three plane squares) or ROTATE (three rings), and its axes
+# are the WORLD axes or the bone's LOCAL axes. Its size is a fixed number of
+# pixels, so it looks the same at any zoom and in orthographic views.
+#
+# A drag goes through the proved GizmoPolicy state machine:
+#   - `begin` snapshots every override, so the pose can be restored;
+#   - each `update` turns the pointer into a goal model transform for the
+#     bone. Translation is constrained to the handle's axis or plane, and
+#     rotation turns about the handle's axis. The goal is handed to the app's
+#     hook, which writes overrides; `move_bone` is the default, a plain FK
+#     set, and an IK solver goes in its place for effectors;
+#   - `commit` keeps the result;
+#   - `cancel` writes the snapshot back, so the overrides are bit-identical
+#     to the ones before the drag.
+#
+# Hooks may override any bones, so drags should run on a seeded pose
+# (PoseOverride::seed_from_clip, or rest overrides), where `evaluate_rest`
+# shows exactly what the viewport shows.
+include "./skeleton_overlay.elisa"
+include "./gizmo_policy.elisa"
+
+# Top-level names for the drag hook's parameter types: the stage1 backend
+# declines module-qualified types inside fn(...) types.
+type GizmoHookOverrides = PoseOverride::Overrides
+type GizmoHookRig = PoseOverride::Rig
+type GizmoHookTransform = Geometry::Transform
+
+module Gizmo:
+    public:
+        error GizmoError:
+            BadHandle
+            # The pointer ray is parallel to the handle's constraint.
+            NoHit
+            ShapeMismatch
+            NotFinite
+
+        const WORLD: i32 = 0
+        const LOCAL: i32 = 1
+
+        # Pointer tolerance around handles, in pixels.
+        const PICK_PX: f32 = 7.0
+        const RING_SEGMENTS: i64 = 48
+
+        struct Gizmo:
+            # GizmoPolicy::TRANSLATE or ROTATE.
+            mode: i64
+            space: i32
+            center: Geometry::Vec3
+            # The bone's model rotation (used in LOCAL space).
+            orientation: Geometry::Quat
+            # Arm length / ring radius in pixels.
+            size_px: f32
+
+        struct Drag:
+            state: mutable i64
+            handle: mutable i64
+            gizmo: mutable Gizmo
+            bone: mutable usize
+            # The bone's model transform when the drag began.
+            start: mutable Geometry::Transform
+            # Where the pointer first met the constraint.
+            anchor: mutable Geometry::Vec3
+            anchor_s: mutable f32
+            saved_locals: mutable darray[Geometry::Transform]
+            saved_active: mutable darray[bool]
+
+        # The app's drag hook: write overrides so `bone` reaches `goal` (a
+        # model transform). IK solvers take this shape.
+        # fn(mutable PoseOverride::Overrides&, PoseOverride::Rig&, usize,
+        #    Geometry::Transform) -> void
+
+        def create(mode: i64, space: i32, model: Geometry::Transform) -> Gizmo:
+            Gizmo{mode: GizmoPolicy::ROTATE if mode == GizmoPolicy::ROTATE else GizmoPolicy::TRANSLATE, space: LOCAL if space == LOCAL else WORLD, center: model.position, orientation: model.rotation, size_px: 90.0}
+
+        def idle() -> Drag:
+            Drag{state: GizmoPolicy::IDLE, handle: GizmoPolicy::NONE, gizmo: create(GizmoPolicy::TRANSLATE, WORLD, Geometry::transform_identity()), bone: 0, start: Geometry::transform_identity(), anchor: Geometry::vec3_zero(), anchor_s: 0.0, saved_locals: [], saved_active: []}
+
+        def dragging(drag: Drag&) -> bool:
+            drag.state == GizmoPolicy::DRAGGING
+
+        # Unit axis `i` (0 = X, 1 = Y, 2 = Z) in the gizmo's space.
+        def axis(g: Gizmo&, i: i64) -> Geometry::Vec3:
+            unit: Geometry::Vec3 = Geometry::Vec3{x: 1.0 if i == 0 else 0.0, y: 1.0 if i == 1 else 0.0, z: 1.0 if i == 2 else 0.0}
+            return unit if g.space == WORLD
+            Geometry::vec3_normalize(Geometry::quat_rotate(Geometry::quat_normalize(g.orientation), unit))
+
+        # World length of the arms: `size_px` pixels at the gizmo's depth.
+        def length(cam: ViewportCamera::Camera&, g: Gizmo&) -> f32:
+            g.size_px * pixel_size(cam, g.center)
+
+        def color(g: Gizmo&, handle: i64, hovered: i64, active: i64) -> u32:
+            return ViewportDraw::rgba(255, 220, 40, 255) if handle == active or handle == hovered
+            n: i64 = GizmoPolicy::normal_axis(handle)
+            alpha: i64 = 150 if GizmoPolicy::is_plane(handle) else 255
+            return ViewportDraw::rgba(235, 60, 60, alpha) if n == 0
+            return ViewportDraw::rgba(80, 210, 80, alpha) if n == 1
+            ViewportDraw::rgba(70, 120, 255, alpha)
+
+        # Append the gizmo (TOP layer). Returns the number of handles drawn.
+        def draw(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, g: Gizmo&, hovered: i64, active: i64) -> usize error[ViewportDraw::DrawError]:
+            l: f32 = length(cam, g)
+            top: i32 = ViewportDraw::TOP
+            if g.mode == GizmoPolicy::ROTATE:
+                for i in 0..<3:
+                    handle: i64 = axis_handle(i.i64())
+                    u: Geometry::Vec3 = axis(g, (i.i64() + 1) % 3)
+                    v: Geometry::Vec3 = axis(g, (i.i64() + 2) % 3)
+                    c: u32 = color(g, handle, hovered, active)
+                    for k in 0..<RING_SEGMENTS:
+                        try ViewportDraw::line(list, ring_point(g.center, u, v, l, k), ring_point(g.center, u, v, l, k + 1), c, top)
+                return 3
+            for i in 0..<3:
+                handle: i64 = axis_handle(i.i64())
+                a: Geometry::Vec3 = axis(g, i.i64())
+                try ViewportDraw::line(list, g.center, Geometry::vec3_add(g.center, Geometry::vec3_scale(a, l)), color(g, handle, hovered, active), top)
+                try ViewportDraw::marker(list, cam, Geometry::vec3_add(g.center, Geometry::vec3_scale(a, l)), 4.0, color(g, handle, hovered, active), top)
+            for p in 0..<3:
+                handle: i64 = plane_handle(p.i64())
+                n: i64 = GizmoPolicy::normal_axis(handle)
+                u: Geometry::Vec3 = Geometry::vec3_scale(axis(g, (n + 1) % 3), l)
+                v: Geometry::Vec3 = Geometry::vec3_scale(axis(g, (n + 2) % 3), l)
+                c: u32 = color(g, handle, hovered, active)
+                q0: Geometry::Vec3 = square_point(g.center, u, v, 0.3, 0.3)
+                q1: Geometry::Vec3 = square_point(g.center, u, v, 0.5, 0.3)
+                q2: Geometry::Vec3 = square_point(g.center, u, v, 0.5, 0.5)
+                q3: Geometry::Vec3 = square_point(g.center, u, v, 0.3, 0.5)
+                try ViewportDraw::triangle(list, q0, q1, q2, c, top)
+                try ViewportDraw::triangle(list, q0, q2, q3, c, top)
+            6
+
+        # The handle under pixel (px, py), nearest first (axes before planes
+        # on a tie); GizmoPolicy::NONE for a miss or a non-finite pixel.
+        def pick(cam: ViewportCamera::Camera&, g: Gizmo&, px: f32, py: f32) -> i64:
+            return GizmoPolicy::NONE if not finite(px) or not finite(py)
+            ray: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+            l: f32 = length(cam, g)
+            tol: f32 = PICK_PX * pixel_size(cam, g.center)
+            mutable best: i64 = GizmoPolicy::NONE
+            mutable best_code: i64 = 0
+            for i in 0..<3:
+                handle: i64 = axis_handle(i.i64())
+                mutable t: f32 = -1.0
+                if g.mode == GizmoPolicy::ROTATE:
+                    t <- ring_hit(ray, g.center, axis(g, i.i64()), l, tol)
+                else:
+                    t <- SkeletonOverlay::ray_capsule(ray, g.center, Geometry::vec3_add(g.center, Geometry::vec3_scale(axis(g, i.i64()), l)), tol)
+                if t >= 0.0:
+                    code: i64 = SkeletonOverlay::code_for(t)
+                    if best == GizmoPolicy::NONE or GizmoPolicy::better(code, handle, best_code, best):
+                        best <- handle
+                        best_code <- code
+            if g.mode == GizmoPolicy::TRANSLATE:
+                for p in 0..<3:
+                    handle: i64 = plane_handle(p.i64())
+                    t: f32 = square_hit(ray, g, handle, l)
+                    if t >= 0.0:
+                        code: i64 = SkeletonOverlay::code_for(t)
+                        if best == GizmoPolicy::NONE or GizmoPolicy::better(code, handle, best_code, best):
+                            best <- handle
+                            best_code <- code
+            best
+
+        # Start dragging `handle` of `g` for `bone` (whose model transform is
+        # `model`) from pixel (px, py). Every override is snapshotted.
+        def begin(drag: mutable Drag&, cam: ViewportCamera::Camera&, g: Gizmo&, handle: i64, px: f32, py: f32, held: PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, model: Geometry::Transform) -> bool error[GizmoError]:
+            raise GizmoError.BadHandle if not GizmoPolicy::allowed(g.mode, handle)
+            raise GizmoError.ShapeMismatch if bone >= PoseOverride::rig_bone_count(rig)
+            raise GizmoError.NotFinite if not finite(px) or not finite(py)
+            ray: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+            mutable s: f32 = 0.0
+            mutable p: Geometry::Vec3 = g.center
+            if g.mode == GizmoPolicy::TRANSLATE and GizmoPolicy::is_axis(handle):
+                s <- axis_param(ray, g.center, axis(g, GizmoPolicy::normal_axis(handle)))
+                raise GizmoError.NoHit if not finite(s)
+            else:
+                t: f32 = plane_t(ray, g.center, axis(g, GizmoPolicy::normal_axis(handle)))
+                raise GizmoError.NoHit if t < 0.0
+                p <- Geometry::ray3_at(ray, t)
+            drag.saved_locals.clear()
+            drag.saved_active.clear()
+            for b in 0..<PoseOverride::rig_bone_count(rig):
+                drag.saved_locals.push(PoseOverride::override_local(held, b))
+                drag.saved_active.push(PoseOverride::is_overridden(held, b))
+            drag.state <- GizmoPolicy::next_state(drag.state, GizmoPolicy::BEGIN)
+            drag.handle <- handle
+            drag.gizmo <- Gizmo{mode: g.mode, space: g.space, center: g.center, orientation: g.orientation, size_px: g.size_px}
+            drag.bone <- bone
+            drag.start <- model
+            drag.anchor <- p
+            drag.anchor_s <- s
+            true
+
+        # The goal model transform for the pointer at (px, py). A pointer
+        # whose ray misses the constraint keeps the start transform.
+        def goal(drag: Drag&, cam: ViewportCamera::Camera&, px: f32, py: f32) -> Geometry::Transform:
+            return drag.start if not dragging(drag) or not finite(px) or not finite(py)
+            g: Gizmo = drag.gizmo
+            ray: Geometry::Ray3 = ViewportCamera::ray(cam, px, py)
+            n: Geometry::Vec3 = axis(&g, GizmoPolicy::normal_axis(drag.handle))
+            mutable out: Geometry::Transform = drag.start
+            if g.mode == GizmoPolicy::TRANSLATE and GizmoPolicy::is_axis(drag.handle):
+                s: f32 = axis_param(ray, g.center, n)
+                return drag.start if not finite(s)
+                out.position <- Geometry::vec3_add(drag.start.position, Geometry::vec3_scale(n, s - drag.anchor_s))
+                return out
+            t: f32 = plane_t(ray, g.center, n)
+            return drag.start if t < 0.0
+            p: Geometry::Vec3 = Geometry::ray3_at(ray, t)
+            if g.mode == GizmoPolicy::TRANSLATE:
+                out.position <- Geometry::vec3_add(drag.start.position, Geometry::vec3_sub(p, drag.anchor))
+                return out
+            v0: Geometry::Vec3 = Geometry::vec3_sub(drag.anchor, g.center)
+            v1: Geometry::Vec3 = Geometry::vec3_sub(p, g.center)
+            angle: f32 = ElisaMath::atan2(Geometry::vec3_dot(Geometry::vec3_cross(v0, v1), n).f64(), Geometry::vec3_dot(v0, v1).f64()).f32()
+            return drag.start if not finite(angle)
+            half: f32 = angle * 0.5
+            sn: f32 = ElisaMath::sinf(half)
+            q: Geometry::Quat = Geometry::Quat{x: n.x * sn, y: n.y * sn, z: n.z * sn, w: ElisaMath::cosf(half)}
+            out.rotation <- Geometry::quat_normalize(Geometry::quat_mul(q, drag.start.rotation))
+            out
+
+        # Move the drag to (px, py): hand the goal to `hook`, which updates
+        # the overrides. False when no drag is active.
+        def update(drag: mutable Drag&, cam: ViewportCamera::Camera&, px: f32, py: f32, rig: PoseOverride::Rig&, held: mutable PoseOverride::Overrides&, hook: fn(mutable GizmoHookOverrides&, GizmoHookRig&, usize, GizmoHookTransform) -> void) -> bool:
+            drag.state <- GizmoPolicy::next_state(drag.state, GizmoPolicy::MOVE)
+            return false if not dragging(drag)
+            hook(held, rig, drag.bone, goal(drag, cam, px, py))
+            true
+
+        # Keep the dragged pose.
+        def commit(drag: mutable Drag&):
+            drag.state <- GizmoPolicy::next_state(drag.state, GizmoPolicy::COMMIT)
+            drag.handle <- GizmoPolicy::NONE
+
+        # Restore every override to its value before the drag. False (and
+        # nothing restored) when no drag is active or the rig changed shape.
+        def cancel(drag: mutable Drag&, held: mutable PoseOverride::Overrides&) -> bool:
+            was: bool = dragging(drag)
+            drag.state <- GizmoPolicy::next_state(drag.state, GizmoPolicy::CANCEL)
+            drag.handle <- GizmoPolicy::NONE
+            return false if not was
+            mutable ok: bool = true
+            for b in 0..<drag.saved_locals.count:
+                ok <- PoseOverride::set_override(held, b, drag.saved_locals[b]) and ok
+                if not drag.saved_active[b]:
+                    PoseOverride::clear_override(held, b)
+            ok
+
+        # Default hook: set `bone`'s local override so its model transform
+        # is `goal`, keeping its local scale (plain FK; an IK hook replaces
+        # this for effectors).
+        def move_bone(held: mutable PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, goal: Geometry::Transform) -> void:
+            mutable models: darray[Geometry::Transform] = []
+            count: usize = catch PoseOverride::evaluate_rest(rig, held, &models):
+                value: value
+                error failure: 0
+            return if bone >= count
+            parent: i64 = PoseOverride::rig_parent(rig, bone)
+            current: Geometry::Transform = PoseOverride::override_local(held, bone) if PoseOverride::is_overridden(held, bone) else PoseOverride::rig_rest(rig, bone)
+            mutable local: Geometry::Transform = goal
+            if parent >= 0:
+                local <- Geometry::transform_apply_inverse(models[parent.usize()], goal)
+            local.scale <- current.scale
+            _ = PoseOverride::set_override(held, bone, local)
+
+        def axis_handle(i: i64) -> i64:
+            return GizmoPolicy::AXIS_X if i == 0
+            return GizmoPolicy::AXIS_Y if i == 1
+            GizmoPolicy::AXIS_Z
+
+        # Plane handles in order XY, XZ, YZ.
+        def plane_handle(p: i64) -> i64:
+            return GizmoPolicy::PLANE_XY if p == 0
+            return GizmoPolicy::PLANE_XZ if p == 1
+            GizmoPolicy::PLANE_YZ
+
+        # Parameter along the line c + a*s nearest to the ray; NaN when the
+        # ray runs (nearly) along the axis.
+        def axis_param(ray: Geometry::Ray3, c: Geometry::Vec3, a: Geometry::Vec3) -> f32:
+            w: Geometry::Vec3 = Geometry::vec3_sub(ray.origin, c)
+            b: f32 = Geometry::vec3_dot(a, ray.direction)
+            denom: f32 = 1.0 - b * b
+            return 0.0 / 0.0 if not (denom > 1.0e-4)
+            (Geometry::vec3_dot(a, w) - b * Geometry::vec3_dot(ray.direction, w)) / denom
+
+        # Ray distance to the plane through c with normal n, or -1.
+        def plane_t(ray: Geometry::Ray3, c: Geometry::Vec3, n: Geometry::Vec3) -> f32:
+            denom: f32 = Geometry::vec3_dot(ray.direction, n)
+            return -1.0 if not (denom > 1.0e-4 or denom < -1.0e-4)
+            t: f32 = Geometry::vec3_dot(Geometry::vec3_sub(c, ray.origin), n) / denom
+            return -1.0 if not finite(t) or t < 0.0
+            t
+
+    private:
+        def finite(v: f32) -> bool:
+            v == v and v < 1.0e30 and v > -1.0e30
+
+        def pixel_size(cam: ViewportCamera::Camera&, p: Geometry::Vec3) -> f32:
+            b: ViewportCamera::Basis = ViewportCamera::basis(cam)
+            depth: f32 = Geometry::vec3_dot(Geometry::vec3_sub(p, b.eye), b.forward)
+            ViewportCamera::world_per_pixel(cam, depth if depth > ViewportCamera::NEAR else ViewportCamera::NEAR)
+
+        def ring_point(c: Geometry::Vec3, u: Geometry::Vec3, v: Geometry::Vec3, r: f32, k: i64) -> Geometry::Vec3:
+            a: f32 = (k.f64() * 6.283185307179586 / RING_SEGMENTS.f64()).f32()
+            Geometry::vec3_add(c, Geometry::vec3_add(Geometry::vec3_scale(u, r * ElisaMath::cosf(a)), Geometry::vec3_scale(v, r * ElisaMath::sinf(a))))
+
+        def square_point(c: Geometry::Vec3, u: Geometry::Vec3, v: Geometry::Vec3, su: f32, sv: f32) -> Geometry::Vec3:
+            Geometry::vec3_add(c, Geometry::vec3_add(Geometry::vec3_scale(u, su), Geometry::vec3_scale(v, sv)))
+
+        # Ray distance to a ring of radius r (within tol) about axis n.
+        def ring_hit(ray: Geometry::Ray3, c: Geometry::Vec3, n: Geometry::Vec3, r: f32, tol: f32) -> f32:
+            t: f32 = plane_t(ray, c, n)
+            return -1.0 if t < 0.0
+            d: f32 = Geometry::vec3_length(Geometry::vec3_sub(Geometry::ray3_at(ray, t), c))
+            return t if d >= r - tol and d <= r + tol
+            -1.0
+
+        def square_hit(ray: Geometry::Ray3, g: Gizmo&, handle: i64, l: f32) -> f32:
+            n: i64 = GizmoPolicy::normal_axis(handle)
+            t: f32 = plane_t(ray, g.center, axis(g, n))
+            return -1.0 if t < 0.0 or not (l > 0.0)
+            rel: Geometry::Vec3 = Geometry::vec3_sub(Geometry::ray3_at(ray, t), g.center)
+            su: f32 = Geometry::vec3_dot(rel, axis(g, (n + 1) % 3)) / l
+            sv: f32 = Geometry::vec3_dot(rel, axis(g, (n + 2) % 3)) / l
+            return t if su >= 0.3 and su <= 0.5 and sv >= 0.3 and sv <= 0.5
+            -1.0
+
+# Gizmo::move_bone as a top-level function, for passing as a drag hook (the
+# stage1 backend declines module-qualified function values).
+def gizmo_move_bone(held: mutable GizmoHookOverrides&, rig: GizmoHookRig&, bone: usize, goal: GizmoHookTransform) -> void:
+    Gizmo::move_bone(held, rig, bone, goal)

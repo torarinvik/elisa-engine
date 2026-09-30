@@ -1,0 +1,39 @@
+include "../src/viewport/gizmo_policy.elisa"
+
+extend GizmoPolicy:
+    # Any handle a gizmo accepts has a constraint axis (never -1).
+    def prove_normal_in_range(handle: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 3
+        normal_axis(handle)
+
+    # A drag never leaves the two states, whatever the event sequence.
+    def prove_two_steps(state: i64, e1: i64, e2: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 1
+        next_state(next_state(state, e1), e2)
+
+    # Cancel from any state ends the drag.
+    def prove_cancel(state: i64) -> i64:
+        ensure result <= 0
+        ensure result >= 0
+        next_state(state, CANCEL)
+
+    def prove_commit(state: i64) -> i64:
+        ensure result <= 0
+        next_state(state, COMMIT)
+
+    def prove_begin(state: i64) -> i64:
+        ensure result >= 1
+        next_state(state, BEGIN)
+
+    def prove_move_keeps_drag(state: i64) -> i64:
+        requires state >= 1
+        requires state <= 1
+        ensure result >= 1
+        moved(state)
+
+    def prove_code(code: i64) -> i64:
+        ensure result >= 0
+        ensure result <= MAX_CODE
+        clamp_code(clamp_code(code))

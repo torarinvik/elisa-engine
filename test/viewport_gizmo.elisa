@@ -1,0 +1,263 @@
+# Manipulation gizmos (plan M04). Covered here:
+#   - screen-constant size across zoom;
+#   - WORLD and LOCAL axes;
+#   - handle picking, including the axis-before-plane tie-break;
+#   - axis- and plane-constrained translation;
+#   - rotation about an axis;
+#   - a live two-bone IK hook dragging a foot effector (the app's solver,
+#     written here as the test's own);
+#   - cancel restoring the pre-drag overrides bit for bit;
+#   - adversarial input: wrong handles, NaN pixels, rays parallel to the
+#     constraint, and idle update and cancel.
+include "../src/viewport/gizmo.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def near(a: f32, b: f32, tol: f32) -> bool:
+    d: f32 = a - b
+    d <= tol and d >= 0.0 - tol
+
+def near3(a: Geometry::Vec3, b: Geometry::Vec3, tol: f32) -> bool:
+    near(a.x, b.x, tol) and near(a.y, b.y, tol) and near(a.z, b.z, tol)
+
+def at(p: Geometry::Vec3) -> Geometry::Transform:
+    Geometry::transform_translate(Geometry::transform_identity(), p)
+
+def add(rig: mutable PoseOverride::Rig&, parent: i64, offset: Geometry::Vec3) -> i32:
+    catch PoseOverride::rig_add(rig, parent, at(offset)):
+        value: 0
+        error failure: 1
+
+def models_of(rig: PoseOverride::Rig&, held: PoseOverride::Overrides&) -> darray[Geometry::Transform]:
+    mutable models: darray[Geometry::Transform] = []
+    _ = catch PoseOverride::evaluate_rest(rig, held, &models):
+        value: value
+        error failure: 0
+    return move models
+
+# Rotation taking unit a onto unit b (not antiparallel).
+def from_to(a: Geometry::Vec3, b: Geometry::Vec3) -> Geometry::Quat:
+    c: Geometry::Vec3 = Geometry::vec3_cross(a, b)
+    Geometry::quat_normalize(Geometry::Quat{x: c.x, y: c.y, z: c.z, w: 1.0 + Geometry::vec3_dot(a, b)})
+
+global mutable hook_calls: i64 = 0
+
+# The app's IK: hip (0) -> knee (1) -> foot (2), 0.45 m segments pointing
+# down at rest, knee bending toward +Z. Places the foot at the goal.
+def leg_ik(held: mutable PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, goal: Geometry::Transform) -> void:
+    hook_calls <- hook_calls + 1
+    return if bone != 2
+    models: darray[Geometry::Transform] = models_of(rig, held)
+    h: Geometry::Vec3 = models[0].position
+    reach: Geometry::Vec3 = Geometry::vec3_sub(goal.position, h)
+    mutable d: f32 = Geometry::vec3_length(reach)
+    d <- 0.899 if d > 0.899
+    dir: Geometry::Vec3 = Geometry::vec3_normalize(reach)
+    pole: Geometry::Vec3 = v(0.0, 0.0, 1.0)
+    perp: Geometry::Vec3 = Geometry::vec3_normalize(Geometry::vec3_sub(pole, Geometry::vec3_scale(dir, Geometry::vec3_dot(pole, dir))))
+    x: f32 = d * 0.5
+    y: f32 = Geometry::sqrt_f32(0.45 * 0.45 - x * x)
+    knee: Geometry::Vec3 = Geometry::vec3_add(h, Geometry::vec3_add(Geometry::vec3_scale(dir, x), Geometry::vec3_scale(perp, y)))
+    foot: Geometry::Vec3 = Geometry::vec3_add(h, Geometry::vec3_scale(dir, d))
+    down: Geometry::Vec3 = v(0.0, -1.0, 0.0)
+    r0: Geometry::Quat = from_to(down, Geometry::vec3_normalize(Geometry::vec3_sub(knee, h)))
+    r1: Geometry::Quat = from_to(down, Geometry::vec3_normalize(Geometry::vec3_sub(foot, knee)))
+    hip_local: Geometry::Transform = Geometry::Transform{position: h, rotation: r0, scale: v(1.0, 1.0, 1.0)}
+    knee_local: Geometry::Transform = Geometry::Transform{position: v(0.0, -0.45, 0.0), rotation: Geometry::quat_normalize(Geometry::quat_mul(Geometry::quat_conjugate(r0), r1)), scale: v(1.0, 1.0, 1.0)}
+    _ = PoseOverride::set_override(held, 0, hip_local)
+    _ = PoseOverride::set_override(held, 1, knee_local)
+
+def begin_code(drag: mutable Gizmo::Drag&, cam: ViewportCamera::Camera&, g: Gizmo::Gizmo&, handle: i64, px: f32, py: f32, held: PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, model: Geometry::Transform) -> i32:
+    catch Gizmo::begin(drag, cam, g, handle, px, py, held, rig, bone, model):
+        value: 0
+        Gizmo::GizmoError.BadHandle: 1
+        Gizmo::GizmoError.NoHit: 2
+        Gizmo::GizmoError.ShapeMismatch: 3
+        Gizmo::GizmoError.NotFinite: 4
+        error failure: 9
+
+def same_bits(a: Geometry::Transform, b: Geometry::Transform) -> bool:
+    a.position.x == b.position.x and a.position.y == b.position.y and a.position.z == b.position.z and a.rotation.x == b.rotation.x and a.rotation.y == b.rotation.y and a.rotation.z == b.rotation.z and a.rotation.w == b.rotation.w and a.scale.x == b.scale.x and a.scale.y == b.scale.y and a.scale.z == b.scale.z
+
+def screen_len(cam: ViewportCamera::Camera&, a: Geometry::Vec3, b: Geometry::Vec3) -> f32:
+    pa: ViewportCamera::ScreenPoint = ViewportCamera::project(cam, a)
+    pb: ViewportCamera::ScreenPoint = ViewportCamera::project(cam, b)
+    Geometry::sqrt_f32((pa.x - pb.x) * (pa.x - pb.x) + (pa.y - pb.y) * (pa.y - pb.y))
+
+def size_case() -> i32:
+    g: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::WORLD, at(v(0.0, 1.0, 0.0)))
+    mutable cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    l0: f32 = screen_len(&cam, g.center, Geometry::vec3_add(g.center, v(Gizmo::length(&cam, &g), 0.0, 0.0)))
+    return 10 if not near(l0, 90.0, 0.5)
+    cam.zoom_code <- cam.zoom_code + 6
+    l1: f32 = screen_len(&cam, g.center, Geometry::vec3_add(g.center, v(Gizmo::length(&cam, &g), 0.0, 0.0)))
+    return 11 if not near(l1, 90.0, 0.5)
+    # Perspective: the screen-parallel part of the arm stays the same size
+    # when zooming.
+    mutable p: ViewportCamera::Camera = ViewportCamera::create(640, 480)
+    b: ViewportCamera::Basis = ViewportCamera::basis(&p)
+    r0: f32 = screen_len(&p, g.center, Geometry::vec3_add(g.center, Geometry::vec3_scale(b.right, Gizmo::length(&p, &g))))
+    p.zoom_code <- p.zoom_code + 8
+    r1: f32 = screen_len(&p, g.center, Geometry::vec3_add(g.center, Geometry::vec3_scale(b.right, Gizmo::length(&p, &g))))
+    return 12 if not near(r0, 90.0, 1.0) or not near(r1, 90.0, 1.0)
+    # LOCAL axes follow the bone: 90 degrees about +Y turns X to -Z.
+    s: f32 = 0.70710678
+    turned: Geometry::Transform = Geometry::Transform{position: v(0.0, 1.0, 0.0), rotation: Geometry::Quat{x: 0.0, y: s, z: 0.0, w: s}, scale: v(1.0, 1.0, 1.0)}
+    local: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::LOCAL, turned)
+    world: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::WORLD, turned)
+    return 13 if not near3(Gizmo::axis(&local, 0), v(0.0, 0.0, -1.0), 1.0e-5) or not near3(Gizmo::axis(&world, 0), v(1.0, 0.0, 0.0), 0.0)
+    # Drawing: translate is 3 arrows + 3 planes, rotate 3 rings.
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    n: i64 = catch Gizmo::draw(&list, &cam, &g, GizmoPolicy::NONE, GizmoPolicy::NONE):
+        value: value.i64()
+        error failure: -1
+    rot: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::ROTATE, Gizmo::WORLD, at(v(0.0, 1.0, 0.0)))
+    m: i64 = catch Gizmo::draw(&list, &cam, &rot, GizmoPolicy::AXIS_X, GizmoPolicy::NONE):
+        value: value.i64()
+        error failure: -1
+    return 14 if n != 6 or m != 3 or ViewportDraw::vertex_count(&list) == 0
+    0
+
+def pixel(cam: ViewportCamera::Camera&, p: Geometry::Vec3) -> ViewportCamera::ScreenPoint:
+    ViewportCamera::project(cam, p)
+
+def pick_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    g: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::WORLD, at(v(0.0, 1.0, 0.0)))
+    l: f32 = Gizmo::length(&cam, &g)
+    c: Geometry::Vec3 = g.center
+    px: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(c, v(0.8 * l, 0.0, 0.0)))
+    return 20 if Gizmo::pick(&cam, &g, px.x, px.y) != GizmoPolicy::AXIS_X
+    py: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(c, v(0.0, 0.8 * l, 0.0)))
+    return 21 if Gizmo::pick(&cam, &g, py.x, py.y + 4.0) != GizmoPolicy::AXIS_Y
+    sq: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(c, v(0.4 * l, 0.4 * l, 0.0)))
+    return 22 if Gizmo::pick(&cam, &g, sq.x, sq.y) != GizmoPolicy::PLANE_XY
+    # The centre is on every axis; the Z arm points at the camera, so it is
+    # the nearest hit there.
+    cc: ViewportCamera::ScreenPoint = pixel(&cam, c)
+    return 23 if Gizmo::pick(&cam, &g, cc.x, cc.y) != GizmoPolicy::AXIS_Z
+    # Exact ties (same distance) go to the lower handle: axes before planes.
+    return 28 if not GizmoPolicy::better(5, GizmoPolicy::AXIS_X, 5, GizmoPolicy::PLANE_XY) or GizmoPolicy::better(5, GizmoPolicy::PLANE_XY, 5, GizmoPolicy::AXIS_Y)
+    return 24 if Gizmo::pick(&cam, &g, cc.x + 200.0, cc.y + 150.0) != GizmoPolicy::NONE
+    return 25 if Gizmo::pick(&cam, &g, 0.0 / 0.0, cc.y) != GizmoPolicy::NONE
+    # Rotate rings: the Z ring faces the camera; its rim picks, its centre
+    # does not.
+    rot: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::ROTATE, Gizmo::WORLD, at(v(0.0, 1.0, 0.0)))
+    rim: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(c, v(0.7071 * l, 0.7071 * l, 0.0)))
+    return 26 if Gizmo::pick(&cam, &rot, rim.x, rim.y) != GizmoPolicy::AXIS_Z
+    return 27 if Gizmo::pick(&cam, &rot, cc.x + 20.0, cc.y - 20.0) != GizmoPolicy::NONE
+    0
+
+def rig3(rig: mutable PoseOverride::Rig&) -> i32:
+    mutable bad: i32 = add(rig, -1, v(0.0, 1.0, 0.0))
+    bad <- bad + add(rig, 0, v(0.0, -0.45, 0.0))
+    bad <- bad + add(rig, 1, v(0.0, -0.45, 0.0))
+    bad
+
+def drag_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    mutable rig: PoseOverride::Rig = PoseOverride::Rig()
+    return 30 if rig3(&rig) != 0
+    mutable held: PoseOverride::Overrides = PoseOverride::overrides(&rig)
+    models: darray[Geometry::Transform] = models_of(&rig, &held)
+    foot: Geometry::Transform = models[2]
+    g: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::WORLD, foot)
+    l: f32 = Gizmo::length(&cam, &g)
+    wpp: f32 = l / 90.0
+    mutable drag: Gizmo::Drag = Gizmo::idle()
+    # X axis: 50 px right and 40 px up moves 50 px of X only.
+    s: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(foot.position, v(0.6 * l, 0.0, 0.0)))
+    return 31 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_X, s.x, s.y, &held, &rig, 2, foot) != 0
+    gx: Geometry::Transform = Gizmo::goal(&drag, &cam, s.x + 50.0, s.y - 40.0)
+    return 32 if not near3(gx.position, Geometry::vec3_add(foot.position, v(50.0 * wpp, 0.0, 0.0)), 1.0e-4)
+    Gizmo::commit(&drag)
+    return 33 if Gizmo::dragging(&drag)
+    # XY plane: both components follow.
+    q: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(foot.position, v(0.4 * l, 0.4 * l, 0.0)))
+    return 34 if begin_code(&drag, &cam, &g, GizmoPolicy::PLANE_XY, q.x, q.y, &held, &rig, 2, foot) != 0
+    gp: Geometry::Transform = Gizmo::goal(&drag, &cam, q.x + 30.0, q.y - 40.0)
+    return 35 if not near3(gp.position, Geometry::vec3_add(foot.position, v(30.0 * wpp, 40.0 * wpp, 0.0)), 1.0e-4)
+    # Live IK: every update moves the chain so the foot reaches the goal.
+    held_before: darray[Geometry::Transform] = snapshot(&held, 3)
+    for step in 1..<6:
+        hook_calls <- 0
+        return 36 if not Gizmo::update(&drag, &cam, q.x + 6.0 * step.f32(), q.y - 8.0 * step.f32(), &rig, &held, leg_ik) or hook_calls != 1
+        want: Geometry::Transform = Gizmo::goal(&drag, &cam, q.x + 6.0 * step.f32(), q.y - 8.0 * step.f32())
+        now: darray[Geometry::Transform] = models_of(&rig, &held)
+        return 37 if not near3(now[2].position, want.position, 1.0e-3)
+        return 38 if near3(now[1].position, models[1].position, 1.0e-3)
+    # Cancel restores every override exactly (active flags included).
+    return 39 if not Gizmo::cancel(&drag, &held)
+    for b in 0..<3:
+        return 40 if not same_bits(PoseOverride::override_local(&held, b), held_before[b]) or PoseOverride::is_overridden(&held, b)
+    back: darray[Geometry::Transform] = models_of(&rig, &held)
+    return 41 if not same_bits(back[2], foot)
+    # Rotation about Z (front view): a quarter turn of the pointer around
+    # the centre turns the bone a quarter turn.
+    rot: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::ROTATE, Gizmo::WORLD, foot)
+    r0: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(foot.position, v(l, 0.0, 0.0)))
+    r1: ViewportCamera::ScreenPoint = pixel(&cam, Geometry::vec3_add(foot.position, v(0.0, l, 0.0)))
+    return 42 if begin_code(&drag, &cam, &rot, GizmoPolicy::AXIS_Z, r0.x, r0.y, &held, &rig, 2, foot) != 0
+    gr: Geometry::Transform = Gizmo::goal(&drag, &cam, r1.x, r1.y)
+    return 43 if not near3(Geometry::quat_rotate(gr.rotation, v(1.0, 0.0, 0.0)), v(0.0, 1.0, 0.0), 1.0e-4) or not near3(gr.position, foot.position, 0.0)
+    # Default FK hook: the bone's model transform becomes the goal.
+    return 44 if not Gizmo::update(&drag, &cam, r1.x, r1.y, &rig, &held, gizmo_move_bone)
+    after: darray[Geometry::Transform] = models_of(&rig, &held)
+    return 45 if not near3(Geometry::quat_rotate(after[2].rotation, v(1.0, 0.0, 0.0)), v(0.0, 1.0, 0.0), 1.0e-4) or not near3(after[2].position, foot.position, 1.0e-5)
+    return 46 if not Gizmo::cancel(&drag, &held) or PoseOverride::is_overridden(&held, 2)
+    # Cancel on a pose that was already overridden restores those values.
+    seeded: Geometry::Transform = Geometry::Transform{position: v(0.0, -0.45, 0.01), rotation: Geometry::quat_identity(), scale: v(1.0, 1.0, 1.0)}
+    _ = PoseOverride::set_override(&held, 1, seeded)
+    now_models: darray[Geometry::Transform] = models_of(&rig, &held)
+    return 47 if begin_code(&drag, &cam, &g, GizmoPolicy::PLANE_XY, q.x, q.y, &held, &rig, 2, now_models[2]) != 0
+    _ = Gizmo::update(&drag, &cam, q.x + 25.0, q.y - 25.0, &rig, &held, leg_ik)
+    _ = Gizmo::cancel(&drag, &held)
+    return 48 if not same_bits(PoseOverride::override_local(&held, 1), seeded) or not PoseOverride::is_overridden(&held, 1) or PoseOverride::is_overridden(&held, 0)
+    0
+
+def snapshot(held: PoseOverride::Overrides&, n: usize) -> darray[Geometry::Transform]:
+    mutable out: darray[Geometry::Transform] = []
+    for b in 0..<n:
+        out.push(PoseOverride::override_local(held, b))
+    return move out
+
+def adversarial_case() -> i32:
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
+    mutable rig: PoseOverride::Rig = PoseOverride::Rig()
+    return 60 if rig3(&rig) != 0
+    mutable held: PoseOverride::Overrides = PoseOverride::overrides(&rig)
+    foot: Geometry::Transform = models_of(&rig, &held)[2]
+    g: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::TRANSLATE, Gizmo::WORLD, foot)
+    rot: Gizmo::Gizmo = Gizmo::create(GizmoPolicy::ROTATE, Gizmo::WORLD, foot)
+    c: ViewportCamera::ScreenPoint = pixel(&cam, foot.position)
+    mutable drag: Gizmo::Drag = Gizmo::idle()
+    return 61 if begin_code(&drag, &cam, &rot, GizmoPolicy::PLANE_XY, c.x, c.y, &held, &rig, 2, foot) != 1
+    return 62 if begin_code(&drag, &cam, &g, GizmoPolicy::NONE, c.x, c.y, &held, &rig, 2, foot) != 1 or begin_code(&drag, &cam, &g, 7, c.x, c.y, &held, &rig, 2, foot) != 1
+    return 63 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_X, 0.0 / 0.0, c.y, &held, &rig, 2, foot) != 4
+    return 64 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_X, c.x, c.y, &held, &rig, 3, foot) != 3
+    # Front view looks down Z: the Z axis and the YZ / XZ planes are edge-on.
+    return 65 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_Z, c.x, c.y, &held, &rig, 2, foot) != 2
+    return 66 if begin_code(&drag, &cam, &g, GizmoPolicy::PLANE_YZ, c.x, c.y, &held, &rig, 2, foot) != 2
+    return 67 if begin_code(&drag, &cam, &rot, GizmoPolicy::AXIS_X, c.x, c.y, &held, &rig, 2, foot) != 2
+    return 68 if Gizmo::dragging(&drag)
+    # Idle: update calls no hook, cancel restores nothing, goal is the start.
+    hook_calls <- 0
+    return 69 if Gizmo::update(&drag, &cam, c.x, c.y, &rig, &held, leg_ik) or hook_calls != 0
+    return 70 if Gizmo::cancel(&drag, &held)
+    # NaN pointer mid-drag keeps the start transform.
+    return 71 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_X, c.x + 40.0, c.y, &held, &rig, 2, foot) != 0
+    return 72 if not same_bits(Gizmo::goal(&drag, &cam, 0.0 / 0.0, c.y), foot)
+    Gizmo::commit(&drag)
+    Gizmo::commit(&drag)
+    return 73 if Gizmo::dragging(&drag) or Gizmo::cancel(&drag, &held)
+    0
+
+def main() -> i32:
+    a: i32 = size_case()
+    return a if a != 0
+    b: i32 = pick_case()
+    return b if b != 0
+    c: i32 = drag_case()
+    return c if c != 0
+    adversarial_case()
