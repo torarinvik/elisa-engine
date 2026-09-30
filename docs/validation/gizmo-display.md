@@ -55,8 +55,18 @@ Caller-side restatements of exact cases (translate draws 21 lines, dragging
 wins over hover, each plane's axes) timed out in the prover. They stay as
 the callee's own proved ensures.
 
+## Native drawing
+
+scripts/skeleton_display_smoke.py also draws the gizmo on SDL3/Metal. The
+gizmo sits on the selected joint of the skeleton under the panel, at world
+size 0.5, and goes through the batched debug-line path with depth testing
+off. One capture shows the translate handles with x hovered: 29 yellow,
+21 green and 29 blue pixels beyond the skeleton's own. A second shows the
+rotate rings with y dragged: 45 red and 121 white pixels. After Wicked's tone
+mapping, white is about 206 grey, which the check tells apart from the
+mesh's 193.
+
 ## Still open
 
-- Drawing the handles through the native batch on a live skinned instance.
-- Wiring hover to the cursor.
-- The live IK drag hook.
+- Wiring hover to the live cursor.
+- The live IK drag hook on a skinned instance.

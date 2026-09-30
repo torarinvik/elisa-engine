@@ -5,7 +5,8 @@ Cooks a four-joint skinned panel, builds test/render_scene_skeleton_display_main
 through the render-scene smoke harness (render-only mode) and compares its five
 captures: the depth-tested skeleton under the panel must stay hidden, the x-ray
 skeleton must draw over it in the selected and hovered colours, hiding the mesh
-must reveal the depth-tested skeleton, and wireframe mode must change the mesh.
+must reveal the depth-tested skeleton, wireframe mode must change the mesh,
+and the gizmo handles must draw in their axis, hover and drag colours.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ import pose_scrub_benchmark  # noqa: E402
 
 RIG = ROOT / "build/cooked/subsets/skeleton-display-rig.pkg"
 SHOTS = {name: ROOT / f"build/skeleton-display-{name.lower()}.png"
-    for name in ("BASE", "DEPTH", "XRAY", "HIDDEN", "WIRE")}
+    for name in ("BASE", "DEPTH", "XRAY", "HIDDEN", "WIRE", "GIZMO", "RINGS")}
 MIN_CHANGED = 64
 MAX_HIDDEN_LEAK = 16
 
@@ -88,6 +89,21 @@ def main() -> int:
     if wire < MIN_CHANGED:
         print("wireframe mode did not change the mesh", file=sys.stderr)
         return 5
+    # Gizmo: hovered x arrow yellow, y green, z blue; rings with the y ring
+    # dragged (white) and x red.
+    arrows_yellow = coloured(images["GIZMO"], (190, 185, 40), (255, 230, 150)) - yellow
+    green = coloured(images["GIZMO"], (40, 150, 40), (150, 230, 150))
+    blue = coloured(images["GIZMO"], (40, 60, 170), (150, 160, 255))
+    red = coloured(images["RINGS"], (170, 20, 20), (240, 110, 110))
+    # White tone-maps to about 206 grey; the lit mesh is about 193.
+    white = coloured(images["RINGS"], (200, 200, 198), (215, 215, 215))
+    print(f"gizmo: arrows yellow={arrows_yellow} green={green} blue={blue} | rings red={red} white={white}")
+    if arrows_yellow < 4 or green < 4 or blue < 4:
+        print("translate gizmo did not draw in its axis and hover colours", file=sys.stderr)
+        return 6
+    if red < 4 or white < 4:
+        print("rotate rings did not draw in their axis and drag colours", file=sys.stderr)
+        return 7
     return 0
 
 

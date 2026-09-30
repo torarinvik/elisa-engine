@@ -3,7 +3,8 @@
 # around x = -2.9..-1; the camera looks down on it). Five captures go to the directory in
 # $ELISA_SKELETON_DISPLAY_DIR: the bare mesh, the depth-tested skeleton (hidden
 # by the panel), the x-ray skeleton (drawn over it), the depth-tested skeleton
-# with the mesh hidden, and the mesh in wireframe. Run via
+# with the mesh hidden, the mesh in wireframe, and a translate gizmo and
+# rotate rings on the selected joint. Run via
 # scripts/skeleton_display_smoke.py, which compares them.
 include "../src/runtime/application.elisa"
 include "../src/runtime/application_capture.elisa"
@@ -11,6 +12,7 @@ include "../src/runtime/render_scene.elisa"
 include "../src/runtime/render_scene_debug.elisa"
 include "../src/math/geometry.elisa"
 include "../src/animation/skeleton_display.elisa"
+include "../src/animation/gizmo_display.elisa"
 
 const module Shot:
     WARMUP: usize = 4
@@ -81,6 +83,21 @@ def exercise() -> i32:
         ok: 0
         error failure: 1
     return 54 if shaded != 0
+    # Translate gizmo on the selected joint, x axis hovered, drawn with the
+    # x-ray skeleton; the rotate rings go in a second capture.
+    anchor: darray[f64] = [joints[6], joints[7], joints[8]]
+    basis: darray[f64] = Gizmo::world_basis()
+    arrows: darray[f64] = GizmoDisplay::handle_lines(0, basis, anchor, 0.5, 0, 0, -1)
+    return 60 if arrows.count != 210
+    combined: mutable darray[f64] = []
+    for i in 0..<records.count |combined, records|:
+        combined.push(records[i])
+    for i in 0..<arrows.count |combined, arrows|:
+        combined.push(arrows[i])
+    return 61 if shot(combined, true, &chunk, Application::environment_value("ELISA_SKELETON_GIZMO")) != 0
+    rings: darray[f64] = GizmoDisplay::handle_lines(1, basis, anchor, 0.5, 48, -1, 1)
+    return 62 if rings.count != 1440
+    return 63 if shot(rings, true, &chunk, Application::environment_value("ELISA_SKELETON_RINGS")) != 0
     0
 
 def main() -> i32:
