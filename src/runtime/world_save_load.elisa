@@ -21,20 +21,15 @@ module WorldSaveLoad:
             render_id_base: i64
 
     private:
-        def saveload_reference(world: World::World&, index: usize) -> World::EntityRef:
-            catch World::world_live_reference_at(world, index):
-                value: value
-                error failure: World::EntityRef{world_epoch: 0, id: 0}
-
         def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
             catch World::SaveSwap::replace_world(world, bytes, length):
                 ok: 0
                 World::SaveSwap::SaveSwapError.Rejected: 1
                 error failure: 2
 
-        def saveload_unbind(session: RuntimeServices::Session&,
-            bindings: mutable WorldPhysics::Bindings&, reference: World::EntityRef) -> void:
-            _ = catch WorldPhysics::unbind(session, bindings, reference):
+        def saveload_unbind_all(session: RuntimeServices::Session&,
+            bindings: mutable WorldPhysics::Bindings&) -> void:
+            _ = catch WorldPhysics::unbind_all(session, bindings):
                 ok: true
                 error failure: false
 
@@ -54,15 +49,10 @@ module WorldSaveLoad:
         def load(session: RuntimeServices::Session&, world: mutable World::World&,
             render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
             presentation: Presentation, bytes: u8&, length: usize) -> void error[WorldSaveLoadError]:
-            old: mutable World::EntityRef[World::MAX_ENTITIES] = zeroed
-            old_count: usize = World::world_live_count(world)
-            for index in 0..<old_count |old, world|:
-                old[index] <- saveload_reference(world, index)
             swapped: i32 = saveload_swap(world, bytes, length)
             raise WorldSaveLoadError.Rejected if swapped == 1
             raise WorldSaveLoadError.SwapFailed if swapped != 0
-            for index in 0..<old_count |old, session, physics|:
-                saveload_unbind(session, physics, old[index])
+            saveload_unbind_all(session, physics)
             raise WorldSaveLoadError.PhysicsCleanupFailed if WorldPhysics::binding_count(physics) != 0
             WorldRendering::clear(render)
             raise WorldSaveLoadError.RenderFailed if not saveload_render(render, world, presentation)

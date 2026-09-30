@@ -145,6 +145,17 @@ module WorldPhysics:
             bindings.kinds[bindings.count - 1] <- PhysicsRuntime::BodyKind.Static
             bindings.count <- bindings.count - 1
 
+        # Destroy every bound body, newest first, whichever world its entity
+        # belonged to. A failed destroy stops with the remaining rows intact.
+        def unbind_all(session: RuntimeServices::Session&, bindings: mutable Bindings&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            for step in 0..<bindings.count |session, bindings|:
+                last: usize = bindings.count - 1
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, last)
+                try RuntimeServices::physics_body_destroy(session, body)
+                PhysicsRuntime::ServiceBodyHandles::clear(&bindings.bodies, last)
+                bindings.kinds[last] <- PhysicsRuntime::BodyKind.Static
+                bindings.count <- last
+
         # Read a bound body's latest simulated pose without exposing its native
         # handle through the entity-to-body binding table.
         def body_pose(session: RuntimeServices::Session&, bindings: Bindings&,

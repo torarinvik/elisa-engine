@@ -62,6 +62,6 @@ render and physics for the loaded entities. A rejected save changes nothing. The
 smoke `world-save-physics-smoke` now also runs a live world with a bound crate through a
 corrupt load (world and both binding tables untouched) and a good load (three entities,
 three render rows starting at the chosen base, three bodies at the saved poses).
-A control that skips destroying the old bodies fails with status 34. Physics bodies bound
-to entities that were already dead before the load are not tracked, so they trip
-`PhysicsCleanupFailed` after the swap; the course does not yet use this path.
+A control that skips destroying the old bodies fails with status 34. Old bodies are torn down with the new
+`WorldPhysics::unbind_all`, so a body left bound to an already-despawned entity is also
+destroyed (the smoke covers one); the course does not yet use this path.
