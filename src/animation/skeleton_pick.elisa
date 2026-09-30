@@ -1,0 +1,133 @@
+# Ray picking for skeleton display (M03): rays from perspective or
+# orthographic viewport cameras, joints as spheres, bones as capsules from
+# parent to child, and the nearest hit first (a joint wins an exact tie).
+include "../vendor/elisa_math.elisa"
+include "./skeleton_pick_index.elisa"
+
+module SkeletonPick:
+    private:
+        def dot3(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> f64:
+            ax * bx + ay * by + az * bz
+
+        def at(values: darray[f64]&, slot: i64) -> f64:
+            return 0.0 if slot < 0 or slot >= values.count.i64()
+            values[slot.usize()]
+
+        def joint_axis(joints: darray[f64]&, joint: i64, axis: i64) -> f64:
+            count: i64 = joints.count.i64() / 3
+            at(joints, SkeletonPickIndex::coordinate(joint, axis, count))
+
+        # Unit-length ray [ox, oy, oz, dx, dy, dz].
+        def ray_of(ox: f64, oy: f64, oz: f64, dx: f64, dy: f64, dz: f64) -> darray[f64]:
+            length: f64 = ElisaMath::sqrt(dx * dx + dy * dy + dz * dz)
+            scale: f64 = 1.0 / length if length > 0.0 else 0.0
+            out: darray[f64] = [ox, oy, oz, dx * scale, dy * scale, dz * scale]
+            out
+
+    public:
+        struct Hit:
+            kind: i64
+            index: i64
+            distance: f64
+
+        # Ray through normalized device point (x, y) in [-1, 1] of a
+        # perspective camera: `eye` and orthonormal `right`, `up`, `forward`
+        # (9 values), vertical field of view in radians, width / height.
+        def perspective_ray(eye: darray[f64]&, basis: darray[f64]&, fov_y: f64, aspect: f64, x: f64, y: f64) -> darray[f64]:
+            half: f64 = ElisaMath::tan(fov_y * 0.5)
+            u: f64 = x * half * aspect
+            v: f64 = y * half
+            dx: f64 = basis[6] + basis[0] * u + basis[3] * v
+            dy: f64 = basis[7] + basis[1] * u + basis[4] * v
+            dz: f64 = basis[8] + basis[2] * u + basis[5] * v
+            ray_of(eye[0], eye[1], eye[2], dx, dy, dz)
+
+        # Ray of an orthographic camera: parallel to `forward`, starting on
+        # the view plane through `center` that is `half_height` tall.
+        def orthographic_ray(center: darray[f64]&, basis: darray[f64]&, half_height: f64, aspect: f64, x: f64, y: f64) -> darray[f64]:
+            u: f64 = x * half_height * aspect
+            v: f64 = y * half_height
+            ox: f64 = center[0] + basis[0] * u + basis[3] * v
+            oy: f64 = center[1] + basis[1] * u + basis[4] * v
+            oz: f64 = center[2] + basis[2] * u + basis[5] * v
+            ray_of(ox, oy, oz, basis[6], basis[7], basis[8])
+
+        # Distance along a unit ray to a sphere, 0 from inside, -1 on a miss.
+        def sphere_hit(ray: darray[f64]&, cx: f64, cy: f64, cz: f64, radius: f64) -> f64:
+            mx: f64 = ray[0] - cx
+            my: f64 = ray[1] - cy
+            mz: f64 = ray[2] - cz
+            b: f64 = dot3(mx, my, mz, ray[3], ray[4], ray[5])
+            c: f64 = dot3(mx, my, mz, mx, my, mz) - radius * radius
+            return 0.0 if c <= 0.0
+            return -1.0 if b > 0.0
+            disc: f64 = b * b - c
+            return -1.0 if disc < 0.0
+            0.0 - b - ElisaMath::sqrt(disc)
+
+        # Distance along a unit ray to the capsule of `radius` around the
+        # segment a-b, 0 from inside, -1 on a miss.
+        def capsule_hit(ray: darray[f64]&, a: darray[f64]&, b: darray[f64]&, radius: f64) -> f64:
+            bax: f64 = b[0] - a[0]
+            bay: f64 = b[1] - a[1]
+            baz: f64 = b[2] - a[2]
+            oax: f64 = ray[0] - a[0]
+            oay: f64 = ray[1] - a[1]
+            oaz: f64 = ray[2] - a[2]
+            baba: f64 = dot3(bax, bay, baz, bax, bay, baz)
+            return sphere_hit(ray, a[0], a[1], a[2], radius) if baba <= 0.0
+            bard: f64 = dot3(bax, bay, baz, ray[3], ray[4], ray[5])
+            baoa: f64 = dot3(bax, bay, baz, oax, oay, oaz)
+            rdoa: f64 = dot3(ray[3], ray[4], ray[5], oax, oay, oaz)
+            oaoa: f64 = dot3(oax, oay, oaz, oax, oay, oaz)
+            # Inside: the nearest segment point is within the radius.
+            along: f64 = baoa / baba
+            clamped: f64 = 0.0 if along < 0.0 else (1.0 if along > 1.0 else along)
+            px: f64 = oax - bax * clamped
+            py: f64 = oay - bay * clamped
+            pz: f64 = oaz - baz * clamped
+            return 0.0 if dot3(px, py, pz, px, py, pz) <= radius * radius
+            qa: f64 = baba - bard * bard
+            qb: f64 = baba * rdoa - baoa * bard
+            qc: f64 = baba * oaoa - baoa * baoa - radius * radius * baba
+            h: f64 = qb * qb - qa * qc
+            side: mutable f64 = -1.0
+            if qa > 0.0 and h >= 0.0:
+                t: f64 = (0.0 - qb - ElisaMath::sqrt(h)) / qa
+                y: f64 = baoa + t * bard
+                side <- t if t >= 0.0 and y > 0.0 and y < baba else side
+            first: f64 = sphere_hit(ray, a[0], a[1], a[2], radius)
+            second: f64 = sphere_hit(ray, b[0], b[1], b[2], radius)
+            best: mutable f64 = side
+            best <- first if first >= 0.0 and (best < 0.0 or first < best) else best
+            best <- second if second >= 0.0 and (best < 0.0 or second < best) else best
+            best
+
+        # Nearest joint or bone along the ray. `joints` holds xyz per joint
+        # and `parents` the parent of each joint (-1 for roots). Bones are
+        # reported by their child joint.
+        def pick(joints: darray[f64]&, parents: darray[i64]&, ray: darray[f64]&, joint_radius: f64, bone_radius: f64) -> Hit:
+            count: i64 = joints.count.i64() / 3
+            kind: mutable i64 = SkeletonPickIndex::NONE
+            index: mutable i64 = -1
+            distance: mutable f64 = 0.0
+            for j in 0..<count.usize() |kind, index, distance, joints, ray, joint_radius|:
+                d: f64 = sphere_hit(ray, joint_axis(joints, j.i64(), 0), joint_axis(joints, j.i64(), 1), joint_axis(joints, j.i64(), 2), joint_radius)
+                found: i64 = SkeletonPickIndex::JOINT if d >= 0.0 else SkeletonPickIndex::NONE
+                take: bool = SkeletonPickIndex::replaces(found, kind, d < distance, d == distance)
+                kind <- found if take else kind
+                index <- j.i64() if take else index
+                distance <- d if take else distance
+            limit: i64 = count if parents.count.i64() > count else parents.count.i64()
+            for j in 0..<limit.usize() |kind, index, distance, joints, parents, ray, bone_radius, count|:
+                parent: i64 = parents[j]
+                linked: bool = SkeletonPickIndex::bone(j.i64(), parent, count)
+                a: darray[f64] = [joint_axis(joints, parent, 0), joint_axis(joints, parent, 1), joint_axis(joints, parent, 2)]
+                b: darray[f64] = [joint_axis(joints, j.i64(), 0), joint_axis(joints, j.i64(), 1), joint_axis(joints, j.i64(), 2)]
+                d: f64 = capsule_hit(ray, a, b, bone_radius) if linked else -1.0
+                found: i64 = SkeletonPickIndex::BONE if d >= 0.0 else SkeletonPickIndex::NONE
+                take: bool = SkeletonPickIndex::replaces(found, kind, d < distance, d == distance)
+                kind <- found if take else kind
+                index <- j.i64() if take else index
+                distance <- d if take else distance
+            Hit{kind: kind, index: index, distance: distance if kind != SkeletonPickIndex::NONE else -1.0}

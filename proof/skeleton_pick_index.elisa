@@ -1,0 +1,41 @@
+include "../src/animation/skeleton_pick_index.elisa"
+
+extend SkeletonPickIndex:
+    def prove_coordinate_signed(joint: i64, axis: i64, joint_count: i64) -> i64:
+        requires joint_count >= 0
+        requires joint_count <= 65536
+        ensure result >= -1
+        coordinate(joint, axis, joint_count)
+
+    def prove_coordinate_rejects_past_joint(joint: i64, axis: i64, joint_count: i64) -> i64:
+        requires joint_count >= 0
+        requires joint_count <= 65536
+        requires joint >= joint_count
+        ensure result == -1
+        coordinate(joint, axis, joint_count)
+
+    def prove_coordinate_rejects_fourth_axis(joint: i64, axis: i64, joint_count: i64) -> i64:
+        requires joint_count >= 0
+        requires joint_count <= 65536
+        requires axis >= 3
+        ensure result == -1
+        coordinate(joint, axis, joint_count)
+
+    def prove_root_has_no_bone(child: i64, parent: i64, joint_count: i64) -> bool:
+        requires parent < 0
+        ensure not result
+        bone(child, parent, joint_count)
+
+    def prove_bone_parent_inside(child: i64, parent: i64, joint_count: i64) -> bool:
+        ensure not result or parent < joint_count
+        ensure not result or child != parent
+        bone(child, parent, joint_count)
+
+    def prove_nothing_never_replaces(best_kind: i64, nearer: bool, tied: bool) -> bool:
+        ensure not result
+        replaces(0, best_kind, nearer, tied)
+
+    def prove_first_hit_taken(kind: i64, nearer: bool, tied: bool) -> bool:
+        requires kind != 0
+        ensure result
+        replaces(kind, 0, nearer, tied)

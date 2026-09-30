@@ -1,0 +1,88 @@
+include "../src/animation/skeleton_pick.elisa"
+
+def near(a: f64, b: f64, tolerance: f64) -> bool:
+    d: f64 = a - b
+    d < tolerance and d > 0.0 - tolerance
+
+def same(got: darray[f64]&, want: darray[f64]&) -> bool:
+    ok: mutable bool = got.count == want.count
+    for i in 0..<want.count |ok, got, want|:
+        x: f64 = got[i] if i < got.count else 1000.0
+        ok <- ok and near(x, want[i], 0.000000001)
+    ok
+
+def hit_is(hit: SkeletonPick::Hit, kind: i64, index: i64, distance: f64) -> bool:
+    hit.kind == kind and hit.index == index and near(hit.distance, distance, 0.000000001)
+
+def main() -> i32:
+    # Rays: values from a Python reference.
+    basis: darray[f64] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, -1.0]
+    eye: darray[f64] = [0.0, 1.0, 5.0]
+    persp: darray[f64] = SkeletonPick::perspective_ray(eye, basis, 1.0471975511965976, 1.5, 0.25, -0.5)
+    want_p: darray[f64] = [0.0, 1.0, 5.0, 0.20365326999063915, -0.2715376933208522, -0.9406341620035447]
+    return 1 if not same(persp, want_p)
+    center: darray[f64] = [0.0, 0.0, 10.0]
+    ortho: darray[f64] = SkeletonPick::orthographic_ray(center, basis, 2.0, 2.0, 0.5, -0.25)
+    want_o: darray[f64] = [2.0, -0.5, 10.0, 0.0, 0.0, -1.0]
+    return 2 if not same(ortho, want_o)
+    # Spheres: a grazing hit, a sphere behind the ray, an origin inside.
+    slant: darray[f64] = [0.0, 0.0, 0.0, 0.9950371902099892, 0.09950371902099892, 0.0]
+    return 3 if not near(SkeletonPick::sphere_hit(slant, 5.0, 0.0, 0.0, 1.0), 4.107732639611943, 0.000000001)
+    return 4 if SkeletonPick::sphere_hit(slant, -5.0, 0.0, 0.0, 1.0) != -1.0
+    return 5 if SkeletonPick::sphere_hit(slant, 0.5, 0.0, 0.0, 1.0) != 0.0
+    return 6 if SkeletonPick::sphere_hit(slant, 5.0, 3.0, 0.0, 1.0) != -1.0
+    # A surface origin facing out, a near sphere behind, a near miss.
+    out: darray[f64] = [0.0, 0.0, 0.0, -1.0, 0.0, 0.0]
+    return 12 if SkeletonPick::sphere_hit(out, 1.0, 0.0, 0.0, 1.0) != 0.0
+    return 13 if SkeletonPick::sphere_hit(slant, -0.9, 0.0, 0.0, 0.5) != -1.0
+    return 14 if SkeletonPick::sphere_hit(slant, 5.0, 1.6, 0.0, 1.0) != -1.0
+    # Capsules: the side, an end cap along the axis, inside, a miss.
+    a: darray[f64] = [-2.0, 0.0, 0.0]
+    b: darray[f64] = [2.0, 0.0, 0.0]
+    side: darray[f64] = [0.0, 5.0, 0.0, 0.19518001458970666, -0.9759000729485332, 0.09759000729485333]
+    return 7 if not near(SkeletonPick::capsule_hit(side, a, b, 0.5), 5.022020424900991, 0.000001)
+    cap: darray[f64] = [5.0, 0.3, 0.0, -1.0, 0.0, 0.0]
+    return 8 if not near(SkeletonPick::capsule_hit(cap, a, b, 0.5), 2.6, 0.000000001)
+    inside: darray[f64] = [1.0, 0.2, 0.0, 0.0, 1.0, 0.0]
+    return 9 if SkeletonPick::capsule_hit(inside, a, b, 0.5) != 0.0
+    past: darray[f64] = [5.0, 0.0, 3.0, -1.0, 0.0, 0.0]
+    return 10 if SkeletonPick::capsule_hit(past, a, b, 0.5) != -1.0
+    back_cap: darray[f64] = [-5.0, 0.3, 0.0, 1.0, 0.0, 0.0]
+    return 11 if not near(SkeletonPick::capsule_hit(back_cap, a, b, 0.5), 2.6, 0.000000001)
+    # A diagonal ray meets the cylinder's extension before `a`: the end cap counts.
+    diag: darray[f64] = [-5.0, 1.0, 0.0, 0.9805806756909201, -0.19611613513818402, 0.0]
+    return 15 if not near(SkeletonPick::capsule_hit(diag, a, b, 0.5), 2.8277713257379236, 0.000001)
+    # A zero-length capsule is its end sphere.
+    return 16 if not near(SkeletonPick::capsule_hit(cap, b, b, 0.5), 2.6, 0.000000001)
+    # Picking on a three-joint chain up the Y axis.
+    joints: darray[f64] = [0.0, 0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 4.0, 0.0]
+    parents: darray[i64] = [-1, 0, 1]
+    mid_bone: darray[f64] = [5.0, 1.0, 0.0, -1.0, 0.0, 0.0]
+    return 20 if not hit_is(SkeletonPick::pick(joints, parents, mid_bone, 0.3, 0.2), SkeletonPickIndex::BONE, 1, 4.8)
+    at_joint: darray[f64] = [5.0, 2.0, 0.0, -1.0, 0.0, 0.0]
+    return 21 if not hit_is(SkeletonPick::pick(joints, parents, at_joint, 0.3, 0.2), SkeletonPickIndex::JOINT, 1, 4.7)
+    # Overlapping joint and bone along the chain: the nearer joint wins.
+    down: darray[f64] = [0.0, 10.0, 0.0, 0.0, -1.0, 0.0]
+    return 22 if not hit_is(SkeletonPick::pick(joints, parents, down, 0.3, 0.2), SkeletonPickIndex::JOINT, 2, 5.7)
+    # A fatter bone in front of the joint wins.
+    return 23 if not hit_is(SkeletonPick::pick(joints, parents, down, 0.3, 0.5), SkeletonPickIndex::BONE, 2, 5.5)
+    # Equal radii tie at a joint: the joint wins over both bones.
+    return 24 if not hit_is(SkeletonPick::pick(joints, parents, at_joint, 0.3, 0.3), SkeletonPickIndex::JOINT, 1, 4.7)
+    miss: darray[f64] = [5.0, 1.0, 5.0, 1.0, 0.0, 0.0]
+    return 25 if not hit_is(SkeletonPick::pick(joints, parents, miss, 0.3, 0.2), SkeletonPickIndex::NONE, -1, -1.0)
+    # The orthographic camera picks the bone straight ahead.
+    front: darray[f64] = [0.0, 1.0, 10.0]
+    straight: darray[f64] = SkeletonPick::orthographic_ray(front, basis, 2.0, 1.0, 0.0, 0.0)
+    return 26 if not hit_is(SkeletonPick::pick(joints, parents, straight, 0.3, 0.2), SkeletonPickIndex::BONE, 1, 9.8)
+    # Broken parents (self, forward cycles, out of range) draw no bone.
+    bad: darray[i64] = [0, 2, 7]
+    return 27 if not hit_is(SkeletonPick::pick(joints, bad, mid_bone, 0.3, 0.2), SkeletonPickIndex::NONE, -1, -1.0)
+    # Parents past the joint table are ignored, not dropped with the rest.
+    long: darray[i64] = [-1, 0, 1, 2]
+    return 29 if not hit_is(SkeletonPick::pick(joints, long, mid_bone, 0.3, 0.2), SkeletonPickIndex::BONE, 1, 4.8)
+    # The first of two equally near joints keeps the pick.
+    twins: darray[f64] = [0.0, 0.0, 1.0, 0.0, 0.0, -1.0]
+    roots: darray[i64] = [-1, -1]
+    across: darray[f64] = [5.0, 0.0, 0.0, -1.0, 0.0, 0.0]
+    return 28 if not hit_is(SkeletonPick::pick(twins, roots, across, 1.5, 0.2), SkeletonPickIndex::JOINT, 0, 3.881966011250105)
+    0

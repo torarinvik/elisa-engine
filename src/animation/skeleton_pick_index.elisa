@@ -1,0 +1,45 @@
+# Integer rules for SkeletonPick, split out so the prover can check them:
+# joint coordinate slots, which parent links form a pickable bone, and the
+# nearest-first choice between candidate hits.
+module SkeletonPickIndex:
+    public:
+        const MAX_JOINTS: i64 = 65536
+        const NONE: i64 = 0
+        const JOINT: i64 = 1
+        const BONE: i64 = 2
+
+        # Slot of coordinate `axis` of joint `joint` in a flat xyz array, or -1.
+        def coordinate(joint: i64, axis: i64, joint_count: i64) -> i64:
+            requires joint_count >= 0
+            requires joint_count <= MAX_JOINTS
+            ensure result >= -1
+            ensure joint < joint_count or result == -1
+            ensure axis < 3 or result == -1
+            return -1 if joint < 0
+            return -1 if joint >= joint_count
+            return -1 if axis < 0
+            return -1 if axis >= 3
+            joint * 3 + axis
+
+        # Whether joint `child` and its `parent` form a bone to draw and pick.
+        def bone(child: i64, parent: i64, joint_count: i64) -> bool:
+            ensure not result or parent >= 0
+            ensure parent >= 0 or not result
+            ensure not result or parent < joint_count
+            ensure not result or child != parent
+            return false if child < 0
+            return false if child >= joint_count
+            return false if parent < 0
+            return false if parent >= joint_count
+            return false if child == parent
+            true
+
+        # Whether a candidate of `kind` replaces the current best: nearer wins,
+        # and on an exact tie a joint beats a bone (the rank decides).
+        def replaces(kind: i64, best_kind: i64, nearer: bool, tied: bool) -> bool:
+            ensure not result or kind != NONE
+            ensure best_kind != NONE or kind == NONE or result
+            return false if kind == NONE
+            return true if best_kind == NONE
+            return true if nearer
+            tied and kind == JOINT and best_kind == BONE
