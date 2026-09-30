@@ -1,0 +1,39 @@
+include "../src/animation/gizmo_display_index.elisa"
+
+extend GizmoDisplayIndex:
+    # handles, lines, role and plane_axis carry their exact rules as their
+    # own proved ensures; these wrappers restate what callers rely on.
+    def prove_handles_bounded(tool: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 6
+        handles(tool)
+
+    def prove_unknown_tool_has_no_handles(tool: i64) -> i64:
+        requires tool > 1
+        ensure result == 0
+        handles(tool)
+
+    def prove_lines_bounded(tool: i64, segments: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 768
+        lines(tool, segments)
+
+    def prove_role_range(handle: i64, hovered: i64, active: i64, count: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 2
+        role(handle, hovered, active, count)
+
+    def prove_outside_normal(handle: i64, hovered: i64, active: i64, count: i64) -> i64:
+        requires handle >= count
+        ensure result == 0
+        role(handle, hovered, active, count)
+
+    def prove_plane_axis_range(mode: i64, edge: i64) -> i64:
+        ensure result >= -1
+        ensure result < 3
+        plane_axis(mode, edge)
+
+    def prove_axis_mode_has_no_plane(mode: i64, edge: i64) -> i64:
+        requires mode < 3
+        ensure result == -1
+        plane_axis(mode, edge)

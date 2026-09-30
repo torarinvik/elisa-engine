@@ -1,0 +1,94 @@
+include "../src/animation/gizmo_display.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    a - b < 0.000000001 and b - a < 0.000000001
+
+def down(x: f64, z: f64) -> darray[f64]:
+    [x, 5.0, z, 0.0, -1.0, 0.0]
+
+def main() -> i32:
+    basis: darray[f64] = Gizmo::world_basis()
+    origin: darray[f64] = [0.0, 0.0, 0.0]
+    # Translate: 21 lines; the x shaft runs origin -> (2, 0, 0) in red, the
+    # hovered y arrow is yellow and the dragged XY plane (mode 5) white.
+    lines: darray[f64] = GizmoDisplay::handle_lines(0, basis, origin, 2.0, 0, 1, 5)
+    return 1 if lines.count != 210 or lines.count.i64() != GizmoDisplayIndex::lines(0, 0) * 10
+    return 2 if not (near(lines[3], 2.0) and near(lines[4], 0.0) and near(lines[6], 0.9) and near(lines[7], 0.2))
+    # Arrowhead line 1 of x: tip (2,0,0) to (1.6, 0.12, 0) along y.
+    return 3 if not (near(lines[13], 1.6) and near(lines[14], 0.12) and near(lines[15], 0.0))
+    return 4 if not (near(lines[56], 1.0) and near(lines[57], 0.9) and near(lines[58], 0.3))
+    # The z arrow (lines 10-14) is blue; planes start at line 15.
+    return 5 if not near(lines[108], 1.0)
+    # Line 15 is YZ's first edge: (0, 0.8, 0.5) -> (0, 0.8, 0.8), red.
+    return 6 if not (near(lines[150], 0.0) and near(lines[151], 0.8) and near(lines[152], 0.5) and near(lines[155], 0.8) and near(lines[156], 0.9))
+    # Line 19 is XY's first edge (dragged): white.
+    return 7 if not (near(lines[196], 1.0) and near(lines[197], 1.0) and near(lines[198], 1.0))
+    # Rotate: 3 rings of 16 lines at radius 2 in each axis's plane.
+    rings: darray[f64] = GizmoDisplay::handle_lines(1, basis, origin, 2.0, 16, -1, -1)
+    return 8 if rings.count != 480
+    for i in 0..<48 |rings|:
+        o: usize = i * 10
+        ring: usize = i / 16
+        r: f64 = ElisaMath::sqrt(rings[o] * rings[o] + rings[o + 1] * rings[o + 1] + rings[o + 2] * rings[o + 2])
+        return 9 if not near(r, 2.0)
+        return 10 if not near(rings[o + ring], 0.0) or not near(rings[o + 3 + ring], 0.0)
+    # Each segment starts where the previous one ended, so the ring is closed.
+    for i in 1..<16 |rings|:
+        o: usize = i * 10
+        return 42 if not (near(rings[o], rings[o - 7]) and near(rings[o + 1], rings[o - 6]) and near(rings[o + 2], rings[o - 5]))
+    return 43 if not (near(rings[153], rings[0]) and near(rings[154], rings[1]) and near(rings[155], rings[2]))
+    return 11 if not near(rings[160 + 7], 0.85)
+    # Rejected input draws nothing.
+    return 12 if GizmoDisplay::handle_lines(2, basis, origin, 2.0, 16, -1, -1).count != 0
+    return 13 if GizmoDisplay::handle_lines(1, basis, origin, 2.0, 7, -1, -1).count != 0
+    return 14 if GizmoDisplay::handle_lines(1, basis, origin, 2.0, 257, -1, -1).count != 0
+    return 15 if GizmoDisplay::handle_lines(0, basis, origin, 0.0, 16, -1, -1).count != 0
+    return 16 if GizmoDisplay::handle_lines(0, basis, origin, 0.0 / 0.0, 16, -1, -1).count != 0
+    return 41 if GizmoDisplay::handle_lines(0, basis, origin, 1.0 / 0.0, 16, -1, -1).count != 0
+    short: darray[f64] = [1.0, 0.0, 0.0]
+    return 17 if GizmoDisplay::handle_lines(0, short, origin, 2.0, 16, -1, -1).count != 0
+    pair: darray[f64] = [0.0, 0.0]
+    return 18 if GizmoDisplay::handle_lines(0, basis, pair, 2.0, 16, -1, -1).count != 0
+    # Hover, size 1: a ray straight down at x = 0.5 hits the x shaft.
+    return 20 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.5, 0.0), 0.05) != 0
+    return 21 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.5, 0.04), 0.05) != 0
+    return 22 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.5, 0.06), 0.05) != -1
+    # Past the tip the shaft is clamped: x = 1.04 still hits, 1.06 misses.
+    return 23 if GizmoDisplay::hover(0, basis, origin, 1.0, down(1.04, 0.0), 0.05) != 0
+    return 24 if GizmoDisplay::hover(0, basis, origin, 1.0, down(1.06, 0.0), 0.05) != -1
+    # Inside the XZ square (mode 4); outside it nothing.
+    return 25 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.3, 0.3), 0.05) != 4
+    return 19 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.6, 0.3), 0.05) != -1
+    return 26 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.3, 0.45), 0.05) != -1
+    # A ray down the z axis meets the z tip (depth 4) before x and y at the
+    # origin (depth 5). Seen from below z, x and y tie and x, the lower mode, wins.
+    along_z: darray[f64] = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
+    return 27 if GizmoDisplay::hover(0, basis, origin, 1.0, along_z, 0.05) != 2
+    from_below: darray[f64] = [0.0, 0.0, -5.0, 0.0, 0.0, 1.0]
+    return 29 if GizmoDisplay::hover(0, basis, origin, 1.0, from_below, 0.05) != 0
+    # Nearest first: from above, the y shaft (top at y = 1) is closer than
+    # the XZ square it overlaps.
+    return 28 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.02, 0.02), 0.05) != 1
+    # Rings: straight down at radius 1 hits the y ring; off the circle, nothing.
+    return 30 if GizmoDisplay::hover(1, basis, origin, 1.0, down(1.0, 0.0), 0.05) != 1
+    return 31 if GizmoDisplay::hover(1, basis, origin, 1.0, down(0.6, 0.8), 0.05) != 1
+    return 32 if GizmoDisplay::hover(1, basis, origin, 1.0, down(0.5, 0.0), 0.05) != -1
+    # A slanted ray reaches the x ring (plane x = 0) at (0, 0, 1) before the
+    # y ring plane.
+    slant: darray[f64] = [-1.0, 1.0, 1.0, 0.70710678118654752, -0.70710678118654752, 0.0]
+    return 33 if GizmoDisplay::hover(1, basis, origin, 1.0, slant, 0.05) != 0
+    # Behind the ray, or bad input: nothing.
+    up: darray[f64] = [0.5, -5.0, 0.0, 0.0, -1.0, 0.0]
+    return 34 if GizmoDisplay::hover(0, basis, origin, 1.0, up, 0.05) != -1
+    return 35 if GizmoDisplay::hover(0, basis, origin, 1.0, short, 0.05) != -1
+    return 36 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.5, 0.0), -0.1) != -1
+    return 37 if GizmoDisplay::hover(2, basis, origin, 1.0, down(0.5, 0.0), 0.05) != -1
+    return 38 if GizmoDisplay::hover(0, basis, origin, 1.0, down(0.3, 0.3), 0.0 / 0.0) != -1
+    # Local axes: a joint turned 90 degrees about z points its x axis along
+    # world y and its y axis along world -x: a ray down at x = 0.5 misses,
+    # one at x = -0.5 hits the y shaft.
+    q: darray[f64] = [0.0, 0.0, 0.70710678118654752, 0.70710678118654752]
+    turned: darray[f64] = Gizmo::local_basis(q)
+    return 39 if GizmoDisplay::hover(0, turned, origin, 1.0, down(0.5, 0.0), 0.05) != -1
+    return 40 if GizmoDisplay::hover(0, turned, origin, 1.0, down(-0.5, 0.0), 0.05) != 1
+    0

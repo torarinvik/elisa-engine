@@ -1,0 +1,166 @@
+# Gizmo handle drawing and hover (M04). `handle_lines` builds ten-value line
+# records (start xyz, end xyz, rgba) for the translate arrows and plane
+# squares or the rotate rings, sized and oriented by a Gizmo basis; `hover`
+# returns the Gizmo mode of the handle under a cursor ray, nearest first.
+# Handles take their axis colour (a plane its normal's), yellow on hover and
+# white while dragged.
+include "./gizmo.elisa"
+include "./gizmo_display_index.elisa"
+
+module GizmoDisplay:
+    private:
+        const ARROW_BASE: f64 = 0.8
+        const ARROW_WIDTH: f64 = 0.06
+        const PLANE_NEAR: f64 = 0.25
+        const PLANE_FAR: f64 = 0.4
+
+        def push_line(out: mutable darray[f64]&, a: darray[f64]&, b: darray[f64]&, rgb: darray[f64]&) -> void:
+            out.push(a[0])
+            out.push(a[1])
+            out.push(a[2])
+            out.push(b[0])
+            out.push(b[1])
+            out.push(b[2])
+            out.push(rgb[0])
+            out.push(rgb[1])
+            out.push(rgb[2])
+            out.push(1.0)
+
+        # origin + p * axis_a + q * axis_b, the axes taken from `basis`.
+        def at(origin: darray[f64]&, basis: darray[f64]&, axis_a: i64, p: f64, axis_b: i64, q: f64) -> darray[f64]:
+            a: usize = (axis_a * 3).usize()
+            b: usize = (axis_b * 3).usize()
+            out: darray[f64] = [origin[0] + basis[a] * p + basis[b] * q, origin[1] + basis[a + 1] * p + basis[b + 1] * q,
+                origin[2] + basis[a + 2] * p + basis[b + 2] * q]
+            out
+
+        def dot3(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> f64:
+            ax * bx + ay * by + az * bz
+
+        # Ray parameter where `ray` meets the plane through `origin` normal to
+        # basis axis `n`, or -1 when parallel. Callers reject negative or NaN
+        # parameters (planes behind the ray).
+        def plane_t(ray: darray[f64]&, origin: darray[f64]&, basis: darray[f64]&, n: i64) -> f64:
+            k: usize = (n * 3).usize()
+            facing: f64 = dot3(basis[k], basis[k + 1], basis[k + 2], ray[3], ray[4], ray[5])
+            return -1.0 if facing < 0.000000001 and facing > -0.000000001
+            dot3(basis[k], basis[k + 1], basis[k + 2], origin[0] - ray[0], origin[1] - ray[1], origin[2] - ray[2]) / facing
+
+        # Coordinate along basis axis `axis` of the ray point at `t`, relative to `origin`.
+        def along(ray: darray[f64]&, t: f64, origin: darray[f64]&, basis: darray[f64]&, axis: i64) -> f64:
+            k: usize = (axis * 3).usize()
+            dot3(ray[0] + ray[3] * t - origin[0], ray[1] + ray[4] * t - origin[1], ray[2] + ray[5] * t - origin[2],
+                basis[k], basis[k + 1], basis[k + 2])
+
+        def shaped(tool: i64, basis: darray[f64]&, origin: darray[f64]&, size: f64) -> bool:
+            GizmoDisplayIndex::handles(tool) > 0 and basis.count == 9 and origin.count == 3 and size > 0.0 and size < 1.0e30
+
+    public:
+        # Colour of `handle` (a Gizmo mode) with highlight `role`.
+        def color(handle: i64, role: i64) -> darray[f64]:
+            return [1.0, 1.0, 1.0] if role == GizmoDisplayIndex::ACTIVE
+            return [1.0, 0.9, 0.3] if role == GizmoDisplayIndex::HOVERED
+            axis: i64 = GizmoIndex::normal(handle)
+            return [0.9, 0.2, 0.2] if axis == 0
+            return [0.3, 0.85, 0.3] if axis == 1
+            [0.25, 0.4, 1.0]
+
+        # Line records for `tool` at `origin` with axes `basis` and world
+        # size `size` (Gizmo::perspective_size or orthographic_size). Rings
+        # use `segments` lines. Empty for an unknown tool, a bad basis,
+        # origin or size, or a ring segment count outside 8..256.
+        def handle_lines(tool: i64, basis: darray[f64]&, origin: darray[f64]&, size: f64, segments: i64,
+            hovered: i64, active: i64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if not shaped(tool, basis, origin, size)
+            count: i64 = GizmoDisplayIndex::handles(tool)
+            return out if GizmoDisplayIndex::lines(tool, segments) == 0
+            if tool == GizmoDisplayIndex::TRANSLATE:
+                for i in 0..<3 |out, basis, origin, size, hovered, active, count|:
+                    axis: i64 = i.i64()
+                    rgb: darray[f64] = color(axis, GizmoDisplayIndex::role(axis, hovered, active, count))
+                    p: i64 = GizmoDisplayIndex::plane_axis(axis + 3, 0)
+                    q: i64 = GizmoDisplayIndex::plane_axis(axis + 3, 1)
+                    tip: darray[f64] = at(origin, basis, axis, size, p, 0.0)
+                    push_line(&out, origin, tip, rgb)
+                    base: f64 = size * ARROW_BASE
+                    wide: f64 = size * ARROW_WIDTH
+                    push_line(&out, tip, at(origin, basis, axis, base, p, wide), rgb)
+                    push_line(&out, tip, at(origin, basis, axis, base, p, 0.0 - wide), rgb)
+                    push_line(&out, tip, at(origin, basis, axis, base, q, wide), rgb)
+                    push_line(&out, tip, at(origin, basis, axis, base, q, 0.0 - wide), rgb)
+                for i in 3..<6 |out, basis, origin, size, hovered, active, count|:
+                    mode: i64 = i.i64()
+                    rgb: darray[f64] = color(mode, GizmoDisplayIndex::role(mode, hovered, active, count))
+                    a: i64 = GizmoDisplayIndex::plane_axis(mode, 0)
+                    b: i64 = GizmoDisplayIndex::plane_axis(mode, 1)
+                    corner: darray[f64] = at(origin, basis, a, size * PLANE_FAR, b, size * PLANE_FAR)
+                    push_line(&out, at(origin, basis, a, size * PLANE_FAR, b, size * PLANE_NEAR), corner, rgb)
+                    push_line(&out, at(origin, basis, a, size * PLANE_NEAR, b, size * PLANE_FAR), corner, rgb)
+                return out
+            step: f64 = ElisaMath::MATH_TAU / segments.f64()
+            for i in 0..<3 |out, basis, origin, size, hovered, active, count, segments, step|:
+                ring: i64 = i.i64()
+                rgb: darray[f64] = color(ring, GizmoDisplayIndex::role(ring, hovered, active, count))
+                a: i64 = GizmoDisplayIndex::plane_axis(ring + 3, 0)
+                b: i64 = GizmoDisplayIndex::plane_axis(ring + 3, 1)
+                for k in 0..<segments |out, basis, origin, size, rgb, a, b, step|:
+                    t0: f64 = step * k.f64()
+                    t1: f64 = step * (k + 1).f64()
+                    push_line(&out, at(origin, basis, a, size * ElisaMath::cos(t0), b, size * ElisaMath::sin(t0)),
+                        at(origin, basis, a, size * ElisaMath::cos(t1), b, size * ElisaMath::sin(t1)), rgb)
+            out
+
+        # The handle (Gizmo mode) under `ray` ([ox, oy, oz, dx, dy, dz], unit
+        # direction), or -1. An axis is hit within `tolerance` of its shaft,
+        # a plane inside its square, a ring within `tolerance` of its circle.
+        # The hit nearest along the ray wins; an exact tie goes to the lower
+        # mode.
+        def hover(tool: i64, basis: darray[f64]&, origin: darray[f64]&, size: f64, ray: darray[f64]&, tolerance: f64) -> i64:
+            return -1 if not shaped(tool, basis, origin, size) or ray.count != 6
+            return -1 if not (tolerance >= 0.0 and tolerance < 1.0e30)
+            mutable best: i64 = -1
+            mutable best_t: f64 = 0.0
+            if tool == GizmoDisplayIndex::TRANSLATE:
+                for i in 0..<3 |basis, origin, size, ray, tolerance, best, best_t|:
+                    axis: i64 = i.i64()
+                    k: usize = (axis * 3).usize()
+                    # A ray along the shaft meets the end it points toward first.
+                    raw: f64 = Gizmo::axis_param(ray, origin, basis[k], basis[k + 1], basis[k + 2])
+                    toward: f64 = dot3(basis[k], basis[k + 1], basis[k + 2], ray[3], ray[4], ray[5])
+                    s: f64 = raw if raw == raw else (size if toward < 0.0 else 0.0)
+                    if s == s:
+                        c: f64 = 0.0 if s < 0.0 else (size if s > size else s)
+                        px: f64 = origin[0] + basis[k] * c
+                        py: f64 = origin[1] + basis[k + 1] * c
+                        pz: f64 = origin[2] + basis[k + 2] * c
+                        t: f64 = dot3(px - ray[0], py - ray[1], pz - ray[2], ray[3], ray[4], ray[5])
+                        dx: f64 = ray[0] + ray[3] * t - px
+                        dy: f64 = ray[1] + ray[4] * t - py
+                        dz: f64 = ray[2] + ray[5] * t - pz
+                        if t >= 0.0 and dot3(dx, dy, dz, dx, dy, dz) <= tolerance * tolerance and (best < 0 or t < best_t):
+                            best <- axis
+                            best_t <- t
+                for i in 3..<6 |basis, origin, size, ray, best, best_t|:
+                    mode: i64 = i.i64()
+                    t: f64 = plane_t(ray, origin, basis, mode - 3)
+                    if t >= 0.0:
+                        u: f64 = along(ray, t, origin, basis, GizmoDisplayIndex::plane_axis(mode, 0))
+                        v: f64 = along(ray, t, origin, basis, GizmoDisplayIndex::plane_axis(mode, 1))
+                        lo: f64 = size * PLANE_NEAR
+                        hi: f64 = size * PLANE_FAR
+                        if u >= lo and u <= hi and v >= lo and v <= hi and (best < 0 or t < best_t):
+                            best <- mode
+                            best_t <- t
+                return best
+            for i in 0..<3 |basis, origin, size, ray, tolerance, best, best_t|:
+                ring: i64 = i.i64()
+                t: f64 = plane_t(ray, origin, basis, ring)
+                if t >= 0.0:
+                    u: f64 = along(ray, t, origin, basis, GizmoDisplayIndex::plane_axis(ring + 3, 0))
+                    v: f64 = along(ray, t, origin, basis, GizmoDisplayIndex::plane_axis(ring + 3, 1))
+                    r: f64 = ElisaMath::sqrt(u * u + v * v)
+                    if r >= size - tolerance and r <= size + tolerance and (best < 0 or t < best_t):
+                        best <- ring
+                        best_t <- t
+            best
