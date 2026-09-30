@@ -1,0 +1,158 @@
+# Records the pointer events that drive ActionPointerAxes (motion, wheel,
+# focus loss, overflow) per tick and replays them into fresh axes. Deltas
+# are quantized to 1/256 pixel before the live axes see them, so a replay
+# reproduces the recorded frame values exactly. Button events never touch
+# the axes and are not recorded. Bytes: "EPR1", a u32 count, then 12 bytes
+# per entry (i32 tick, kind byte, three zero bytes, i16 dx, i16 dy in
+# 1/256 steps; larger deltas are clamped to ±127 pixels per event).
+include "action_pointer_axes.elisa"
+
+module ActionPointerReplay:
+    private:
+        const DELTA_SCALE: f32 = 256.0
+        const DELTA_LIMIT: i64 = 32767
+        const HEADER_BYTES: usize = 8
+        const RECORD_BYTES: usize = 12
+
+        def pointer_kind_code(kind: Application::PointerEventKind) -> i64:
+            return 0 if kind == Application::PointerEventKind.Motion
+            return 1 if kind == Application::PointerEventKind.Wheel
+            return 2 if kind == Application::PointerEventKind.FocusLost
+            return 3 if kind == Application::PointerEventKind.Overflow
+            -1
+
+        def pointer_kind_of(code: i64) -> Application::PointerEventKind:
+            return Application::PointerEventKind.Motion if code == 0
+            return Application::PointerEventKind.Wheel if code == 1
+            return Application::PointerEventKind.FocusLost if code == 2
+            Application::PointerEventKind.Overflow
+
+        def pointer_event_of(entry: Entry) -> Application::PointerEvent:
+            Application::PointerEvent{kind: pointer_kind_of(entry.kind), button: 0, x: 0.0, y: 0.0,
+                delta_x: entry.dx_q.f32() / DELTA_SCALE, delta_y: entry.dy_q.f32() / DELTA_SCALE,
+                buttons: 0, pressed: false}
+
+        def pointer_put(out: mutable Bytes&, offset: usize, value: i64, width: usize) -> void:
+            bits: u64 = value.u64()
+            for index in 0..<width |out|:
+                out.data[offset + index] <- ((bits >> (index.u64() * 8)) & 255).u8()
+
+        def pointer_get(data: Bytes&, offset: usize, width: usize) -> i64:
+            mutable raw: i64 = 0
+            for index in 0..<width |raw|:
+                raw <- raw + (data.data[offset + index].i64() << (index.i64() * 8))
+            half: i64 = 1 << (width.i64() * 8 - 1)
+            raw - half * 2 if raw >= half else raw
+
+    public:
+        const MAX_ENTRIES: usize = 1024
+
+        struct Entry:
+            tick: i64
+            kind: i64
+            dx_q: i64
+            dy_q: i64
+
+        struct Log:
+            entries: mutable Entry[1024]
+            count: mutable usize
+            dropped: mutable usize
+            last_tick: mutable i64
+
+        struct Bytes:
+            data: mutable u8[12296]
+            count: mutable usize
+
+        enum DecodeStatus:
+            Ok
+            BadMagic
+            BadLength
+            BadField
+            NonMonotonicTick
+
+        def Log() -> Log:
+            Log{entries: zeroed, count: 0, dropped: 0, last_tick: 0}
+
+        def quantize_delta(delta: f32) -> i64:
+            scaled: f32 = delta * DELTA_SCALE
+            rounded: i64 = (scaled + 0.5).i64() if scaled >= 0.0 else 0 - (0.5 - scaled).i64()
+            return DELTA_LIMIT if scaled != scaled
+            DELTA_LIMIT if rounded > DELTA_LIMIT else (0 - DELTA_LIMIT if rounded < 0 - DELTA_LIMIT else rounded)
+
+        # Applies the quantized event to the live axes and logs it. Returns
+        # false (still applied live) when the log is full or `tick` runs
+        # backwards; those entries are counted in `dropped`.
+        def pointer_record(log: mutable Log&, axes: mutable ActionPointerAxes::Axes&, tick: i64,
+            event: Application::PointerEvent) -> bool:
+            code: i64 = pointer_kind_code(event.kind)
+            return true if code < 0
+            entry: Entry = Entry{tick: tick, kind: code, dx_q: quantize_delta(event.delta_x), dy_q: quantize_delta(event.delta_y)}
+            ActionPointerAxes::pointer_axis_apply(axes, pointer_event_of(entry))
+            if log.count >= MAX_ENTRIES or (log.count > 0 and tick < log.last_tick):
+                log.dropped <- log.dropped + 1
+                return false
+            log.entries[log.count] <- entry
+            log.count <- log.count + 1
+            log.last_tick <- tick
+            true
+
+        # Drains this frame's host pointer events into the axes, recording each.
+        def pointer_begin_frame_recorded(log: mutable Log&, axes: mutable ActionPointerAxes::Axes&, tick: i64) -> usize:
+            ActionPointerAxes::pointer_axis_begin_frame(axes)
+            count: mutable usize = 0
+            event: mutable Application::PointerEvent = zeroed
+            while Application::next_pointer_event(&event) |count, event, axes, log|:
+                pointer_record(log, axes, tick, event)
+                count <- count + 1
+            count
+
+        # Starts the replayed frame at `tick` and applies its entries from
+        # `cursor`; returns the cursor for the next tick.
+        def pointer_replay_tick(log: Log&, axes: mutable ActionPointerAxes::Axes&, tick: i64, cursor: usize) -> usize:
+            ActionPointerAxes::pointer_axis_begin_frame(axes)
+            mutable next: usize = cursor
+            while next < log.count and log.entries[next].tick <= tick |next, axes|:
+                ActionPointerAxes::pointer_axis_apply(axes, pointer_event_of(log.entries[next])) if log.entries[next].tick == tick
+                next <- next + 1
+            next
+
+        def pointer_encode(log: Log&) -> Bytes:
+            mutable out: Bytes = Bytes{data: zeroed, count: 0}
+            out.data[0] <- 69
+            out.data[1] <- 80
+            out.data[2] <- 82
+            out.data[3] <- 49
+            pointer_put(&out, 4, log.count.i64(), 4)
+            for index in 0..<log.count |out|:
+                entry: Entry = log.entries[index]
+                base: usize = HEADER_BYTES + index * RECORD_BYTES
+                pointer_put(&out, base, entry.tick, 4)
+                out.data[base + 4] <- entry.kind.u8()
+                pointer_put(&out, base + 8, entry.dx_q, 2)
+                pointer_put(&out, base + 10, entry.dy_q, 2)
+            out.count <- HEADER_BYTES + log.count * RECORD_BYTES
+            out
+
+        # Decodes into an empty log; any damage leaves `log` untouched.
+        def pointer_decode(data: Bytes&, log: mutable Log&) -> DecodeStatus:
+            return DecodeStatus.BadLength if data.count < HEADER_BYTES or data.count > 12296
+            return DecodeStatus.BadMagic if data.data[0] != 69 or data.data[1] != 80 or data.data[2] != 82 or data.data[3] != 49
+            count: i64 = pointer_get(data, 4, 4)
+            return DecodeStatus.BadLength if count < 0 or count > 1024 or data.count != HEADER_BYTES + count.usize() * RECORD_BYTES
+            mutable status: DecodeStatus = DecodeStatus.Ok
+            mutable previous: i64 = 0
+            for index in 0..<count.usize() |status, previous|:
+                base: usize = HEADER_BYTES + index * RECORD_BYTES
+                tick: i64 = pointer_get(data, base, 4)
+                status <- DecodeStatus.BadField if status == DecodeStatus.Ok and (data.data[base + 4] > 3 or data.data[base + 5] != 0 or data.data[base + 6] != 0 or data.data[base + 7] != 0 or pointer_get(data, base + 8, 2) < 0 - DELTA_LIMIT or pointer_get(data, base + 10, 2) < 0 - DELTA_LIMIT)
+                status <- DecodeStatus.NonMonotonicTick if status == DecodeStatus.Ok and index > 0 and tick < previous
+                previous <- tick
+            return status if status != DecodeStatus.Ok
+            for index in 0..<count.usize() |log|:
+                base: usize = HEADER_BYTES + index * RECORD_BYTES
+                log.entries[index] <- Entry{tick: pointer_get(data, base, 4), kind: data.data[base + 4].i64(),
+                    dx_q: pointer_get(data, base + 8, 2), dy_q: pointer_get(data, base + 10, 2)}
+            log.count <- count.usize()
+            log.dropped <- 0
+            log.last_tick <- previous
+            DecodeStatus.Ok

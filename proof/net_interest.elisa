@@ -6,5 +6,6 @@ extend NetInterestMath:
     def prove_budget(budget: i64, cost: i64) -> i64:
         ensure result >= 0
         ensure result <= budget or budget < 0
-        return 0 if budget < 0 or cost < 0
-        remaining_after(budget, cost)
+        if budget >= 0 and cost >= 0:
+            return remaining_after(budget, cost)
+        0

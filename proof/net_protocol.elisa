@@ -10,5 +10,6 @@ extend NetProtocolMath:
     # Spending a metered message keeps the budget non-negative.
     def prove_budget(remaining: i64, metered: bool) -> i64:
         ensure result >= 0
-        return 0 if remaining < 0
-        spend(remaining, metered)
+        if remaining >= 0:
+            return spend(remaining, metered)
+        0

@@ -15,6 +15,7 @@ EXAMPLE_ROOT = Path("examples")
 TEST_ROOT = Path("test")
 ELISA_SUFFIX = ".elisa"
 PUBLIC_INCLUDE_BUNDLES = {Path("src/runtime/public.elisa")}
+TOP_LEVEL_EXTEND = re.compile(r"^extend\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
 INCLUDE_DIRECTIVE = re.compile(r'^\s*include\s+"([^"\r\n]+)"\s*$')
@@ -102,6 +103,7 @@ def policy(root: Path) -> dict[str, object]:
     source_root = root / SOURCE_ROOT
     violations: list[str] = []
     module_names: dict[str, Path] = {}
+    extensions: list[tuple[Path, str]] = []
 
     source_paths = sorted(source_root.rglob(f"*{ELISA_SUFFIX}"))
     source_paths.extend(sorted((root / EXAMPLE_ROOT).rglob(f"*{ELISA_SUFFIX}")))
@@ -135,7 +137,15 @@ def policy(root: Path) -> dict[str, object]:
                     (match for line in lines if (match := TOP_LEVEL_MODULE.match(line))),
                     None,
                 )
-                if module is None:
+                extension = next(
+                    (match for line in lines if (match := TOP_LEVEL_EXTEND.match(line))),
+                    None,
+                )
+                if module is None and extension is not None:
+                    # An extension-only file adds to a module declared elsewhere;
+                    # checked once every module is known.
+                    extensions.append((relative, extension.group(1)))
+                elif module is None:
                     violations.append(f"{relative}: missing top-level module declaration")
                 else:
                     name = module.group(1)
@@ -167,6 +177,10 @@ def policy(root: Path) -> dict[str, object]:
                 f"{path.relative_to(root)}:{line_number}: accumulator loop result `{name}` is discarded; "
                 "make the loop the final expression or bind it to a name"
             )
+
+    for relative, name in extensions:
+        if name not in module_names:
+            violations.append(f"{relative}: extends {name}, which no production module declares")
 
     return {
         "status": "passed" if not violations else "failed",
