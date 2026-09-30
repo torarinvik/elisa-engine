@@ -65,3 +65,17 @@ three render rows starting at the chosen base, three bodies at the saved poses).
 A control that skips destroying the old bodies fails with status 34. Old bodies are torn down with the new
 `WorldPhysics::unbind_all`, so a body left bound to an already-despawned entity is also
 destroyed (the smoke covers one); the course does not yet use this path.
+
+## Older, oversized and inflated saves (2026-09-30)
+
+`test/world_save.elisa` (codes 18–21) now also rejects three more kinds of payload:
+
+- **An older version (0).** Version 1 is the first format, so there is nothing to migrate from yet.
+- **A length beyond `MAX_BYTES`.**
+- **A record count larger than the records actually present, with the checksum resealed.**
+
+After those, the restored payload is accepted again. Two single-guard controls did **not** fail
+the test. Removing the `length > MAX_BYTES` guard still left the exact-length check to reject
+the oversized payload. Removing the exact-length check still left per-record validation to reject
+the inflated count, because the missing record reads as kind 0. So these cases are caught by
+layered checks rather than by one guard each.

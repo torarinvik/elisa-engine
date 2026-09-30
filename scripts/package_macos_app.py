@@ -339,6 +339,8 @@ def write_launcher(path: Path, binary_name: str,
     announce = f"printf '%s\\n' {shlex.quote(identity)} >&2 || :\n" if identity else ""
     crash_ips_pattern = shlex.quote(f"{path.name}*.ips")
     crash_legacy_pattern = shlex.quote(f"{path.name}*.crash")
+    crash_identity = (f"if [ -z \"${{ELISA_BUILD_IDENTITY:-}}\" ]; then ELISA_BUILD_IDENTITY={shlex.quote(build_identity)}; fi\n"
+        "export ELISA_BUILD_IDENTITY\n") if identity else ""
     script = f"""#!/bin/sh
 set -eu
 resources=\"$(CDPATH= cd -- \"$(dirname -- \"$0\")/../Resources\" && pwd)\"
@@ -347,7 +349,17 @@ cd \"$resources\"
 : \"${{ELISA_PROJECT_WIDTH:={width}}}\"
 : \"${{ELISA_PROJECT_HEIGHT:={height}}}\"
 export ELISA_PROJECT_TITLE ELISA_PROJECT_WIDTH ELISA_PROJECT_HEIGHT
-if [ -d \"$resources/shaders\" ]; then
+# Local crash reports only: the runtime writes crash-PID.txt here on a fatal
+# signal. An exported ELISA_CRASH_DIR wins; an uncreatable one turns them off.
+if [ -z \"${{ELISA_CRASH_DIR:-}}\" ] && [ -n \"${{HOME:-}}\" ]; then
+    ELISA_CRASH_DIR=\"$HOME/Library/Logs/{Path(binary_name).stem}\"
+fi
+if [ -n \"${{ELISA_CRASH_DIR:-}}\" ] && mkdir -p \"$ELISA_CRASH_DIR\" 2>/dev/null; then
+    export ELISA_CRASH_DIR
+else
+    unset ELISA_CRASH_DIR
+fi
+{crash_identity}if [ -d \"$resources/shaders\" ]; then
     ELISA_ENGINE_SHADER_PATH=\"$resources/shaders\"
     export ELISA_ENGINE_SHADER_PATH
     if [ -f \"$resources/shaders/{SHADER_MANIFEST_NAME}\" ]; then

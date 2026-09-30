@@ -1,0 +1,19 @@
+include "./runtime.elisa"
+include "./layer_diagnostics.elisa"
+
+# Keeps PhysicsLayerDiagnostics' mirror in step with the physics service:
+# the mirror changes only when the service accepted the setting, so a locked
+# or out-of-range call leaves the diagnostics describing what Jolt really has.
+module PhysicsLayerSetup:
+    public:
+        # Jolt starts with every layer pair enabled.
+        def layer_setup_mirror() -> PhysicsLayerDiagnostics::Matrix:
+            PhysicsLayerDiagnostics::layer_matrix_all()
+
+        def layer_setup_apply(world: PhysicsRuntime::World&,
+            mirror: mutable PhysicsLayerDiagnostics::Matrix&, layer_a: u32,
+            layer_b: u32, enabled: bool) -> void error[PhysicsRuntime::PhysicsError]:
+            try PhysicsRuntime::set_layer_collision(world, layer_a, layer_b, enabled)
+            accepted: bool = PhysicsLayerDiagnostics::layer_set(mirror,
+                layer_a.i64(), layer_b.i64(), enabled)
+            raise PhysicsRuntime::PhysicsError.InvalidArgument if not accepted

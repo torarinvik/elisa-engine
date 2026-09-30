@@ -89,3 +89,10 @@ recorded pass for dependency, source length, module hygiene, headless, applicati
 `hardware_verification=verified`. Because the sibling checkouts were dirty, the
 hashes, not the commits, identify the tools; a fresh-checkout provisioning run
 remains open.
+
+## Hosted steps added on 2026-09-30
+
+The hosted cook job now runs `native_smoke_artifacts.py --self-test` on all three operating
+systems. The hosted macOS native job runs `test_crash_report.py`. Both steps go through
+`ci_stage.py`, and both passed locally through `ci_stage.py`. They have not yet run on a hosted
+runner, because nothing has been pushed from this checkout.
