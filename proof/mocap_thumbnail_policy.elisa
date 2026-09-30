@@ -1,0 +1,25 @@
+include "../src/viewport/mocap_thumbnail_policy.elisa"
+
+extend MocapThumbnailPolicy:
+    # Linear and step tracks: always a stored value.
+    def prove_linear_in_range(key: i64, keys: i64) -> i64:
+        requires keys >= 1
+        requires keys <= 1000000000
+        ensure result >= 0
+        ensure result < keys
+        held_key(key, keys)
+
+    # CubicSpline: the held key's value slot skips the in-tangent. The upper
+    # bound follows from cubic_slot's proved `3 * held + 1` and held_key's
+    # proved `held < keys`; held_key's hold-last and exact-key ensures are
+    # proved on it directly (restating them here through its disjunctive
+    # summary times out in the solver).
+    def prove_cubic_after_tangent(held: i64) -> i64:
+        requires held >= 0
+        requires held <= 1000000000
+        ensure result >= 1
+        cubic_slot(held)
+
+    def prove_empty(key: i64) -> i64:
+        ensure result == -1
+        held_key(key, 0)

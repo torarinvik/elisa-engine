@@ -1,0 +1,114 @@
+# Headless mocap thumbnail (plan M07): pose a GLB's node hierarchy at one
+# animation key, frame the joints, draw grid, bones and joint markers into an
+# offscreen Viewport and write the frame as a PNG. The draw list is built by
+# the CPU from the file alone, so the same file and key give the same list;
+# the Metal readback matches within the tolerance in
+# docs/validation/mocap-pipeline.md.
+include "./viewport.elisa"
+include "./png_writer.elisa"
+include "../assets/glb_document.elisa"
+include "./mocap_thumbnail_policy.elisa"
+
+module MocapThumbnail:
+    public:
+        error ThumbnailError:
+            NoJoints
+            Draw
+            Render
+            Write
+
+        # World-space node positions at `key` of `animation` (rest pose for
+        # nodes the animation does not drive, or when it does not exist).
+        def pose_points(doc: GlbDocument::Document&, animation: usize, key: usize) -> darray[Geometry::Vec3]:
+            n: usize = GlbDocument::node_count(doc)
+            mutable locals: darray[Geometry::Transform] = []
+            for k in 0..<n:
+                locals.push(GlbDocument::node_rest(doc, k))
+            if animation < GlbDocument::animation_count(doc):
+                for c in 0..<GlbDocument::channel_count(doc, animation):
+                    ch: GlbDocument::Channel = GlbDocument::channel(doc, animation, c)
+                    continue if ch.node >= n
+                    locals[ch.node] <- sampled(doc, ch, key, locals[ch.node])
+            mutable points: darray[Geometry::Vec3] = []
+            for k in 0..<n:
+                mutable world: Geometry::Transform = locals[k]
+                mutable up: i64 = GlbDocument::node_parent(doc, k)
+                mutable depth: i64 = 0
+                while up >= 0 and up.usize() < n and depth < 256:
+                    world <- Geometry::transform_compose(locals[up.usize()], world)
+                    up <- GlbDocument::node_parent(doc, up.usize())
+                    depth <- depth + 1
+                points.push(world.position)
+            points
+
+        # Render the pose to `path` as a width x height PNG. Returns the PNG
+        # byte count.
+        def render(doc: GlbDocument::Document&, animation: usize, key: usize, width: i64, height: i64, path: cstr) -> usize error[ThumbnailError]:
+            points: darray[Geometry::Vec3] = pose_points(doc, animation, key)
+            raise ThumbnailError.NoJoints if points.count == 0
+            mutable rgba: darray[u8] = []
+            code: i64 = draw_rgba(doc, &points, width, height, &rgba)
+            raise ThumbnailError.Render if code != 0
+            written: usize = write_png(path, width, height, &rgba)
+            raise ThumbnailError.Write if written == 0
+            written
+
+    private:
+        def write_png(path: cstr, width: i64, height: i64, rgba: darray[u8]&) -> usize:
+            catch PngWriter::save(path, width, height, rgba):
+                value: value
+                error failure: 0
+
+        def tick_code(vp: mutable Viewport::Viewport&, list: ViewportDraw::List&) -> i64:
+            catch Viewport::tick(vp, list):
+                value: 0
+                error failure: 1
+
+        # 0 on success; the frame lands in `rgba`.
+        def draw_rgba(doc: GlbDocument::Document&, points: darray[Geometry::Vec3]&, width: i64, height: i64, rgba: mutable darray[u8]&) -> i64:
+            mutable vp: Viewport::Viewport = catch Viewport::create(width, height):
+                value: value
+                error failure: return 1
+            mutable cam: ViewportCamera::Camera = ViewportCamera::create(width, height)
+            _ = ViewportCamera::frame_points(&cam, points, 1.2)
+            vp.camera <- cam
+            list: ViewportDraw::List = draw_list(doc, &cam, points)
+            mutable code: i64 = tick_code(&vp, &list)
+            if code == 0 and not Viewport::read_rgba(&vp, rgba):
+                code <- 2
+            Viewport::destroy(&vp)
+            code
+
+        def sampled(doc: GlbDocument::Document&, ch: GlbDocument::Channel, key: usize, rest: Geometry::Transform) -> Geometry::Transform:
+            cubic: bool = ch.interpolation == GlbDocument::Interpolation.CubicSpline
+            stored: i64 = GlbDocument::key_count(doc, ch.output).i64()
+            mutable keys: i64 = stored
+            keys <- stored / 3 if cubic
+            index: i64 = MocapThumbnailPolicy::value_index(key.i64(), keys, cubic)
+            return rest if index < 0
+            at: usize = index.usize()
+            s: usize = ch.output
+            if ch.path == GlbDocument::TargetPath.Translation:
+                return Geometry::Transform{position: Geometry::Vec3{x: GlbDocument::track_value(doc, s, at, 0), y: GlbDocument::track_value(doc, s, at, 1), z: GlbDocument::track_value(doc, s, at, 2)}, rotation: rest.rotation, scale: rest.scale}
+            if ch.path == GlbDocument::TargetPath.Rotation:
+                q: Geometry::Quat = Geometry::Quat{x: GlbDocument::track_value(doc, s, at, 0), y: GlbDocument::track_value(doc, s, at, 1), z: GlbDocument::track_value(doc, s, at, 2), w: GlbDocument::track_value(doc, s, at, 3)}
+                return Geometry::Transform{position: rest.position, rotation: Geometry::quat_normalize(q), scale: rest.scale}
+            if ch.path == GlbDocument::TargetPath.Scale:
+                return Geometry::Transform{position: rest.position, rotation: rest.rotation, scale: Geometry::Vec3{x: GlbDocument::track_value(doc, s, at, 0), y: GlbDocument::track_value(doc, s, at, 1), z: GlbDocument::track_value(doc, s, at, 2)}}
+            rest
+
+        def draw_list(doc: GlbDocument::Document&, cam: ViewportCamera::Camera&, points: darray[Geometry::Vec3]&) -> ViewportDraw::List:
+            mutable list: ViewportDraw::List = ViewportDraw::create()
+            _ = catch ViewportDraw::grid(&list, 0.25, 8, ViewportDraw::rgba(90, 92, 100, 255)):
+                value: 0
+                error failure: 1
+            for k in 0..<points.count:
+                up: i64 = GlbDocument::node_parent(doc, k)
+                if up >= 0 and up.usize() < points.count:
+                    _ = catch ViewportDraw::bone(&list, points[up.usize()], points[k], ViewportDraw::rgba(240, 200, 60, 255), ViewportDraw::TOP):
+                        value: 0
+                        error failure: 1
+                _ = catch ViewportDraw::marker(&list, cam, points[k], 2.0, ViewportDraw::rgba(250, 250, 250, 255), ViewportDraw::TOP):
+                    value: 0
+                    error failure: 1
+            return move list

@@ -1,0 +1,60 @@
+# Batch mocap cleanup (plan M07): clean every *.glb in MOCAP_IN into
+# MOCAP_OUT with MocapPipeline's default settings, and write NAME.png beside
+# each output: the pose at key MOCAP_THUMB_KEY (default 0) of the first
+# animation. A bad file is reported and skipped; the exit code is the number
+# of failures (capped at 100), or 101 when a folder is missing.
+# Build: scripts/build_mocap_clean.sh
+include "../src/assets/mocap_pipeline.elisa"
+include "../src/viewport/mocap_thumbnail.elisa"
+
+@link_name("elisa_mocap_scan")
+extern c_scan(dir: cstr) -> i64 can[Blocking.IO]
+@link_name("elisa_mocap_path")
+extern c_path(dir: cstr, index: i64, extension: cstr) -> cstr
+@link_name("elisa_mocap_name")
+extern c_name(index: i64) -> cstr
+@link_name("elisa_mocap_env")
+extern c_env(key: cstr, fallback: cstr) -> cstr
+@link_name("elisa_mocap_line")
+extern c_line(status: cstr, name: cstr, a: i64, b: i64) can[Blocking.IO]
+@link_name("atoll")
+extern c_atoll(text: cstr) -> i64
+
+def thumb(output: cstr, png: cstr, key: usize) -> i64:
+    doc: GlbDocument::Document = catch GlbDocument::load(output):
+        value: value
+        error failure: return -1
+    catch MocapThumbnail::render(&doc, 0, key, 320, 240, png):
+        value: value.i64()
+        error failure: -2
+
+def clean_one(input: cstr, output: cstr) -> i64:
+    report: MocapPipeline::Report = catch MocapPipeline::clean_file(input, output, MocapPipeline::default_settings()):
+        value: value
+        error failure: return -1
+    report.filtered.i64()
+
+def main() -> i32:
+    source: cstr = c_env("MOCAP_IN", "")
+    target: cstr = c_env("MOCAP_OUT", "")
+    mutable key: i64 = c_atoll(c_env("MOCAP_THUMB_KEY", "0"))
+    key <- 0 if key < 0
+    count: i64 = c_scan(source)
+    return 101 if count < 0 or c_scan(target) < 0
+    _ = c_scan(source)
+    mutable failed: i64 = 0
+    for i in 0..<count:
+        filtered: i64 = clean_one(c_path(source, i, ""), c_path(target, i, ""))
+        if filtered < 0:
+            c_line("FAIL", c_name(i), filtered, 0)
+            failed <- failed + 1
+            continue
+        bytes: i64 = thumb(c_path(target, i, ""), c_path(target, i, ".png"), key.usize())
+        if bytes < 0:
+            c_line("NOTHUMB", c_name(i), filtered, bytes)
+            failed <- failed + 1
+            continue
+        c_line("OK", c_name(i), filtered, bytes)
+    c_line("DONE", "files", count, failed)
+    failed <- 100 if failed > 100
+    failed.i32()

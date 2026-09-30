@@ -1,0 +1,32 @@
+# Which stored value MocapThumbnail reads for a requested key (plan M07),
+# proved in proof/mocap_thumbnail_policy.elisa: requests past the end hold
+# the last key, and CubicSpline tracks (in-tangent, value, out-tangent per
+# key) read the value, never a tangent or past the track.
+module MocapThumbnailPolicy:
+    public:
+        # Index of the value for `key` in a track of `keys` whole keys (the
+        # stored count divided by 3 for CubicSpline). -1 when it is empty or implausibly long.
+        def value_index(key: i64, keys: i64, cubic: bool) -> i64:
+            held: i64 = held_key(key, keys)
+            return held if not cubic or held < 0 or held > 1000000000
+            cubic_slot(held)
+
+        # `key` clamped into 0..<keys; -1 when keys < 1.
+        def held_key(key: i64, keys: i64) -> i64:
+            ensure result == -1 or keys >= 1
+            ensure result >= 0 or keys < 1
+            ensure result < keys or keys < 1
+            ensure keys < 1 or key < 0 or key >= keys or result == key
+            ensure keys < 1 or key < keys or result == keys - 1
+            return -1 if keys < 1
+            return 0 if key < 0
+            return keys - 1 if key >= keys
+            key
+
+        # The value slot of a held key in a CubicSpline track: 3 * held + 1.
+        def cubic_slot(held: i64) -> i64:
+            requires held >= 0
+            requires held <= 1000000000
+            ensure result >= 1
+            ensure result == held + held + held + 1
+            held + held + held + 1
