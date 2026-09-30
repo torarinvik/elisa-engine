@@ -1,0 +1,214 @@
+# Whole-world save codec. A payload holds each live entity's kind, parent,
+# gameplay value (actor health or enemy threat) and world transform, and
+# nothing tied to one process: no epochs, runtime ids or native handles.
+# Loading builds a fresh World, so a rejected payload never touches the live
+# one. The caller swaps the result in only on success.
+include "./world.elisa"
+
+module World::SaveGame:
+    public:
+        const MAX_BYTES: usize = 16 + World::MAX_ENTITIES * 56
+
+        error SaveGameError:
+            InvalidWorld
+            Capacity
+            Corrupt
+            WrongVersion
+            Rejected
+
+    private:
+        const module SaveFormat:
+            MAGIC: u32 = 1448302405
+            VERSION: u32 = 1
+            HEADER: usize = 16
+            RECORD: usize = 56
+            MASK: u64 = 255
+            LOW: u64 = 4294967295
+            FNV_OFFSET: u64 = 2166136261
+            FNV_PRIME: u64 = 16777619
+
+        def savegame_u32_ref(value: u32&) -> u32:
+            value
+
+        def savegame_f32_ref(value: f32&) -> f32:
+            value
+
+        def savegame_float_bits(value: f32) -> u32:
+            savegame_u32_ref((&value).cast[u32&] can Unsafe.PointerCast)
+
+        def savegame_bits_float(value: u32) -> f32:
+            savegame_f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
+
+        def savegame_put(bytes: mutable u8&, offset: usize, value: u32):
+            bytes[offset] <- (value.u64() & SaveFormat::MASK).u8()
+            bytes[offset + 1] <- ((value.u64() >> 8) & SaveFormat::MASK).u8()
+            bytes[offset + 2] <- ((value.u64() >> 16) & SaveFormat::MASK).u8()
+            bytes[offset + 3] <- ((value.u64() >> 24) & SaveFormat::MASK).u8()
+
+        def savegame_get(bytes: u8&, offset: usize) -> u32:
+            bytes[offset].u32() | (bytes[offset + 1].u32() << 8) | (bytes[offset + 2].u32() << 16) | (bytes[offset + 3].u32() << 24)
+
+        def savegame_checksum(bytes: u8&, start: usize, stop: usize) -> u32:
+            mutable hash: u64 = SaveFormat::FNV_OFFSET
+            for index in start..<stop |hash, bytes|:
+                hash <- ((hash ^ bytes[index].u64()) * SaveFormat::FNV_PRIME) & SaveFormat::LOW
+            hash.u32()
+
+        def savegame_kind_code(kind: World::Entity) -> u32:
+            return 1 if kind == World::Actor.Player
+            return 2 if kind == World::Enemy.Guard
+            return 3 if kind == World::StaticObject.Structure
+            0
+
+        def savegame_kind(code: u32) -> World::Entity:
+            return World::Actor.Player if code == 1
+            return World::Enemy.Guard if code == 2
+            World::StaticObject.Structure
+
+        def savegame_live_index(world: World::World&, id: i64) -> u32:
+            mutable found: u32 = 0
+            for index in 0..<world.live_ids_count |found, world, id|:
+                found <- index.u32() + 1 if world.live_ids[index] == id else found
+            found
+
+        def savegame_gameplay(world: World::World&, reference: World::EntityRef, code: u32) -> i64:
+            if code == 1:
+                actor: World::ActorRecord = catch World::world_actor_record(world, reference):
+                    value: value
+                    error failure: zeroed
+                return actor.health
+            if code == 2:
+                enemy: World::EnemyRecord = catch World::world_enemy_record(world, reference):
+                    value: value
+                    error failure: zeroed
+                return enemy.threat
+            0
+
+        def savegame_put_transform(bytes: mutable u8&, at: usize, value: Geometry::Transform):
+            savegame_put(bytes, at, savegame_float_bits(value.position.x))
+            savegame_put(bytes, at + 4, savegame_float_bits(value.position.y))
+            savegame_put(bytes, at + 8, savegame_float_bits(value.position.z))
+            savegame_put(bytes, at + 12, savegame_float_bits(value.rotation.x))
+            savegame_put(bytes, at + 16, savegame_float_bits(value.rotation.y))
+            savegame_put(bytes, at + 20, savegame_float_bits(value.rotation.z))
+            savegame_put(bytes, at + 24, savegame_float_bits(value.rotation.w))
+            savegame_put(bytes, at + 28, savegame_float_bits(value.scale.x))
+            savegame_put(bytes, at + 32, savegame_float_bits(value.scale.y))
+            savegame_put(bytes, at + 36, savegame_float_bits(value.scale.z))
+
+        def savegame_get_transform(bytes: u8&, at: usize) -> Geometry::Transform:
+            position: Geometry::Vec3 = Geometry::Vec3{x: savegame_bits_float(savegame_get(bytes, at)), y: savegame_bits_float(savegame_get(bytes, at + 4)), z: savegame_bits_float(savegame_get(bytes, at + 8))}
+            rotation: Geometry::Quat = Geometry::Quat{x: savegame_bits_float(savegame_get(bytes, at + 12)), y: savegame_bits_float(savegame_get(bytes, at + 16)), z: savegame_bits_float(savegame_get(bytes, at + 20)), w: savegame_bits_float(savegame_get(bytes, at + 24))}
+            scale: Geometry::Vec3 = Geometry::Vec3{x: savegame_bits_float(savegame_get(bytes, at + 28)), y: savegame_bits_float(savegame_get(bytes, at + 32)), z: savegame_bits_float(savegame_get(bytes, at + 36))}
+            Geometry::Transform{position: position, rotation: rotation, scale: scale}
+
+        def savegame_link(world: mutable World::World&, child: World::EntityRef, parent: World::EntityRef) -> bool:
+            linked: bool = catch World::world_reparent(world, child, parent, true):
+                ok: true
+                error failure: false
+            linked
+
+        def savegame_restore_gameplay(world: mutable World::World&, reference: World::EntityRef, code: u32, gameplay: i64) -> bool:
+            if code == 1:
+                healed: bool = catch World::world_actor_set_health(world, reference, gameplay):
+                    ok: true
+                    error failure: false
+                return healed
+            if code == 2:
+                armed: bool = catch World::world_enemy_set_threat(world, reference, gameplay):
+                    ok: true
+                    error failure: false
+                return armed
+            true
+
+    public:
+        # Writes the live world into `bytes` and returns the payload length.
+        def save_world(world: World::World&, bytes: mutable u8&, capacity: usize) -> usize error[SaveGameError]:
+            raise SaveGameError.InvalidWorld if not World::world_is_valid(world) or not World::world_live_column_valid(world)
+            count: usize = world.live_ids_count
+            total: usize = SaveFormat::HEADER + count * SaveFormat::RECORD
+            raise SaveGameError.Capacity if total > capacity
+            nodes: WorldHierarchy::Snapshot = WorldHierarchy::hierarchy_snapshot(&world.hierarchy)
+            mutable missing: bool = false
+            for index in 0..<count |bytes, world, nodes, missing|:
+                id: i64 = world.live_ids[index]
+                reference: World::EntityRef = World::EntityRef{world_epoch: world.epoch, id: id}
+                lookup: World::EntityLookup = catch World::world_lookup(world, reference):
+                    value: value
+                    error failure: World::EntityLookup{reference: reference, kind: World::Entity.Unknown}
+                code: u32 = savegame_kind_code(lookup.kind)
+                slot: usize = WorldHierarchy::hierarchy_snapshot_slot(nodes, id)
+                parent_id: i64 = nodes.nodes[slot].parent if slot < nodes.count else WorldHierarchy::ROOT
+                parent: u32 = 0 if parent_id == WorldHierarchy::ROOT else savegame_live_index(world, parent_id)
+                pose: mutable Geometry::Transform = Geometry::transform_identity()
+                posed: bool = World::world_try_transform(world, reference, &pose)
+                missing <- missing or code == 0 or slot >= nodes.count or not posed or (parent_id != WorldHierarchy::ROOT and parent == 0)
+                gameplay: u64 = savegame_gameplay(world, reference, code).u64()
+                at: usize = SaveFormat::HEADER + index * SaveFormat::RECORD
+                savegame_put(bytes, at, code)
+                savegame_put(bytes, at + 4, parent)
+                savegame_put(bytes, at + 8, (gameplay & SaveFormat::LOW).u32())
+                savegame_put(bytes, at + 12, (gameplay >> 32).u32())
+                savegame_put_transform(bytes, at + 16, pose)
+            raise SaveGameError.InvalidWorld if missing
+            savegame_put(bytes, 0, SaveFormat::MAGIC)
+            savegame_put(bytes, 4, SaveFormat::VERSION)
+            savegame_put(bytes, 8, count.u32())
+            savegame_put(bytes, 12, savegame_checksum(bytes, SaveFormat::HEADER, total))
+            total
+
+        # Checks the header, length, checksum and every record before any
+        # entity is built, and returns the record count.
+        def check_world_save(bytes: u8&, length: usize) -> usize error[SaveGameError]:
+            raise SaveGameError.Corrupt if length < SaveFormat::HEADER or length > MAX_BYTES
+            raise SaveGameError.Corrupt if savegame_get(bytes, 0) != SaveFormat::MAGIC
+            raise SaveGameError.WrongVersion if savegame_get(bytes, 4) != SaveFormat::VERSION
+            count: usize = savegame_get(bytes, 8).usize()
+            raise SaveGameError.Corrupt if count > World::MAX_ENTITIES or length != SaveFormat::HEADER + count * SaveFormat::RECORD
+            raise SaveGameError.Corrupt if savegame_get(bytes, 12) != savegame_checksum(bytes, SaveFormat::HEADER, length)
+            mutable bad: bool = false
+            for index in 0..<count |bytes, bad, count|:
+                at: usize = SaveFormat::HEADER + index * SaveFormat::RECORD
+                code: u32 = savegame_get(bytes, at)
+                parent: u32 = savegame_get(bytes, at + 4)
+                bad <- bad or code == 0 or code > 3 or parent.usize() > count or parent.usize() == index + 1
+                bad <- bad or not Geometry::transform_is_valid(savegame_get_transform(bytes, at + 16))
+            raise SaveGameError.Corrupt if bad
+            count
+
+        # Fills an empty staging World (normally made with World::World() just
+        # before) from a payload. Entities get fresh runtime ids in record
+        # order, and parents are attached keeping world poses. A cycle or any
+        # other rejected step fails the whole load, and the caller discards
+        # the staging world. The live world is never touched.
+        def load_world(world: mutable World::World&, bytes: u8&, length: usize) -> void error[SaveGameError]:
+            raise SaveGameError.InvalidWorld if world.live_count != 0 or world.registry_count != 0
+            count: usize = try check_world_save(bytes, length)
+            references: mutable World::EntityRef[World::MAX_ENTITIES] = zeroed
+            mutable failed: bool = false
+            for index in 0..<count |bytes, world, references, failed|:
+                at: usize = SaveFormat::HEADER + index * SaveFormat::RECORD
+                kind: World::Entity = savegame_kind(savegame_get(bytes, at))
+                spawned: World::EntityRef = catch World::world_spawn(world, kind):
+                    value: value
+                    error failure: World::EntityRef{world_epoch: 0, id: 0}
+                references[index] <- spawned
+                pose: Geometry::Transform = savegame_get_transform(bytes, at + 16)
+                posed: bool = catch World::world_set_transform(world, spawned, pose):
+                    ok: true
+                    error failure: false
+                failed <- failed or spawned.id == 0 or not posed
+            raise SaveGameError.Rejected if failed
+            for index in 0..<count |bytes, world, references, failed|:
+                at: usize = SaveFormat::HEADER + index * SaveFormat::RECORD
+                code: u32 = savegame_get(bytes, at)
+                parent: usize = savegame_get(bytes, at + 4).usize()
+                parent_slot: usize = parent - 1 if parent > 0 else 0
+                attached: bool = parent == 0 or World::world_can_reparent(world, references[index], references[parent_slot])
+                mutable linked: bool = true
+                if parent > 0 and attached:
+                    linked <- savegame_link(world, references[index], references[parent_slot])
+                gameplay: i64 = (savegame_get(bytes, at + 8).u64() | (savegame_get(bytes, at + 12).u64() << 32)).i64()
+                healed: bool = savegame_restore_gameplay(world, references[index], code, gameplay)
+                failed <- failed or not attached or not linked or not healed
+            raise SaveGameError.Rejected if failed or not World::world_is_valid(world)
