@@ -159,6 +159,7 @@ def main() -> int:
             ("physics-material-smoke", ROOT / "test/physics_material_native_main.elisa"),
             ("physics-ccd3d-smoke", ROOT / "test/physics_ccd3d_native_main.elisa"),
             ("world-physics-pose-smoke", ROOT / "test/world_physics_pose_native_main.elisa"),
+            ("render-resource-churn-smoke", ROOT / "test/render_resource_churn_native_main.elisa"),
             ("world-save-physics-smoke", ROOT / "test/world_save_physics_native_main.elisa"),
             ("world-physics-cadence-smoke",
                 ROOT / "test/world_physics_session_cadence_native_main.elisa"),

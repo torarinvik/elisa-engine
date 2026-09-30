@@ -560,6 +560,7 @@ int32_t elisa_render_scene_v1_set_electric_arc_depth_test(int64_t handle, int32_
 int32_t elisa_render_scene_v1_set_electric_arc_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_electric_arc(int64_t handle);
 int32_t elisa_render_scene_v1_destroy(int64_t handle);
+int32_t elisa_render_scene_v1_resource_counts(int32_t* instances, int32_t* lights, int32_t* scene_entities);
 int32_t elisa_render_scene_v1_shutdown(void);
 uint64_t elisa_render_scene_v1_instance_count(void);
 int32_t elisa_render_scene_v1_is_initialized(void);
