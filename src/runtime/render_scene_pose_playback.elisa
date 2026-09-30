@@ -1,0 +1,14 @@
+# Hand a PosePlayback shown pose to a skinned render instance. The native
+# bridge applies each submitted matrix as the bone's local transform, so the
+# shown locals go through set_bone_transform unchanged.
+include "./render_scene_animation_submission.elisa"
+include "../animation/pose_playback.elisa"
+
+extend RenderScene:
+    public:
+        # Fill `pose` from the shown buffer, bone by bone. Returns the bones written.
+        def fill_pose_from_playback(shown: MocapClip::Clip&, pose: mutable AnimationPose&) -> i64 error[RenderSceneError]:
+            count: i64 = PosePlaybackIndex::shared_bones(MocapClip::bone_count(shown), PosePlaybackIndex::MAX_BONES)
+            for bone in 0..<count |shown, pose|:
+                try set_bone_transform(pose, bone.usize(), PoseFade::transform_of(PosePlayback::bone_of(shown, bone)))
+            count

@@ -1,0 +1,51 @@
+# Drive a shown pose from a scrubbed clip or the app's live override, fading
+# from the previously shown pose on each switch (plan M02). Poses live in
+# one-frame MocapClip buffers so every write goes through the proved slot
+# index. Bone counts are proved in PosePlaybackIndex.
+include "./pose_fade.elisa"
+include "./pose_playback_index.elisa"
+module PosePlayback:
+    public:
+        # An identity pose of `bones` bones.
+        def pose_buffer(buffer: mutable MocapClip::Clip&, bones: i64) -> i64 error[MocapClip::MocapClipError]:
+            try MocapClip::reserve(buffer, 1, bones, 1)
+
+        def bone_of(buffer: MocapClip::Clip&, bone: i64) -> MocapClip::Sample:
+            MocapClip::local_at(buffer, 0, bone)
+
+        def set_bone(buffer: mutable MocapClip::Clip&, bone: i64, sample: MocapClip::Sample) -> bool:
+            MocapClip::set_local(buffer, 0, bone, sample)
+
+        # Freeze what is on screen so the next source fades in from it.
+        def hold(shown: MocapClip::Clip&, held: mutable MocapClip::Clip&) -> i64:
+            count: i64 = PosePlaybackIndex::shared_bones(MocapClip::bone_count(shown), MocapClip::bone_count(held))
+            for bone in 0..<count |shown, held|:
+                _ = set_bone(held, bone, bone_of(shown, bone))
+            count
+
+        # One bone of the shown pose: the target, faded in from the held pose.
+        def faded_bone(held: MocapClip::Clip&, fade: PoseFade::Fade&, now_us: i64, bone: i64, target: MocapClip::Sample) -> MocapClip::Sample:
+            return target if not PosePlaybackIndex::held_has(bone, MocapClip::bone_count(held))
+            PoseFade::blend(bone_of(held, bone), target, PoseFade::weight(fade, now_us))
+
+        # Show a clip scrubbed to `time_us`. Returns the bones written.
+        def show_clip(clip: MocapClip::Clip&, time_us: i64, held: MocapClip::Clip&, fade: PoseFade::Fade&,
+            now_us: i64, shown: mutable MocapClip::Clip&) -> i64:
+            count: i64 = PosePlaybackIndex::shared_bones(MocapClip::bone_count(clip), MocapClip::bone_count(shown))
+            for bone in 0..<count |clip, held, fade, shown|:
+                _ = set_bone(shown, bone, faded_bone(held, fade, now_us, bone, MocapClip::sample(clip, time_us, bone)))
+            count
+
+        # Show the app's live override pose (a one-frame buffer).
+        def show_override(override: MocapClip::Clip&, held: MocapClip::Clip&, fade: PoseFade::Fade&,
+            now_us: i64, shown: mutable MocapClip::Clip&) -> i64:
+            count: i64 = PosePlaybackIndex::shared_bones(MocapClip::bone_count(override), MocapClip::bone_count(shown))
+            for bone in 0..<count |override, held, fade, shown|:
+                _ = set_bone(shown, bone, faded_bone(held, fade, now_us, bone, bone_of(override, bone)))
+            count
+
+        # Switch source: hold the shown pose and start a fade from it.
+        def switch_source(shown: MocapClip::Clip&, held: mutable MocapClip::Clip&, fade: mutable PoseFade::Fade&,
+            now_us: i64, duration_us: i64) -> i64:
+            PoseFade::begin(fade, now_us, duration_us)
+            hold(shown, held)

@@ -1,0 +1,57 @@
+include "../src/animation/pose_playback.elisa"
+
+def close(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.0001 and d > -0.0001
+
+def at(x: f64) -> MocapClip::Sample:
+    MocapClip::Sample{t: MotionQuat::V{x: x, y: 0.0, z: 0.0}, q: MotionQuat::identity()}
+
+# A 3-bone take at 100 Hz where bone b sits at x = frame + 100 * b.
+def fill(clip: mutable MocapClip::Clip&) -> bool:
+    ok: mutable bool = true
+    for frame in 0..<10 |clip, ok|:
+        for bone in 0..<3 |clip, ok, frame|:
+            ok <- ok and MocapClip::set_local(clip, frame, bone, at(frame.f64() + 100.0 * bone.f64()))
+    ok
+
+def main() -> i32:
+    clip: mutable MocapClip::Clip = MocapClip::Clip()
+    shown: mutable MocapClip::Clip = MocapClip::Clip()
+    held: mutable MocapClip::Clip = MocapClip::Clip()
+    live: mutable MocapClip::Clip = MocapClip::Clip()
+    fade: mutable PoseFade::Fade = PoseFade::Fade()
+    _ = catch MocapClip::reserve(&clip, 10, 3, 100):
+        value: value
+        error failure: return 1
+    _ = catch PosePlayback::pose_buffer(&shown, 3):
+        value: value
+        error failure: return 1
+    _ = catch PosePlayback::pose_buffer(&held, 3):
+        value: value
+        error failure: return 1
+    _ = catch PosePlayback::pose_buffer(&live, 2):
+        value: value
+        error failure: return 1
+    return 1 if not fill(&clip)
+    # Scrub with no fade: the clip shows as is, between frames too.
+    return 2 if PosePlayback::show_clip(&clip, 45000, &held, &fade, 0, &shown) != 3
+    return 3 if not close(PosePlayback::bone_of(&shown, 2).t.x, 204.5)
+    # Switch to the live override: nothing moves at the switch.
+    _ = PosePlayback::set_bone(&live, 0, at(-50.0))
+    _ = PosePlayback::set_bone(&live, 1, at(50.0))
+    return 4 if PosePlayback::switch_source(&shown, &held, &fade, 1000000, 100000) != 3
+    return 5 if PosePlayback::show_override(&live, &held, &fade, 1000000, &shown) != 2
+    return 6 if not close(PosePlayback::bone_of(&shown, 0).t.x, 4.5) or not close(PosePlayback::bone_of(&shown, 1).t.x, 104.5)
+    # Halfway, then fully on the override; bone 2 is not overridden and keeps its pose.
+    _ = PosePlayback::show_override(&live, &held, &fade, 1050000, &shown)
+    return 7 if not close(PosePlayback::bone_of(&shown, 0).t.x, -22.75)
+    _ = PosePlayback::show_override(&live, &held, &fade, 1100000, &shown)
+    return 8 if not close(PosePlayback::bone_of(&shown, 0).t.x, -50.0) or not close(PosePlayback::bone_of(&shown, 2).t.x, 204.5)
+    # Back to the clip at another time: fades from the override, no pop.
+    _ = PosePlayback::switch_source(&shown, &held, &fade, 2000000, 100000)
+    _ = PosePlayback::show_clip(&clip, 0, &held, &fade, 2000000, &shown)
+    return 9 if not close(PosePlayback::bone_of(&shown, 1).t.x, 50.0)
+    _ = PosePlayback::show_clip(&clip, 0, &held, &fade, 2100000, &shown)
+    return 10 if not close(PosePlayback::bone_of(&shown, 1).t.x, 100.0)
+    0

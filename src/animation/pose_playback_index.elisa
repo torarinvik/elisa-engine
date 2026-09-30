@@ -1,0 +1,27 @@
+# Float-free bone counting for PosePlayback, proved in
+# proof/pose_playback_index.elisa.
+module PosePlaybackIndex:
+    public:
+        const MAX_BONES: i64 = 256
+
+        # Bones written when a source drives a shown pose: never more than
+        # either side holds, and never past the render pose limit.
+        def shared_bones(source: i64, shown: i64) -> i64:
+            ensure result >= 0
+            ensure result <= MAX_BONES
+            ensure result <= source or source < 0
+            ensure result <= shown or shown < 0
+            return 0 if source <= 0 or shown <= 0
+            return MAX_BONES if source >= MAX_BONES and shown >= MAX_BONES
+            return source if source <= shown and source <= MAX_BONES
+            return shown if shown <= source and shown <= MAX_BONES
+            return MAX_BONES if source > MAX_BONES
+            return MAX_BONES if shown > MAX_BONES
+            0
+
+        # Whether the held pose has this bone; bones it lacks show the new
+        # source at once.
+        def held_has(bone: i64, held: i64) -> bool:
+            ensure not result or bone < held
+            ensure not result or bone >= 0
+            bone >= 0 and bone < held

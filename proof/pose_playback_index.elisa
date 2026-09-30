@@ -1,0 +1,23 @@
+include "../src/animation/pose_playback_index.elisa"
+
+extend PosePlaybackIndex:
+    def prove_shared_bounded(source: i64, shown: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 256
+        shared_bones(source, shown)
+
+    def prove_shared_within_both(source: i64, shown: i64) -> i64:
+        requires source >= 0
+        requires shown >= 0
+        ensure result <= source
+        ensure result <= shown
+        shared_bones(source, shown)
+
+    def prove_empty_shows_nothing(shown: i64) -> i64:
+        ensure result == 0
+        shared_bones(0, shown)
+
+    def prove_held_in_range(bone: i64, held: i64) -> bool:
+        ensure not result or bone < held
+        ensure not result or bone >= 0
+        held_has(bone, held)

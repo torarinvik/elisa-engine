@@ -1,0 +1,13 @@
+include "../src/runtime/render_scene_pose_playback.elisa"
+
+def main() -> i32:
+    shown: mutable MocapClip::Clip = MocapClip::Clip()
+    _ = catch PosePlayback::pose_buffer(&shown, 70):
+        value: value
+        error failure: return 1
+    pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+    written: i64 = catch RenderScene::fill_pose_from_playback(&shown, &pose):
+        value: value
+        error failure: -1
+    return 2 if written != 70
+    0
