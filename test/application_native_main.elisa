@@ -3,6 +3,7 @@
 # The generic application builder injects src/runtime/public.elisa before this
 # entry point, so this smoke exercises the same import surface as a game.
 include "./physics_app_probe.elisa"
+include "./application_clipboard_probe.elisa"
 include "./physics_primitives_probe.elisa"
 include "./runtime_services_probe.elisa"
 include "./user_data_probe.elisa"
@@ -363,6 +364,8 @@ def check_startup_requirements(config: Application::Config) -> i32:
 
 def exercise_application() -> i32:
     return 190 if Application::set_relative_mouse(true) != Application::RelativeMouse.NotRunning or Application::relative_mouse()
+    clipboard_idle: i32 = ApplicationClipboardProbe::before_start()
+    return clipboard_idle if clipboard_idle != 0
     config: Application::Config = Application::default_config()
     opened: Application::InitializeStatus = Application::initialize(config)
     return 1 if opened != Application::InitializeStatus.Ready
@@ -402,6 +405,8 @@ def exercise_application() -> i32:
     return 191 if relative == Application::RelativeMouse.NotRunning or relative == Application::RelativeMouse.Disabled
     return 193 if Application::set_relative_mouse(false) != Application::RelativeMouse.Disabled
     return 194 if Application::relative_mouse()
+    clipboard: i32 = ApplicationClipboardProbe::run()
+    return clipboard if clipboard != 0
     info: mutable Application::FrameInfo = zeroed
     return 9 if not Application::frame_info(&info)
     return 11 if info.frame_count != 1 or info.elapsed_nanos == 0 or Application::elapsed_seconds(info) <= 0.0

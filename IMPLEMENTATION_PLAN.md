@@ -575,6 +575,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   maximum-size round-trips, atomic replacement, corruption rejection and
   staged-read preservation. Display/audio-device selection and richer settings
   remain open. Progress on 2026-09-27: the character course saves its keymap as a versioned `course-controls` user-data record; a missing, wrong-version, duplicate-key or reserved-key record restores the defaults and says so. See [`course-controls.md`](docs/validation/course-controls.md). Progress on 2026-09-28: accessibility settings persist as a versioned `course-access` record that a second process restores and applies; wrong-version, off-step scale, non-0/1 flag and short records restore defaults with an in-game message. See [`course-accessibility.md`](docs/validation/course-accessibility.md).
+  Progress on 2026-09-30: clipboard slice done. There is now validated UTF-8 set and get text with size limits, covered by a smoke probe that restores the clipboard (docs/validation/clipboard.md). Paths, permissions and platform enumeration are still open.
 - [ ] **I04 · P1 · Unicode text and font assets** — After: I02, A04.
   Integrate FreeType/HarfBuzz with fallback fonts, glyph atlases, shaping caches, and justified ICU segmentation/bidi support. Done: mixed-direction, ligature, combining-mark, and fallback-font fixtures render and hit-test correctly without treating code units as glyph indices.
 - [ ] **I05 · P1 · Editable text and IME** — After: I04, I01.

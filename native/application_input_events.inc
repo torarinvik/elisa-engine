@@ -189,3 +189,5 @@ extern "C" int32_t elisa_application_v1_relative_mouse(void) {
     if (!service.initialized || service.host.window() == nullptr) return 0;
     return SDL_GetWindowRelativeMouseMode(service.host.window()) ? 1 : 0;
 }
+
+#include "application_clipboard.inc"

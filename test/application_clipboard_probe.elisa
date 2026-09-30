@@ -1,0 +1,55 @@
+# Clipboard checks for the native application smoke. The user's clipboard is
+# read first and restored afterwards; if it cannot be saved (too large or
+# unreadable) the write checks are skipped so the smoke never loses it.
+module ApplicationClipboardProbe:
+    private:
+        def text_of(bytes: u8[16], count: usize) -> ApplicationClipboard::Text:
+            text: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            for index in 0..<count |text, bytes|:
+                text.data[index] <- bytes[index]
+            text.count <- count
+            text
+
+        def same(a: ApplicationClipboard::Text&, b: ApplicationClipboard::Text&) -> bool:
+            equal: mutable bool = a.count == b.count
+            for index in 0..<a.count |equal, a, b|:
+                equal <- false if equal and a.data[index] != b.data[index]
+            equal
+
+    public:
+        # Before initialize: every call reports NotRunning.
+        def before_start() -> i32:
+            probe: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            return 195 if ApplicationClipboard::get_text(&probe) != ApplicationClipboard::Clipboard.NotRunning
+            return 195 if ApplicationClipboard::set_text(&probe) != ApplicationClipboard::Clipboard.NotRunning
+            0
+
+        def writes() -> i32:
+            # "Elisa ✓" in UTF-8 round-trips byte for byte.
+            sample: ApplicationClipboard::Text = text_of([69, 108, 105, 115, 97, 32, 226, 156, 147, 0, 0, 0, 0, 0, 0, 0], 9)
+            return 197 if ApplicationClipboard::set_text(&sample) != ApplicationClipboard::Clipboard.Ok
+            read: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            return 198 if ApplicationClipboard::get_text(&read) != ApplicationClipboard::Clipboard.Ok or not same(&read, &sample)
+            # Malformed UTF-8, a truncated sequence and a NUL byte are refused
+            # and leave the sample in place.
+            bad: ApplicationClipboard::Text = text_of([65, 255, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 3)
+            cut: ApplicationClipboard::Text = text_of([65, 226, 156, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 3)
+            nul: ApplicationClipboard::Text = text_of([65, 0, 66, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 3)
+            return 199 if ApplicationClipboard::set_text(&bad) != ApplicationClipboard::Clipboard.InvalidText
+            return 199 if ApplicationClipboard::set_text(&cut) != ApplicationClipboard::Clipboard.InvalidText
+            return 199 if ApplicationClipboard::set_text(&nul) != ApplicationClipboard::Clipboard.InvalidText
+            kept: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            return 200 if ApplicationClipboard::get_text(&kept) != ApplicationClipboard::Clipboard.Ok or not same(&kept, &sample)
+            0
+
+        def run() -> i32:
+            original: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            saved: ApplicationClipboard::Clipboard = ApplicationClipboard::get_text(&original)
+            return 196 if saved == ApplicationClipboard::Clipboard.NotRunning or saved == ApplicationClipboard::Clipboard.InvalidText
+            return 0 if saved != ApplicationClipboard::Clipboard.Ok
+            # Checks run first; the user's clipboard is restored whatever they found.
+            checked: i32 = writes()
+            return 201 if ApplicationClipboard::set_text(&original) != ApplicationClipboard::Clipboard.Ok
+            back: mutable ApplicationClipboard::Text = ApplicationClipboard::Text()
+            return 201 if ApplicationClipboard::get_text(&back) != ApplicationClipboard::Clipboard.Ok or not same(&back, &original)
+            checked
