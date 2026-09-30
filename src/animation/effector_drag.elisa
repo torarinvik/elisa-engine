@@ -1,0 +1,89 @@
+# Effector drag with an IK hook (M04). A session starts from the gizmo mode,
+# its basis, the skeleton's packed xyz joint positions, a joint chain (root
+# first, effector last) and the cursor ray at press. Each cursor ray gives a
+# target, the effector's start position moved by Gizmo::translate, and
+# `solve` is the default IK hook: FABRIK on the chain with the root fixed
+# and bone lengths kept. An app with its own IK takes `target` instead.
+# `cancel` returns the pre-drag positions bit for bit. Joints off the chain
+# are left where they were.
+include "./gizmo.elisa"
+include "./fabrik.elisa"
+include "./effector_drag_index.elisa"
+
+module EffectorDrag:
+    public:
+        struct Session:
+            live: bool
+            mode: i64
+            basis: darray[f64]
+            origin: darray[f64]
+            press: darray[f64]
+            chain: darray[i64]
+            saved: Gizmo::Drag
+
+        struct Step:
+            positions: darray[f64]
+            outcome: AnimationFabrik::Outcome
+            residual: f64
+
+        # A session, not live when the mode, basis, ray, positions or chain
+        # are unusable (a chain must be 2-8 joints in the skeleton with no
+        # joint repeated back to back).
+        def begin(mode: i64, basis: darray[f64]&, positions: darray[f64]&, chain: darray[i64]&, press: darray[f64]&) -> Session:
+            joints: i64 = positions.count.i64() / 3
+            mutable ok: bool = GizmoIndex::valid(mode) and basis.count == 9 and press.count == 6
+            ok <- ok and positions.count.i64() == joints * 3 and EffectorDragIndex::valid_chain(chain.count.i64(), joints)
+            mutable previous: i64 = -1
+            for k in 0..<chain.count |chain, ok, previous, joints|:
+                ok <- ok and EffectorDragIndex::link(chain[k], previous, joints)
+                previous <- chain[k]
+            mutable origin: darray[f64] = [0.0, 0.0, 0.0]
+            if ok:
+                effector: i64 = chain[chain.count - 1]
+                origin <- [positions[EffectorDragIndex::slot(effector, 0, joints).usize()],
+                    positions[EffectorDragIndex::slot(effector, 1, joints).usize()],
+                    positions[EffectorDragIndex::slot(effector, 2, joints).usize()]]
+            Session{live: ok, mode: mode, basis: basis, origin: origin, press: press, chain: chain, saved: Gizmo::begin(mode, positions)}
+
+        # Effector target for cursor ray `now`: its start position plus the
+        # constrained drag. The start position when the drag cannot be
+        # measured; empty for a dead session or a bad ray.
+        def target(session: Session&, now: darray[f64]&) -> darray[f64]:
+            none: darray[f64] = []
+            return none if not session.live or now.count != 6
+            delta: darray[f64] = Gizmo::translate(session.mode, session.basis, session.origin, session.press, now)
+            out: darray[f64] = [session.origin[0] + delta[0], session.origin[1] + delta[1], session.origin[2] + delta[2]]
+            out
+
+        # Default IK hook: the pre-drag positions with the chain solved toward
+        # `goal` by FABRIK. Invalid (and the pre-drag positions) for a dead
+        # session, a bad goal, tolerance or iteration count.
+        def solve(session: Session&, goal: darray[f64]&, tolerance: f64, iterations: i64) -> Step:
+            positions: mutable darray[f64] = Gizmo::cancel(session.saved)
+            invalid: Step = Step{positions: Gizmo::cancel(session.saved), outcome: AnimationFabrik::Outcome.Invalid, residual: 0.0}
+            return invalid if not session.live or goal.count != 3
+            return invalid if not (goal[0] == goal[0] and goal[1] == goal[1] and goal[2] == goal[2])
+            joints: i64 = positions.count.i64() / 3
+            mutable c: AnimationFabrik::Chain = AnimationFabrik::Chain{x: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                y: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], z: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], count: session.chain.count.i64()}
+            mutable xs: f64[8] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            mutable ys: f64[8] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            mutable zs: f64[8] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            for k in 0..<session.chain.count |session, positions, joints, xs, ys, zs|:
+                j: i64 = session.chain[k]
+                xs[k] <- positions[EffectorDragIndex::slot(j, 0, joints).usize()]
+                ys[k] <- positions[EffectorDragIndex::slot(j, 1, joints).usize()]
+                zs[k] <- positions[EffectorDragIndex::slot(j, 2, joints).usize()]
+            c <- AnimationFabrik::Chain{x: xs, y: ys, z: zs, count: session.chain.count.i64()}
+            result: AnimationFabrik::Result = AnimationFabrik::solve(&c, goal[0], goal[1], goal[2], tolerance, iterations)
+            return invalid if result.outcome == AnimationFabrik::Outcome.Invalid
+            for k in 0..<session.chain.count |session, positions, joints, c|:
+                j: i64 = session.chain[k]
+                positions[EffectorDragIndex::slot(j, 0, joints).usize()] <- c.x[k]
+                positions[EffectorDragIndex::slot(j, 1, joints).usize()] <- c.y[k]
+                positions[EffectorDragIndex::slot(j, 2, joints).usize()] <- c.z[k]
+            Step{positions: positions, outcome: result.outcome, residual: result.residual}
+
+        # The positions to show after cancelling: bit for bit the pre-drag ones.
+        def cancel(session: Session&) -> darray[f64]:
+            Gizmo::cancel(session.saved)

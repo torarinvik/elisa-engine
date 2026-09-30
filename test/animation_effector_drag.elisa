@@ -1,0 +1,88 @@
+include "../src/animation/effector_drag.elisa"
+
+def near(a: f64, b: f64, e: f64) -> bool:
+    a - b < e and b - a < e
+
+def bone(p: darray[f64]&, a: usize, b: usize) -> f64:
+    AnimationFabrik::distance(p[a * 3], p[a * 3 + 1], p[a * 3 + 2], p[b * 3], p[b * 3 + 1], p[b * 3 + 2])
+
+# Hip (0, 1, 0), knee (0, 0.5, 0.3), ankle (0, 0, 0), plus a spare joint 3
+# off the chain at (0.3, 1, 0). The knee z carries -0.0 and a subnormal y
+# offset in the spare so the exact cancel is visible.
+def pose() -> darray[f64]:
+    [0.0, 1.0, 0.0, 0.0, 0.5, 0.3, 0.0, 0.0, -0.0, 0.3, 1.0, 4.9e-324]
+
+def main() -> i32:
+    positions: darray[f64] = pose()
+    chain: darray[i64] = [0, 1, 2]
+    basis: darray[f64] = Gizmo::world_basis()
+    # Drag the ankle along world z: the camera looks along -y from above.
+    press: darray[f64] = [0.0, 5.0, 0.0, 0.0, -1.0, 0.0]
+    session: EffectorDrag::Session = EffectorDrag::begin(GizmoIndex::AXIS_Z, basis, positions, chain, press)
+    return 1 if not session.live
+    now: darray[f64] = [0.2, 5.0, 0.1, 0.0, -1.0, 0.0]
+    goal: darray[f64] = EffectorDrag::target(session, now)
+    # Axis-constrained: only z moves, by 0.1; x stays 0.
+    return 2 if goal.count != 3 or not (near(goal[0], 0.0, 1.0e-12) and near(goal[1], 0.0, 1.0e-12) and near(goal[2], 0.1, 1.0e-12))
+    step: EffectorDrag::Step = EffectorDrag::solve(session, goal, 0.000001, 32)
+    return 3 if step.outcome != AnimationFabrik::Outcome.Reached
+    p: darray[f64] = step.positions
+    return 4 if p.count != 12
+    # The effector reached the goal, the root stayed, and bone lengths held.
+    return 5 if not (near(p[6], 0.0, 1.0e-5) and near(p[7], 0.0, 1.0e-5) and near(p[8], 0.1, 1.0e-5))
+    return 6 if p[0] != 0.0 or p[1] != 1.0 or p[2] != 0.0
+    rest: darray[f64] = pose()
+    return 7 if not near(bone(p, 0, 1), bone(rest, 0, 1), 1.0e-9) or not near(bone(p, 1, 2), bone(rest, 1, 2), 1.0e-9)
+    # The spare joint off the chain is untouched.
+    return 8 if p[9] != 0.3 or p[10] != 1.0 or p[11] != 4.9e-324
+    # A second update starts again from the pre-drag pose, not the last step.
+    back: darray[f64] = [0.0, 0.0, 0.0]
+    again: EffectorDrag::Step = EffectorDrag::solve(session, back, 0.000001, 32)
+    return 9 if again.outcome != AnimationFabrik::Outcome.Reached or not near(again.positions[8], 0.0, 1.0e-5)
+    # Too far: the chain straightens toward the goal and reports the gap.
+    far: darray[f64] = [0.0, 0.0, 3.0]
+    reach: EffectorDrag::Step = EffectorDrag::solve(session, far, 0.000001, 32)
+    return 10 if reach.outcome != AnimationFabrik::Outcome.Unreachable or not (reach.residual > 1.0)
+    # Cancel returns the pre-drag positions bit for bit, -0.0 and subnormal included.
+    restored: darray[f64] = EffectorDrag::cancel(session)
+    return 11 if restored.count != 12
+    for i in 0..<12 |restored, rest|:
+        return 12 if restored[i] != rest[i]
+    return 14 if 1.0 / restored[8] > 0.0
+    return 15 if restored[11] <= 0.0
+    # A plane drag (XZ, mode 4) follows the cursor in x and z.
+    plane: EffectorDrag::Session = EffectorDrag::begin(GizmoIndex::PLANE_XZ, basis, positions, chain, press)
+    moved: darray[f64] = EffectorDrag::target(plane, now)
+    return 16 if not (near(moved[0], 0.2, 1.0e-12) and near(moved[1], 0.0, 1.0e-12) and near(moved[2], 0.1, 1.0e-12))
+    # Rejected sessions and inputs.
+    one: darray[i64] = [2]
+    return 20 if EffectorDrag::begin(4, basis, positions, one, press).live
+    nine: darray[i64] = [0, 1, 2, 0, 1, 2, 0, 1, 2]
+    return 21 if EffectorDrag::begin(4, basis, positions, nine, press).live
+    outside: darray[i64] = [0, 1, 4]
+    return 22 if EffectorDrag::begin(4, basis, positions, outside, press).live
+    repeated: darray[i64] = [0, 1, 1]
+    return 23 if EffectorDrag::begin(4, basis, positions, repeated, press).live
+    negative: darray[i64] = [-1, 1, 2]
+    return 24 if EffectorDrag::begin(4, basis, positions, negative, press).live
+    return 25 if EffectorDrag::begin(7, basis, positions, chain, press).live
+    ragged: darray[f64] = [0.0, 1.0, 0.0, 0.0, 0.5]
+    return 26 if EffectorDrag::begin(4, basis, ragged, chain, press).live
+    short_ray: darray[f64] = [0.0, 5.0, 0.0]
+    return 27 if EffectorDrag::begin(4, basis, positions, chain, short_ray).live
+    return 28 if EffectorDrag::begin(4, short_ray, positions, chain, press).live
+    dead: EffectorDrag::Session = EffectorDrag::begin(7, basis, positions, chain, press)
+    return 29 if EffectorDrag::target(dead, now).count != 0
+    return 30 if EffectorDrag::target(session, short_ray).count != 0
+    return 31 if EffectorDrag::solve(dead, goal, 0.000001, 32).outcome != AnimationFabrik::Outcome.Invalid
+    pair: darray[f64] = [0.0, 0.0]
+    return 32 if EffectorDrag::solve(session, pair, 0.000001, 32).outcome != AnimationFabrik::Outcome.Invalid
+    nan_goal: darray[f64] = [0.0, 0.0 / 0.0, 0.0]
+    bad: EffectorDrag::Step = EffectorDrag::solve(session, nan_goal, 0.000001, 32)
+    return 33 if bad.outcome != AnimationFabrik::Outcome.Invalid or bad.positions[8] != 0.0
+    return 34 if EffectorDrag::solve(session, goal, 0.0, 32).outcome != AnimationFabrik::Outcome.Invalid
+    return 35 if EffectorDrag::solve(session, goal, 0.000001, 0).outcome != AnimationFabrik::Outcome.Invalid
+    # A non-chain joint in the middle: the chain may skip joints (0 -> 3).
+    skip: darray[i64] = [0, 3]
+    return 36 if not EffectorDrag::begin(4, basis, positions, skip, press).live
+    0

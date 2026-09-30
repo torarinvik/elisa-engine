@@ -1,0 +1,43 @@
+# Integer rules for EffectorDrag, split out so the prover can check them:
+# which chains a drag accepts and where a joint's coordinates sit in a
+# packed xyz position array.
+module EffectorDragIndex:
+    public:
+        const MIN_CHAIN: i64 = 2
+        const MAX_CHAIN: i64 = 8
+        const MAX_JOINTS: i64 = 256
+
+        # A chain of `length` joints in a skeleton of `joints` joints: two to
+        # eight joints (the FABRIK limit), at most 256 joints.
+        def valid_chain(length: i64, joints: i64) -> bool:
+            ensure not result or length >= 2
+            ensure not result or length <= 8
+            ensure not result or joints >= length
+            ensure not result or joints <= 256
+            return false if length < MIN_CHAIN or length > MAX_CHAIN
+            return false if joints < length or joints > MAX_JOINTS
+            true
+
+        # Index of coordinate `axis` (0-2) of `joint` in a packed xyz array,
+        # or -1 outside the skeleton.
+        def slot(joint: i64, axis: i64, joints: i64) -> i64:
+            requires joints >= 0
+            requires joints <= 256
+            ensure result >= -1
+            ensure result < 768
+            ensure joint >= 0 or result == -1
+            ensure joint < joints or result == -1
+            ensure axis >= 0 or result == -1
+            ensure axis < 3 or result == -1
+            ensure joint < 0 or joint >= joints or axis < 0 or axis >= 3 or result == joint + joint + joint + axis
+            return -1 if joint < 0 or joint >= joints or axis < 0 or axis >= 3
+            joint + joint + joint + axis
+
+        # Whether chain entry `k` may be joint `joint`: inside the skeleton and
+        # different from the entry before it (`previous`, -1 for the root).
+        def link(joint: i64, previous: i64, joints: i64) -> bool:
+            ensure not result or joint >= 0
+            ensure not result or joint < joints
+            ensure not result or joint != previous
+            return false if joint < 0 or joint >= joints
+            joint != previous
