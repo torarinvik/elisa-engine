@@ -73,3 +73,30 @@ extern "C" int32_t elisa_render_scene_v1_resource_counts(int32_t* instances,
     *scene_entities = static_cast<int32_t>(state.scene->transforms.GetCount());
     return ELISA_RENDER_SCENE_OK;
 }
+
+// Read back what Wicked holds for one instance: its world-space position
+// in Elisa axes (valid after a frame update), and its material's PBR flag and parameters.
+extern "C" int32_t elisa_render_scene_v1_instance_probe(int64_t handle, float* position,
+    int32_t* lit, float* roughness, float* metallic) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (position == nullptr || lit == nullptr || roughness == nullptr || metallic == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    wi::ecs::Entity entity = state.instances[slot].entity;
+    const auto* transform = state.scene->transforms.GetComponent(entity);
+    const auto* material = state.scene->materials.GetComponent(entity);
+    if (transform == nullptr || material == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    XMFLOAT3 world = probe::coordinates::from_wicked(transform->GetPosition());
+    position[0] = world.x;
+    position[1] = world.y;
+    position[2] = world.z;
+    *lit = material->shaderType == wi::scene::MaterialComponent::SHADERTYPE_PBR ? 1 : 0;
+    *roughness = material->roughness;
+    *metallic = material->metalness;
+    return ELISA_RENDER_SCENE_OK;
+}
