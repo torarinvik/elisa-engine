@@ -1,0 +1,96 @@
+# Relative pointer input as per-frame action axes. Mouse motion and wheel
+# deltas are accumulated into bound actions for one frame (look, zoom,
+# scroll) rather than held like buttons; each binding carries its own scale
+# so sensitivity and inverted look are settings, not game code.
+include "application_input.elisa"
+
+module ActionPointerAxes:
+    public:
+        const MAX_AXIS_BINDINGS: usize = 8
+        # One frame's accumulated magnitude is clamped so a hitch or a
+        # flung mouse cannot spin a camera through several turns.
+        const MAX_FRAME_VALUE: f32 = 10000.0
+
+        enum Source:
+            MotionX
+            MotionY
+            WheelX
+            WheelY
+
+        struct AxisBinding:
+            action: i64
+            source: Source
+            scale: f32
+            live: bool
+
+        struct Axes:
+            bindings: mutable AxisBinding[8]
+            values: mutable f32[8]
+            count: mutable usize
+            enabled: mutable bool
+
+        def Axes() -> Axes:
+            Axes{bindings: zeroed, values: zeroed, count: 0, enabled: true}
+
+        # Refuses a ninth binding, a non-positive action, a zero or
+        # non-finite scale, and a second binding of the same action+source.
+        def pointer_axis_bind(axes: mutable Axes&, binding: AxisBinding) -> bool:
+            return false if axes.count >= MAX_AXIS_BINDINGS or binding.action <= 0
+            return false if binding.scale == 0.0 or binding.scale != binding.scale
+            return false if binding.scale > 1000.0 or binding.scale < -1000.0
+            mutable duplicate: bool = false
+            for index in 0..<axes.count |duplicate|:
+                existing: AxisBinding = axes.bindings[index]
+                duplicate <- true if existing.action == binding.action and existing.source == binding.source
+            return false if duplicate
+            axes.bindings[axes.count] <- AxisBinding{action: binding.action, source: binding.source,
+                scale: binding.scale, live: true}
+            axes.count <- axes.count + 1
+            true
+
+        # Changes sensitivity or inversion of an existing binding in place.
+        def pointer_axis_set_scale(axes: mutable Axes&, action: i64, source: Source, scale: f32) -> bool:
+            return false if scale == 0.0 or scale != scale or scale > 1000.0 or scale < -1000.0
+            mutable found: bool = false
+            for index in 0..<axes.count |found, axes|:
+                if axes.bindings[index].action == action and axes.bindings[index].source == source:
+                    old: AxisBinding = axes.bindings[index]
+                    axes.bindings[index] <- AxisBinding{action: old.action, source: old.source,
+                        scale: scale, live: old.live}
+                    found <- true
+            found
+
+        def pointer_axis_begin_frame(axes: mutable Axes&) -> void:
+            for index in 0..<MAX_AXIS_BINDINGS |axes|:
+                axes.values[index] <- 0.0
+
+        # Disabled while a menu owns the pointer; enabling again starts clean.
+        def pointer_axis_set_enabled(axes: mutable Axes&, enabled: bool) -> void:
+            axes.enabled <- enabled
+            pointer_axis_begin_frame(axes)
+
+        def pointer_axis_apply(axes: mutable Axes&, event: Application::PointerEvent) -> void:
+            if event.kind == Application::PointerEventKind.FocusLost or event.kind == Application::PointerEventKind.Overflow:
+                pointer_axis_begin_frame(axes)
+                return
+            return if not axes.enabled
+            motion: bool = event.kind == Application::PointerEventKind.Motion
+            wheel: bool = event.kind == Application::PointerEventKind.Wheel
+            return if not motion and not wheel
+            for index in 0..<axes.count |axes, event, motion, wheel|:
+                binding: AxisBinding = axes.bindings[index]
+                mutable delta: f32 = 0.0
+                delta <- event.delta_x if motion and binding.source == Source.MotionX
+                delta <- event.delta_y if motion and binding.source == Source.MotionY
+                delta <- event.delta_x if wheel and binding.source == Source.WheelX
+                delta <- event.delta_y if wheel and binding.source == Source.WheelY
+                total: f32 = axes.values[index] + delta * binding.scale
+                bounded: f32 = MAX_FRAME_VALUE if total > MAX_FRAME_VALUE else (0.0 - MAX_FRAME_VALUE if total < 0.0 - MAX_FRAME_VALUE else total)
+                axes.values[index] <- bounded
+
+        # Sum of this frame's contributions to `action` across its bindings.
+        def pointer_axis_value(axes: Axes&, action: i64) -> f32:
+            mutable total: f32 = 0.0
+            for index in 0..<axes.count |total|:
+                total <- total + axes.values[index] if axes.bindings[index].action == action
+            total
