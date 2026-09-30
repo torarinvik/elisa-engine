@@ -540,6 +540,18 @@ int32_t elisa_render_scene_v1_debug_text(
     const char* text, float x, float y, float z,
     float red, float green, float blue, float alpha,
     int32_t depth_tested);
+enum {
+    ELISA_RENDER_SCENE_DEBUG_LINE_CHUNK = 256u,
+    ELISA_RENDER_SCENE_DEBUG_LINE_VALUES = 10u,
+    ELISA_RENDER_SCENE_DEBUG_MAX_BATCH_LINES = 16384u,
+};
+/* Start xyz, end xyz and rgba per line; returns the lines queued. */
+typedef struct ElisaRenderSceneDebugLineChunk {
+    float values[ELISA_RENDER_SCENE_DEBUG_LINE_CHUNK * ELISA_RENDER_SCENE_DEBUG_LINE_VALUES];
+    uint32_t count;
+    int32_t depth_tested;
+} ElisaRenderSceneDebugLineChunk;
+int32_t elisa_render_scene_v1_debug_line_chunk(const ElisaRenderSceneDebugLineChunk* chunk);
 int32_t elisa_render_scene_v1_debug_flush(void);
 int32_t elisa_render_scene_v1_debug_clear(void);
 int64_t elisa_render_scene_v1_create_overlay_image(const char* asset_path,

@@ -1,12 +1,64 @@
 include "../src/runtime/render_scene_debug.elisa"
 include "../src/runtime/application_capture.elisa"
 include "../src/math/geometry.elisa"
+include "../src/animation/overlay_lines.elisa"
 
 module RenderSceneDebugNativeTests:
     private:
         def save_capture(environment_name: cstr) -> bool:
             path: cstr = Application::environment_value(environment_name)
             path != "" and Application::save_screenshot(path)
+
+        # `lines` records around a ring of radius 1.5 at height 0.5, heat
+        # rising around the ring so every colour stop shows.
+        def ring(lines: i64) -> darray[f64]:
+            points: mutable darray[f64] = []
+            heat: mutable darray[f64] = []
+            for i in 0..<(lines + 1).usize() |points, heat, lines|:
+                a: f64 = 6.283185307179586 * i.i64().f64() / lines.f64()
+                points.push(1.5 * ElisaMath::cos(a))
+                points.push(0.5)
+                points.push(1.5 * ElisaMath::sin(a))
+                heat.push(i.i64().f64() / lines.f64())
+            OverlayLines::trail(points, heat)
+
+        # Batched line records: whole-chunk rejection, the batch capacity and
+        # a flush that reports every batched line.
+        def exercise_batches() -> i32:
+            chunk: mutable RenderScene::DebugLineChunk = RenderScene::DebugLineChunk()
+            full: darray[f64] = ring(16384)
+            queued: usize = catch RenderScene::debug_line_records(full, true, chunk):
+                value: value
+                error failure: return 20
+            return 21 if queued != 16384
+            one: darray[f64] = ring(1)
+            over: i32 = catch RenderScene::debug_line_records(one, true, chunk):
+                value: 0
+                RenderScene::RenderSceneError.Capacity: 1
+                error failure: 2
+            return 22 if over != 1
+            flushed: usize = catch RenderScene::debug_flush():
+                value: value
+                error failure: return 23
+            return 24 if flushed != 16384
+            broken: mutable darray[f64] = ring(3)
+            broken[14] <- 0.0 / 0.0
+            rejected: i32 = catch RenderScene::debug_line_records(broken, false, chunk):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 25 if rejected != 1
+            ragged: darray[f64] = [0.0, 0.0, 0.0]
+            uneven: i32 = catch RenderScene::debug_line_records(ragged, false, chunk):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 26 if uneven != 1
+            none: usize = catch RenderScene::debug_flush():
+                value: value
+                error failure: return 27
+            return 28 if none != 0
+            0
 
     public:
         def exercise() -> i32:
@@ -65,6 +117,8 @@ module RenderSceneDebugNativeTests:
                 value: value
                 error failure: return 7
             return 8 if flushed != 3
+            batch_status: i32 = exercise_batches()
+            return batch_status if batch_status != 0
             auto_line_status: i32 = catch RenderScene::debug_line(
                 Geometry::Vec3{x: -1.0, y: 0.0, z: 1.0},
                 Geometry::Vec3{x: 1.0, y: 0.0, z: 1.0}, RenderScene::Color{
@@ -73,6 +127,12 @@ module RenderSceneDebugNativeTests:
                 ok: 0
                 error failure: 1
             return 9 if auto_line_status != 0
+            chunk: mutable RenderScene::DebugLineChunk = RenderScene::DebugLineChunk()
+            overlay: darray[f64] = ring(2418)
+            overlay_queued: usize = catch RenderScene::debug_line_records(overlay, false, chunk):
+                value: value
+                error failure: return 29
+            return 30 if overlay_queued != 2418
             return 10 if Application::pump() != Application::PumpStatus.Running
             auto_flushed: usize = catch RenderScene::debug_flush():
                 value: value

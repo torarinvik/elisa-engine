@@ -6,9 +6,20 @@ module RenderSceneDebug:
     public:
         const API_VERSION: i32 = 1
         const MAX_COMMANDS: usize = 128
+        const LINE_CHUNK: usize = 256
+        const LINE_VALUES: usize = 10
+        const MAX_BATCH_LINES: usize = 16384
 
 extend RenderScene:
     private:
+        struct NativeDebugLineChunk:
+            values: f32[RenderSceneDebug::LINE_CHUNK * RenderSceneDebug::LINE_VALUES]
+            count: mutable u32
+            depth_tested: mutable i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_line_chunk(
+            chunk: mutable NativeDebugLineChunk&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_debug_box(
             min_x: f32, min_y: f32, min_z: f32,
@@ -56,6 +67,34 @@ extend RenderScene:
                 position.x, position.y, position.z,
                 color.red, color.green, color.blue, color.alpha,
                 depth_value(depth_tested)))
+
+        struct DebugLineChunk:
+            private:
+                native: mutable NativeDebugLineChunk
+
+        def DebugLineChunk() -> DebugLineChunk:
+            DebugLineChunk{native: zeroed}
+
+        # Queues line records (start xyz, end xyz, rgba per line) for the
+        # next flush, 256 lines per native call. Every chunk is checked
+        # whole; on an error, the chunks before it stay queued.
+        def debug_line_records(records: darray[f64]&, depth_tested: bool,
+            chunk: mutable DebugLineChunk&) -> usize error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if records.count % RenderSceneDebug::LINE_VALUES != 0
+            lines: usize = records.count / RenderSceneDebug::LINE_VALUES
+            raise RenderSceneError.InvalidValue if lines > RenderSceneDebug::MAX_BATCH_LINES
+            chunk.native.depth_tested <- depth_value(depth_tested)
+            start: mutable usize = 0
+            while start < lines:
+                take: usize = RenderSceneDebug::LINE_CHUNK if lines - start > RenderSceneDebug::LINE_CHUNK else lines - start
+                for v in 0..<take * RenderSceneDebug::LINE_VALUES |chunk, records, start|:
+                    chunk.native.values[v] <- records[start * RenderSceneDebug::LINE_VALUES + v].f32()
+                chunk.native.count <- take.u32()
+                queued: i32 = elisa_render_scene_v1_debug_line_chunk(&chunk.native)
+                if queued < 0:
+                    try check_status(queued)
+                start <- start + take
+            lines
 
         def debug_flush() -> usize error[RenderSceneError]:
             flushed: i32 = elisa_render_scene_v1_debug_flush()

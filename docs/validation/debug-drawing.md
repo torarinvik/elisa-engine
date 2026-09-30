@@ -21,7 +21,17 @@ the existing frame and resource invariants.
 hidden SDL3/Metal scene. It saves a frame with debug drawing cleared, submits a
 box, two lines, and depth-tested text, then saves the visible frame. The native
 smoke decodes both 640x400 PNGs and requires at least 64 changed pixels. On
-macOS 27, the focused gate passed with 778 changed pixels. Run it with:
+macOS 27, the focused gate passed with 778 changed pixels before batched lines
+and 1052 after the test added a 2418-line heat-coloured trail ring.
+
+Batched lines go through `elisa_render_scene_v1_debug_line_chunk`. Each call carries
+up to 256 records of 10 floats: two points and an RGBA colour. `RenderScene::debug_line_records`
+splits an `animation::overlay_lines` record array into chunks. The bridge accepts a chunk
+only if every value is finite and all of its lines fit in the 16384-line batch; otherwise
+it queues nothing. The native test fills the batch exactly, then checks that one more line
+reports Capacity. It also checks that a flush returns 16384, that NaN and ragged records are
+rejected as InvalidValue, and that an empty flush returns 0. The Wicked probe covers the same
+all-or-nothing rule in C++. Run it with:
 
 ```sh
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \

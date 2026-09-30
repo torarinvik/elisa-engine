@@ -8,12 +8,14 @@
 #include <cmath>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace probe {
 
 class DebugDrawBridge {
 public:
     static constexpr uint32_t MAX_COMMANDS = 128;
+    static constexpr uint32_t MAX_BATCH_LINES = 16384;
 
     bool box(const XMFLOAT3& minimum, const XMFLOAT3& maximum,
         const XMFLOAT4& color, bool depth_tested) {
@@ -46,11 +48,35 @@ public:
         return true;
     }
 
-    uint32_t pending() const { return count_; }
+    // Queues `count` lines of ten floats each (start, end, rgba) as one
+    // batch, all or nothing, beside the per-command slots.
+    bool line_batch(const float* values, uint32_t count, bool depth_tested) {
+        if (values == nullptr || count > MAX_BATCH_LINES - uint32_t(batch_.size())) return false;
+        for (uint32_t index = 0; index < count * 10; ++index) {
+            if (!std::isfinite(values[index])) return false;
+        }
+        batch_.reserve(batch_.size() + count);
+        for (uint32_t index = 0; index < count; ++index) {
+            const float* v = values + index * 10;
+            batch_.push_back({XMFLOAT3(v[0], v[1], v[2]), XMFLOAT3(v[3], v[4], v[5]),
+                XMFLOAT4(v[6], v[7], v[8], v[9]), depth_tested, true});
+        }
+        return true;
+    }
+
+    uint32_t pending() const { return count_ + uint32_t(batch_.size()); }
 
     uint32_t flush() {
-        const uint32_t flushed = count_;
-        for (uint32_t index = 0; index < flushed; ++index) {
+        const uint32_t flushed = pending();
+        for (const LineCommand& batched : batch_) {
+            wi::renderer::RenderableLine line;
+            line.start = batched.start;
+            line.end = batched.end;
+            line.color_start = batched.color;
+            line.color_end = batched.color;
+            wi::renderer::DrawLine(line, batched.depth_tested);
+        }
+        for (uint32_t index = 0; index < count_; ++index) {
             if (boxes_[index].valid) {
                 wi::renderer::DrawBox(boxes_[index].bounds, boxes_[index].color,
                     boxes_[index].depth_tested);
@@ -78,6 +104,7 @@ public:
 
     void clear() {
         count_ = 0;
+        batch_.clear();
         for (uint32_t index = 0; index < MAX_COMMANDS; ++index) {
             boxes_[index].valid = false;
             lines_[index].valid = false;
@@ -119,6 +146,7 @@ private:
     std::array<BoxCommand, MAX_COMMANDS> boxes_{};
     std::array<LineCommand, MAX_COMMANDS> lines_{};
     std::array<TextCommand, MAX_COMMANDS> texts_{};
+    std::vector<LineCommand> batch_;
     uint32_t count_ = 0;
 };
 
@@ -134,6 +162,16 @@ inline bool probe_debug_draw_bridge() {
             XMFLOAT4(1, 1, 1, 1), true), "debug draw rejects non-finite bounds") ||
         !check(bridge.pending() == 3 && bridge.flush() == 3 && bridge.pending() == 0,
             "debug draw flushes and clears scope")) return false;
+    std::vector<float> lines(300 * 10, 0.5f);
+    if (!check(bridge.line_batch(lines.data(), 300, true) && bridge.pending() == 300,
+            "debug draw batches lines past the command slots") ||
+        !check(!bridge.line_batch(lines.data(), DebugDrawBridge::MAX_BATCH_LINES, true) &&
+            bridge.pending() == 300, "debug draw rejects a batch past capacity whole")) return false;
+    lines[17] = NAN;
+    if (!check(!bridge.line_batch(lines.data(), 2, false) && bridge.pending() == 300,
+            "debug draw rejects a non-finite batch whole") ||
+        !check(bridge.flush() == 300 && bridge.pending() == 0,
+            "debug draw flushes batched lines")) return false;
     return true;
 }
 
