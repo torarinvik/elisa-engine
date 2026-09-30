@@ -1,0 +1,16 @@
+include "../src/animation/contact_index.elisa"
+
+extend ContactIndex:
+    def prove_step_rules(held: bool, enter: bool, leave: bool) -> bool:
+        ensure not enter or held or result
+        ensure held or enter or not result
+        ensure not held or leave or result
+        step(held, enter, leave)
+
+    def prove_keep_inside(first: i64, last: i64, min_frames: i64, frames: i64) -> bool:
+        requires frames <= 1048576
+        requires min_frames <= 1048576
+        ensure not result or first >= 0
+        ensure not result or last < frames
+        ensure not result or last - first + 1 >= min_frames
+        keep(first, last, min_frames, frames)

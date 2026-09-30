@@ -1,0 +1,79 @@
+# Ground-contact detection for the overlay (M05): the frames where a foot
+# joint is low and nearly still, as spans with enter/exit hysteresis so
+# sensor jitter at the threshold does not flicker, and the touch-down
+# positions where the viewport draws a contact marker.
+include "../vendor/elisa_math.elisa"
+include "./overlay_index.elisa"
+include "./contact_index.elisa"
+
+module FootContact:
+    public:
+        struct Limits:
+            enter_height: f64
+            exit_height: f64
+            enter_speed: f64
+            exit_speed: f64
+            min_frames: i64
+
+        # Speed of `joint` at each frame in units per second: the step from
+        # the previous frame (frame 0 uses the step to frame 1). Empty for a
+        # malformed shape.
+        def frame_speeds(positions: darray[f64]&, frames: i64, joints: i64, joint: i64, fps: f64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if frames < 1 or frames > OverlayIndex::MAX_FRAMES or joints < 0 or joints > OverlayIndex::MAX_JOINTS
+            return out if positions.count.i64() != frames * joints * 3 or joint < 0 or joint >= joints
+            for f in 0..<frames.usize() |out, positions, frames, joints, joint, fps|:
+                here: i64 = f.i64()
+                there: i64 = here - 1 if here > 0 else (1 if frames > 1 else 0)
+                sum: mutable f64 = 0.0
+                for axis in 0..<3 |sum, positions, frames, joints, joint, here, there|:
+                    a: i64 = OverlayIndex::slot(here, joint, axis.i64(), frames, joints)
+                    b: i64 = OverlayIndex::slot(there, joint, axis.i64(), frames, joints)
+                    d: f64 = positions[a.usize()] - positions[b.usize()]
+                    sum <- sum + d * d
+                out.push(ElisaMath::sqrt(sum) * fps)
+            out
+
+        # Contact spans of `joint` as [first, last] frame pairs. A contact
+        # starts where the height along `up` is at most enter_height and the
+        # speed at most enter_speed, and ends after the last frame before the
+        # height passes exit_height or the speed passes exit_speed. Spans
+        # shorter than min_frames are dropped. NaN never enters a contact.
+        def spans(positions: darray[f64]&, frames: i64, joints: i64, joint: i64, up: i64, fps: f64, limits: Limits) -> darray[i64]:
+            out: mutable darray[i64] = []
+            return out if up < 0 or up >= 3
+            speed: darray[f64] = frame_speeds(positions, frames, joints, joint, fps)
+            return out if speed.count.i64() != frames
+            held: mutable bool = false
+            start: mutable i64 = 0
+            for f in 0..<frames.usize() |out, held, start, positions, frames, joints, joint, up, limits, speed|:
+                here: i64 = f.i64()
+                h: f64 = positions[OverlayIndex::slot(here, joint, up, frames, joints).usize()]
+                v: f64 = speed[f]
+                enter: bool = h <= limits.enter_height and v <= limits.enter_speed
+                leave: bool = not (h <= limits.exit_height and v <= limits.exit_speed)
+                now: bool = ContactIndex::step(held, enter, leave)
+                if now and not held:
+                    start <- here
+                if held and not now and ContactIndex::keep(start, here - 1, limits.min_frames, frames):
+                    out.push(start)
+                    out.push(here - 1)
+                held <- now
+            if held and ContactIndex::keep(start, frames - 1, limits.min_frames, frames):
+                out.push(start)
+                out.push(frames - 1)
+            out
+
+        # Marker positions (xyz) at each span's touch-down frame.
+        def markers(found: darray[i64]&, positions: darray[f64]&, frames: i64, joints: i64, joint: i64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            return out if frames < 1 or frames > OverlayIndex::MAX_FRAMES or joints < 0 or joints > OverlayIndex::MAX_JOINTS
+            return out if positions.count.i64() != frames * joints * 3
+            pairs: i64 = found.count.i64() / 2
+            for i in 0..<pairs.usize() |out, found, positions, frames, joints, joint|:
+                first: i64 = found[i * 2]
+                for axis in 0..<3 |out, positions, frames, joints, joint, first|:
+                    at: i64 = OverlayIndex::slot(first, joint, axis.i64(), frames, joints)
+                    if at >= 0:
+                        out.push(positions[at.usize()])
+            out

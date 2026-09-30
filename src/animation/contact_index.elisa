@@ -1,0 +1,31 @@
+# Integer and flag rules for FootContact, split out so the prover can check
+# them: the enter/exit hysteresis step, which contact spans are long enough
+# to keep. A span's ground marker sits on its touch-down frame.
+module ContactIndex:
+    public:
+        const MAX_FRAMES: i64 = 1048576
+
+        # Contact state after one frame: a contact starts only when the enter
+        # test passes and, once started, holds until the exit test fires.
+        def step(held: bool, enter: bool, leave: bool) -> bool:
+            ensure not enter or held or result
+            ensure held or enter or not result
+            ensure not held or leave or result
+            ensure not held or not leave or enter or not result
+            return true if not held and enter
+            return false if not held
+            return true if not leave
+            return true if enter
+            false
+
+        # Whether frames [first, last] of a clip are a span worth marking.
+        def keep(first: i64, last: i64, min_frames: i64, frames: i64) -> bool:
+            requires frames <= MAX_FRAMES
+            requires min_frames <= MAX_FRAMES
+            ensure not result or first >= 0
+            ensure not result or last < frames
+            ensure not result or first <= last
+            ensure not result or last - first + 1 >= min_frames
+            return false if first < 0 or last >= frames or first > last
+            return false if last - first + 1 < min_frames
+            true

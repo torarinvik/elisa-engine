@@ -1,0 +1,94 @@
+include "../src/animation/foot_contact.elisa"
+
+def pairs(got: darray[i64]&, want: darray[i64]&) -> bool:
+    ok: mutable bool = got.count == want.count
+    for i in 0..<want.count |ok, got, want|:
+        x: i64 = get got[i] else -99
+        ok <- ok and x == want[i]
+    ok
+
+# 120 frames at 30 fps. Joint 0 hovers at height 1 but dips to the ground
+# for frames 40-41. Joint 1 is a foot: planted for 30 frames, swinging
+# forward for 30, planted, swinging; frame 10 jitters 0.03 up.
+def take(nan_frame: i64) -> darray[f64]:
+    out: mutable darray[f64] = []
+    for f in 0..<120 |out, nan_frame|:
+        i: i64 = f.i64()
+        out.push(0.0)
+        out.push(0.0 if i == 40 or i == 41 else 1.0)
+        out.push(0.0)
+        cycle: i64 = i / 30
+        k: i64 = i - cycle * 30
+        base: f64 = 0.6 * ((cycle + 1) / 2).f64()
+        swing: bool = cycle == 1 or cycle == 3
+        x: f64 = base + 0.02 * k.f64() if swing else base
+        lift: f64 = 0.1 * ElisaMath::sin(3.141592653589793 * k.f64() / 30.0)
+        planted: f64 = 0.03 if i == 10 else 0.0
+        y: f64 = lift if swing else planted
+        out.push(x)
+        out.push(0.0 / 0.0 if i == nan_frame else y)
+        out.push(0.0)
+    out
+
+def main() -> i32:
+    clip: darray[f64] = take(-1)
+    loose: FootContact::Limits = FootContact::Limits{enter_height: 0.02, exit_height: 0.04, enter_speed: 0.3, exit_speed: 1.0, min_frames: 3}
+    # Values from a Python reference.
+    speed: darray[f64] = FootContact::frame_speeds(clip, 120, 2, 1, 30.0)
+    return 1 if speed.count != 120 or speed[0] != 0.0 or speed[61] != 0.0
+    d: f64 = speed[31] - 0.6770050196991713
+    return 2 if d > 0.000000001 or d < -0.000000001 or speed[10] < 0.8999 or speed[10] > 0.9001
+    # Hysteresis rides over the jitter; the landing frame is too fast to enter.
+    feet: darray[i64] = FootContact::spans(clip, 120, 2, 1, 1, 30.0, loose)
+    want: darray[i64] = [0, 29, 61, 89]
+    return 3 if not pairs(feet, want)
+    strict: FootContact::Limits = FootContact::Limits{enter_height: 0.02, exit_height: 0.02, enter_speed: 0.3, exit_speed: 0.3, min_frames: 1}
+    split: darray[i64] = FootContact::spans(clip, 120, 2, 1, 1, 30.0, strict)
+    want_split: darray[i64] = [0, 9, 12, 29, 61, 89]
+    return 4 if not pairs(split, want_split)
+    # A one-frame dip is dropped by min_frames but kept at min_frames 1.
+    return 5 if FootContact::spans(clip, 120, 2, 0, 1, 30.0, loose).count != 0
+    dip: darray[i64] = FootContact::spans(clip, 120, 2, 0, 1, 30.0, strict)
+    want_dip: darray[i64] = [41, 41]
+    return 6 if not pairs(dip, want_dip)
+    # A contact still held at the last frame closes there.
+    hold: FootContact::Limits = FootContact::Limits{enter_height: 0.02, exit_height: 2.0, enter_speed: 0.3, exit_speed: 100.0, min_frames: 3}
+    open_end: darray[i64] = FootContact::spans(clip, 120, 2, 1, 1, 30.0, hold)
+    want_open: darray[i64] = [0, 119]
+    return 7 if not pairs(open_end, want_open)
+    # Up along x: the foot is never low after its first plant.
+    return 8 if FootContact::spans(clip, 120, 2, 1, 0, 30.0, loose).count != 2
+    # A NaN height (and the NaN speeds beside it) breaks the contact until
+    # both are finite again.
+    broken: darray[f64] = take(20)
+    cut: darray[i64] = FootContact::spans(broken, 120, 2, 1, 1, 30.0, loose)
+    want_cut: darray[i64] = [0, 19, 22, 29, 61, 89]
+    return 9 if not pairs(cut, want_cut)
+    # Bad shapes and axes give nothing.
+    return 10 if FootContact::spans(clip, 120, 2, 1, 3, 30.0, loose).count != 0 or FootContact::spans(clip, 120, 2, 1, -1, 30.0, loose).count != 0
+    return 11 if FootContact::spans(clip, 119, 2, 1, 1, 30.0, loose).count != 0 or FootContact::spans(clip, 120, 2, 2, 1, 30.0, loose).count != 0
+    return 12 if FootContact::frame_speeds(clip, 120, 3, 1, 30.0).count != 0
+    # Markers sit on each touch-down.
+    marks: darray[f64] = FootContact::markers(feet, clip, 120, 2, 1)
+    return 13 if marks.count != 6 or marks[0] != 0.0 or marks[3] != 0.6 or marks[4] != 0.0
+    return 14 if FootContact::markers(feet, clip, 119, 2, 1).count != 0
+    # A single-frame clip measures zero speed.
+    lone: darray[f64] = [0.0, 0.0, 0.0]
+    still: darray[f64] = FootContact::frame_speeds(lone, 1, 1, 0, 30.0)
+    return 15 if still.count != 1 or still[0] != 0.0
+    lone_span: darray[i64] = FootContact::spans(lone, 1, 1, 0, 1, 30.0, strict)
+    want_lone: darray[i64] = [0, 0]
+    return 16 if not pairs(lone_span, want_lone)
+    # Frames 0 and 1 both measure the first step.
+    moving: darray[f64] = [0.0, 0.0, 0.0, 0.1, 0.0, 0.0, 0.1, 0.0, 0.0]
+    early: darray[f64] = FootContact::frame_speeds(moving, 3, 1, 0, 30.0)
+    return 17 if early.count != 3 or early[0] < 2.9999 or early[1] < 2.9999 or early[2] != 0.0
+    # Markers use the first frame of each pair.
+    chosen: darray[i64] = [10, 30]
+    at10: darray[f64] = FootContact::markers(chosen, clip, 120, 2, 1)
+    return 18 if at10.count != 3 or at10[0] != 0.0 or at10[1] != 0.03
+    # An enter band wider than the exit band still re-enters in one frame.
+    wide: FootContact::Limits = FootContact::Limits{enter_height: 0.05, exit_height: 0.02, enter_speed: 1.0, exit_speed: 1.0, min_frames: 1}
+    kept: darray[i64] = FootContact::spans(clip, 120, 2, 1, 1, 30.0, wide)
+    return 19 if kept.count < 2 or kept[0] != 0 or kept[1] != 29
+    0
