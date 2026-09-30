@@ -99,4 +99,17 @@ unassigned private-use points (U+E000). Without the font both runs measure as
 identical missing-glyph advances, so they differ in width only when the font is
 registered. The first version of the check, which only required a width above
 3 px, passed with no font registered; the control without registration now
-fails with 173. Persian and Urdu letters (پ چ ژ گ ی ک) are still not shaped.
+fails with 173.
+
+## Persian and Urdu letters
+
+`UiArabicShaping` also shapes peh, tcheh, jeh, keheh, gaf, farsi yeh, tteh,
+ddal, rreh, noon ghunna, heh goal, heh doachashmee and yeh barree. Their forms
+come from Arabic Presentation Forms-A (U+FB50..), in the same isolated, final,
+initial, medial order as the Forms-B block. Every slot was checked against
+Python `unicodedata` decompositions, and the bundled Noto Naskh Arabic UI covers
+the glyphs used. Superscript alef (U+0670) is treated as transparent.
+`test/ui_arabic_shaping` cases 10–11 cover peh/jeh/gaf, a medial farsi yeh and
+Urdu heh goal + yeh barree. Negative control: dropping farsi yeh's base fails
+with 11. Not covered: other extended letters, such as those for Pashto, Sindhi
+or Kurdish.

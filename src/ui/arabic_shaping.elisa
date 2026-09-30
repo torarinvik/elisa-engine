@@ -1,16 +1,43 @@
 # Arabic contextual shaping for a renderer without OpenType shaping: each
 # letter in U+0621..U+064A becomes its isolated, final, initial or medial
-# presentation form (U+FE80..U+FEF4), and lam followed by an alef becomes one
-# lam-alef ligature (U+FEF5..U+FEFC). Harakat (U+064B..U+065F) are
-# transparent: they neither join nor break a join. Tatweel (U+0640) joins on
-# both sides and stays itself. Runs in logical order, before UiBidi.
+# presentation form (U+FE80..U+FEF4); the Persian and Urdu letters listed in
+# shape_extended_base take theirs from U+FB50..U+FBFF. Lam followed by an
+# alef becomes one lam-alef ligature (U+FEF5..U+FEFC). Harakat
+# (U+064B..U+065F) and superscript alef (U+0670) are transparent: they
+# neither join nor break a join. Tatweel (U+0640) joins on both sides and
+# stays itself. Runs in logical order, before UiBidi.
 include "./message_format.elisa"
 
 module UiArabicShaping:
     public:
+        # Persian and Urdu letters outside U+0621..U+064A, with their first
+        # form in Arabic Presentation Forms-A (isolated, final, initial,
+        # medial order, as in U+FE80..), or 0.
+        def shape_extended_base(cp: i64) -> i64:
+            return 64342 if cp == 1662
+            return 64378 if cp == 1670
+            return 64394 if cp == 1688
+            return 64398 if cp == 1705
+            return 64402 if cp == 1711
+            return 64508 if cp == 1740
+            return 64358 if cp == 1657
+            return 64392 if cp == 1672
+            return 64396 if cp == 1681
+            return 64414 if cp == 1722
+            return 64422 if cp == 1729
+            return 64430 if cp == 1746
+            return 64426 if cp == 1726
+            0
+
+        def shape_extended_forms(cp: i64) -> i64:
+            return 2 if cp == 1688 or cp == 1672 or cp == 1681 or cp == 1722 or cp == 1746
+            return 4 if cp == 1662 or cp == 1670 or cp == 1705 or cp == 1711 or cp == 1740 or cp == 1657 or cp == 1729 or cp == 1726
+            0
+
         # Forms per letter: 0 not Arabic, 1 hamza (never joins), 2 joins only
         # to the previous letter, 4 joins on both sides.
         def shape_forms(cp: i64) -> i64:
+            return shape_extended_forms(cp) if cp > 1610
             return 0 if cp < 1569 or cp > 1610 or (cp >= 1595 and cp <= 1600)
             return 1 if cp == 1569
             return 2 if (cp >= 1570 and cp <= 1573) or cp == 1575 or cp == 1577 or (cp >= 1583 and cp <= 1586) or cp == 1608 or cp == 1609
@@ -19,6 +46,7 @@ module UiArabicShaping:
         # First presentation form of `cp`: the block is laid out in letter
         # order, each letter taking as many slots as it has forms.
         def shape_base(cp: i64) -> i64:
+            return shape_extended_base(cp) if cp > 1610
             mutable at: i64 = 65152
             for k in 1569..<1611 |at|:
                 counts: bool = k.i64() < cp and shape_forms(k.i64()) > 0
@@ -26,7 +54,7 @@ module UiArabicShaping:
             at
 
         def shape_transparent(cp: i64) -> bool:
-            cp >= 1611 and cp <= 1631
+            (cp >= 1611 and cp <= 1631) or cp == 1648
 
         def shape_joins_next(cp: i64) -> bool:
             shape_forms(cp) == 4 or cp == 1600

@@ -585,6 +585,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
   Progress on 2026-09-30: course captions reach Wicked's left-to-right renderer in bidi display order per wrapped line via UiBidiUtf8 (code 172; [ui-bidi.md](docs/validation/ui-bidi.md)); Arabic shaping remains.
   Progress on 2026-09-30: UiArabicShaping gives Arabic letters their joining presentation forms and lam-alef ligatures before bidi; the course caption path shapes then reorders ([ui-bidi.md](docs/validation/ui-bidi.md)). Open: no bundled Arabic-capable font (Liberation Sans lacks Arabic glyphs), and Persian/Urdu letters.
   Progress on 2026-09-30: RenderScene::add_overlay_font registers a bundled .ttf/.otf as a Wicked fallback style. The character course ships Noto Naskh Arabic UI (OFL 1.1, with notice) and registers it at startup. Course code 173 requires lam-alef ligatures to measure differently from missing-glyph boxes; the control with no font fails with 173. Persian and Urdu letters are still unshaped.
+  Progress on 2026-09-30: the Arabic shaper covers 13 Persian and Urdu letters from Presentation Forms-A (checked against unicodedata and the bundled font's cmap); ui_arabic_shaping cases 10-11 pass, and the control that drops farsi yeh fails with 11.
 
 ## T — networking and online runtime
 
