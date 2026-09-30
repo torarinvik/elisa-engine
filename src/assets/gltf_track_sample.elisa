@@ -1,0 +1,163 @@
+# Samples one glTF animation channel at a time (M06): finds the bracketing
+# keys and interpolates. Translation, scale and weights interpolate
+# linearly, and rotation uses shortest-arc slerp with a normalized result.
+# STEP holds the earlier key, and CUBICSPLINE is rejected with a typed error
+# for now.
+include "../vendor/elisa_math.elisa"
+include "./gltf_key_track.elisa"
+include "./gltf_sample_index.elisa"
+
+module GltfTrackSample:
+    private:
+        def word_interpolation() -> darray[u8]:
+            [105, 110, 116, 101, 114, 112, 111, 108, 97, 116, 105, 111, 110]
+
+        def word_samplers() -> darray[u8]:
+            [115, 97, 109, 112, 108, 101, 114, 115]
+
+        def word_sampler() -> darray[u8]:
+            [115, 97, 109, 112, 108, 101, 114]
+
+        def word_channels() -> darray[u8]:
+            [99, 104, 97, 110, 110, 101, 108, 115]
+
+        def word_animations() -> darray[u8]:
+            [97, 110, 105, 109, 97, 116, 105, 111, 110, 115]
+
+        def word_step() -> darray[u8]:
+            [83, 84, 69, 80]
+
+        def word_linear() -> darray[u8]:
+            [76, 73, 78, 69, 65, 82]
+
+        def word_cubic() -> darray[u8]:
+            [67, 85, 66, 73, 67, 83, 80, 76, 73, 78, 69]
+
+        def same_word(bytes: darray[u8]&, begin: i64, end: i64, word: darray[u8]&) -> bool:
+            return false if end - begin != word.count.i64()
+            differ: mutable i64 = 0
+            for i in 0..<word.count |differ, bytes, word, begin|:
+                x: u8 = bytes[begin.usize() + i]
+                y: u8 = word[i]
+                differ <- differ + 1 if x != y else differ
+            differ == 0
+
+        def component(values: darray[f64]&, key: i64, index: i64, components: i64, count: i64) -> f64:
+            slot: i64 = GltfSampleIndex::value_slot(key, index, components, count)
+            return 0.0 if slot < 0 or slot >= values.count.i64()
+            values[slot.usize()]
+
+    public:
+        const LINEAR: i64 = 0
+        const STEP: i64 = 1
+        const CUBICSPLINE: i64 = 2
+
+        error SampleError:
+            Unsupported
+            Mismatch
+            Unordered
+            BadWidth
+
+        # The sampler interpolation of a channel: LINEAR when absent, -1 when
+        # the channel is missing or the value is unknown.
+        def interpolation(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64) -> i64:
+            root: i64 = 0
+            anim: i64 = GltfAnimationMap::item(doc, GltfAnimationMap::member(doc, bytes, root, word_animations()), animation)
+            chan: i64 = GltfAnimationMap::item(doc, GltfAnimationMap::member(doc, bytes, anim, word_channels()), channel)
+            return -1 if chan < 0
+            index: i64 = GltfAnimationMap::integer_or(doc, GltfAnimationMap::member(doc, bytes, chan, word_sampler()), -1)
+            sampler: i64 = GltfAnimationMap::item(doc, GltfAnimationMap::member(doc, bytes, anim, word_samplers()), index)
+            return -1 if sampler < 0
+            node: i64 = GltfAnimationMap::member(doc, bytes, sampler, word_interpolation())
+            return LINEAR if node < 0
+            return -1 if doc.kind[node.usize()] != GltfJson::STRING
+            a: i64 = doc.start[node.usize()]
+            b: i64 = doc.stop[node.usize()]
+            return LINEAR if same_word(bytes, a, b, word_linear())
+            return STEP if same_word(bytes, a, b, word_step())
+            return CUBICSPLINE if same_word(bytes, a, b, word_cubic())
+            -1
+
+        # Whether key times strictly increase.
+        def ordered(times: darray[f64]&) -> bool:
+            ok: mutable bool = true
+            for i in 1..<times.count |ok, times|:
+                earlier: f64 = times[i - 1]
+                later: f64 = times[i]
+                ok <- ok and later > earlier
+            ok
+
+        # Why a sample would fail: 0 none, 1 Unsupported, 2 Mismatch,
+        # 3 Unordered, 4 BadWidth.
+        def problem(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64) -> i64:
+            return 1 if mode != LINEAR and mode != STEP
+            return 4 if components != 1 and components != 3 and components != 4
+            return 4 if path == GltfAnimationMap::ROTATION and components != 4
+            count: i64 = times.count.i64()
+            return 2 if count < 1 or values.count.i64() != count * components
+            return 3 if not ordered(times)
+            0
+
+        # Checks a channel without sampling it; returns its key count.
+        def validate(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64) -> i64 error[SampleError]:
+            fault: i64 = problem(times, values, components, path, mode)
+            raise SampleError.Unsupported if fault == 1
+            raise SampleError.Mismatch if fault == 2
+            raise SampleError.Unordered if fault == 3
+            raise SampleError.BadWidth if fault == 4
+            times.count.i64()
+
+        # The channel's value at `time`: `components` numbers per key in
+        # `values`, one time per key in `times`. Times outside the keys
+        # clamp to the first or last key.
+        def sample(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64, time: f64) -> darray[f64] error[SampleError]:
+            fault: i64 = problem(times, values, components, path, mode)
+            raise SampleError.Unsupported if fault == 1
+            raise SampleError.Mismatch if fault == 2
+            raise SampleError.Unordered if fault == 3
+            raise SampleError.BadWidth if fault == 4
+            count: i64 = times.count.i64()
+            at_or_before: mutable i64 = 0
+            for i in 0..<times.count |at_or_before, times, time|:
+                key_time: f64 = times[i]
+                at_or_before <- at_or_before + 1 if key_time <= time else at_or_before
+            start: i64 = GltfSampleIndex::segment_start(at_or_before, count)
+            stop: i64 = GltfSampleIndex::segment_end(start, count)
+            t0: f64 = times[start.usize()]
+            t1: f64 = times[stop.usize()]
+            weight: mutable f64 = 0.0
+            weight <- (time - t0) / (t1 - t0) if stop > start else weight
+            weight <- 0.0 if weight < 0.0 else weight
+            weight <- 1.0 if weight > 1.0 else weight
+            weight <- 0.0 if mode == STEP and time < t1 else weight
+            out: mutable darray[f64] = []
+            if path != GltfAnimationMap::ROTATION:
+                for c in 0..<components.usize() |out, values, start, stop, components, count, weight|:
+                    a: f64 = component(values, start, c.i64(), components, count)
+                    b: f64 = component(values, stop, c.i64(), components, count)
+                    out.push(a + (b - a) * weight)
+                return out
+            # Shortest-arc slerp; nearly parallel keys fall back to lerp.
+            dot: mutable f64 = 0.0
+            for c in 0..<4 |dot, values, start, stop, count|:
+                dot <- dot + component(values, start, c.i64(), 4, count) * component(values, stop, c.i64(), 4, count)
+            flip: f64 = -1.0 if dot < 0.0 else 1.0
+            cosine: f64 = dot * flip
+            wa: mutable f64 = 1.0 - weight
+            wb: mutable f64 = weight * flip
+            if cosine < 0.9995:
+                theta: f64 = ElisaMath::acos(cosine)
+                sine: f64 = ElisaMath::sin(theta)
+                wa <- ElisaMath::sin((1.0 - weight) * theta) / sine
+                wb <- ElisaMath::sin(weight * theta) / sine * flip
+            length_squared: mutable f64 = 0.0
+            for c in 0..<4 |out, length_squared, values, start, stop, count, wa, wb|:
+                q: f64 = component(values, start, c.i64(), 4, count) * wa + component(values, stop, c.i64(), 4, count) * wb
+                out.push(q)
+                length_squared <- length_squared + q * q
+            inverse: f64 = 1.0 / ElisaMath::sqrt(length_squared) if length_squared > 0.0 else 1.0
+            normalized: mutable darray[f64] = []
+            for c in 0..<4 |normalized, out, inverse|:
+                v: f64 = out[c]
+                normalized.push(v * inverse)
+            normalized

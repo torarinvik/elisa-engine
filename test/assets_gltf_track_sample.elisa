@@ -1,0 +1,136 @@
+include "../src/assets/gltf_track_sample.elisa"
+include "./assets_gltf_channel_fixture.elisa"
+
+def doc_of(bytes: darray[u8]&, offset: i64, length: i64) -> GltfJson::Doc:
+    catch GltfJson::parse(bytes, offset, length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def range_of(doc: GltfJson::Doc&, bytes: darray[u8]&, channel: i64, times: bool) -> GltfAnimationMap::ChannelBytes:
+    catch GltfAnimationMap::sampler_bytes(doc, bytes, 0, channel, times):
+        value: value
+        error failure: GltfAnimationMap::ChannelBytes{target_node: -9, path: -9, bin_offset: -9, byte_length: -9, count: -9, component_type: -9, components: -9}
+
+def values_of(bytes: darray[u8]&, layout: GlbContainer::Layout&, range: GltfAnimationMap::ChannelBytes&) -> darray[f64]:
+    catch GltfKeyTrack::load(bytes, layout, range):
+        value: value.values
+        error failure: []
+
+def sampled(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64, time: f64) -> darray[f64]:
+    catch GltfTrackSample::sample(times, values, components, path, mode, time):
+        value: value
+        error failure: []
+
+def sample_code(times: darray[f64]&, values: darray[f64]&, components: i64, path: i64, mode: i64) -> i32:
+    catch GltfTrackSample::validate(times, values, components, path, mode):
+        ok: 0
+        GltfTrackSample::SampleError.Unsupported: 1
+        GltfTrackSample::SampleError.Mismatch: 2
+        GltfTrackSample::SampleError.Unordered: 3
+        GltfTrackSample::SampleError.BadWidth: 4
+        error failure: 9
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000000001 and d > -0.000000001
+
+def matches(got: darray[f64]&, want: darray[f64]&) -> bool:
+    same: mutable bool = got.count == want.count
+    for i in 0..<got.count |same, got, want|:
+        x: f64 = got[i]
+        y: f64 = want[i]
+        same <- same and near(x, y)
+    same
+
+# Samples fixture channel `channel` at `time`.
+def at(doc: GltfJson::Doc&, bytes: darray[u8]&, layout: GlbContainer::Layout&, channel: i64, time: f64) -> darray[f64]:
+    keys: GltfAnimationMap::ChannelBytes = range_of(doc, bytes, channel, false)
+    input: GltfAnimationMap::ChannelBytes = range_of(doc, bytes, channel, true)
+    times: darray[f64] = values_of(bytes, layout, input)
+    values: darray[f64] = values_of(bytes, layout, keys)
+    mode: i64 = GltfTrackSample::interpolation(doc, bytes, 0, channel)
+    sampled(times, values, keys.components, keys.path, mode, time)
+
+# Rotation angle about +X of a quaternion (x, 0, 0, w).
+def angle(q: darray[f64]&) -> f64:
+    2.0 * ElisaMath::atan2(q[0], q[3])
+
+def main() -> i32:
+    bytes: darray[u8] = fixture_glb()
+    layout: GlbContainer::Layout = layout_of(bytes)
+    doc: GltfJson::Doc = doc_of(bytes, layout.json_start, layout.json_length)
+    return 1 if GltfTrackSample::interpolation(doc, bytes, 0, 0) != GltfTrackSample::LINEAR
+    return 2 if GltfTrackSample::interpolation(doc, bytes, 0, 2) != GltfTrackSample::STEP
+    return 3 if GltfTrackSample::interpolation(doc, bytes, 0, 9) != -1
+    times: darray[f64] = values_of(bytes, layout, range_of(doc, bytes, 1, true))
+    return 4 if times.count != 6 or not GltfTrackSample::ordered(times)
+
+    # Reference values: the same float32 keys interpolated in Python.
+    got1: darray[f64] = at(doc, bytes, layout, 1, 0.1)
+    want1: darray[f64] = [0.11907400466738821, 0.0, 0.0, 0.9928853818102424]
+    return 10 if not matches(got1, want1)
+    got2: darray[f64] = at(doc, bytes, layout, 1, 0.0)
+    want2: darray[f64] = [0.049937631064693115, 0.0, 0.0, 0.9987523381718045]
+    return 11 if not matches(got2, want2)
+    got3: darray[f64] = at(doc, bytes, layout, 1, 1.0)
+    want3: darray[f64] = [0.28734784728813373, 0.0, 0.0, 0.957826296704614]
+    return 12 if not matches(got3, want3)
+    got4: darray[f64] = at(doc, bytes, layout, 1, 0.125)
+    want4: darray[f64] = [0.1483404762474647, 0.0, 0.0, 0.9889363493707142]
+    return 13 if not matches(got4, want4)
+    got5: darray[f64] = at(doc, bytes, layout, 3, 0.1)
+    want5: darray[f64] = [0.0, 1.023999976754189, 0.0000000021420426044027984]
+    return 14 if not matches(got5, want5)
+    got6: darray[f64] = at(doc, bytes, layout, 2, 0.2)
+    want6: darray[f64] = [1.0, 0.9999999403953552, 0.9999999403953552]
+    return 15 if not matches(got6, want6)
+    got7: darray[f64] = at(doc, bytes, layout, 4, 0.23)
+    want7: darray[f64] = [0.482554548339901, 0.0, 0.0, 0.8758659188919695]
+    return 16 if not matches(got7, want7)
+
+    # Independent check: about one axis, slerp turns the angle linearly.
+    # The float32 keys are unit only to ~1e-7, which bends it by ~1e-9.
+    t1: f64 = times[1]
+    t2: f64 = times[2]
+    q1: darray[f64] = at(doc, bytes, layout, 1, t1)
+    q2: darray[f64] = at(doc, bytes, layout, 1, t2)
+    a1: f64 = angle(q1)
+    a2: f64 = angle(q2)
+    mid: f64 = t1 + (t2 - t1) * 0.3
+    qm: darray[f64] = at(doc, bytes, layout, 1, mid)
+    am: f64 = angle(qm)
+    d: f64 = am - (a1 + (a2 - a1) * 0.3)
+    return 17 if d > 0.0000001 or d < -0.0000001
+
+    # Shortest arc: a negated end key gives the same rotation.
+    q_times: darray[f64] = [0.0, 1.0]
+    q_values: darray[f64] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -0.3826834323650898, -0.9238795325112867]
+    half: darray[f64] = sampled(q_times, q_values, 4, GltfAnimationMap::ROTATION, GltfTrackSample::LINEAR, 0.5)
+    want_half: darray[f64] = [0.0, 0.0, 0.19509032201612825, 0.9807852804032304]
+    return 18 if not matches(half, want_half)
+    # STEP holds the earlier key until the next key time.
+    s_times: darray[f64] = [0.0, 1.0, 2.0]
+    s_values: darray[f64] = [1.0, 5.0, 9.0]
+    got8: darray[f64] = sampled(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::STEP, 1.5)
+    want8: darray[f64] = [5.0]
+    return 19 if not matches(got8, want8)
+    got9: darray[f64] = sampled(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::STEP, 2.0)
+    want9: darray[f64] = [9.0]
+    return 19 if not matches(got9, want9)
+    got10: darray[f64] = sampled(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR, 1.5)
+    want10: darray[f64] = [7.0]
+    return 19 if not matches(got10, want10)
+
+    one: darray[f64] = [0.0]
+    return 20 if sample_code(s_times, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::CUBICSPLINE) != 1
+    return 21 if sample_code(s_times, one, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR) != 2
+    backwards: darray[f64] = [0.0, 2.0, 1.0]
+    return 22 if sample_code(backwards, s_values, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR) != 3
+    return 23 if sample_code(s_times, s_values, 1, GltfAnimationMap::ROTATION, GltfTrackSample::LINEAR) != 4
+    return 24 if sample_code(one, one, 1, GltfAnimationMap::WEIGHTS, GltfTrackSample::LINEAR) != 0
+    0

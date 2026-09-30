@@ -1,0 +1,27 @@
+include "../src/assets/gltf_sample_index.elisa"
+
+extend GltfSampleIndex:
+    def prove_segment_start_in_keys(at_or_before: i64, count: i64) -> i64:
+        requires count >= 1
+        ensure result >= 0
+        ensure result <= count - 1
+        segment_start(at_or_before, count)
+
+    def prove_segment_start_leaves_room(at_or_before: i64, count: i64) -> i64:
+        requires count >= 1
+        ensure result <= count - 2 or count == 1
+        segment_start(at_or_before, count)
+
+    def prove_segment_end_in_keys(start: i64, count: i64) -> i64:
+        requires count >= 1
+        requires start >= 0
+        requires start <= count - 1
+        ensure result >= start
+        ensure result <= count - 1
+        segment_end(start, count)
+
+    def prove_value_slot_sign(key: i64, component: i64, components: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 4294967295
+        ensure result == -1 or result >= 0
+        value_slot(key, component, components, count)

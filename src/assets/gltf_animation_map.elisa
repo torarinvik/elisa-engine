@@ -27,6 +27,9 @@ module GltfAnimationMap:
         def word_path() -> darray[u8]:
             [112, 97, 116, 104]
 
+        def word_input() -> darray[u8]:
+            [105, 110, 112, 117, 116]
+
         def word_output() -> darray[u8]:
             [111, 117, 116, 112, 117, 116]
 
@@ -176,7 +179,9 @@ module GltfAnimationMap:
             return -1 if doc.kind[node.usize()] != GltfJson::INTEGER
             doc.integer[node.usize()]
 
-        def channel_bytes(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64) -> ChannelBytes error[MapError]:
+        # The channel's output keys (`times` false) or its key times (`times`
+        # true, a SCALAR float accessor).
+        def sampler_bytes(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64, times: bool) -> ChannelBytes error[MapError]:
             root: i64 = 0
             anim: i64 = item(doc, member(doc, bytes, root, word_animations()), animation)
             raise MapError.MissingAnimation if anim < 0
@@ -188,7 +193,8 @@ module GltfAnimationMap:
             sampler_index: i64 = integer_or(doc, member(doc, bytes, chan, word_sampler()), -1)
             sampler: i64 = item(doc, member(doc, bytes, anim, word_samplers()), sampler_index)
             raise MapError.BadSampler if sampler < 0
-            output: i64 = integer_or(doc, member(doc, bytes, sampler, word_output()), -1)
+            field: darray[u8] = word_input() if times else word_output()
+            output: i64 = integer_or(doc, member(doc, bytes, sampler, field), -1)
             accessor: i64 = item(doc, member(doc, bytes, root, word_accessors()), output)
             raise MapError.BadAccessor if accessor < 0
             raise MapError.SparseAccessor if member(doc, bytes, accessor, word_sparse()) >= 0
@@ -213,3 +219,6 @@ module GltfAnimationMap:
             inside: i64 = GltfJsonIndex::accessor_offset_in_view(view_length, accessor_offset, span_bytes)
             raise MapError.BadAccessor if inside < 0
             ChannelBytes{target_node: target_node, path: path, bin_offset: view_offset + inside, byte_length: span_bytes, count: count, component_type: component_type, components: components}
+
+        def channel_bytes(doc: GltfJson::Doc&, bytes: darray[u8]&, animation: i64, channel: i64) -> ChannelBytes error[MapError]:
+            try sampler_bytes(doc, bytes, animation, channel, false)

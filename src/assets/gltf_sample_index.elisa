@@ -1,0 +1,41 @@
+# Integer rules for GltfTrackSample, split out so the prover can check them:
+# which pair of keys brackets a sample time.
+module GltfSampleIndex:
+    public:
+        # First key of the segment to sample, given `at_or_before` keys whose
+        # time is <= the sample time. Before the first key and after the
+        # last, the nearest segment is used (and clamped by the caller).
+        def segment_start(at_or_before: i64, count: i64) -> i64:
+            requires count >= 1
+            ensure result >= 0
+            ensure result <= count - 1
+            ensure result <= count - 2 or count == 1
+            return 0 if count == 1
+            return 0 if at_or_before <= 1
+            return count - 2 if at_or_before >= count
+            at_or_before - 1
+
+        # Second key of the segment starting at `start`.
+        def segment_end(start: i64, count: i64) -> i64:
+            requires count >= 1
+            requires start >= 0
+            requires start <= count - 1
+            ensure result >= start
+            ensure result <= count - 1
+            return start if start + 1 > count - 1
+            start + 1
+
+        # Offset of component `component` of key `key` in a flat value array.
+        def value_slot(key: i64, component: i64, components: i64, count: i64) -> i64:
+            requires count >= 0
+            requires count <= 4294967295
+            ensure result == -1 or result >= 0
+            return -1 if key < 0
+            return -1 if key >= count
+            return -1 if component < 0
+            return -1 if component > 3
+            return -1 if component >= components
+            return key + component if components == 1
+            return key * 3 + component if components == 3
+            return key * 4 + component if components == 4
+            -1
