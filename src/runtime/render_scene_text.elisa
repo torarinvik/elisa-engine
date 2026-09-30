@@ -27,6 +27,8 @@ extend RenderScene:
         extern elisa_render_scene_v1_measure_text_utf8(bytes: u8&, length: u32,
             font_size: i32, width: mutable f32&, height: mutable f32&,
             ready: mutable i32&) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_add_font(path: cstr) -> i32
 
     public:
         enum OverlayTextAlignment:
@@ -79,3 +81,8 @@ extend RenderScene:
                 &width, &height, &ready))
             RenderSceneText::OverlayTextMetrics{width: width, height: height,
                 ready: ready != 0}
+
+        # Registers a .ttf/.otf project asset as a fallback overlay font, for
+        # glyphs (e.g. Arabic presentation forms) the default font lacks.
+        def add_overlay_font(path: cstr) error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_add_font(path))

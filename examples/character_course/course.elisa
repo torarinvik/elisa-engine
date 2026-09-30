@@ -107,6 +107,7 @@ module CharacterCourse:
             LEGEND_Y: f32 = 52.0
             LEGEND_ROW_HEIGHT: f32 = 24.0
             LEGEND_FONT_SIZE: i32 = 18
+            ARABIC_FONT: cstr = "fonts/NotoNaskhArabicUI-Regular.ttf"
             LEGEND_KEY_WIDTH: f32 = 90.0
             LEGEND_PANEL_MARGIN: f32 = 6.0
             HUD_Y: f32 = 18.0
@@ -352,6 +353,7 @@ module CharacterCourse:
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
             try RenderScene::initialize(width, height, 12.0)
+            try RenderScene::add_overlay_font(Tune::ARABIC_FONT)
             try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
                 Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
             try NavMesh::begin()

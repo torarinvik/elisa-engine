@@ -260,3 +260,34 @@ extern "C" int32_t elisa_render_scene_v1_destroy_text(int64_t handle) {
     entry.live = false;
     return ELISA_RENDER_SCENE_OK;
 }
+
+// Registers a TrueType font as a fallback style for overlay text. Wicked's
+// font renderer walks every registered style for glyphs the default font
+// lacks, so e.g. an Arabic font makes shaped Arabic captions visible.
+extern "C" int32_t elisa_render_scene_v1_add_font(const char* asset_path) {
+    if (asset_path == nullptr || asset_path[0] == '\0') return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    std::filesystem::path resolved_path;
+    if (!elisa::assets::resolve_project_asset_path(asset_path, resolved_path)) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    std::vector<uint8_t> bytes;
+    if (!wi::helper::FileRead(resolved_path.string(), bytes) || bytes.size() < 12) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    const bool truetype = bytes[0] == 0x00 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00;
+    const bool opentype = bytes[0] == 'O' && bytes[1] == 'T' && bytes[2] == 'T' && bytes[3] == 'O';
+    if (!truetype && !opentype) return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    try {
+        if (wi::font::AddFontStyle(resolved_path.string(), bytes.data(), bytes.size(), true) < 0) {
+            return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        state.overlay_text_measure_cache.clear();
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return ELISA_RENDER_SCENE_OK;
+}

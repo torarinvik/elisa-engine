@@ -9,7 +9,12 @@
     "hidden": false
   },
   "package": {
-    "resources": ["sounds", "rigs", "text"],
+    "resources": [
+      "sounds",
+      "rigs",
+      "text",
+      "fonts"
+    ],
     "notices": [
       "third_party/notices/FAudio.txt",
       "third_party/notices/GameNetworkingSockets.txt",
@@ -59,7 +64,8 @@
       "third_party/notices/wicked-stb_truetype.txt",
       "third_party/notices/xatlas.txt",
       "third_party/notices/zstd-gpl-alternative.txt",
-      "third_party/notices/zstd.txt"
+      "third_party/notices/zstd.txt",
+      "third_party/notices/NotoNaskhArabic-OFL.txt"
     ]
   }
 }

@@ -182,6 +182,19 @@
                 moved <- moved + 1 if i.u32() < logical.length and logical.bytes[i] != shown.bytes[i] else moved
                 kept <- kept and (i.u32() >= plain.length or plain.bytes[i] == english_shown.bytes[i])
             return 172 if logical.length == 0u32 or shown.length == 0u32 or moved == 0 or not kept
+            # 173: the bundled Arabic font supplies presentation-form glyphs
+            # the default font lacks. Without it a lam-alef run measures as
+            # the same missing-glyph boxes as unassigned private-use points.
+            ligature: cstr = "ﻻﻻﻻ"
+            missing: cstr = ""
+            _ = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
+            _ = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
+            for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
+                _ = try RuntimeServices::pump(session)
+            glyphs: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
+            boxes: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
+            gap: f32 = glyphs.width - boxes.width
+            return 173 if not glyphs.ready or not boxes.ready or (gap < 0.5 and gap > -0.5)
             0
 
         def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:
