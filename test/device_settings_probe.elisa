@@ -1,0 +1,59 @@
+# Saved display/audio settings checks for the native application smoke:
+# round-trip, reapplication, fallback when both devices are gone, and
+# rejection of damaged records. Nothing is played.
+module DeviceSettingsProbe:
+    private:
+        const KEY: cstr = "smoke-device-settings"
+
+        def close_audio() -> bool:
+            closed: i32 = catch AudioRuntime::shutdown():
+                value: 0
+                error failure: 1
+            closed == 0
+
+    public:
+        def run() -> i32:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            return 215 if not listing.ok or listing.displays.count == 0
+            primary: mutable ApplicationDisplays::Display = listing.displays.items[0]
+            for i in 0..<listing.displays.count |primary, listing|:
+                primary <- listing.displays.items[i] if listing.displays.items[i].primary
+            output: mutable AudioDevices::Device = DeviceSettings::empty_audio()
+            total: i32 = AudioDevices::count()
+            for i in 0..<total.usize() |output|:
+                candidate: AudioDevices::Result = AudioDevices::device(i)
+                output <- candidate.device if candidate.device.is_default
+            missing: DeviceSettings::Saved = DeviceSettings::load("smoke-device-settings-absent")
+            return 216 if missing.stored != DeviceSettings::Stored.NotFound
+            return 217 if not DeviceSettings::save(KEY, &primary, true, &output)
+            saved: DeviceSettings::Saved = DeviceSettings::load(KEY)
+            return 218 if saved.stored != DeviceSettings::Stored.Loaded or not saved.has_display
+            return 218 if saved.width != primary.width or saved.height != primary.height or saved.x != primary.x or saved.audio.name_count != output.name_count
+            applied: DeviceSettings::Applied = DeviceSettings::apply(&saved, 48000, 2)
+            return 219 if applied.display != DeviceChoice::Source.Saved or applied.display_id != primary.id
+            return 220 if total > 0 and applied.audio != AudioDevices::Opened.Chosen
+            return 221 if ApplicationDisplays::window_display() != primary.id
+            return 222 if applied.audio != AudioDevices::Opened.Failed and not close_audio()
+            # A display and an output that no longer exist fall back.
+            gone_display: mutable ApplicationDisplays::Display = primary
+            gone_display.x <- primary.x + 77777
+            gone_output: mutable AudioDevices::Device = output
+            gone_output.name[0] <- 1
+            gone_output.name_count <- 1
+            return 217 if not DeviceSettings::save(KEY, &gone_display, true, &gone_output)
+            stale: DeviceSettings::Saved = DeviceSettings::load(KEY)
+            fallback: DeviceSettings::Applied = DeviceSettings::apply(&stale, 48000, 2)
+            return 223 if fallback.display != DeviceChoice::Source.SystemDefault or fallback.display_id != primary.id
+            return 224 if total > 0 and fallback.audio != AudioDevices::Opened.FellBackToDefault
+            return 222 if fallback.audio != AudioDevices::Opened.Failed and not close_audio()
+            # A record with the wrong magic is rejected.
+            junk: mutable u8[4] = [1, 2, 3, 4]
+            written: i32 = catch UserData::write_payload(KEY, 1, &junk[0], 4):
+                value: 0
+                error failure: 1
+            return 225 if written != 0 or DeviceSettings::load(KEY).stored != DeviceSettings::Stored.Invalid
+            removed: i32 = catch UserData::remove_payload(KEY):
+                value: 0
+                error failure: 1
+            return 226 if removed != 0
+            0

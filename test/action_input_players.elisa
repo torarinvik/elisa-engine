@@ -1,0 +1,56 @@
+include "../src/runtime/action_input_runtime.elisa"
+
+# Local multiplayer routing: each player owns one Input and one gamepad slot;
+# player one also owns the keyboard. Events for a slot never reach another
+# player, and unplugging one controller leaves the other player's held input.
+const JUMP: i64 = 1
+
+def pad_event(kind: Application::InputEventKind, code: i64, down: bool, slot: i32) -> Application::InputEvent:
+    Application::InputEvent{kind: kind, device: 2, code: code, value: 1.0 if down else 0.0,
+        pressed: down, released: not down, chord_down: false,
+        connected: kind == Application::InputEventKind.GamepadConnected, device_slot: slot, physical_code: 0}
+
+def player() -> ActionInput::Input:
+    mutable input: ActionInput::Input = ActionInput::Input()
+    south: i64 = Application::gamepad_button_code(Application::GamepadButtonCode.South)
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.Space)
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: JUMP, device: ActionInput::Device.Gamepad,
+        code: south, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: JUMP, device: ActionInput::Device.Keyboard,
+        code: space, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+    input
+
+def route(one: mutable ActionInput::Input&, two: mutable ActionInput::Input&, event: Application::InputEvent) -> void:
+    ActionInputRuntime::apply_player_event(one, event, 1, true)
+    ActionInputRuntime::apply_player_event(two, event, 2, false)
+
+def main() -> i32:
+    south: i64 = Application::gamepad_button_code(Application::GamepadButtonCode.South)
+    space: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.Space)
+    mutable one: ActionInput::Input = player()
+    mutable two: ActionInput::Input = player()
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadConnected, 0, true, 1))
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadConnected, 0, true, 2))
+    ActionInput::begin_frame(&one)
+    ActionInput::begin_frame(&two)
+    # Slot 2's South reaches only player two.
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadButton, south, true, 2))
+    return 1 if ActionInput::action_down(&one, JUMP) or not ActionInput::action_pressed(&two, JUMP)
+    # The keyboard belongs to player one only.
+    route(&one, &two, pad_event(Application::InputEventKind.Key, space, true, 0))
+    return 2 if not ActionInput::action_down(&one, JUMP)
+    route(&one, &two, pad_event(Application::InputEventKind.Key, space, false, 0))
+    return 3 if ActionInput::action_down(&one, JUMP) or not ActionInput::action_down(&two, JUMP)
+    # Slot 1 held, then slot 2 unplugged: only player two lets go.
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadButton, south, true, 1))
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadDisconnected, 0, false, 2))
+    return 4 if not ActionInput::action_down(&one, JUMP) or ActionInput::action_down(&two, JUMP)
+    # A controller in an unassigned slot drives nobody.
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadButton, south, false, 1))
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadButton, south, true, 3))
+    return 5 if ActionInput::action_down(&one, JUMP) or ActionInput::action_down(&two, JUMP)
+    # Focus loss clears every player.
+    route(&one, &two, pad_event(Application::InputEventKind.GamepadButton, south, true, 1))
+    route(&one, &two, pad_event(Application::InputEventKind.FocusLost, 0, false, 0))
+    return 6 if ActionInput::action_down(&one, JUMP)
+    0

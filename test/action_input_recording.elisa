@@ -8,7 +8,7 @@ def event(kind: Application::InputEventKind, code: i64, value: f32, pressed: boo
     released: bool, connected: bool) -> Application::InputEvent:
     Application::InputEvent{kind: kind, device: 0, code: code, value: value,
         pressed: pressed, released: released, chord_down: false,
-        connected: connected, device_slot: 0}
+        connected: connected, device_slot: 0, physical_code: 0}
 
 def bound_input() -> ActionInput::Input:
     mutable input: ActionInput::Input = ActionInput::Input()

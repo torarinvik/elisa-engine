@@ -21,7 +21,7 @@ struct NativeAnimationHandle {
 class AnimationSubmissionBridge {
 public:
     static constexpr uint32_t MAX_INSTANCES = 16;
-    static constexpr uint32_t MAX_BONES = 64;
+    static constexpr uint32_t MAX_BONES = 256;
     static constexpr uint32_t MAX_MORPHS = 32;
     static constexpr uint32_t MAX_MESHES = 256;
 

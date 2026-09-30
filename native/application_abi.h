@@ -168,6 +168,19 @@ int32_t elisa_application_v1_gamepad_connected(int32_t device_slot);
 int32_t elisa_application_v1_set_relative_mouse(int32_t enabled);
 // 1 while relative mode is active, 0 otherwise (including when stopped).
 int32_t elisa_application_v1_relative_mouse(void);
+// Plain-text clipboard as UTF-8 bytes. Setting rejects malformed UTF-8 and
+// NUL bytes with INVALID_ARGUMENT. Reading reports the full length and
+// returns QUEUE_FULL without copying when `capacity` is too small.
+int32_t elisa_application_v1_set_clipboard_text(const uint8_t* text, uint32_t length);
+int32_t elisa_application_v1_clipboard_text(uint8_t* out, uint32_t capacity, uint32_t* length);
+
+// Connected displays. display_info writes eight int32 fields: id, x, y,
+// width, height, refresh in millihertz, content scale in permille, primary.
+int32_t elisa_application_v1_display_count(uint32_t* count);
+int32_t elisa_application_v1_display_info(uint32_t index, int32_t* fields);
+// Centres the window on a connected display; reports the window's display.
+int32_t elisa_application_v1_move_window_to_display(int32_t id);
+int32_t elisa_application_v1_window_display(int32_t* id);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);

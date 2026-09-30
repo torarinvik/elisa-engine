@@ -1,0 +1,64 @@
+# Playback-device enumeration, so settings can offer an output choice and
+# notice when a saved device is gone. Independent of the running mixer.
+module AudioDevices:
+    private:
+        @callconv(c)
+        extern elisa_audio_v1_playback_device_count(count: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_playback_device(index: u32, name: mutable u8&, capacity: u32, length: mutable u32&, is_default: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_initialize_named(sample_rate: u32, channels: u32, name: u8&, length: u32) -> i32
+
+        const DEVICE_UNAVAILABLE: i32 = -4
+
+    public:
+        const MAX_NAME_BYTES: usize = 256
+
+        struct Device:
+            name: u8[256]
+            name_count: usize
+            is_default: bool
+
+        enum Lookup:
+            Found
+            Missing
+            Unavailable
+
+        struct Result:
+            device: Device
+            lookup: Lookup
+
+        # Number of playback devices, or -1 when the backend cannot enumerate.
+        def count() -> i32:
+            total: mutable u32 = 0
+            return -1 if elisa_audio_v1_playback_device_count(&total) != 0
+            total.i32()
+
+        # The device at `index`. Missing when the index is past the list (a
+        # device may have been unplugged since `count`).
+        def device(index: usize) -> Result:
+            name: mutable u8[256] = zeroed
+            length: mutable u32 = 0
+            flag: mutable i32 = 0
+            status: i32 = elisa_audio_v1_playback_device(index.u32(), &name[0], MAX_NAME_BYTES.u32(), &length, &flag)
+            found: Lookup = Lookup.Found if status == 0 else (Lookup.Missing if status == -1 else Lookup.Unavailable)
+            Result{device: Device{name: name, name_count: length.usize() if status == 0 else 0, is_default: flag == 1}, lookup: found}
+
+        enum Opened:
+            Chosen
+            FellBackToDefault
+            Failed
+
+        # Opens the mixer on `device` by name. When that device is gone the
+        # system default is opened instead and FellBackToDefault is reported,
+        # so a saved choice never leaves the game without audio.
+        def open_preferred(sample_rate: u32, channels: u32, device: Device&) -> Opened:
+            status: i32 = elisa_audio_v1_initialize_named(sample_rate, channels, &device.name[0], device.name_count.u32())
+            return Opened.Chosen if status == 0
+            return Opened.Failed if status != DEVICE_UNAVAILABLE and device.name_count != 0
+            fallback: i32 = catch AudioRuntime::initialize_default(sample_rate, channels):
+                value: 0
+                error failure: 1
+            Opened.FellBackToDefault if fallback == 0 else Opened.Failed

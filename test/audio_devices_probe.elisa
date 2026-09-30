@@ -1,0 +1,44 @@
+# Playback-device enumeration checks for the native application smoke. A
+# machine may have no output device, so an empty list passes; a non-empty one
+# must name every device and mark exactly one default.
+module AudioDevicesProbe:
+    public:
+        def run() -> i32:
+            total: i32 = AudioDevices::count()
+            return 207 if total < 0
+            defaults: mutable i32 = 0
+            bad: mutable bool = false
+            for i in 0..<total.usize() |defaults, bad|:
+                result: AudioDevices::Result = AudioDevices::device(i)
+                bad <- true if result.lookup != AudioDevices::Lookup.Found or result.device.name_count == 0
+                defaults <- defaults + 1 if result.device.is_default
+            return 208 if bad
+            return 209 if total > 0 and defaults != 1
+            return 210 if AudioDevices::device(total.usize() + 5).lookup != AudioDevices::Lookup.Missing
+            0
+
+        # Opens the default device by its enumerated name, then a missing
+        # name, which must fall back to the default. Nothing is played.
+        def open_by_name() -> i32:
+            total: i32 = AudioDevices::count()
+            chosen: mutable AudioDevices::Device = AudioDevices::device(0).device
+            for i in 0..<total.usize() |chosen|:
+                candidate: AudioDevices::Result = AudioDevices::device(i)
+                chosen <- candidate.device if candidate.device.is_default
+            if total > 0:
+                return 211 if AudioDevices::open_preferred(48000, 2, &chosen) != AudioDevices::Opened.Chosen
+                closed: i32 = catch AudioRuntime::shutdown():
+                    value: 0
+                    error failure: 1
+                return 212 if closed != 0
+            gone: mutable AudioDevices::Device = chosen
+            gone.name[0] <- 1
+            gone.name_count <- 1
+            opened: AudioDevices::Opened = AudioDevices::open_preferred(48000, 2, &gone)
+            return 213 if total > 0 and opened != AudioDevices::Opened.FellBackToDefault
+            if opened != AudioDevices::Opened.Failed:
+                shut: i32 = catch AudioRuntime::shutdown():
+                    value: 0
+                    error failure: 1
+                return 214 if shut != 0
+            0

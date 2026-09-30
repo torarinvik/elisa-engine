@@ -1,0 +1,56 @@
+# Plain-text clipboard for Elisa applications. Text is bounded UTF-8 bytes;
+# the native host validates UTF-8 before it reaches the platform pasteboard.
+include "./application.elisa"
+
+module ApplicationClipboard:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_set_clipboard_text(text: u8&, length: u32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_clipboard_text(out: mutable u8&, capacity: u32, length: mutable u32&) -> i32
+
+        const module ClipboardStatus:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            INVALID_STATE: i32 = -2
+            WRONG_THREAD: i32 = -4
+            QUEUE_FULL: i32 = -9
+
+        def status_of(status: i32) -> Clipboard:
+            return Clipboard.Ok if status == ClipboardStatus::OK
+            return Clipboard.InvalidText if status == ClipboardStatus::INVALID_ARGUMENT
+            return Clipboard.TooLarge if status == ClipboardStatus::QUEUE_FULL
+            return Clipboard.NotRunning if status == ClipboardStatus::INVALID_STATE or status == ClipboardStatus::WRONG_THREAD
+            Clipboard.Unsupported
+
+    public:
+        const MAX_BYTES: usize = 4096
+
+        struct Text:
+            data: mutable u8[4096]
+            count: mutable usize
+
+        def Text() -> Text:
+            Text{data: zeroed, count: 0}
+
+        enum Clipboard:
+            Ok
+            InvalidText
+            TooLarge
+            NotRunning
+            Unsupported
+
+        # Replaces the clipboard with `text`; malformed UTF-8 or a NUL byte
+        # is refused and leaves the clipboard unchanged.
+        def set_text(text: Text&) -> Clipboard:
+            return Clipboard.TooLarge if text.count > MAX_BYTES
+            status_of(elisa_application_v1_set_clipboard_text(&text.data[0], text.count.u32()))
+
+        # Reads the clipboard into `out`. A clipboard longer than MAX_BYTES
+        # is reported as TooLarge and `out` is left empty.
+        def get_text(out: mutable Text&) -> Clipboard:
+            length: mutable u32 = 0
+            status: Clipboard = status_of(elisa_application_v1_clipboard_text(&out.data[0], MAX_BYTES.u32(), &length))
+            out.count <- length.usize() if status == Clipboard.Ok else 0
+            status

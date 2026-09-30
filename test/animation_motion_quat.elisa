@@ -1,0 +1,45 @@
+include "../src/animation/motion_quat.elisa"
+
+def close(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000000001 and d > -0.000000001
+
+# Equal as rotations: q and -q are the same.
+def same(a: MotionQuat::Q, b: MotionQuat::Q) -> bool:
+    d: f64 = MotionQuat::dot(a, b)
+    close(d, 1.0) or close(d, -1.0)
+
+def same_v(a: MotionQuat::V, b: MotionQuat::V) -> bool:
+    close(a.x, b.x) and close(a.y, b.y) and close(a.z, b.z)
+
+def main() -> i32:
+    x: MotionQuat::V = MotionQuat::V{x: 1.0, y: 0.0, z: 0.0}
+    z: MotionQuat::V = MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}
+    a: MotionQuat::Q = MotionQuat::identity()
+    b: MotionQuat::Q = MotionQuat::axis_angle(z, 1.5707963267948966)
+    return 1 if not same(MotionQuat::slerp(a, b, 0.0), a) or not same(MotionQuat::slerp(a, b, 1.0), b)
+    return 2 if not same(MotionQuat::slerp(a, b, 0.5), MotionQuat::axis_angle(z, 0.7853981633974483))
+    # The negated end is the same rotation, so the path must be the short one.
+    nb: MotionQuat::Q = MotionQuat::Q{x: -b.x, y: -b.y, z: -b.z, w: -b.w}
+    return 3 if not same(MotionQuat::slerp(a, nb, 0.25), MotionQuat::axis_angle(z, 0.39269908169872414))
+    # Swing/twist recomposes and the swing carries no turn about the axis.
+    q: MotionQuat::Q = MotionQuat::mul(MotionQuat::axis_angle(z, 0.3), MotionQuat::axis_angle(x, 0.7))
+    split: MotionQuat::SwingTwist = MotionQuat::swing_twist(q, x)
+    return 4 if not same(MotionQuat::mul(split.swing, split.twist), q)
+    return 5 if not close(split.swing.x, 0.0)
+    return 6 if not close(MotionQuat::hinge_angle(q, x), 0.7)
+    return 7 if not close(MotionQuat::hinge_angle(MotionQuat::axis_angle(x, -2.0), x), -2.0)
+    return 8 if not close(MotionQuat::hinge_angle(MotionQuat::axis_angle(x, 3.0), x), 3.0)
+    # Aim maps local +Y onto the world direction and the local hinge onto
+    # the world hinge after both are made perpendicular.
+    y_world: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: 0.3, y: -0.9, z: 0.2})
+    hinge_world: MotionQuat::V = MotionQuat::V{x: 1.0, y: 0.1, z: 0.0}
+    r: MotionQuat::Q = MotionQuat::aim(y_world, hinge_world, MotionQuat::V{x: 1.0, y: 0.4, z: 0.0})
+    return 9 if not same_v(MotionQuat::rotate(r, MotionQuat::V{x: 0.0, y: 1.0, z: 0.0}), y_world)
+    h: f64 = MotionQuat::vdot(hinge_world, y_world)
+    expected: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: hinge_world.x - y_world.x * h, y: hinge_world.y - y_world.y * h, z: hinge_world.z - y_world.z * h})
+    return 10 if not same_v(MotionQuat::rotate(r, x), expected)
+    # f32 round trip for the runtime pose.
+    back: MotionQuat::Q = MotionQuat::from_geometry(MotionQuat::to_geometry(b))
+    return 11 if MotionQuat::dot(back, b) < 0.999999
+    return 0

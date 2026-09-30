@@ -1,0 +1,154 @@
+# Saved display and audio-output choices, reapplied at startup. The display
+# is remembered by its desktop bounds (SDL display ids are not stable across
+# launches) and the output device by name. Missing devices fall back through
+# DeviceChoice / AudioDevices without overwriting the saved record, so
+# reconnecting the device restores the choice on the next launch.
+# Payload: "EDS1", four i32 bounds (x, y, width, height), a has-display byte,
+# a name-length byte, then up to 255 name bytes.
+include "./device_choice.elisa"
+
+module DeviceSettings:
+    private:
+        const VERSION: i64 = 1
+        const HEADER: usize = 22
+        const CAPACITY: usize = 277
+
+        def settings_put(raw: mutable u8[277]&, offset: usize, value: i32) -> void:
+            bits: u64 = value.i64().u64() & 4294967295
+            raw[offset] <- (bits & 255).u8()
+            raw[offset + 1] <- ((bits >> 8) & 255).u8()
+            raw[offset + 2] <- ((bits >> 16) & 255).u8()
+            raw[offset + 3] <- ((bits >> 24) & 255).u8()
+
+        def settings_get(raw: u8[277]&, offset: usize) -> i32:
+            bits: i64 = raw[offset].i64() + (raw[offset + 1].i64() << 8) + (raw[offset + 2].i64() << 16) + (raw[offset + 3].i64() << 24)
+            (bits - 4294967296 if bits >= 2147483648 else bits).i32()
+
+        def settings_read(key: cstr, version: mutable i64&, raw: mutable u8&, length: mutable usize&) -> i32:
+            catch UserData::read_payload(key, version, raw, CAPACITY, length):
+                ok: 0
+                UserData::UserDataError.NotFound: 1
+                UserData::UserDataError.WrongVersion: 2
+                UserData::UserDataError.Corrupt: 2
+                error failure: 3
+
+    public:
+        enum Stored:
+            Loaded
+            NotFound
+            Invalid
+            StorageFailure
+
+        struct Saved:
+            stored: Stored
+            has_display: bool
+            x: i32
+            y: i32
+            width: i32
+            height: i32
+            audio: AudioDevices::Device
+
+        struct Applied:
+            display: DeviceChoice::Source
+            display_id: i32
+            audio: AudioDevices::Opened
+
+        def empty_audio() -> AudioDevices::Device:
+            AudioDevices::Device{name: zeroed, name_count: 0, is_default: false}
+
+        # Stores the display (when `has_display`) and output device. A name
+        # longer than 255 bytes is not stored; the default is used instead.
+        def save(key: cstr, display: ApplicationDisplays::Display&, has_display: bool, audio: AudioDevices::Device&) -> bool:
+            raw: mutable u8[277] = zeroed
+            raw[0] <- 69
+            raw[1] <- 68
+            raw[2] <- 83
+            raw[3] <- 49
+            settings_put(&raw, 4, display.x)
+            settings_put(&raw, 8, display.y)
+            settings_put(&raw, 12, display.width)
+            settings_put(&raw, 16, display.height)
+            raw[20] <- 1 if has_display else 0
+            count: usize = audio.name_count if audio.name_count <= 255 else 0
+            raw[21] <- count.u8()
+            for i in 0..<count |raw, audio|:
+                raw[HEADER + i] <- audio.name[i]
+            written: i32 = catch UserData::write_payload(key, VERSION, &raw[0], HEADER + count):
+                value: 0
+                error failure: 1
+            written == 0
+
+        def load(key: cstr) -> Saved:
+            raw: mutable u8[277] = zeroed
+            version: mutable i64 = 0
+            length: mutable usize = 0
+            status: i32 = settings_read(key, &version, &raw[0], &length)
+            audio: mutable AudioDevices::Device = empty_audio()
+            nothing: Saved = Saved{stored: Stored.NotFound, has_display: false, x: 0, y: 0, width: 0, height: 0, audio: audio}
+            return nothing if status == 1
+            return Saved{stored: Stored.StorageFailure, has_display: false, x: 0, y: 0, width: 0, height: 0, audio: audio} if status == 3
+            magic: bool = raw[0] == 69 and raw[1] == 68 and raw[2] == 83 and raw[3] == 49
+            count: usize = raw[21].usize()
+            valid: bool = status == 0 and version == VERSION and magic and length == HEADER + count and raw[20] <= 1
+            return Saved{stored: Stored.Invalid, has_display: false, x: 0, y: 0, width: 0, height: 0, audio: audio} if not valid
+            for i in 0..<count |audio, raw|:
+                audio.name[i] <- raw[HEADER + i]
+            audio.name_count <- count
+            Saved{stored: Stored.Loaded, has_display: raw[20] == 1, x: settings_get(&raw, 4), y: settings_get(&raw, 8), width: settings_get(&raw, 12), height: settings_get(&raw, 16), audio: audio}
+
+        # Picks the saved display if one with the same bounds is connected,
+        # else the primary, else the first. DeviceChoice ids are index + 1.
+        def resolve_display(saved: Saved&, displays: ApplicationDisplays::Displays&) -> Applied:
+            choices: mutable DeviceChoice::Devices = DeviceChoice::new_devices()
+            wanted: mutable i64 = 0
+            for i in 0..<displays.count |choices, wanted, displays, saved|:
+                d: ApplicationDisplays::Display = displays.items[i]
+                _ = DeviceChoice::add(&choices, i.i64() + 1, d.width > 0 and d.height > 0, d.primary)
+                same: bool = saved.has_display and d.x == saved.x and d.y == saved.y and d.width == saved.width and d.height == saved.height
+                wanted <- i.i64() + 1 if same and wanted == 0
+            choice: DeviceChoice::Choice = DeviceChoice::resolve(&choices, wanted)
+            id: i32 = displays.items[(choice.id - 1).usize()].id if choice.id > 0 else 0
+            Applied{display: choice.source, display_id: id, audio: AudioDevices::Opened.Failed}
+
+        # Moves the window to the resolved saved display.
+        def apply_display(saved: Saved&) -> Applied:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            resolved: Applied = resolve_display(saved, &listing.displays)
+            if resolved.display_id != 0:
+                _ = ApplicationDisplays::move_window_to(resolved.display_id)
+            resolved
+
+        # Startup: moves the window to the resolved display and opens the
+        # mixer on the saved output (or the default when none is saved or it
+        # is gone). The mixer must not already be open.
+        def apply(saved: Saved&, sample_rate: u32, channels: u32) -> Applied:
+            resolved: Applied = apply_display(saved)
+            opened: AudioDevices::Opened = AudioDevices::open_preferred(sample_rate, channels, &saved.audio)
+            Applied{display: resolved.display, display_id: resolved.display_id, audio: opened}
+
+        # For hosts that opened the default mixer already: closes it and opens
+        # the saved output. Call before any clip is decoded. When no output
+        # opens, the silent device keeps sound state honest and Failed is
+        # reported.
+        def reopen_audio(saved: Saved&, sample_rate: u32, channels: u32) -> AudioDevices::Opened:
+            _ = catch AudioRuntime::shutdown():
+                value: 0
+                error failure: 1
+            opened: AudioDevices::Opened = AudioDevices::open_preferred(sample_rate, channels, &saved.audio)
+            if opened == AudioDevices::Opened.Failed:
+                _ = catch AudioRuntime::initialize_silent(sample_rate, channels):
+                    value: 0
+                    error failure: 1
+            opened
+
+        # Saves the display that holds the window now, keeping `audio`.
+        def save_window(key: cstr, audio: AudioDevices::Device&) -> bool:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            id: i32 = ApplicationDisplays::window_display()
+            found: mutable ApplicationDisplays::Display = listing.displays.items[0]
+            has: mutable bool = false
+            for i in 0..<listing.displays.count |found, has, listing, id|:
+                if listing.displays.items[i].id == id:
+                    found <- listing.displays.items[i]
+                    has <- true
+            save(key, &found, has, audio)

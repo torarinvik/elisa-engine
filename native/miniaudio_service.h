@@ -61,6 +61,11 @@ public:
         return initialize(nullptr, 0, sample_rate, channels);
     }
 
+    // Opens a specific playback device, as identified by enumeration.
+    bool initialize_device(uint32_t sample_rate, uint32_t channels, const ma_device_id& id) {
+        return initialize(nullptr, 0, sample_rate, channels, &id);
+    }
+
     bool reopen_null() {
         if (!initialized_) return false;
         const uint32_t rate = sample_rate_;
@@ -371,7 +376,7 @@ public:
 
 private:
     bool initialize(const ma_backend* backends, size_t backend_count,
-        uint32_t sample_rate, uint32_t channels) {
+        uint32_t sample_rate, uint32_t channels, const ma_device_id* device_id = nullptr) {
         if (initialized_ || sample_rate == 0 || channels == 0 || channels > 2) return false;
         device_recovery_requested_.store(false, std::memory_order_release);
         const ma_context_config context_config = ma_context_config_init();
@@ -379,6 +384,7 @@ private:
         ma_device_config config = ma_device_config_init(ma_device_type_playback);
         config.playback.format = ma_format_s16;
         config.playback.channels = channels;
+        config.playback.pDeviceID = device_id;
         config.sampleRate = sample_rate;
         config.dataCallback = &Service::data_callback;
         config.notificationCallback = &Service::notification_callback;

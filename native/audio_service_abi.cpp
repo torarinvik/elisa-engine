@@ -39,7 +39,8 @@ bool default_device_forced_unavailable() {
     return value != nullptr && value[0] != '\0' && value[0] != '0';
 }
 
-int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
+int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent,
+    const ma_device_id* device_id = nullptr) {
     const int32_t owner_status = require_application_owner();
     if (owner_status != ELISA_AUDIO_OK) return owner_status;
     if (sample_rate < ELISA_AUDIO_MIN_SAMPLE_RATE_HZ ||
@@ -52,6 +53,7 @@ int32_t initialize_audio(uint32_t sample_rate, uint32_t channels, bool silent) {
     if (!silent && default_device_forced_unavailable()) return ELISA_AUDIO_DEVICE_UNAVAILABLE;
     const bool initialized = silent
         ? state.service.initialize_null(sample_rate, channels)
+        : device_id != nullptr ? state.service.initialize_device(sample_rate, channels, *device_id)
         : state.service.initialize_default(sample_rate, channels);
     if (!initialized) return ELISA_AUDIO_DEVICE_UNAVAILABLE;
 #if defined(ELISA_AUDIO_TEST_PROBE)
@@ -440,3 +442,5 @@ extern "C" int32_t elisa_audio_v1_shutdown(void) {
 extern "C" void elisa_audio_v1_shutdown_from_application(void) {
     shutdown_audio();
 }
+
+#include "audio_devices.inc"

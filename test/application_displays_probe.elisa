@@ -1,0 +1,27 @@
+# Display enumeration checks for the native application smoke.
+module ApplicationDisplaysProbe:
+    public:
+        # Before initialize the listing fails and is empty.
+        def before_start() -> i32:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            return 202 if listing.ok or listing.displays.count != 0
+            0
+
+        # While running: at least one display, exactly one primary, positive
+        # sizes and scale, distinct ids that `contains` finds, and an unknown
+        # id that it does not.
+        def run() -> i32:
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            return 203 if not listing.ok or listing.displays.count == 0
+            displays: ApplicationDisplays::Displays = listing.displays
+            primaries: mutable usize = 0
+            bad: mutable bool = false
+            for i in 0..<displays.count |primaries, bad, displays|:
+                d: ApplicationDisplays::Display = displays.items[i]
+                primaries <- primaries + 1 if d.primary
+                bad <- true if d.width <= 0 or d.height <= 0 or d.scale_permille <= 0 or d.id == 0
+                bad <- true if not ApplicationDisplays::contains(&displays, d.id)
+            return 204 if bad
+            return 205 if primaries != 1
+            return 206 if ApplicationDisplays::contains(&displays, -1)
+            0

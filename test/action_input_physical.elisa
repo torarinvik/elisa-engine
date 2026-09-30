@@ -1,0 +1,68 @@
+include "../src/runtime/action_input_recording.elisa"
+
+# Physical-position key bindings. An AZERTY-style layout reports the
+# character `A` from the key in the US `Q` position; a binding to the Q
+# position follows the key, a binding to the A character follows the label.
+const FORWARD: i64 = 1
+const LABEL_A: i64 = 2
+
+def key(code: i64, physical: i64, down: bool) -> Application::InputEvent:
+    Application::InputEvent{kind: Application::InputEventKind.Key, device: 0, code: code,
+        value: 1.0 if down else 0.0, pressed: down, released: not down, chord_down: false,
+        connected: false, device_slot: 0, physical_code: physical}
+
+def bound() -> ActionInput::Input:
+    mutable input: ActionInput::Input = ActionInput::Input()
+    q_position: i64 = ActionInputRuntime::physical_key(Application::keyboard_key_code(Application::KeyboardKeyCode.Q))
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: FORWARD, device: ActionInput::Device.Keyboard,
+        code: q_position, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+    ActionInput::bind_checked(&input, ActionInput::Binding{action: LABEL_A, device: ActionInput::Device.Keyboard,
+        code: Application::keyboard_key_code(Application::KeyboardKeyCode.A), chord_code: 0, deadzone: 0.0,
+        context: ActionInput::Context.Gameplay, live: true})
+    input
+
+def main() -> i32:
+    a: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.A)
+    q: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.Q)
+    return 1 if ActionInputRuntime::physical_key(q) <= 65535 and ActionInputRuntime::physical_key(q) == q
+    mutable input: ActionInput::Input = bound()
+    # The Q-position key labelled A drives both bindings.
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input, key(a, q, true))
+    return 2 if not ActionInput::action_pressed(&input, FORWARD)
+    return 3 if not ActionInput::action_pressed(&input, LABEL_A)
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input, key(a, q, false))
+    return 4 if ActionInput::action_down(&input, FORWARD) or not ActionInput::action_released(&input, FORWARD)
+    # The A-position key (labelled Q on AZERTY) reaches neither binding.
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input, key(q, a, true))
+    return 5 if ActionInput::action_down(&input, FORWARD) or ActionInput::action_down(&input, LABEL_A)
+    ActionInputRuntime::apply_application_event(&input, key(q, a, false))
+    # A key with no layout code still binds by position.
+    ActionInput::begin_frame(&input)
+    ActionInputRuntime::apply_application_event(&input, key(0, q, true))
+    return 6 if not ActionInput::action_down(&input, FORWARD) or ActionInput::action_down(&input, LABEL_A)
+    # Focus loss releases a held physical key like any other key.
+    focus: mutable Application::InputEvent = key(0, 0, false)
+    focus.kind <- Application::InputEventKind.FocusLost
+    ActionInputRuntime::apply_application_event(&input, focus)
+    return 7 if ActionInput::action_down(&input, FORWARD)
+    # Player routing honours the keyboard assignment for physical keys too.
+    mutable other: ActionInput::Input = bound()
+    ActionInput::begin_frame(&other)
+    ActionInputRuntime::apply_player_event(&other, key(a, q, true), 1, false)
+    return 8 if ActionInput::action_down(&other, FORWARD)
+    ActionInputRuntime::apply_player_event(&other, key(a, q, true), 1, true)
+    return 9 if not ActionInput::action_down(&other, FORWARD)
+    # Recording keeps both effects and replays them.
+    mutable recorded: ActionInput::Input = bound()
+    mutable log: ActionInputReplay::Log = ActionInputReplay::Log()
+    ActionInput::begin_frame(&recorded)
+    return 10 if not ActionInputRecording::record_application_event(&log, &recorded, 0, key(a, q, true))
+    return 11 if log.count != 2 or not ActionInput::action_down(&recorded, FORWARD)
+    mutable replayed: ActionInput::Input = bound()
+    ActionInput::begin_frame(&replayed)
+    cursor: usize = ActionInputReplay::replay_tick(&log, &replayed, 0, 0)
+    return 12 if cursor != 2 or not ActionInput::action_down(&replayed, FORWARD) or not ActionInput::action_down(&replayed, LABEL_A)
+    0

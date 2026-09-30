@@ -50,6 +50,7 @@ struct QueuedInputEvent {
     int32_t released = 0;
     int32_t chord_down = 0;
     int32_t device_slot = 0;
+    int64_t physical = 0;
 };
 
 struct QueuedPointerEvent {
@@ -115,13 +116,14 @@ bool has_gamepad(const ApplicationService& service, SDL_JoystickID id) {
 int32_t gamepad_device_slot(const ApplicationService& service, SDL_JoystickID id);
 
 void queue_input_event(ApplicationService& service, int32_t kind, int32_t device,
-    int64_t code, float value, bool pressed, bool released, int32_t device_slot = 0) {
+    int64_t code, float value, bool pressed, bool released, int32_t device_slot = 0,
+    int64_t physical = 0) {
     if (service.input_event_count == INPUT_EVENT_CAPACITY) {
         service.input_overflow = true;
         return;
     }
     service.input_events[service.input_event_count++] = QueuedInputEvent{
-        kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0, device_slot};
+        kind, device, code, value, pressed ? 1 : 0, released ? 1 : 0, 0, device_slot, physical};
 }
 
 void queue_pointer_event(ApplicationService& service, int32_t kind,
@@ -383,18 +385,26 @@ extern "C" int32_t elisa_application_v1_pump(void) {
             queue_pointer_event(service, ELISA_APPLICATION_POINTER_FOCUS_LOST,
                 0, 0.0f, 0.0f, 0.0f, 0.0f, 0, false);
             break;
-        case SDL_EVENT_KEY_DOWN:
-            if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
+        case SDL_EVENT_KEY_DOWN: {
+            // A key outside the layout table can still bind by position.
+            const int32_t code = probe::keyboard_key_code(event.key.key);
+            const int32_t physical = probe::physical_key_code(event.key.scancode);
+            if (code != 0 || physical != 0) {
                 queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, probe::INPUT_DEVICE_KEYBOARD,
-                    code, 1.0f, true, false);
+                    code, 1.0f, true, false, 0, physical);
             }
             break;
-        case SDL_EVENT_KEY_UP:
-            if (const int32_t code = probe::keyboard_key_code(event.key.key); code != 0) {
+        }
+        case SDL_EVENT_KEY_UP: {
+            // A key outside the layout table can still bind by position.
+            const int32_t code = probe::keyboard_key_code(event.key.key);
+            const int32_t physical = probe::physical_key_code(event.key.scancode);
+            if (code != 0 || physical != 0) {
                 queue_input_event(service, ELISA_APPLICATION_INPUT_KEY, probe::INPUT_DEVICE_KEYBOARD,
-                    code, 0.0f, false, true);
+                    code, 0.0f, false, true, 0, physical);
             }
             break;
+        }
         case SDL_EVENT_MOUSE_BUTTON_DOWN:
             queue_input_event(service, ELISA_APPLICATION_INPUT_MOUSE_BUTTON, probe::INPUT_DEVICE_MOUSE,
                 static_cast<int64_t>(event.button.button), 1.0f, true, false);

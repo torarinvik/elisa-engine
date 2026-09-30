@@ -1,0 +1,48 @@
+include "../src/animation/motion_filters.elisa"
+
+# Reference values come from the boxing game's clean_leg_motion.py filters
+# (numpy) on the same signal; see docs/validation/motion-filters.md.
+def signal() -> MotionFilters::Signal:
+    mutable s: MotionFilters::Signal = MotionFilters::Signal()
+    for i in 0..<200 |s|:
+        t: f64 = i.f64()
+        spike: f64 = 2.0 if i == 50 else (-1.5 if i >= 120 and i < 124 else 0.0)
+        MotionFilters::push(&s, ElisaMath::sin(t * 0.07) + 0.3 * ElisaMath::sin(t * 0.9) + spike)
+    s
+
+def near(s: MotionFilters::Signal&, expected: f64[7]) -> bool:
+    at: usize[7] = [0, 1, 50, 99, 121, 198, 199]
+    mutable ok: bool = true
+    for k in 0..<7 |ok, s, expected, at|:
+        d: f64 = s.values[at[k]] - expected[k]
+        ok <- false if d > 0.000000001 or d < -0.000000001
+    ok and s.count == 200
+
+def main() -> i32:
+    source: MotionFilters::Signal = signal()
+    mutable out: MotionFilters::Signal = MotionFilters::Signal()
+    return 1 if not MotionFilters::gaussian(&source, &out, 3.0, false)
+    return 2 if not near(&out, [0.132720678715, 0.170848805365, -0.069911532002, 0.597158375496, 0.068153171366, 0.984186186140, 0.998156189878])
+    return 3 if not MotionFilters::gaussian(&source, &out, 3.0, true)
+    return 4 if not near(&out, [0.583719149382, 0.494822494815, -0.069911532002, 0.597158375496, 0.068153171366, 0.749864512329, 0.673783225762])
+    return 5 if not MotionFilters::median(&source, &out, 41, false)
+    return 6 if not near(&out, [0.0, 0.049638772156, -0.382550292805, 0.563918504814, 0.563918504814, 0.969853191739, 0.969853191739])
+    return 7 if not MotionFilters::despike(&source, &out, 41, 3.0, true)
+    return 8 if not near(&out, [0.603348016322, 0.631283420972, -0.322832924724, 0.505110362357, 0.542614412868, 0.552483356493, 0.577038287754])
+    return 9 if not MotionFilters::butterworth(&source, &out, 6.0, 120.0)
+    return 10 if not near(&out, [0.119858502363, 0.158212602330, -0.127538558512, 0.607417240773, 0.192761610289, 0.878722806624, 0.880027516486])
+    # Invalid parameters are refused rather than producing garbage.
+    return 11 if MotionFilters::median(&source, &out, 40, false) or MotionFilters::butterworth(&source, &out, 60.0, 120.0)
+    # Quaternion continuity: a sign-flipped middle sample is brought back.
+    mutable x: MotionFilters::Signal = MotionFilters::Signal()
+    mutable y: MotionFilters::Signal = MotionFilters::Signal()
+    mutable z: MotionFilters::Signal = MotionFilters::Signal()
+    mutable w: MotionFilters::Signal = MotionFilters::Signal()
+    for i in 0..<3 |x, y, z, w|:
+        sign: f64 = -1.0 if i == 1 else 1.0
+        MotionFilters::push(&x, 0.0)
+        MotionFilters::push(&y, 0.6 * sign)
+        MotionFilters::push(&z, 0.0)
+        MotionFilters::push(&w, 0.8 * sign)
+    return 12 if MotionFilters::quat_continuity(&x, &y, &z, &w) != 1 or w.values[1] != 0.8 or y.values[2] != 0.6
+    return 0

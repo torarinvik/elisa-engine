@@ -316,7 +316,7 @@ int32_t elisa_render_scene_v1_consume_animation_root_motion(
     int64_t handle, float* delta_x, float* delta_y, float* delta_z);
 float elisa_render_scene_v1_animation_progress(int64_t handle);
 enum {
-    ELISA_RENDER_SCENE_MAX_ANIMATION_BONES = 64u,
+    ELISA_RENDER_SCENE_MAX_ANIMATION_BONES = 256u,
     ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS = 32u,
     ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS = 16u,
 };

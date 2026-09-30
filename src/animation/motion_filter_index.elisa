@@ -1,0 +1,33 @@
+# Tap addressing for MotionFilters, kept free of floating point so the
+# prover can bound it (proof/motion_filters.elisa).
+module MotionFilterIndex:
+    public:
+        # Edge padding: an index before or past the signal repeats its end.
+        def clamped(index: i64, n: i64) -> i64:
+            ensure result >= 0
+            ensure result < n or n <= 0
+            return 0 if n <= 0
+            return 0 if index < 0
+            return n - 1 if index >= n
+            index
+
+        # Wrap padding for looping clips. The range check holds for any
+        # remainder; it is spelled out so the bound does not rest on the
+        # prover modelling a signed `%`.
+        def wrapped(index: i64, n: i64) -> i64:
+            ensure result >= 0
+            ensure result < n or n <= 0
+            return 0 if n <= 0
+            r: i64 = index % n
+            folded: i64 = r + n if r < 0 else r
+            return 0 if folded < 0
+            return 0 if folded >= n
+            folded
+
+        # Any index lands inside a non-empty signal.
+        def padded(index: i64, n: i64, wrap: bool) -> i64:
+            ensure result >= 0
+            ensure result < n or n <= 0
+            return 0 if n <= 0
+            return wrapped(index, n) if wrap
+            clamped(index, n)

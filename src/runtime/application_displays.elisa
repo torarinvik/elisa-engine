@@ -1,0 +1,76 @@
+# Connected-display enumeration for Elisa applications, used to offer display
+# choices and to detect when a saved display has disappeared.
+include "./application.elisa"
+
+module ApplicationDisplays:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_display_count(count: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_display_info(index: u32, fields: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_move_window_to_display(id: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_window_display(id: mutable i32&) -> i32
+
+    public:
+        const MAX_DISPLAYS: usize = 8
+
+        struct Display:
+            id: i32
+            x: i32
+            y: i32
+            width: i32
+            height: i32
+            refresh_millihertz: i32
+            scale_permille: i32
+            primary: bool
+
+        struct Displays:
+            items: mutable Display[8]
+            count: mutable usize
+
+        # Lists up to MAX_DISPLAYS connected displays. `ok` is false before
+        # the host starts or when the platform cannot report; count is then 0.
+        struct Listing:
+            displays: Displays
+            ok: bool
+
+        def list() -> Listing:
+            empty: Display = Display{id: 0, x: 0, y: 0, width: 0, height: 0, refresh_millihertz: 0, scale_permille: 0, primary: false}
+            items: mutable Display[8] = [empty, empty, empty, empty, empty, empty, empty, empty]
+            total: mutable u32 = 0
+            if elisa_application_v1_display_count(&total) != 0:
+                return Listing{displays: Displays{items: items, count: 0}, ok: false}
+            limit: usize = total.usize() if total.usize() < MAX_DISPLAYS else MAX_DISPLAYS
+            filled: mutable usize = 0
+            failed: mutable bool = false
+            for i in 0..<limit |items, filled, failed|:
+                fields: mutable i32[8] = [0, 0, 0, 0, 0, 0, 0, 0]
+                if not failed:
+                    if elisa_application_v1_display_info(i.u32(), &fields[0]) != 0:
+                        failed <- true
+                    else:
+                        items[i] <- Display{id: fields[0], x: fields[1], y: fields[2], width: fields[3], height: fields[4], refresh_millihertz: fields[5], scale_permille: fields[6], primary: fields[7] == 1}
+                        filled <- i + 1
+            Listing{displays: Displays{items: items, count: filled if not failed else 0}, ok: not failed}
+
+        # True when a display with `id` is currently connected.
+        def contains(displays: Displays&, id: i32) -> bool:
+            found: mutable bool = false
+            for i in 0..<displays.count |found, displays|:
+                found <- true if displays.items[i].id == id
+            found
+
+        # Centres the window on the connected display `id`.
+        def move_window_to(id: i32) -> bool:
+            elisa_application_v1_move_window_to_display(id) == 0
+
+        # The display that holds the window, or 0 when unknown.
+        def window_display() -> i32:
+            id: mutable i32 = 0
+            return 0 if elisa_application_v1_window_display(&id) != 0
+            id

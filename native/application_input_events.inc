@@ -104,7 +104,9 @@ extern "C" int64_t elisa_application_v1_next_input_event_token(void) {
         const QueuedInputEvent& event = service.input_events[service.input_event_read++];
         kind = event.kind;
         device = event.device;
-        code = event.code;
+        // Key tokens carry the layout code in the low 16 payload bits and
+        // the physical position code above it.
+        code = kind == ELISA_APPLICATION_INPUT_KEY ? (event.code | (event.physical << 16)) : event.code;
         value = event.value;
         pressed = event.pressed != 0;
         released = event.released != 0;
@@ -182,3 +184,6 @@ extern "C" int32_t elisa_application_v1_relative_mouse(void) {
     if (!service.initialized || service.host.window() == nullptr) return 0;
     return SDL_GetWindowRelativeMouseMode(service.host.window()) ? 1 : 0;
 }
+
+#include "application_clipboard.inc"
+#include "application_displays.inc"
