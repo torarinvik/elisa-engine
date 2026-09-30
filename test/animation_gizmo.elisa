@@ -1,0 +1,86 @@
+include "../src/animation/gizmo.elisa"
+
+def near(a: f64, b: f64, tolerance: f64) -> bool:
+    d: f64 = a - b
+    d < tolerance and d > 0.0 - tolerance
+
+def same(got: darray[f64]&, want: darray[f64]&) -> bool:
+    ok: mutable bool = got.count == want.count
+    for i in 0..<want.count |ok, got, want|:
+        x: f64 = got[i] if i < got.count else 1000.0
+        ok <- ok and near(x, want[i], 0.000000001)
+    ok
+
+def main() -> i32:
+    # Values from a Python reference; local axes also match Rodrigues.
+    return 1 if not near(Gizmo::perspective_size(10.0, 1.0471975511965976, 1080.0, 100.0), 1.0691671651659733, 0.000000001)
+    return 2 if not near(Gizmo::orthographic_size(3.0, 600.0, 50.0), 0.5, 0.000000001)
+    q: darray[f64] = [0.0916432938695913, 0.1832865877391826, 0.2749298816087739, 0.9393727128473789]
+    local: darray[f64] = Gizmo::local_basis(q)
+    want_l: darray[f64] = [0.781639173907025, 0.5501172307043584, -0.29395787843858057, -0.4829292842142122, 0.8320301337746345, 0.27295633888831433, 0.3947397981737998, -0.07139249941787584, 0.9160150668873173]
+    return 3 if not same(local, want_l)
+    world: darray[f64] = Gizmo::world_basis()
+    origin: darray[f64] = [1.0, 2.0, 3.0]
+    r1: darray[f64] = [4.0, 5.0, 13.0, -0.1760901812651248, -0.4402254531628119, -0.8804509063256238]
+    r2: darray[f64] = [4.0, 5.0, 13.0, -0.42107596053325946, -0.3368607684266076, -0.8421519210665189]
+    return 4 if not near(Gizmo::axis_param(r1, origin, 1.0, 0.0, 0.0), 1.1599999999999997, 0.000000001)
+    # Translate along world X, local Y, in the local XY plane and the view plane.
+    want_x: darray[f64] = [-1.8275862068965505 - 1.1599999999999997, 0.0, 0.0]
+    return 5 if not same(Gizmo::translate(GizmoIndex::AXIS_X, world, origin, r1, r2), want_x)
+    want_y: darray[f64] = [-1.444767856429348, 2.489164422518211, 0.8165968756194697]
+    return 6 if not same(Gizmo::translate(GizmoIndex::AXIS_Y, local, origin, r1, r2), want_y)
+    want_xy: darray[f64] = [-2.556961881148969, 1.5449493740838096, 1.2222860241779188]
+    return 7 if not same(Gizmo::translate(GizmoIndex::PLANE_XY, local, origin, r1, r2), want_xy)
+    want_free: darray[f64] = [-2.7778771615980915, 0.9668455575432313, 0.07215265354800238]
+    return 8 if not same(Gizmo::translate(GizmoIndex::FREE, local, origin, r1, r2), want_free)
+    # A world-plane drag never leaves its plane.
+    in_xz: darray[f64] = Gizmo::translate(GizmoIndex::PLANE_XZ, world, origin, r1, r2)
+    return 9 if in_xz[1] != 0.0 or in_xz[0] == 0.0 or in_xz[2] == 0.0
+    in_yz: darray[f64] = Gizmo::translate(GizmoIndex::PLANE_YZ, world, origin, r1, r2)
+    return 10 if in_yz[0] != 0.0 or in_yz[1] == 0.0
+    # Unmeasurable drags do not move: a ray along the axis, a plane edge-on,
+    # a plane behind the ray and an invalid mode.
+    along: darray[f64] = [0.0, 2.0, 3.0, 1.0, 0.0, 0.0]
+    zero: darray[f64] = [0.0, 0.0, 0.0]
+    return 11 if not same(Gizmo::translate(GizmoIndex::AXIS_X, world, origin, along, r2), zero)
+    return 12 if not same(Gizmo::translate(GizmoIndex::AXIS_X, world, origin, r1, along), zero)
+    grazing: darray[f64] = [0.0, 5.0, 3.0, 0.99999999995, 0.0000099999999995, 0.0]
+    return 17 if not same(Gizmo::translate(GizmoIndex::AXIS_X, world, origin, r1, grazing), zero)
+    want_z: darray[f64] = [0.0, 0.0, 0.6560134566862987]
+    return 18 if not same(Gizmo::translate(GizmoIndex::AXIS_Z, world, origin, r1, r2), want_z)
+    return 13 if not same(Gizmo::translate(GizmoIndex::PLANE_XY, world, origin, r1, along), zero)
+    away: darray[f64] = [4.0, 5.0, 13.0, 0.0, 0.0, 1.0]
+    return 14 if not same(Gizmo::translate(GizmoIndex::PLANE_XY, world, origin, r1, away), zero)
+    return 15 if not same(Gizmo::translate(7, world, origin, r1, r2), zero)
+    return 16 if not same(Gizmo::translate(-1, world, origin, r1, r2), zero)
+    # Rotate: a quarter turn about world Z each way, a local-X ring, misses.
+    center: darray[f64] = [0.0, 0.0, 0.0]
+    east: darray[f64] = [1.0, 0.0, 5.0, 0.0, 0.0, -1.0]
+    north: darray[f64] = [0.0, 1.0, 5.0, 0.0, 0.0, -1.0]
+    return 20 if not near(Gizmo::rotate(GizmoIndex::AXIS_Z, world, center, east, north), 1.5707963267948966, 0.000000001)
+    return 21 if not near(Gizmo::rotate(GizmoIndex::AXIS_Z, world, center, north, east), -1.5707963267948966, 0.000000001)
+    return 22 if not near(Gizmo::rotate(GizmoIndex::AXIS_X, local, origin, r1, r2), -0.6479479233599733, 0.000000001)
+    hub: darray[f64] = [0.0, 0.0, 5.0, 0.0, 0.0, -1.0]
+    a_turn: f64 = Gizmo::rotate(GizmoIndex::AXIS_Z, world, center, hub, north)
+    return 23 if a_turn == a_turn
+    b_turn: f64 = Gizmo::rotate(GizmoIndex::FREE, world, center, east, north)
+    return 24 if b_turn == b_turn
+    c_turn: f64 = Gizmo::rotate(GizmoIndex::AXIS_X, world, center, east, north)
+    return 25 if c_turn == c_turn
+    d_turn: f64 = Gizmo::rotate(GizmoIndex::AXIS_Z, world, center, north, hub)
+    return 27 if d_turn == d_turn
+    # The plane mode's ring is its normal axis.
+    return 26 if not near(Gizmo::rotate(GizmoIndex::PLANE_XY, world, center, east, north), 1.5707963267948966, 0.000000001)
+    # Cancel returns the pre-drag pose bit for bit, including -0.0 and a
+    # subnormal, even after the live pose is overwritten.
+    pose: mutable darray[f64] = [0.25, -0.0, 1.0e-310, -7.5]
+    drag: Gizmo::Drag = Gizmo::begin(GizmoIndex::AXIS_Y, pose)
+    pose[0] <- 99.0
+    pose[1] <- 1.0
+    back: darray[f64] = Gizmo::cancel(drag)
+    return 30 if back.count != 4 or back[0] != 0.25 or back[3] != -7.5
+    return 31 if back[1] != 0.0 or 1.0 / back[1] > 0.0
+    return 32 if back[2] <= 0.0 or back[2] * 1000.0 != pose[2] * 1000.0
+    return 33 if drag.mode != GizmoIndex::AXIS_Y
+    0
+

@@ -1,0 +1,58 @@
+include "../src/animation/gizmo_index.elisa"
+
+extend GizmoIndex:
+    def prove_valid_rejects_negative(mode: i64) -> bool:
+        requires mode < 0
+        ensure not result
+        valid(mode)
+
+    def prove_valid_rejects_past_free(mode: i64) -> bool:
+        requires mode > 6
+        ensure not result
+        valid(mode)
+
+    def prove_keeps_component_inside(mode: i64, component: i64) -> bool:
+        ensure not result or component >= 0
+        ensure not result or component < 3
+        keeps(mode, component)
+
+    def prove_keeps_rejects_invalid_mode(mode: i64, component: i64) -> bool:
+        requires mode > 6
+        ensure not result
+        keeps(mode, component)
+
+    def prove_keeps_rejects_fourth_component(mode: i64, component: i64) -> bool:
+        requires component >= 3
+        ensure not result
+        keeps(mode, component)
+
+    def prove_normal_bounded(mode: i64) -> i64:
+        ensure result >= -1
+        ensure result < 3
+        normal(mode)
+
+    def prove_normal_of_axis(mode: i64) -> i64:
+        requires mode >= 0
+        requires mode < 3
+        ensure result == mode
+        normal(mode)
+
+    def prove_free_has_no_normal(mode: i64) -> i64:
+        requires mode == 6
+        ensure result == -1
+        normal(mode)
+
+    def prove_saved_slot_inside(index: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 1048576
+        ensure result >= -1
+        ensure result < count
+        saved_slot(index, count)
+
+    def prove_saved_slot_identity(index: i64, count: i64) -> i64:
+        requires count >= 0
+        requires count <= 1048576
+        requires index >= 0
+        requires index < count
+        ensure result == index
+        saved_slot(index, count)

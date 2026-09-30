@@ -1,0 +1,60 @@
+# Integer rules for Gizmo, split out so the prover can check them: which
+# translate components an axis or plane constraint keeps, which axis a
+# rotate ring turns about, and the saved-pose slots a cancel restores.
+module GizmoIndex:
+    public:
+        const MAX_VALUES: i64 = 1048576
+        const AXIS_X: i64 = 0
+        const AXIS_Y: i64 = 1
+        const AXIS_Z: i64 = 2
+        const PLANE_YZ: i64 = 3
+        const PLANE_XZ: i64 = 4
+        const PLANE_XY: i64 = 5
+        const FREE: i64 = 6
+
+        def valid(mode: i64) -> bool:
+            ensure not result or mode >= 0
+            ensure not result or mode <= 6
+            return false if mode < 0
+            return false if mode > FREE
+            true
+
+        # Whether a translate drag in `mode` moves along gizmo axis `component`:
+        # an axis keeps only itself, a plane keeps all but its normal.
+        def keeps(mode: i64, component: i64) -> bool:
+            ensure not result or component >= 0
+            ensure not result or component < 3
+            ensure not result or mode >= 0
+            ensure not result or mode <= 6
+            ensure mode < 0 or mode >= 3 or component == mode or not result
+            ensure mode < 3 or mode >= 6 or component == mode - 3 or component < 0 or component >= 3 or result
+            ensure mode != 6 or component < 0 or component >= 3 or result
+            return false if component < 0 or component >= 3
+            return false if mode < 0 or mode > FREE
+            return true if mode == FREE
+            return false if mode < 3 and mode != component
+            return true if mode < 3
+            return true if mode - 3 != component
+            false
+
+        # The gizmo axis a plane constraint is normal to (the axis a rotate
+        # ring turns about), or -1 for the free mode and invalid modes.
+        def normal(mode: i64) -> i64:
+            ensure result >= -1
+            ensure result < 3
+            ensure mode < 0 or mode >= 3 or result == mode
+            ensure mode != 6 or result == -1
+            return -1 if mode < 0 or mode >= FREE
+            return mode if mode < 3
+            mode - 3
+
+        # Slot of a saved pose value, or -1 outside the saved range.
+        def saved_slot(index: i64, count: i64) -> i64:
+            requires count >= 0
+            requires count <= MAX_VALUES
+            ensure result >= -1
+            ensure result < count
+            ensure index < count or result == -1
+            ensure index < 0 or index >= count or result == index
+            return -1 if index < 0 or index >= count
+            index

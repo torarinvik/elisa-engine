@@ -74,7 +74,7 @@ def main() -> i32:
     front: darray[f64] = [0.0, 1.0, 10.0]
     straight: darray[f64] = SkeletonPick::orthographic_ray(front, basis, 2.0, 1.0, 0.0, 0.0)
     return 26 if not hit_is(SkeletonPick::pick(joints, parents, straight, 0.3, 0.2), SkeletonPickIndex::BONE, 1, 9.8)
-    # Broken parents (self, forward cycles, out of range) draw no bone.
+    # Broken parents (self, out of range) draw no bone; the forward link misses.
     bad: darray[i64] = [0, 2, 7]
     return 27 if not hit_is(SkeletonPick::pick(joints, bad, mid_bone, 0.3, 0.2), SkeletonPickIndex::NONE, -1, -1.0)
     # Parents past the joint table are ignored, not dropped with the rest.

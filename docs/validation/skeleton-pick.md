@@ -9,14 +9,14 @@ a ray and returns the nearest joint or bone hit with its distance.
   inside, -1 on a miss. Capsules are the cylinder plus both end spheres.
 - `pick`: joints are spheres, bones are capsules from parent to child
   (reported by the child). Nearest wins; on an exact tie a joint beats a bone
-  and an earlier element keeps the pick. Parents that are not earlier joints
-  draw no bone.
+  and an earlier element keeps the pick. A joint's own index or an out-of-range
+  parent draws no bone.
 
 ## Proofs
 
 `SkeletonPickIndex` (proof/skeleton_pick_index.elisa, 71/71): coordinate slots
-stay inside the joint table or are -1, a bone link needs `0 <= parent < child
-< count`, and `replaces` never lets a miss replace a hit and prefers a joint
+stay inside the joint table or are -1, a bone link needs the child and parent in
+range and distinct, and `replaces` never lets a miss replace a hit and prefers a joint
 on ties.
 
 ## Tests

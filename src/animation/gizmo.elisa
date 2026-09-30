@@ -1,0 +1,136 @@
+# Manipulation gizmo math (M04): world or local axes, a screen-constant
+# size, translate drags constrained to an axis, a plane or the view plane,
+# rotate drags about a ring axis, and a drag session whose cancel returns
+# the pre-drag pose exactly. Rays are [ox, oy, oz, dx, dy, dz] with a unit
+# direction (SkeletonPick builds them); a basis is the x, y and z axes.
+include "../vendor/elisa_math.elisa"
+include "./gizmo_index.elisa"
+
+module Gizmo:
+    private:
+        def dot3(ax: f64, ay: f64, az: f64, bx: f64, by: f64, bz: f64) -> f64:
+            ax * bx + ay * by + az * bz
+
+        def component(basis: darray[f64]&, axis: i64, c: i64) -> f64:
+            basis[(axis * 3 + c).usize()]
+
+        # Plane hit of `ray` through `origin` with `normal`, or empty when the
+        # ray is parallel to the plane or the plane is behind it.
+        def plane_hit(ray: darray[f64]&, ox: f64, oy: f64, oz: f64, nx: f64, ny: f64, nz: f64) -> darray[f64]:
+            facing: f64 = dot3(nx, ny, nz, ray[3], ray[4], ray[5])
+            return [] if facing < 0.000000001 and facing > -0.000000001
+            t: f64 = dot3(nx, ny, nz, ox - ray[0], oy - ray[1], oz - ray[2]) / facing
+            return [] if t < 0.0
+            out: darray[f64] = [ray[0] + ray[3] * t, ray[1] + ray[4] * t, ray[2] + ray[5] * t]
+            out
+
+    public:
+        struct Drag:
+            mode: i64
+            saved: darray[f64]
+
+        # World size of `pixels` screen pixels at `distance` in front of a
+        # perspective camera, so a gizmo keeps a constant on-screen size.
+        def perspective_size(distance: f64, fov_y: f64, viewport_height: f64, pixels: f64) -> f64:
+            pixels * 2.0 * distance * ElisaMath::tan(fov_y * 0.5) / viewport_height
+
+        # The same for an orthographic camera whose view is 2 * half_height tall.
+        def orthographic_size(half_height: f64, viewport_height: f64, pixels: f64) -> f64:
+            pixels * 2.0 * half_height / viewport_height
+
+        def world_basis() -> darray[f64]:
+            [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
+        # Local axes of a joint whose world rotation is the unit quaternion
+        # [x, y, z, w]: the columns of its rotation matrix.
+        def local_basis(q: darray[f64]&) -> darray[f64]:
+            x: f64 = q[0]
+            y: f64 = q[1]
+            z: f64 = q[2]
+            w: f64 = q[3]
+            out: darray[f64] = [1.0 - 2.0 * (y * y + z * z), 2.0 * (x * y + w * z), 2.0 * (x * z - w * y), 2.0 * (x * y - w * z), 1.0 - 2.0 * (x * x + z * z), 2.0 * (y * z + w * x), 2.0 * (x * z + w * y), 2.0 * (y * z - w * x), 1.0 - 2.0 * (x * x + y * y)]
+            out
+
+        # Parameter along the unit axis line through `origin` of its point
+        # closest to `ray`, or NaN when the ray runs along the axis.
+        def axis_param(ray: darray[f64]&, origin: darray[f64]&, ux: f64, uy: f64, uz: f64) -> f64:
+            wx: f64 = origin[0] - ray[0]
+            wy: f64 = origin[1] - ray[1]
+            wz: f64 = origin[2] - ray[2]
+            b: f64 = dot3(ux, uy, uz, ray[3], ray[4], ray[5])
+            d: f64 = dot3(ux, uy, uz, wx, wy, wz)
+            e: f64 = dot3(ray[3], ray[4], ray[5], wx, wy, wz)
+            den: f64 = 1.0 - b * b
+            return 0.0 / 0.0 if den < 0.000000001
+            (b * e - d) / den
+
+        # Translation for a drag from `start` to `now` under `mode`, in world
+        # space: along one gizmo axis, within a gizmo plane, or (FREE) within
+        # the view plane through `origin`. Zero when the drag cannot be
+        # measured, such as a ray along the axis or parallel to the plane.
+        def translate(mode: i64, basis: darray[f64]&, origin: darray[f64]&, start: darray[f64]&, now: darray[f64]&) -> darray[f64]:
+            zero: darray[f64] = [0.0, 0.0, 0.0]
+            return zero if not GizmoIndex::valid(mode)
+            if mode < 3:
+                ux: f64 = component(basis, mode, 0)
+                uy: f64 = component(basis, mode, 1)
+                uz: f64 = component(basis, mode, 2)
+                s0: f64 = axis_param(start, origin, ux, uy, uz)
+                s1: f64 = axis_param(now, origin, ux, uy, uz)
+                return zero if s0 != s0 or s1 != s1
+                along: darray[f64] = [ux * (s1 - s0), uy * (s1 - s0), uz * (s1 - s0)]
+                return along
+            n: i64 = GizmoIndex::normal(mode)
+            nx: f64 = component(basis, n, 0) if n >= 0 else start[3]
+            ny: f64 = component(basis, n, 1) if n >= 0 else start[4]
+            nz: f64 = component(basis, n, 2) if n >= 0 else start[5]
+            a: darray[f64] = plane_hit(start, origin[0], origin[1], origin[2], nx, ny, nz)
+            b: darray[f64] = plane_hit(now, origin[0], origin[1], origin[2], nx, ny, nz)
+            return zero if a.count != 3 or b.count != 3
+            dx: f64 = b[0] - a[0]
+            dy: f64 = b[1] - a[1]
+            dz: f64 = b[2] - a[2]
+            # Drop the rounding left along the normal, keeping the plane exact.
+            off: f64 = dot3(dx, dy, dz, nx, ny, nz) / dot3(nx, ny, nz, nx, ny, nz)
+            flat: darray[f64] = [dx - nx * off, dy - ny * off, dz - nz * off]
+            flat
+
+        # Signed angle in radians of a rotate drag about gizmo axis `mode`
+        # (right-handed about the axis), or NaN when the ring plane cannot be
+        # hit or the drag passes through the gizmo center.
+        def rotate(mode: i64, basis: darray[f64]&, origin: darray[f64]&, start: darray[f64]&, now: darray[f64]&) -> f64:
+            n: i64 = GizmoIndex::normal(mode)
+            return 0.0 / 0.0 if n < 0
+            nx: f64 = component(basis, n, 0)
+            ny: f64 = component(basis, n, 1)
+            nz: f64 = component(basis, n, 2)
+            a: darray[f64] = plane_hit(start, origin[0], origin[1], origin[2], nx, ny, nz)
+            b: darray[f64] = plane_hit(now, origin[0], origin[1], origin[2], nx, ny, nz)
+            return 0.0 / 0.0 if a.count != 3 or b.count != 3
+            ax: f64 = a[0] - origin[0]
+            ay: f64 = a[1] - origin[1]
+            az: f64 = a[2] - origin[2]
+            bx: f64 = b[0] - origin[0]
+            by: f64 = b[1] - origin[1]
+            bz: f64 = b[2] - origin[2]
+            return 0.0 / 0.0 if dot3(ax, ay, az, ax, ay, az) <= 0.0 or dot3(bx, by, bz, bx, by, bz) <= 0.0
+            cx: f64 = ay * bz - az * by
+            cy: f64 = az * bx - ax * bz
+            cz: f64 = ax * by - ay * bx
+            ElisaMath::atan2(dot3(cx, cy, cz, nx, ny, nz), dot3(ax, ay, az, bx, by, bz))
+
+        # Start a drag, keeping a copy of the pose it may have to restore.
+        def begin(mode: i64, pose: darray[f64]&) -> Drag:
+            saved: mutable darray[f64] = []
+            for i in 0..<pose.count |saved, pose|:
+                saved.push(pose[i])
+            Drag{mode: mode, saved: saved}
+
+        # The pose to show after cancelling: bit-for-bit the pre-drag pose.
+        def cancel(drag: Drag&) -> darray[f64]:
+            count: i64 = drag.saved.count.i64()
+            out: mutable darray[f64] = []
+            for i in 0..<drag.saved.count |out, drag, count|:
+                slot: i64 = GizmoIndex::saved_slot(i.i64(), count)
+                out.push(drag.saved[slot.usize()])
+            out
