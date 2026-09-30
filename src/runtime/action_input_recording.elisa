@@ -1,0 +1,66 @@
+# Records what ActionInputRuntime does with each Application event as
+# ActionInputReplay entries, so a native-host session can be saved and
+# replayed with the same held, edge and hotplug behavior.
+include "action_input_runtime.elisa"
+include "action_input_replay_codec.elisa"
+
+module ActionInputRecording:
+    private:
+        def recording_device_event(log: mutable ActionInputReplay::Log&,
+            input: mutable ActionInput::Input&, tick: i64, device: ActionInput::Device,
+            event: Application::InputEvent) -> bool:
+            ActionInputReplay::feed_event(log, input, tick, ActionInput::Event{
+                device: device,
+                code: event.code,
+                value: event.value,
+                pressed: event.pressed,
+                released: event.released,
+                chord_down: event.chord_down,
+            })
+
+        def recording_clear_all(log: mutable ActionInputReplay::Log&,
+            input: mutable ActionInput::Input&, tick: i64) -> bool:
+            keyboard: bool = ActionInputReplay::feed_clear(log, input, tick, ActionInput::Device.Keyboard)
+            mouse: bool = ActionInputReplay::feed_clear(log, input, tick, ActionInput::Device.Mouse)
+            gamepad: bool = ActionInputReplay::feed_clear(log, input, tick, ActionInput::Device.Gamepad)
+            keyboard and mouse and gamepad
+
+    public:
+        # Same routing as ActionInputRuntime::apply_application_event, with
+        # every effect recorded at `tick`. Returns false if the log refused an
+        # entry (the live input is still updated).
+        def record_application_event(log: mutable ActionInputReplay::Log&,
+            input: mutable ActionInput::Input&, tick: i64,
+            event: Application::InputEvent) -> bool:
+            match event.kind:
+                Application::InputEventKind.Key:
+                    return recording_device_event(log, input, tick, ActionInput::Device.Keyboard, event)
+                Application::InputEventKind.MouseButton:
+                    return recording_device_event(log, input, tick, ActionInput::Device.Mouse, event)
+                Application::InputEventKind.GamepadButton:
+                    return recording_device_event(log, input, tick, ActionInput::Device.Gamepad, event)
+                Application::InputEventKind.GamepadAxis:
+                    return recording_device_event(log, input, tick, ActionInput::Device.Gamepad, event)
+                Application::InputEventKind.GamepadConnected:
+                    return ActionInputReplay::feed_connection(log, input, tick, ActionInput::Device.Gamepad, true)
+                Application::InputEventKind.GamepadDisconnected:
+                    cleared: bool = ActionInputReplay::feed_clear(log, input, tick, ActionInput::Device.Gamepad)
+                    connection: bool = ActionInputReplay::feed_connection(log, input, tick,
+                        ActionInput::Device.Gamepad, event.connected)
+                    return cleared and connection
+                Application::InputEventKind.FocusLost:
+                    return recording_clear_all(log, input, tick)
+                Application::InputEventKind.Overflow:
+                    return recording_clear_all(log, input, tick)
+            true
+
+        # Recording counterpart of ActionInputRuntime::begin_frame.
+        def begin_frame_recorded(log: mutable ActionInputReplay::Log&,
+            input: mutable ActionInput::Input&, tick: i64) -> usize:
+            ActionInput::begin_frame(input)
+            count: mutable usize = 0
+            event: mutable Application::InputEvent = zeroed
+            while Application::next_input_event(&event) |count, event, input, log|:
+                record_application_event(log, input, tick, event)
+                count <- count + 1
+            count

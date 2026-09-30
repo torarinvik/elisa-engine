@@ -1,0 +1,132 @@
+# Tick-stamped action-input recording. Every event, context switch and
+# connection change goes through `feed_*`, which records it and applies the
+# same quantized values live, so replaying the log into a fresh Input with
+# the same bindings reproduces every held/pressed/released state per tick.
+include "action_input.elisa"
+
+module ActionInputReplay:
+    public:
+        const MAX_ENTRIES: usize = 1024
+        const ENTRY_BYTES: usize = 16
+        # Application axes carry 20 fractional bits; values are stored exactly
+        # at that precision and clamped to [-1, 1].
+        const VALUE_SCALE: f32 = 1048576.0
+
+        enum Kind:
+            Input
+            Context
+            Connect
+            Disconnect
+            # Held state on `device` dropped without detaching it (focus loss,
+            # queue overflow, the clear before a gamepad disconnect).
+            ClearDevice
+
+        struct Entry:
+            tick: i64
+            kind: Kind
+            device: ActionInput::Device
+            code: i64
+            value_q: i64
+            pressed: bool
+            released: bool
+            chord_down: bool
+            context: ActionInput::Context
+
+        struct Log:
+            entries: mutable Entry[1024]
+            count: mutable usize
+            dropped: mutable usize
+            last_tick: mutable i64
+
+        def Log() -> Log:
+            Log{entries: zeroed, count: 0, dropped: 0, last_tick: 0}
+
+        def quantize(value: f32) -> i64:
+            clamped: f32 = 1.0 if value > 1.0 else (-1.0 if value < -1.0 else value)
+            scaled: f32 = clamped * VALUE_SCALE
+            (scaled + 0.5 if scaled >= 0.0 else scaled - 0.5).i64()
+
+        def dequantize(value_q: i64) -> f32:
+            value_q.f32() / VALUE_SCALE
+
+        # Refuses ticks that go backwards and entries past capacity. The live
+        # input still receives them, so each refusal is counted and a log with
+        # dropped entries must not be trusted for replay.
+        def record(log: mutable Log&, entry: Entry) -> bool:
+            if entry.tick < log.last_tick or entry.tick < 0 or log.count >= MAX_ENTRIES:
+                log.dropped <- log.dropped + 1
+                return false
+            log.entries[log.count] <- entry
+            log.count <- log.count + 1
+            log.last_tick <- entry.tick
+            true
+
+        def replay_trusted(log: Log&) -> bool:
+            log.dropped == 0
+
+        def apply_entry(input: mutable ActionInput::Input&, entry: Entry) -> void:
+            if entry.kind == Kind.Input:
+                ActionInput::apply(input, ActionInput::Event{
+                    device: entry.device,
+                    code: entry.code,
+                    value: dequantize(entry.value_q),
+                    pressed: entry.pressed,
+                    released: entry.released,
+                    chord_down: entry.chord_down,
+                })
+            if entry.kind == Kind.Context:
+                ActionInput::set_context(input, entry.context)
+            if entry.kind == Kind.Connect:
+                ActionInput::set_connected(input, entry.device, true)
+            if entry.kind == Kind.Disconnect:
+                ActionInput::set_connected(input, entry.device, false)
+            if entry.kind == Kind.ClearDevice:
+                ActionInput::clear_device_state(input, entry.device)
+
+        def feed_event(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
+            event: ActionInput::Event) -> bool:
+            entry: Entry = Entry{tick: tick, kind: Kind.Input, device: event.device,
+                code: event.code, value_q: quantize(event.value), pressed: event.pressed,
+                released: event.released, chord_down: event.chord_down,
+                context: ActionInput::Context.Gameplay}
+            recorded: bool = record(log, entry)
+            apply_entry(input, entry)
+            recorded
+
+        def feed_context(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
+            context: ActionInput::Context) -> bool:
+            entry: Entry = Entry{tick: tick, kind: Kind.Context, device: ActionInput::Device.Keyboard,
+                code: 0, value_q: 0, pressed: false, released: false, chord_down: false,
+                context: context}
+            recorded: bool = record(log, entry)
+            apply_entry(input, entry)
+            recorded
+
+        def feed_connection(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
+            device: ActionInput::Device, connected: bool) -> bool:
+            entry: Entry = Entry{tick: tick, kind: Kind.Connect if connected else Kind.Disconnect,
+                device: device, code: 0, value_q: 0, pressed: false, released: false,
+                chord_down: false, context: ActionInput::Context.Gameplay}
+            recorded: bool = record(log, entry)
+            apply_entry(input, entry)
+            recorded
+
+        def feed_clear(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
+            device: ActionInput::Device) -> bool:
+            entry: Entry = Entry{tick: tick, kind: Kind.ClearDevice, device: device,
+                code: 0, value_q: 0, pressed: false, released: false, chord_down: false,
+                context: ActionInput::Context.Gameplay}
+            recorded: bool = record(log, entry)
+            apply_entry(input, entry)
+            recorded
+
+        # Applies every entry stamped `tick`, starting at `cursor`; returns the
+        # cursor past them. Call after ActionInput::begin_frame, like live input.
+        def replay_tick(log: Log&, input: mutable ActionInput::Input&, tick: i64,
+            cursor: usize) -> usize:
+            mutable at: usize = cursor
+            for index in cursor..<log.count |at, input|:
+                if log.entries[index].tick == tick:
+                    apply_entry(input, log.entries[index])
+                    at <- index + 1
+            at

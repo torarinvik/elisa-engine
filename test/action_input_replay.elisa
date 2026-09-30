@@ -1,0 +1,108 @@
+include "../src/runtime/action_input_replay_codec.elisa"
+
+const JUMP: i64 = 1
+const MOVE: i64 = 2
+const MENU: i64 = 3
+const KEY_SPACE: i64 = 44
+const KEY_ESC: i64 = 41
+const STICK_X: i64 = 900
+const TICKS: i64 = 12
+
+def binding(action: i64, device: ActionInput::Device, code: i64, deadzone: f32,
+    context: ActionInput::Context) -> ActionInput::Binding:
+    ActionInput::Binding{action: action, device: device, code: code, chord_code: 0,
+        deadzone: deadzone, context: context, live: true}
+
+def bound_input() -> ActionInput::Input:
+    mutable input: ActionInput::Input = ActionInput::Input()
+    ActionInput::bind_checked(&input, binding(JUMP, ActionInput::Device.Keyboard, KEY_SPACE, 0.0, ActionInput::Context.Gameplay))
+    ActionInput::bind_checked(&input, binding(MOVE, ActionInput::Device.Gamepad, STICK_X, 0.2, ActionInput::Context.Gameplay))
+    ActionInput::bind_checked(&input, binding(MENU, ActionInput::Device.Keyboard, KEY_ESC, 0.0, ActionInput::Context.UI))
+    input
+
+def key(code: i64, down: bool) -> ActionInput::Event:
+    ActionInput::Event{device: ActionInput::Device.Keyboard, code: code,
+        value: 1.0 if down else 0.0, pressed: down, released: not down, chord_down: false}
+
+def stick(value: f32) -> ActionInput::Event:
+    ActionInput::Event{device: ActionInput::Device.Gamepad, code: STICK_X, value: value,
+        pressed: true, released: false, chord_down: false}
+
+def bit(flag: bool, shift: i64) -> i64:
+    (1 if flag else 0) * shift
+
+# Per-tick fingerprint of every action's held/edge flags and quantized value.
+def tick_digest(input: ActionInput::Input&) -> i64:
+    mutable digest: i64 = 0
+    for action in 1..<4 |digest|:
+        a: i64 = action.i64()
+        flags: i64 = bit(ActionInput::action_down(input, a), 1) + bit(ActionInput::action_pressed(input, a), 2) + bit(ActionInput::action_released(input, a), 4)
+        digest <- (digest * 131 + flags * 4194304 + ActionInputReplay::quantize(ActionInput::action_value(input, a))) % 2147483629
+    digest
+
+# Live session: jump pressed/held/released, stick through its dead zone,
+# gamepad unplugged mid-push, UI context opened and closed.
+def live_tick(log: mutable ActionInputReplay::Log&, input: mutable ActionInput::Input&, tick: i64) -> void:
+    ActionInputReplay::feed_event(log, input, tick, key(KEY_SPACE, true)) if tick == 1
+    ActionInputReplay::feed_event(log, input, tick, stick(0.1)) if tick == 2
+    ActionInputReplay::feed_event(log, input, tick, stick(0.7137)) if tick == 3
+    ActionInputReplay::feed_event(log, input, tick, key(KEY_SPACE, false)) if tick == 4
+    ActionInputReplay::feed_connection(log, input, tick, ActionInput::Device.Gamepad, false) if tick == 5
+    ActionInputReplay::feed_connection(log, input, tick, ActionInput::Device.Gamepad, true) if tick == 6
+    ActionInputReplay::feed_event(log, input, tick, key(KEY_SPACE, true)) if tick == 7
+    ActionInputReplay::feed_context(log, input, tick, ActionInput::Context.UI) if tick == 8
+    ActionInputReplay::feed_event(log, input, tick, key(KEY_ESC, true)) if tick == 9
+    ActionInputReplay::feed_event(log, input, tick, key(KEY_ESC, false)) if tick == 10
+    ActionInputReplay::feed_context(log, input, tick, ActionInput::Context.Gameplay) if tick == 10
+
+def main() -> i32:
+    mutable log: ActionInputReplay::Log = ActionInputReplay::Log()
+    mutable live: ActionInput::Input = bound_input()
+    mutable digests: i64[12] = zeroed
+    mutable saw_move: bool = false
+    mutable saw_menu: bool = false
+    for t in 0..<12 |log, live, digests, saw_move, saw_menu|:
+        ActionInput::begin_frame(&live)
+        live_tick(&log, &live, t.i64())
+        digests[t] <- tick_digest(&live)
+        saw_move <- true if ActionInput::action_down(&live, MOVE)
+        saw_menu <- true if ActionInput::action_pressed(&live, MENU)
+    return 1 if log.count != 11 or not ActionInputReplay::replay_trusted(&log)
+    return 2 if not saw_move or not saw_menu
+
+    # Replay goes through the byte form, as a saved recording would.
+    bytes: mutable ActionInputReplayCodec::Bytes = ActionInputReplayCodec::encode(&log)
+    return 8 if bytes.count != 8 + 11 * 16
+    mutable loaded: ActionInputReplay::Log = ActionInputReplay::Log()
+    return 9 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.Ok
+    mutable replayed: ActionInput::Input = bound_input()
+    mutable cursor: usize = 0
+    mutable mismatches: i64 = 0
+    for t in 0..<12 |replayed, cursor, mismatches|:
+        ActionInput::begin_frame(&replayed)
+        cursor <- ActionInputReplay::replay_tick(&loaded, &replayed, t.i64(), cursor)
+        mismatches <- mismatches + 1 if tick_digest(&replayed) != digests[t]
+    return 3 if mismatches != 0 or cursor != log.count
+
+    # Damaged recordings are refused and leave the log empty.
+    bytes.count <- bytes.count - 1
+    return 10 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.BadLength or loaded.count != 0
+    bytes.count <- bytes.count + 1
+    bytes.data[8 + 16 + 4] <- 9
+    return 11 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.BadField
+    bytes.data[8 + 16 + 4] <- 0
+    bytes.data[8 + 5 * 16] <- 0
+    return 12 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.NonMonotonicTick
+    bytes.data[0] <- 0
+    return 13 if ActionInputReplayCodec::decode(&bytes, &loaded) != ActionInputReplayCodec::DecodeStatus.BadMagic
+
+    # Backwards ticks are refused, capacity overflow is counted.
+    mutable bounded: ActionInputReplay::Log = ActionInputReplay::Log()
+    mutable scratch: ActionInput::Input = bound_input()
+    return 4 if not ActionInputReplay::feed_event(&bounded, &scratch, 5, key(KEY_SPACE, true))
+    return 5 if ActionInputReplay::feed_event(&bounded, &scratch, 4, key(KEY_SPACE, false))
+    for i in 0..<1100 |bounded, scratch|:
+        ActionInputReplay::feed_event(&bounded, &scratch, 6, key(KEY_SPACE, i % 2 == 0))
+    return 6 if bounded.count != ActionInputReplay::MAX_ENTRIES or bounded.dropped != 78 or ActionInputReplay::replay_trusted(&bounded)
+    return 7 if ActionInputReplay::quantize(2.0) != 1048576 or ActionInputReplay::quantize(-0.5) != -524288
+    0
