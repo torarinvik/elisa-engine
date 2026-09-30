@@ -157,6 +157,10 @@ int32_t elisa_application_v1_rumble_gamepad(
 // unknown, or a negative application status for invalid state/thread/args.
 int32_t elisa_application_v1_gamepad_button_label(
     int32_t device_slot, int32_t portable_button_code, int32_t* label);
+// Queries whether a stable one-based gamepad slot currently has a connected
+// device. Returns 1 when connected, 0 when disconnected, or a negative
+// application status for invalid state/arguments/thread use.
+int32_t elisa_application_v1_gamepad_connected(int32_t device_slot);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);

@@ -655,4 +655,17 @@ extern "C" int32_t elisa_application_v1_gamepad_button_label(
         : ELISA_APPLICATION_GAMEPAD_LABEL_AVAILABLE;
 }
 
+extern "C" int32_t elisa_application_v1_gamepad_connected(int32_t device_slot) {
+    if (device_slot < 1 || device_slot > static_cast<int32_t>(GAMEPAD_CAPACITY)) {
+        return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+
+    SDL_Gamepad* gamepad = service.gamepads[static_cast<size_t>(device_slot - 1)].handle;
+    return gamepad != nullptr && SDL_GamepadConnected(gamepad) ? 1 : 0;
+}
+
 #include "application_service_exports.inc"

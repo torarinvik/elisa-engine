@@ -167,6 +167,9 @@ extend Application:
         extern elisa_application_v1_gamepad_button_label(device_slot: i32,
             portable_button_code: i32, label: mutable i32&) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_gamepad_connected(device_slot: i32) -> i32
+
     public:
         const module PointerButtons:
             LEFT: i32 = 1
@@ -219,6 +222,13 @@ extend Application:
         enum GamepadButtonLabelStatus:
             Available
             Unavailable
+            InvalidArgument
+            NotInitialized
+            WrongThread
+
+        enum GamepadConnectionStatus:
+            Connected
+            Disconnected
             InvalidArgument
             NotInitialized
             WrongThread
@@ -543,6 +553,17 @@ extend Application:
             return GamepadButtonLabelStatus.NotInitialized if status == -2
             return GamepadButtonLabelStatus.WrongThread if status == -4
             GamepadButtonLabelStatus.Unavailable
+
+        # Query a stable connection slot when choosing local player ownership.
+        # The status distinguishes an empty slot from an invalid query.
+        def query_gamepad_connection(device_slot: i32) -> GamepadConnectionStatus:
+            status: i32 = elisa_application_v1_gamepad_connected(device_slot)
+            return GamepadConnectionStatus.Connected if status == 1
+            return GamepadConnectionStatus.Disconnected if status == 0
+            return GamepadConnectionStatus.InvalidArgument if status == -1
+            return GamepadConnectionStatus.NotInitialized if status == -2
+            return GamepadConnectionStatus.WrongThread if status == -4
+            GamepadConnectionStatus.Disconnected
 
         # Pointer coordinates and deltas stay in logical window units. Editor
         # viewports apply the camera's display scale before ray construction.
