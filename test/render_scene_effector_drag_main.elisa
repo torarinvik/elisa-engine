@@ -1,0 +1,108 @@
+# M04 live IK drag on a skinned SDL3/Metal instance. The four-joint panel
+# rig's root sits at (2, 0, 0) in its parent's frame with the tip one unit up
+# and identity rest rotations. A z-axis gizmo drag on the tip runs
+# EffectorDrag's FABRIK hook, EffectorPose turns the solve into local
+# rotations, and they are submitted as the pose each frame. Three captures
+# go to $ELISA_EFFECTOR_{REST,DRAG,CANCEL}: the rest pose, the dragged pose
+# and the pose after cancel. Run via scripts/effector_drag_smoke.py.
+include "../src/runtime/application.elisa"
+include "../src/runtime/application_capture.elisa"
+include "../src/runtime/render_scene_animation_submission.elisa"
+include "../src/math/geometry.elisa"
+include "../src/animation/effector_drag.elisa"
+include "../src/animation/effector_pose.elisa"
+
+const module Shot:
+    WARMUP: usize = 4
+    SETTLE: usize = 3
+
+# Rest local translations of root, tip and the two chain joints.
+def offsets() -> darray[f64]:
+    [2.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.02, 0.0, 0.0, 0.02, 0.0]
+
+# Submit root and tip rotations `local` (xyzw each) with the chain joints at
+# rest, present, and save `path`. Returns 0 or a failing step.
+def shot(local: darray[f64]&, mesh: RenderScene::InstanceHandle, pose: mutable RenderScene::AnimationPose&, path: cstr) -> i32:
+    t: darray[f64] = offsets()
+    for _ in 0..<Shot::SETTLE |local, mesh, pose, t|:
+        for b in 0..<4 |local, pose, t|:
+            mutable r: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 1.0}
+            if b < 2:
+                r <- Geometry::Quat{x: local[b * 4].f32(), y: local[b * 4 + 1].f32(), z: local[b * 4 + 2].f32(), w: local[b * 4 + 3].f32()}
+            transform: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: t[b * 3].f32(), y: t[b * 3 + 1].f32(), z: t[b * 3 + 2].f32()},
+                rotation: r, scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}
+            set: i32 = catch RenderScene::set_bone_transform(pose, b, transform):
+                ok: 0
+                error failure: 1
+            return 1 if set != 0
+        submitted: i32 = catch RenderScene::submit_animation_pose(mesh, pose):
+            ok: 0
+            error failure: 1
+        return 2 if submitted != 0
+        return 3 if Application::pump() != Application::PumpStatus.Running
+        completed: i32 = catch RenderScene::complete_animation_pose(mesh):
+            ok: 0
+            error failure: 1
+        return 4 if completed != 0
+    return 5 if not Application::save_screenshot(path)
+    0
+
+def rotations(positions: darray[f64]&, rest: darray[f64]&, chain: darray[i64]&) -> darray[f64]:
+    rest_world: darray[f64] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    world: darray[f64] = EffectorPose::world(rest, positions, chain, rest_world)
+    EffectorPose::local(world, MotionQuat::identity())
+
+def exercise() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Effector Drag", width: 320, height: 240, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 240, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: 0.0, y: 3.0, z: 1.5}, Geometry::vec3_zero(),
+        Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh("build/cooked/subsets/effector-drag-rig.pkg",
+        Geometry::transform_identity(), RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+    for _ in 0..<Shot::WARMUP:
+        return 5 if Application::pump() != Application::PumpStatus.Running
+    # Root and tip in the root's parent frame.
+    rest: darray[f64] = [2.0, 0.0, 0.0, 2.0, 1.0, 0.0]
+    chain: darray[i64] = [0, 1]
+    still: darray[f64] = rotations(rest, rest, chain)
+    return 6 if still.count != 8
+    return 10 if shot(still, mesh, &pose, Application::environment_value("ELISA_EFFECTOR_REST")) != 0
+    # Press on the tip looking down -y, drag 0.7 along z.
+    press: darray[f64] = [2.0, 5.0, 0.0, 0.0, -1.0, 0.0]
+    session: EffectorDrag::Session = EffectorDrag::begin(GizmoIndex::AXIS_Z, Gizmo::world_basis(), rest, chain, press)
+    return 11 if not session.live
+    now: darray[f64] = [2.0, 5.0, 0.7, 0.0, -1.0, 0.0]
+    step: EffectorDrag::Step = EffectorDrag::solve(session, EffectorDrag::target(session, now), 0.000001, 32)
+    # Two joints cannot reach (2, 1, 0.7): the bone swings toward it, length 1.
+    return 12 if step.outcome != AnimationFabrik::Outcome.Unreachable
+    dragged: darray[f64] = rotations(step.positions, rest, chain)
+    return 13 if dragged.count != 8
+    # The tip swings to the unit sphere toward (2, 1, 0.7): y = 1/|(1, 0.7)|.
+    dy: f64 = step.positions[4] - 0.8192319205190406
+    dz: f64 = step.positions[5] - 0.5734623443633284
+    return 14 if dy * dy + dz * dz > 1.0e-12 or step.positions[3] != 2.0
+    # The root turns about +x by atan2(0.7, 1): sin(half angle) sits in x.
+    return 15 if not (dragged[0] > 0.30 and dragged[0] < 0.31 and dragged[1] == 0.0 and dragged[2] == 0.0)
+    return 20 if shot(dragged, mesh, &pose, Application::environment_value("ELISA_EFFECTOR_DRAG")) != 0
+    restored: darray[f64] = EffectorDrag::cancel(session)
+    back: darray[f64] = rotations(restored, rest, chain)
+    return 30 if shot(back, mesh, &pose, Application::environment_value("ELISA_EFFECTOR_CANCEL")) != 0
+    0
+
+def main() -> i32:
+    result: i32 = exercise()
+    _ = catch RenderScene::shutdown():
+        ok: 0
+        error failure: 1
+    _ = Application::shutdown()
+    result

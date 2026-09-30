@@ -24,4 +24,24 @@ test/animation_effector_pose.elisa:
 
 Mutation check: every mutant was killed except dropping the check that the first direction has zero length. That mutant is equivalent, because a zero direction produces a zero cross product and the formula gives the identity.
 
-Still open: submitting these rotations to a live skinned instance during a gizmo drag.
+A live run is described below.
+
+## Live drag on SDL3/Metal
+
+`scripts/effector_drag_smoke.py` cooks the four-joint skinned panel and runs test/render_scene_effector_drag_main.elisa in render-only mode.
+
+The run:
+1. Drags the tip 0.7 along world z with the gizmo.
+2. Solves the root→tip chain with `EffectorDrag`. Two joints can't reach the goal, so the tip swings onto the unit sphere toward it: (2, 0.8192, 0.5735).
+3. Turns the solve into rotations with `EffectorPose`. The root turns about +x.
+4. Submits the result as the skinned pose every frame.
+
+It captures the rest pose, the dragged pose and the pose after cancel. The last run:
+- The drag moved 2,368 pixels. The tip half of the panel swings toward +z.
+- Cancel matched the rest capture exactly (0 pixels different).
+
+Run it:
+
+    python3 scripts/effector_drag_smoke.py
+
+It uses the same environment as the other render-scene smokes.
