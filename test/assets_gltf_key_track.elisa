@@ -1,0 +1,134 @@
+include "../src/assets/gltf_key_track.elisa"
+include "./assets_gltf_channel_fixture.elisa"
+
+def doc_of(bytes: darray[u8]&, offset: i64, length: i64) -> GltfJson::Doc:
+    catch GltfJson::parse(bytes, offset, length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def channel_of(doc: GltfJson::Doc&, bytes: darray[u8]&, channel: i64) -> GltfAnimationMap::ChannelBytes:
+    catch GltfAnimationMap::channel_bytes(doc, bytes, 0, channel):
+        value: value
+        error failure: GltfAnimationMap::ChannelBytes{target_node: -9, path: -9, bin_offset: -9, byte_length: -9, count: -9, component_type: -9, components: -9}
+
+def track_of(bytes: darray[u8]&, layout: GlbContainer::Layout&, channel: GltfAnimationMap::ChannelBytes&) -> GltfKeyTrack::Track:
+    catch GltfKeyTrack::load(bytes, layout, channel):
+        value: value
+        error failure: GltfKeyTrack::Track{channel: channel, values: []}
+
+def value_code(track: GltfKeyTrack::Track&, key: i64, component: i64) -> i32:
+    catch GltfKeyTrack::value_at(track, key, component):
+        ok: 0
+        GltfKeyTrack::KeyError.OutsideKeys: 5
+        error failure: 9
+
+def store_code(bytes: mutable darray[u8]&, layout: GlbContainer::Layout&, channel: GltfAnimationMap::ChannelBytes&, key: i64, component: i64, value: f64) -> i32:
+    catch GltfKeyTrack::store(bytes, layout, channel, key, component, value):
+        ok: 0
+        GltfKeyTrack::KeyError.NonFinite: 3
+        GltfKeyTrack::KeyError.Overflow: 4
+        GltfKeyTrack::KeyError.OutsideKeys: 5
+        error failure: 9
+
+def stored(bytes: mutable darray[u8]&, layout: GlbContainer::Layout&, channel: GltfAnimationMap::ChannelBytes&, key: i64, component: i64, value: f64) -> f64:
+    catch GltfKeyTrack::store(bytes, layout, channel, key, component, value):
+        value: value
+        error failure: -99.0
+
+def fetched(track: GltfKeyTrack::Track&, key: i64, component: i64) -> f64:
+    catch GltfKeyTrack::value_at(track, key, component):
+        value: value
+        error failure: -99.0
+
+def round_trips(bits: i64) -> bool:
+    GltfKeyTrack::finite_bits(bits) and GltfKeyTrack::nearest_bits(GltfKeyTrack::bits_value(bits)) == bits
+
+# Every key re-encodes to the exact bytes it was loaded from.
+def channel_round_trips(bytes: darray[u8]&, layout: GlbContainer::Layout&, track: GltfKeyTrack::Track&) -> bool:
+    base: i64 = layout.bin_start + track.channel.bin_offset
+    same: mutable bool = track.values.count.i64() * 4 == track.channel.byte_length
+    for s in 0..<track.values.count |same, bytes, track, base|:
+        at: usize = base.usize() + s * 4
+        bits: i64 = bytes[at].i64() + bytes[at + 1].i64() * 256 + bytes[at + 2].i64() * 65536 + bytes[at + 3].i64() * 16777216
+        value: f64 = track.values[s]
+        same <- same and GltfKeyTrack::nearest_bits(value) == bits
+    same
+
+def all_round_trip() -> bool:
+    patterns: darray[i64] = [0, 1, 2, 8388607, 8388608, 8388609, 1065353215, 1065353216, 1036831949, 2139095039, 2147483648, 2147483649, 3223322624, 4286578687]
+    same: mutable bool = true
+    for i in 0..<patterns.count |same, patterns|:
+        bits: i64 = patterns[i]
+        same <- same and round_trips(bits)
+    same
+
+# Bytes that differ outside [start, start + 4).
+def differing_outside(a: darray[u8]&, b: darray[u8]&, start: i64) -> i64:
+    count: mutable i64 = 0
+    for i in 0..<a.count |count, a, b, start|:
+        x: u8 = a[i]
+        y: u8 = b[i]
+        at: i64 = i.i64()
+        outside: bool = at < start or at >= start + 4
+        count <- count + 1 if x != y and outside else count
+    count
+
+def main() -> i32:
+    # Known binary32 patterns.
+    return 1 if GltfKeyTrack::bits_value(1065353216) != 1.0
+    return 2 if GltfKeyTrack::bits_value(3223322624) != -2.5
+    return 3 if GltfKeyTrack::bits_value(1) != GltfKeyTrack::power_of_two(-149)
+    return 4 if GltfKeyTrack::bits_value(2139095039) != GltfKeyTrack::FLOAT_MAX
+    return 5 if GltfKeyTrack::finite_bits(2139095040) or GltfKeyTrack::finite_bits(4290772992)
+    return 6 if GltfKeyTrack::nearest_bits(0.1) != 1036831949
+    return 7 if GltfKeyTrack::nearest_bits(-0.0) != 2147483648 or GltfKeyTrack::nearest_bits(0.0) != 0
+    return 8 if not all_round_trip()
+    # Ties go to even; halfway below the smallest subnormal rounds to zero.
+    one: f64 = 1.0
+    ulp: f64 = GltfKeyTrack::power_of_two(-23)
+    return 10 if GltfKeyTrack::nearest_bits(one + ulp * 0.5) != 1065353216
+    return 11 if GltfKeyTrack::nearest_bits(one + ulp * 1.5) != 1065353218
+    return 12 if GltfKeyTrack::nearest_bits(GltfKeyTrack::power_of_two(-150)) != 0
+    return 13 if GltfKeyTrack::nearest_bits(GltfKeyTrack::power_of_two(-150) * 1.5) != 1
+    # Carry out of the significand moves up one exponent.
+    return 14 if GltfKeyTrack::nearest_bits(2.0 - GltfKeyTrack::power_of_two(-25)) != 1073741824
+    return 15 if GltfKeyTrack::nearest_bits(3.5e38) != -1 or GltfKeyTrack::nearest_bits(-3.5e38) != -1
+
+    bytes: mutable darray[u8] = fixture_glb()
+    layout: GlbContainer::Layout = layout_of(bytes)
+    doc: GltfJson::Doc = doc_of(bytes, layout.json_start, layout.json_length)
+    for c in 0..<fixture_channel_count().usize():
+        channel: GltfAnimationMap::ChannelBytes = channel_of(doc, bytes, c.i64())
+        track: GltfKeyTrack::Track = track_of(bytes, layout, channel)
+        return 20 if track.values.count.i64() != channel.count * channel.components
+        return 21 if not channel_round_trips(bytes, layout, track)
+
+    rotation: GltfAnimationMap::ChannelBytes = channel_of(doc, bytes, 1)
+    loaded: GltfKeyTrack::Track = track_of(bytes, layout, rotation)
+    w: f64 = fetched(loaded, 1, 3)
+    return 30 if w < 0.99503 or w > 0.99504
+    return 31 if value_code(loaded, 6, 0) != 5 or value_code(loaded, 0, 4) != 5 or value_code(loaded, -1, 0) != 5
+
+    original: darray[u8] = fixture_glb()
+    return 40 if stored(bytes, layout, rotation, 2, 0, 0.5) != 0.5
+    # Key 2, component 0 of a quaternion channel is float slot 8.
+    slot_at: i64 = layout.bin_start + rotation.bin_offset + 32
+    return 41 if differing_outside(original, bytes, slot_at) != 0
+    return 41 if bytes[slot_at.usize() + 3] != 63 or bytes[slot_at.usize()] != 0
+    reloaded: GltfKeyTrack::Track = track_of(bytes, layout, rotation)
+    return 42 if fetched(reloaded, 2, 0) != 0.5 or fetched(reloaded, 1, 3) != w
+    # A value that is not a binary32 is rounded, and the rounded value returned.
+    return 43 if stored(bytes, layout, rotation, 2, 0, 0.1) != GltfKeyTrack::bits_value(1036831949)
+    return 44 if store_code(bytes, layout, rotation, 6, 0, 1.0) != 5
+    nan: f64 = 0.0 / 0.0
+    return 45 if store_code(bytes, layout, rotation, 0, 0, nan) != 3
+    return 46 if store_code(bytes, layout, rotation, 0, 0, 1.0e39) != 4
+    for c in 0..<fixture_channel_count().usize():
+        channel: GltfAnimationMap::ChannelBytes = channel_of(doc, bytes, c.i64())
+        return 47 if not channel_round_trips(bytes, layout, track_of(bytes, layout, channel))
+    0

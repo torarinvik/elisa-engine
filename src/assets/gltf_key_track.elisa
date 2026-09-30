@@ -1,0 +1,140 @@
+# Decodes and re-encodes the float keys of one mapped glTF animation channel
+# (M06). Binary32 bits are converted with exact power-of-two arithmetic, so
+# every finite key round-trips to the same four bytes and an edited key is
+# rounded to nearest-even exactly as a float store would.
+include "./glb_container.elisa"
+include "./gltf_animation_map.elisa"
+include "./gltf_key_index.elisa"
+
+module GltfKeyTrack:
+    public:
+        const FLOAT_COMPONENT: i64 = 5126
+        # Largest finite binary32 magnitude, (2 - 2^-23) * 2^127.
+        const FLOAT_MAX: f64 = 340282346638528859811704183484516925440.0
+
+        error KeyError:
+            NotFloat
+            OutsideBin
+            NonFinite
+            Overflow
+            OutsideKeys
+
+        # A channel's keys as f64 components, `components` per key.
+        struct Track:
+            channel: GltfAnimationMap::ChannelBytes
+            values: darray[f64]
+
+        # 2^exponent for the binary32 range, built by exact doubling/halving.
+        def power_of_two(exponent: i64) -> f64:
+            value: mutable f64 = 1.0
+            for i in 0..<160 |value, exponent|:
+                step: i64 = i.i64()
+                value <- value * 2.0 if step < exponent else value
+                value <- value * 0.5 if step < 0 - exponent else value
+            value
+
+        # Whether binary32 `bits` encode a finite value.
+        def finite_bits(bits: i64) -> bool:
+            return false if bits < 0 or bits > 4294967295
+            GltfKeyIndex::finite_field((bits / 8388608) % 256)
+
+        # The value of binary32 `bits`; callers check finite_bits first.
+        def bits_value(bits: i64) -> f64:
+            negative: bool = bits >= 2147483648
+            field: i64 = (bits / 8388608) % 256
+            mantissa: i64 = bits % 8388608
+            magnitude: mutable f64 = mantissa.f64() * power_of_two(-149)
+            magnitude <- (mantissa + 8388608).f64() * power_of_two(field - 150) if field > 0 else magnitude
+            return magnitude * -1.0 if negative
+            magnitude
+
+        # Whether `value` has a finite binary32 encoding.
+        def encodable(value: f64) -> bool:
+            return false if value != value
+            return false if value > FLOAT_MAX or value < 0.0 - FLOAT_MAX
+            true
+
+        # The binary32 bits nearest `value` (ties to even), keeping the sign
+        # of zero; -1 when it is not encodable.
+        def nearest_bits(value: f64) -> i64:
+            return -1 if not encodable(value)
+            negative: bool = value < 0.0 or (value == 0.0 and 1.0 / value < 0.0)
+            sign: i64 = 2147483648 if negative else 0
+            magnitude: f64 = 0.0 - value if value < 0.0 else value
+            return sign if magnitude == 0.0
+            # Scale into [2^23, 2^24); every step is exact in f64.
+            scaled: mutable f64 = magnitude
+            exponent: mutable i64 = 0
+            for i in 0..<320 |scaled, exponent|:
+                big: bool = scaled >= 16777216.0
+                small: bool = scaled < 8388608.0
+                scaled <- scaled * 0.5 if big else scaled
+                exponent <- exponent + 1 if big else exponent
+                scaled <- scaled * 2.0 if small else scaled
+                exponent <- exponent - 1 if small else exponent
+            field: mutable i64 = exponent + 150
+            # Subnormals keep the fixed 2^-149 scale.
+            scaled <- magnitude * power_of_two(149) if field <= 0 else scaled
+            field <- 0 if field <= 0 else field
+            whole: mutable i64 = scaled.i64()
+            fraction: f64 = scaled - whole.f64()
+            round_up: bool = fraction > 0.5 or (fraction == 0.5 and whole % 2 == 1)
+            whole <- whole + 1 if round_up else whole
+            # A subnormal rounding up to 2^23 becomes the smallest normal,
+            # which the bit layout already expresses; a normal carrying to
+            # 2^24 moves up one exponent.
+            carried: bool = field > 0 and whole == 16777216
+            whole <- 8388608 if carried else whole
+            field <- GltfKeyIndex::carried_field(field, carried) if field > 0 else field
+            return -1 if field > 254
+            normal_bit: i64 = 8388608 if field > 0 else 0
+            sign + field * 8388608 + whole - normal_bit
+
+        # Loads every float key of `channel` from the GLB image.
+        def load(bytes: darray[u8]&, layout: GlbContainer::Layout&, channel: GltfAnimationMap::ChannelBytes&) -> Track error[KeyError]:
+            raise KeyError.NotFloat if channel.component_type != FLOAT_COMPONENT
+            raw: darray[u8] = catch GlbContainer::read_bin(bytes, layout, channel.bin_offset, channel.byte_length):
+                value: value
+                error failure: []
+            raise KeyError.OutsideBin if raw.count.i64() != channel.byte_length or channel.byte_length % 4 != 0
+            values: mutable darray[f64] = []
+            slots: i64 = channel.byte_length / 4
+            for s in 0..<slots.usize() |values, raw|:
+                at: usize = s * 4
+                b0: i64 = raw[at].i64()
+                b1: i64 = raw[at + 1].i64()
+                b2: i64 = raw[at + 2].i64()
+                b3: i64 = raw[at + 3].i64()
+                values.push(bits_value(b0 + b1 * 256 + b2 * 65536 + b3 * 16777216))
+            finite: mutable bool = true
+            for s in 0..<slots.usize() |finite, raw|:
+                at: usize = s * 4
+                bits: i64 = raw[at].i64() + raw[at + 1].i64() * 256 + raw[at + 2].i64() * 65536 + raw[at + 3].i64() * 16777216
+                finite <- finite and finite_bits(bits)
+            raise KeyError.NonFinite if not finite
+            Track{channel: channel, values: values}
+
+        # Component `component` of key `key`.
+        def value_at(track: Track&, key: i64, component: i64) -> f64 error[KeyError]:
+            slot: i64 = GltfKeyIndex::slot(key, track.channel.count, component, track.channel.components)
+            raise KeyError.OutsideKeys if slot < 0 or slot >= track.values.count.i64()
+            track.values[slot.usize()]
+
+        # Rounds `value` to binary32 and writes it over component `component`
+        # of key `key`, touching only that key's four bytes. Returns the
+        # value actually stored.
+        def store(bytes: mutable darray[u8]&, layout: GlbContainer::Layout&, channel: GltfAnimationMap::ChannelBytes&, key: i64, component: i64, value: f64) -> f64 error[KeyError]:
+            raise KeyError.NotFloat if channel.component_type != FLOAT_COMPONENT
+            slot: i64 = GltfKeyIndex::slot(key, channel.count, component, channel.components)
+            raise KeyError.OutsideKeys if slot < 0
+            offset: i64 = GltfKeyIndex::slot_offset(channel.byte_length, slot)
+            raise KeyError.OutsideKeys if offset < 0
+            raise KeyError.NonFinite if value != value
+            bits: i64 = nearest_bits(value)
+            raise KeyError.Overflow if bits < 0
+            data: darray[u8] = [(bits % 256).u8(), ((bits / 256) % 256).u8(), ((bits / 65536) % 256).u8(), (bits / 16777216).u8()]
+            written: i64 = catch GlbContainer::patch_bin(bytes, layout, channel.bin_offset + offset, data):
+                value: value
+                error failure: -1
+            raise KeyError.OutsideBin if written != 4
+            bits_value(bits)

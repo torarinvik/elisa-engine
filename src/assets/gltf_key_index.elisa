@@ -1,0 +1,55 @@
+# Integer rules for GltfKeyTrack, split out so the prover can check them:
+# where one float component sits inside a channel's bytes, and which IEEE
+# binary32 exponent fields are finite.
+module GltfKeyIndex:
+    public:
+        const MAX_BYTES: i64 = 4294967295
+        const FLOAT_BYTES: i64 = 4
+
+        # Byte offset of float slot `index` inside a channel of `byte_length` bytes,
+        # or -1 when the slot's four bytes do not fit.
+        def slot_offset(byte_length: i64, index: i64) -> i64:
+            requires byte_length >= 0
+            requires byte_length <= MAX_BYTES
+            ensure result <= byte_length - 4 or result < 0
+            ensure result == -1 or result >= 0
+            ensure result == index * 4 or result < 0
+            return -1 if index < 0
+            return -1 if index > MAX_BYTES
+            offset: i64 = index * 4
+            return -1 if offset > byte_length - 4
+            offset
+
+        # Float slot of `component` in key `key` for `components`-wide keys
+        # (1 for weights, 3 for vectors, 4 for quaternions), or -1 when the
+        # key, component or width is out of range.
+        def slot(key: i64, count: i64, component: i64, components: i64) -> i64:
+            requires count >= 0
+            requires count <= MAX_BYTES
+            ensure result == -1 or result >= 0
+            return -1 if key < 0
+            return -1 if key >= count
+            return -1 if component < 0
+            return -1 if component >= components
+            return -1 if component > 3
+            return key + component if components == 1
+            return key * 3 + component if components == 3
+            return key * 4 + component if components == 4
+            -1
+
+        # Whether a binary32 biased exponent field encodes a finite value.
+        def finite_field(field: i64) -> bool:
+            ensure not result or field >= 0
+            ensure not result or field <= 254
+            return false if field < 0
+            return false if field > 254
+            true
+
+        # Exponent field after rounding carried the significand to 2^24.
+        def carried_field(field: i64, carried: bool) -> i64:
+            requires field >= 1
+            requires field <= 254
+            ensure result >= 1
+            ensure result <= 255
+            return field + 1 if carried
+            field

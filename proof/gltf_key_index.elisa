@@ -1,0 +1,33 @@
+include "../src/assets/gltf_key_index.elisa"
+
+extend GltfKeyIndex:
+    def prove_slot_offset_inside(byte_length: i64, index: i64) -> i64:
+        requires byte_length >= 0
+        requires byte_length <= 4294967295
+        ensure result <= byte_length - 4 or result < 0
+        ensure result == -1 or result >= 0
+        slot_offset(byte_length, index)
+
+    def prove_slot_offset_exact(byte_length: i64, index: i64) -> i64:
+        requires byte_length >= 0
+        requires byte_length <= 4294967295
+        ensure result == index * 4 or result < 0
+        slot_offset(byte_length, index)
+
+    def prove_slot_bounded(key: i64, count: i64, component: i64, components: i64) -> i64:
+        requires count >= 0
+        requires count <= 4294967295
+        ensure result == -1 or result >= 0
+        slot(key, count, component, components)
+
+    def prove_finite_field(field: i64) -> bool:
+        ensure not result or field <= 254
+        ensure not result or field >= 0
+        finite_field(field)
+
+    def prove_carry_stays_encodable(field: i64, carried: bool) -> i64:
+        requires field >= 1
+        requires field <= 254
+        ensure result <= 255
+        ensure result >= 1
+        carried_field(field, carried)
