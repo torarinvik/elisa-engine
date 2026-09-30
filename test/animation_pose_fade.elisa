@@ -1,0 +1,38 @@
+include "../src/animation/pose_fade.elisa"
+
+def close(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000001 and d > -0.000001
+
+def pose(x: f64, angle: f64) -> MocapClip::Sample:
+    MocapClip::Sample{t: MotionQuat::V{x: x, y: 0.0, z: 0.0}, q: MotionQuat::axis_angle(MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}, angle)}
+
+def main() -> i32:
+    z: MotionQuat::V = MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}
+    fade: mutable PoseFade::Fade = PoseFade::Fade()
+    # No fade yet: the new source shows at once.
+    return 1 if PoseFade::active(&fade, 5) or not close(PoseFade::weight(&fade, 5), 1.0)
+    PoseFade::begin(&fade, 1000000, 200000)
+    # At the switch the held pose shows unchanged: no pop.
+    held: MocapClip::Sample = pose(0.0, 0.0)
+    next: MocapClip::Sample = pose(10.0, 1.0)
+    at_switch: MocapClip::Sample = PoseFade::blend(held, next, PoseFade::weight(&fade, 1000000))
+    return 2 if not close(at_switch.t.x, 0.0) or not close(MotionQuat::hinge_angle(at_switch.q, z), 0.0)
+    return 3 if not PoseFade::active(&fade, 1000000)
+    half: MocapClip::Sample = PoseFade::blend(held, next, PoseFade::weight(&fade, 1100000))
+    return 4 if not close(half.t.x, 5.0) or not close(MotionQuat::hinge_angle(half.q, z), 0.5)
+    # Weight never falls as time runs, and ends at the new source.
+    previous: mutable f64 = -1.0
+    for step in 0..<30 |previous, fade|:
+        w: f64 = PoseFade::weight(&fade, 990000 + step * 10000)
+        return 5 if w < previous
+        previous <- w
+    done: MocapClip::Sample = PoseFade::blend(held, next, PoseFade::weight(&fade, 1200000))
+    return 6 if PoseFade::active(&fade, 1200000) or not close(done.t.x, 10.0)
+    # Very long requests are capped.
+    PoseFade::begin(&fade, 0, 999999999)
+    return 7 if PoseFade::active(&fade, PoseFadeIndex::MAX_DURATION)
+    # Round trip through the engine transform type.
+    back: MocapClip::Sample = PoseFade::sample_of(PoseFade::transform_of(half))
+    return 8 if not close(back.t.x, 5.0) or not close(MotionQuat::hinge_angle(back.q, z), 0.5)
+    0

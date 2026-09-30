@@ -1,0 +1,52 @@
+# Switching a skinned instance between pose sources without a pop (plan
+# M02): the app's live override, a MocapClip being scrubbed, or cooked
+# playback. The pose shown when the switch happens is held and faded into
+# the new source over a short window. Progress is integer and proved in
+# PoseFadeIndex (proof/pose_fade_index.elisa).
+include "../math/geometry.elisa"
+include "./mocap_clip.elisa"
+include "./pose_fade_index.elisa"
+module PoseFade:
+    public:
+        struct Fade:
+            started_us: mutable i64
+            duration_us: mutable i64
+
+        # A fade that has already finished: the new source shows as is.
+        def Fade() -> Fade:
+            Fade{started_us: 0, duration_us: 0}
+
+        def begin(fade: mutable Fade&, now_us: i64, duration_us: i64) -> void:
+            fade.started_us <- now_us
+            fade.duration_us <- duration_us if duration_us < PoseFadeIndex::MAX_DURATION else PoseFadeIndex::MAX_DURATION
+
+        # Weight of the new source, 0 at the switch and 1 once the fade ends.
+        def weight(fade: Fade&, now_us: i64) -> f64:
+            PoseFadeIndex::progress(now_us - fade.started_us, fade.duration_us).f64() / 1000000.0
+
+        def active(fade: Fade&, now_us: i64) -> bool:
+            PoseFadeIndex::progress(now_us - fade.started_us, fade.duration_us) < PoseFadeIndex::FULL
+
+        # Blend the held pose towards the new one: linear translation and
+        # short-path slerp for rotation.
+        def blend(held: MocapClip::Sample, next: MocapClip::Sample, w: f64) -> MocapClip::Sample:
+            return held if w <= 0.0
+            return next if w >= 1.0
+            MocapClip::Sample{
+                t: MotionQuat::V{x: held.t.x + (next.t.x - held.t.x) * w, y: held.t.y + (next.t.y - held.t.y) * w, z: held.t.z + (next.t.z - held.t.z) * w},
+                q: MotionQuat::slerp(held.q, next.q, w),
+            }
+
+        # The engine's pose types, for RenderScene::set_bone_transform.
+        def transform_of(sample: MocapClip::Sample) -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: sample.t.x.f32(), y: sample.t.y.f32(), z: sample.t.z.f32()},
+                rotation: MotionQuat::to_geometry(MotionQuat::normalize(sample.q)),
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }
+
+        def sample_of(transform: Geometry::Transform) -> MocapClip::Sample:
+            MocapClip::Sample{
+                t: MotionQuat::V{x: transform.position.x.f64(), y: transform.position.y.f64(), z: transform.position.z.f64()},
+                q: MotionQuat::from_geometry(transform.rotation),
+            }

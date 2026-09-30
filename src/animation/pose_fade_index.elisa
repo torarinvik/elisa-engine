@@ -1,0 +1,34 @@
+# Crossfade progress for switching a skinned instance between pose sources
+# (plan M02), kept free of floating point so the prover can bound it
+# (proof/pose_fade_index.elisa). Times are whole microseconds.
+module PoseFadeIndex:
+    public:
+        const FULL: i64 = 1000000
+        # Longest fade accepted; longer requests are shortened to this.
+        const MAX_DURATION: i64 = 10000000
+
+        # How far a fade has run, in millionths. A zero-length fade is
+        # already complete, so a switch never lingers on the old pose.
+        def progress(elapsed_us: i64, duration_us: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1000000
+            ensure result == 1000000 or elapsed_us < duration_us
+            ensure result == 1000000 or duration_us > 0
+            return 1000000 if duration_us <= 0
+            return 0 if elapsed_us <= 0
+            return 1000000 if elapsed_us >= duration_us
+            return 1000000 if duration_us > 10000000
+            ratio: i64 = elapsed_us * 1000000 / duration_us
+            return 0 if ratio < 0
+            return 1000000 if ratio > 1000000
+            ratio
+
+        # Progress never falls back as time advances.
+        def advanced(elapsed_us: i64, step_us: i64, duration_us: i64) -> i64:
+            ensure result >= 0
+            ensure result >= elapsed_us
+            return 0 if elapsed_us < 0
+            return elapsed_us if step_us <= 0
+            return elapsed_us if elapsed_us > 100000000000
+            return elapsed_us if step_us > 100000000000
+            elapsed_us + step_us

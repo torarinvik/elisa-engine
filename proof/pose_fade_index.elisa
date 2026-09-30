@@ -1,0 +1,22 @@
+include "../src/animation/pose_fade_index.elisa"
+
+extend PoseFadeIndex:
+    def prove_progress_bounded(e: i64, d: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 1000000
+        progress(e, d)
+
+    def prove_zero_length_completes(e: i64) -> i64:
+        ensure result == 1000000
+        progress(e, 0)
+
+    def prove_elapsed_complete(e: i64, d: i64) -> i64:
+        requires d > 0
+        requires e >= d
+        ensure result == 1000000
+        progress(e, d)
+
+    def prove_clock_forward(e: i64, s: i64, d: i64) -> i64:
+        requires e >= 0
+        ensure result >= e
+        advanced(e, s, d)
