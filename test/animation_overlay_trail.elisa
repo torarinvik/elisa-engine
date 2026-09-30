@@ -1,0 +1,97 @@
+include "../src/animation/overlay_trail.elisa"
+
+def near(a: f64, b: f64, tolerance: f64) -> bool:
+    d: f64 = a - b
+    d < tolerance and d > 0.0 - tolerance
+
+def same(got: darray[f64]&, want: darray[f64]&, tolerance: f64) -> bool:
+    ok: mutable bool = got.count == want.count
+    for i in 0..<want.count |ok, got, want, tolerance|:
+        x: f64 = get got[i] else 1000000.0
+        ok <- ok and near(x, want[i], tolerance)
+    ok
+
+# 600 frames of two joints: a still root and a joint circling once every
+# 120 frames, knocked 0.5 up at frame 300 (the synthetic spike).
+def take() -> darray[f64]:
+    out: mutable darray[f64] = []
+    for f in 0..<600 |out|:
+        a: f64 = 6.283185307179586 * f.i64().f64() / 120.0
+        lift: f64 = 0.5 if f == 300 else 0.0
+        out.push(0.0)
+        out.push(0.0)
+        out.push(0.0)
+        out.push(ElisaMath::cos(a))
+        out.push(0.5 + lift)
+        out.push(ElisaMath::sin(a))
+    out
+
+def main() -> i32:
+    clip: darray[f64] = take()
+    # Values from a Python reference.
+    path: darray[f64] = OverlayTrail::trail(clip, 600, 2, 1, 300, 5, 5)
+    return 1 if path.count != 33
+    return 2 if not near(path[16], 1.0, 0.000000001) or not near(path[15], -1.0, 0.000000001)
+    speed: darray[f64] = OverlayTrail::speeds(path, 30.0)
+    want_s: darray[f64] = [1.570616898472399, 1.5706168984723974, 1.5706168984723445, 1.570616898472398, 15.082003760832546, 15.082003760832546, 1.5706168984723448, 1.5706168984723974, 1.5706168984723983, 1.5706168984724505]
+    return 3 if not same(speed, want_s, 0.000000001)
+    accel: darray[f64] = OverlayTrail::accelerations(path, 30.0)
+    want_a: darray[f64] = [2.4668374417671437, 2.466837441766954, 2.4668374417669066, 450.00676137916423, 900.0033807086304, 450.00676137916423, 2.466837441766873, 2.4668374417670993, 2.466837441767131]
+    return 4 if not same(accel, want_a, 0.0000001)
+    return 5 if not near(OverlayTrail::median(speed), 1.570616898472398, 0.000000001)
+    # The spike is flagged and fully hot; steady motion sits at 1/3.
+    hot: darray[f64] = OverlayTrail::heat(speed, 3.0)
+    return 6 if hot[4] != 1.0 or hot[5] != 1.0 or not near(hot[0], 0.3333333333333335, 0.000000001)
+    flagged: darray[i64] = OverlayTrail::spikes(speed, 3.0)
+    return 7 if flagged.count != 2 or flagged[0] != 4 or flagged[1] != 5
+    jolts: darray[i64] = OverlayTrail::spikes(accel, 3.0)
+    return 8 if jolts.count != 3 or jolts[0] != 3 or jolts[2] != 5
+    # A still joint is cold everywhere and has no spikes.
+    root: darray[f64] = OverlayTrail::trail(clip, 600, 2, 0, 300, 5, 5)
+    still: darray[f64] = OverlayTrail::speeds(root, 30.0)
+    cold: darray[f64] = OverlayTrail::heat(still, 3.0)
+    return 9 if cold.count != 10 or cold[3] != 0.0 or OverlayTrail::spikes(still, 3.0).count != 0
+    # Windows clamp at the clip ends; bad shapes give no trail.
+    return 10 if OverlayTrail::trail(clip, 600, 2, 1, 2, 10, 3).count != 18
+    return 11 if OverlayTrail::trail(clip, 600, 2, 1, 598, 3, 10).count != 15
+    return 12 if OverlayTrail::trail(clip, 600, 2, 2, 300, 5, 5).count != 0
+    return 13 if OverlayTrail::trail(clip, 599, 2, 1, 300, 5, 5).count != 0
+    return 14 if OverlayTrail::trail(clip, 600, 2, -1, 300, 5, 5).count != 0
+    one: darray[f64] = OverlayTrail::trail(clip, 600, 2, 1, 0, 0, 0)
+    return 15 if one.count != 3 or OverlayTrail::speeds(one, 30.0).count != 0 or OverlayTrail::accelerations(one, 30.0).count != 0
+    two: darray[f64] = OverlayTrail::trail(clip, 600, 2, 1, 0, 0, 1)
+    return 17 if OverlayTrail::speeds(two, 30.0).count != 1 or OverlayTrail::accelerations(two, 30.0).count != 0
+    # A full 600-frame trail for the frame budget case.
+    whole: darray[f64] = OverlayTrail::trail(clip, 600, 2, 1, 0, 0, 599)
+    return 16 if whole.count != 1800 or OverlayTrail::speeds(whole, 30.0).count != 599
+    # Lower median.
+    four: darray[f64] = [3.0, 1.0, 2.0, 2.0]
+    pair: darray[f64] = [4.0, 1.0]
+    lone: darray[f64] = [5.0]
+    none: darray[f64] = []
+    return 20 if OverlayTrail::median(four) != 2.0 or OverlayTrail::median(pair) != 1.0
+    shuffled: darray[f64] = [2.0, 1.0, 3.0]
+    return 23 if OverlayTrail::median(shuffled) != 2.0
+    return 21 if OverlayTrail::median(lone) != 5.0 or OverlayTrail::median(none) != 0.0
+    # Motion over a zero median is fully hot.
+    mostly_still: darray[f64] = [0.0, 0.0, 2.0]
+    return 22 if OverlayTrail::heat(mostly_still, 3.0)[2] != 1.0 or OverlayTrail::heat(mostly_still, 3.0)[0] != 0.0
+    # Colour ramp stops, clamping and NaN.
+    blue: darray[f64] = [0.0, 0.0, 1.0]
+    green: darray[f64] = [0.0, 1.0, 0.0]
+    yellow_ish: darray[f64] = [0.5, 1.0, 0.0]
+    red: darray[f64] = [1.0, 0.0, 0.0]
+    teal: darray[f64] = [0.0, 0.5, 0.5]
+    orange: darray[f64] = [1.0, 0.5, 0.0]
+    return 30 if not same(OverlayTrail::colour(0.0), blue, 0.000000001) or not same(OverlayTrail::colour(-2.0), blue, 0.000000001)
+    return 31 if not same(OverlayTrail::colour(1.0 / 3.0), green, 0.000000001) or not same(OverlayTrail::colour(0.5), yellow_ish, 0.000000001)
+    return 32 if not same(OverlayTrail::colour(1.0), red, 0.000000001) or not same(OverlayTrail::colour(7.0), red, 0.000000001)
+    return 33 if not same(OverlayTrail::colour(1.0 / 6.0), teal, 0.000000001) or not same(OverlayTrail::colour(5.0 / 6.0), orange, 0.000000001)
+    return 34 if not same(OverlayTrail::colour(0.0 / 0.0), blue, 0.000000001)
+    # Onion ghosts: three either side of frame 5, only where the clip allows.
+    return 40 if not OverlayIndex::has_ghost_before(5, 5, 600) or OverlayIndex::has_ghost_before(5, 6, 600)
+    return 41 if OverlayIndex::window_first(5, 5, 600) != 0 or OverlayIndex::has_ghost_before(5, 0, 600)
+    return 42 if not OverlayIndex::has_ghost_after(594, 5, 600) or OverlayIndex::has_ghost_after(595, 5, 600)
+    return 43 if OverlayIndex::window_last(594, 5, 600) != 599 or OverlayIndex::has_ghost_after(-1, 5, 600)
+    return 44 if OverlayIndex::has_ghost_before(600, 5, 600) or OverlayIndex::slot(599, 1, 2, 600, 2) != 3599
+    0

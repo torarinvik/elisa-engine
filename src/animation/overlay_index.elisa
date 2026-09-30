@@ -1,0 +1,67 @@
+# Integer rules for OverlayTrail, split out so the prover can check them:
+# the clamped frame window of a trail, joint position slots in a
+# frame-major clip, and which onion-ghost frames exist.
+module OverlayIndex:
+    public:
+        const MAX_FRAMES: i64 = 1048576
+        const MAX_JOINTS: i64 = 256
+
+        # First frame of a trail window reaching `before` frames back.
+        def window_first(center: i64, before: i64, frames: i64) -> i64:
+            requires frames >= 1
+            requires frames <= MAX_FRAMES
+            ensure result >= 0
+            ensure result < frames
+            return 0 if before < 0 or center < before
+            return frames - 1 if center - before >= frames
+            center - before
+
+        # Last frame of a trail window reaching `after` frames ahead.
+        def window_last(center: i64, after: i64, frames: i64) -> i64:
+            requires frames >= 1
+            requires frames <= MAX_FRAMES
+            requires after <= MAX_FRAMES
+            ensure result >= 0
+            ensure result < frames
+            return 0 if center < 0
+            return frames - 1 if center >= frames
+            return center if after < 0
+            return frames - 1 if center + after >= frames
+            center + after
+
+        # Slot of coordinate `axis` of `joint` at `frame`, or -1.
+        def slot(frame: i64, joint: i64, axis: i64, frames: i64, joints: i64) -> i64:
+            requires frames >= 0
+            requires frames <= MAX_FRAMES
+            requires joints >= 0
+            requires joints <= MAX_JOINTS
+            ensure result >= -1
+            ensure frame < frames or result == -1
+            ensure joint < joints or result == -1
+            ensure axis < 3 or result == -1
+            return -1 if frame < 0 or frame >= frames
+            return -1 if joint < 0 or joint >= joints
+            return -1 if axis < 0 or axis >= 3
+            (frame * joints + joint) * 3 + axis
+
+        # Whether an onion ghost `distance` frames before `center` exists;
+        # its frame is then window_first(center, distance, frames).
+        def has_ghost_before(center: i64, distance: i64, frames: i64) -> bool:
+            ensure not result or distance >= 1
+            ensure not result or center >= distance
+            ensure not result or center < frames
+            return false if distance < 1
+            return false if center < distance
+            return false if center >= frames
+            true
+
+        # Whether an onion ghost `distance` frames after `center` exists; its
+        # frame is then window_last(center, distance, frames).
+        def has_ghost_after(center: i64, distance: i64, frames: i64) -> bool:
+            requires distance <= MAX_FRAMES
+            ensure not result or distance >= 1
+            ensure not result or center >= 0
+            return false if distance < 1
+            return false if center < 0
+            return false if center + distance >= frames
+            true

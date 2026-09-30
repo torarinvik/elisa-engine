@@ -1,0 +1,63 @@
+include "../src/animation/overlay_index.elisa"
+
+extend OverlayIndex:
+    def prove_first_inside(center: i64, before: i64, frames: i64) -> i64:
+        requires frames >= 1
+        requires frames <= 1048576
+        ensure result >= 0
+        ensure result < frames
+        window_first(center, before, frames)
+
+    def prove_last_inside(center: i64, after: i64, frames: i64) -> i64:
+        requires frames >= 1
+        requires frames <= 1048576
+        requires after <= 1048576
+        ensure result >= 0
+        ensure result < frames
+        window_last(center, after, frames)
+
+    def prove_slot_signed(frame: i64, joint: i64, axis: i64, frames: i64, joints: i64) -> i64:
+        requires frames >= 0
+        requires frames <= 1048576
+        requires joints >= 0
+        requires joints <= 256
+        ensure result >= -1
+        slot(frame, joint, axis, frames, joints)
+
+    def prove_slot_rejects_past_frame(frame: i64, joint: i64, axis: i64, frames: i64, joints: i64) -> i64:
+        requires frames >= 0
+        requires frames <= 1048576
+        requires joints >= 0
+        requires joints <= 256
+        requires frame >= frames
+        ensure result == -1
+        slot(frame, joint, axis, frames, joints)
+
+    def prove_slot_rejects_past_joint(frame: i64, joint: i64, axis: i64, frames: i64, joints: i64) -> i64:
+        requires frames >= 0
+        requires frames <= 1048576
+        requires joints >= 0
+        requires joints <= 256
+        requires joint >= joints
+        ensure result == -1
+        slot(frame, joint, axis, frames, joints)
+
+    def prove_slot_rejects_fourth_axis(frame: i64, joint: i64, axis: i64, frames: i64, joints: i64) -> i64:
+        requires frames >= 0
+        requires frames <= 1048576
+        requires joints >= 0
+        requires joints <= 256
+        requires axis >= 3
+        ensure result == -1
+        slot(frame, joint, axis, frames, joints)
+
+    def prove_ghost_before_needs_distance(center: i64, distance: i64, frames: i64) -> bool:
+        requires distance < 1
+        ensure not result
+        has_ghost_before(center, distance, frames)
+
+    def prove_ghost_after_needs_distance(center: i64, distance: i64, frames: i64) -> bool:
+        requires distance <= 1048576
+        requires distance < 1
+        ensure not result
+        has_ghost_after(center, distance, frames)
