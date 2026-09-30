@@ -1,0 +1,121 @@
+include "../src/assets/gltf_rest_pose.elisa"
+include "../src/assets/glb_container.elisa"
+include "./assets_gltf_channel_fixture.elisa"
+
+def bytes_of(codes: darray[i64]) -> darray[u8]:
+    out: mutable darray[u8] = []
+    for i in 0..<codes.count |out, codes|:
+        out.push(codes[i].u8())
+    out
+
+def doc_of(bytes: darray[u8]&, length: i64) -> GltfJson::Doc:
+    catch GltfJson::parse(bytes, 0, length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def layout_of(bytes: darray[u8]&) -> GlbContainer::Layout:
+    catch GlbContainer::parse(bytes):
+        value: value
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+def glb_doc(bytes: darray[u8]&) -> GltfJson::Doc:
+    layout: GlbContainer::Layout = layout_of(bytes)
+    catch GltfJson::parse(bytes, layout.json_start, layout.json_length):
+        value: value
+        error failure: GltfJson::Doc{kind: [], start: [], stop: [], parent: [], key_start: [], key_stop: [], integer: []}
+
+def rest_of(doc: GltfJson::Doc&, bytes: darray[u8]&) -> GltfRestPose::Rest:
+    catch GltfRestPose::build(doc, bytes):
+        value: value
+        error failure: GltfRestPose::Rest{node_count: -1, values: []}
+
+def matches(rest: GltfRestPose::Rest&, node: i64, want: darray[f64]&) -> bool:
+    ok: mutable bool = true
+    for f in 0..<10 |ok, rest, node, want|:
+        path: i64 = 0 if f < 3 else (1 if f < 7 else 2)
+        start: i64 = 0 if path == 0 else (3 if path == 1 else 7)
+        ok <- ok and GltfRestPose::value_of(rest, node, path, f.i64() - start) == want[f]
+    ok
+
+def main() -> i32:
+    glb: darray[u8] = fixture_glb()
+    fixture: GltfJson::Doc = glb_doc(glb)
+    return 1 if GltfRestPose::problem(fixture, glb) != 0
+    armature: GltfRestPose::Rest = rest_of(fixture, glb)
+    return 2 if armature.node_count != 3
+    knee: darray[f64] = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    plain: darray[f64] = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]
+    return 3 if not matches(armature, 0, knee)
+    return 4 if not matches(armature, 1, plain) or not matches(armature, 2, plain)
+    good_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,46,55,48,55,49,48,54,55,56,49,49,56,54,53,52,55,54,44,48,44,48,46,55,48,55,49,48,54,55,56,49,49,56,54,53,52,55,54,93,44,34,115,99,97,108,101,34,58,91,50,44,50,46,53,101,45,49,44,45,49,93,44,34,116,114,97,110,115,108,97,116,105,111,110,34,58,91,49,46,53,44,45,50,44,51,101,50,93,125,44,123,34,109,97,116,114,105,120,34,58,91,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,93,125,93,125]
+    good: darray[u8] = bytes_of(good_codes)
+    good_doc: GltfJson::Doc = doc_of(good, 162)
+    return 5 if GltfRestPose::problem(good_doc, good) != 0
+    posed: GltfRestPose::Rest = rest_of(good_doc, good)
+    turned: darray[f64] = [1.5, -2.0, 300.0, 0.0, 0.7071067811865476, 0.0, 0.7071067811865476, 2.0, 0.25, -1.0]
+    return 6 if posed.node_count != 2 or not matches(posed, 0, turned)
+    return 7 if not matches(posed, 1, plain)
+    # Outside the node table or a path's components there is no value.
+    outside: f64 = GltfRestPose::value_of(posed, 2, 0, 0)
+    past: f64 = GltfRestPose::value_of(posed, 0, 0, 3)
+    unknown: f64 = GltfRestPose::value_of(posed, 0, 3, 0)
+    return 8 if outside == outside or past == past or unknown == unknown
+    bad0_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,116,114,97,110,115,108,97,116,105,111,110,34,58,91,49,44,50,93,125,93,125]
+    bad0: darray[u8] = bytes_of(bad0_codes)
+    bad0_doc: GltfJson::Doc = doc_of(bad0, 33)
+    return 20 if GltfRestPose::problem(bad0_doc, bad0) != 3
+    return 21 if rest_of(bad0_doc, bad0).node_count != -1
+    bad1_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,115,99,97,108,101,34,58,91,49,44,34,97,34,44,49,93,125,93,125]
+    bad1: darray[u8] = bytes_of(bad1_codes)
+    bad1_doc: GltfJson::Doc = doc_of(bad1, 31)
+    return 22 if GltfRestPose::problem(bad1_doc, bad1) != 3
+    return 23 if rest_of(bad1_doc, bad1).node_count != -1
+    bad2_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,44,48,44,50,93,125,93,125]
+    bad2: darray[u8] = bytes_of(bad2_codes)
+    bad2_doc: GltfJson::Doc = doc_of(bad2, 34)
+    return 24 if GltfRestPose::problem(bad2_doc, bad2) != 4
+    return 25 if rest_of(bad2_doc, bad2).node_count != -1
+    bad3_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,50,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,44,48,44,48,44,48,44,48,44,49,93,125,93,125]
+    bad3: darray[u8] = bytes_of(bad3_codes)
+    bad3_doc: GltfJson::Doc = doc_of(bad3, 56)
+    return 26 if GltfRestPose::problem(bad3_doc, bad3) != 5
+    return 27 if rest_of(bad3_doc, bad3).node_count != -1
+    bad4_codes: darray[i64] = [123,34,115,99,101,110,101,115,34,58,91,93,125]
+    bad4: darray[u8] = bytes_of(bad4_codes)
+    bad4_doc: GltfJson::Doc = doc_of(bad4, 13)
+    return 28 if GltfRestPose::problem(bad4_doc, bad4) != 1
+    return 29 if rest_of(bad4_doc, bad4).node_count != -1
+    bad5_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,125,44,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,44,48,93,125,93,125]
+    bad5: darray[u8] = bytes_of(bad5_codes)
+    bad5_doc: GltfJson::Doc = doc_of(bad5, 35)
+    return 30 if GltfRestPose::problem(bad5_doc, bad5) != 3
+    return 31 if rest_of(bad5_doc, bad5).node_count != -1
+    bad6_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,109,97,116,114,105,120,34,58,91,49,44,48,44,48,93,125,93,125]
+    bad6: darray[u8] = bytes_of(bad6_codes)
+    bad6_doc: GltfJson::Doc = doc_of(bad6, 30)
+    return 32 if GltfRestPose::problem(bad6_doc, bad6) != 5
+    return 33 if rest_of(bad6_doc, bad6).node_count != -1
+    bad7_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,116,114,97,110,115,108,97,116,105,111,110,34,58,91,116,114,117,101,44,48,44,48,93,125,93,125]
+    bad7: darray[u8] = bytes_of(bad7_codes)
+    bad7_doc: GltfJson::Doc = doc_of(bad7, 38)
+    return 34 if GltfRestPose::problem(bad7_doc, bad7) != 3
+    return 35 if rest_of(bad7_doc, bad7).node_count != -1
+    more0_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,44,48,44,49,46,48,49,93,125,93,125]
+    more0: darray[u8] = bytes_of(more0_codes)
+    more0_doc: GltfJson::Doc = doc_of(more0, 37)
+    return 50 if GltfRestPose::problem(more0_doc, more0) != 4
+    more1_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,44,48,44,49,46,48,48,48,52,93,125,93,125]
+    more1: darray[u8] = bytes_of(more1_codes)
+    more1_doc: GltfJson::Doc = doc_of(more1, 39)
+    return 51 if GltfRestPose::problem(more1_doc, more1) != 0
+    more2_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,115,99,97,108,101,34,58,91,49,44,49,93,125,44,123,34,114,111,116,97,116,105,111,110,34,58,91,48,44,48,44,48,44,51,93,125,93,125]
+    more2: darray[u8] = bytes_of(more2_codes)
+    more2_doc: GltfJson::Doc = doc_of(more2, 50)
+    return 52 if GltfRestPose::problem(more2_doc, more2) != 3
+    more3_codes: darray[i64] = [123,34,110,111,100,101,115,34,58,91,123,34,116,114,97,110,115,108,97,116,105,111,110,34,58,91,34,49,34,44,48,44,48,93,125,93,125]
+    more3: darray[u8] = bytes_of(more3_codes)
+    more3_doc: GltfJson::Doc = doc_of(more3, 37)
+    return 53 if GltfRestPose::problem(more3_doc, more3) != 3
+    scale_past: f64 = GltfRestPose::value_of(posed, 0, 2, 3)
+    return 60 if scale_past == scale_past
+    0

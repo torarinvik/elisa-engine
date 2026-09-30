@@ -1,0 +1,55 @@
+# Integer rules for GltfRestPose, split out so the prover can check them:
+# each node stores ten rest values (translation 3, rotation 4, scale 3), and
+# every path/component pair maps to one slot inside its node.
+module GltfRestIndex:
+    public:
+        const FIELDS: i64 = 10
+        const MAX_NODES: i64 = 65536
+
+        # Components of a TRS path: translation 0 and scale 2 have 3, rotation 1 has 4.
+        def arity(path: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 4
+            ensure path != 1 or result == 4
+            return 3 if path == 0
+            return 4 if path == 1
+            return 3 if path == 2
+            0
+
+        # First field of a path inside a node, or -1 for an unknown path.
+        def first_field(path: i64) -> i64:
+            ensure result >= -1
+            ensure result <= 7
+            return 0 if path == 0
+            return 3 if path == 1
+            return 7 if path == 2
+            -1
+
+        # Field of one component, or -1 when the component is outside the path.
+        def field(path: i64, component: i64) -> i64:
+            ensure result >= -1
+            ensure result < FIELDS
+            ensure component >= 0 or result == -1
+            ensure component < 4 or result == -1
+            return -1 if component < 0
+            return component if path == 0 and component < 3
+            return 3 + component if path == 1 and component < 4
+            return 7 + component if path == 2 and component < 3
+            -1
+
+        # Slot of a node's field in the flat value array, or -1.
+        def slot(node_count: i64, node: i64, field_index: i64) -> i64:
+            requires node_count >= 0
+            requires node_count <= MAX_NODES
+            ensure result >= -1
+            ensure node < node_count or result == -1
+            ensure field_index < FIELDS or result == -1
+            return -1 if node < 0
+            return -1 if node >= node_count
+            return -1 if field_index < 0
+            return -1 if field_index >= FIELDS
+            node * FIELDS + field_index
+
+        # The default rest value of a field: 0 translation, identity rotation, unit scale.
+        def default_one(field_index: i64) -> bool:
+            field_index == 6 or field_index >= 7

@@ -1,0 +1,47 @@
+include "../src/assets/gltf_rest_index.elisa"
+
+extend GltfRestIndex:
+    def prove_arity_bounded(path: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 4
+        arity(path)
+
+    def prove_rotation_has_four(path: i64) -> i64:
+        requires path == 1
+        ensure result == 4
+        arity(path)
+
+    def prove_field_in_node(path: i64, component: i64) -> i64:
+        ensure result >= -1
+        ensure result < 10
+        field(path, component)
+
+    def prove_field_rejects_negative(path: i64, component: i64) -> i64:
+        requires component < 0
+        ensure result == -1
+        field(path, component)
+
+    def prove_field_rejects_past_arity(path: i64, component: i64) -> i64:
+        requires component >= 4
+        ensure result == -1
+        field(path, component)
+
+    def prove_slot_signed(node_count: i64, node: i64, field_index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        ensure result >= -1
+        slot(node_count, node, field_index)
+
+    def prove_slot_rejects_past_node(node_count: i64, node: i64, field_index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        requires node >= node_count
+        ensure result == -1
+        slot(node_count, node, field_index)
+
+    def prove_slot_rejects_past_field(node_count: i64, node: i64, field_index: i64) -> i64:
+        requires node_count >= 0
+        requires node_count <= 65536
+        requires field_index >= 10
+        ensure result == -1
+        slot(node_count, node, field_index)

@@ -1,0 +1,132 @@
+# Reads every node's rest transform from glTF JSON (M06): translation,
+# rotation and scale, with the glTF defaults for missing members. Wrong
+# arity, non-numbers, a non-unit rotation and a non-identity `matrix` are
+# typed errors, so a pose never starts from a silently wrong rest.
+include "./gltf_animation_map.elisa"
+include "./gltf_number.elisa"
+include "./gltf_rest_index.elisa"
+
+module GltfRestPose:
+    private:
+        def word_nodes() -> darray[u8]:
+            [110, 111, 100, 101, 115]
+
+        def word_path(path: i64) -> darray[u8]:
+            return [116, 114, 97, 110, 115, 108, 97, 116, 105, 111, 110] if path == 0
+            return [114, 111, 116, 97, 116, 105, 111, 110] if path == 1
+            [115, 99, 97, 108, 101]
+
+        def word_matrix() -> darray[u8]:
+            [109, 97, 116, 114, 105, 120]
+
+        def elements(doc: GltfJson::Doc&, array: i64) -> i64:
+            return -1 if array < 0 or array >= GltfJson::node_count(doc)
+            return -1 if doc.kind[array.usize()] != GltfJson::ARRAY
+            count: mutable i64 = 0
+            for n in (array + 1).usize()..<doc.kind.count |count, doc, array|:
+                count <- count + 1 if doc.parent[n] == array else count
+            count
+
+        def is_number(doc: GltfJson::Doc&, bytes: darray[u8]&, node: i64) -> bool:
+            return false if node < 0 or node >= GltfJson::node_count(doc)
+            kind: i64 = doc.kind[node.usize()]
+            return false if kind != GltfJson::INTEGER and kind != GltfJson::REAL
+            GltfNumber::valid(bytes, doc.start[node.usize()], doc.stop[node.usize()])
+
+        def number(doc: GltfJson::Doc&, bytes: darray[u8]&, node: i64) -> f64:
+            GltfNumber::value(bytes, doc.start[node.usize()], doc.stop[node.usize()])
+
+        # 0 when an array member of `arity` numbers is present or absent, else a problem code.
+        def array_problem(doc: GltfJson::Doc&, bytes: darray[u8]&, array: i64, arity: i64) -> i64:
+            return 0 if array < 0
+            return 1 if elements(doc, array) != arity
+            bad: mutable i64 = 0
+            for c in 0..<arity.usize() |bad, doc, bytes, array|:
+                bad <- 1 if not is_number(doc, bytes, GltfAnimationMap::item(doc, array, c.i64())) else bad
+            bad
+
+        def component(doc: GltfJson::Doc&, bytes: darray[u8]&, object: i64, field_index: i64) -> f64:
+            path: i64 = 0 if field_index < 3 else (1 if field_index < 7 else 2)
+            words: darray[u8] = word_path(path)
+            array: i64 = GltfAnimationMap::member(doc, bytes, object, words)
+            fallback: f64 = 1.0 if GltfRestIndex::default_one(field_index) else 0.0
+            return fallback if array < 0
+            number(doc, bytes, GltfAnimationMap::item(doc, array, field_index - GltfRestIndex::first_field(path)))
+
+        # 0 when the node's rotation is a unit quaternion within glTF's tolerance.
+        def unit_problem(doc: GltfJson::Doc&, bytes: darray[u8]&, object: i64) -> i64:
+            x: f64 = component(doc, bytes, object, 3)
+            y: f64 = component(doc, bytes, object, 4)
+            z: f64 = component(doc, bytes, object, 5)
+            w: f64 = component(doc, bytes, object, 6)
+            gap: f64 = x * x + y * y + z * z + w * w - 1.0
+            return 1 if gap > 0.001 or gap < -0.001
+            0
+
+        def matrix_problem(doc: GltfJson::Doc&, bytes: darray[u8]&, object: i64) -> i64:
+            words: darray[u8] = word_matrix()
+            array: i64 = GltfAnimationMap::member(doc, bytes, object, words)
+            return 0 if array < 0
+            return 1 if array_problem(doc, bytes, array, 16) != 0
+            bad: mutable i64 = 0
+            for c in 0..<16 |bad, doc, bytes, array|:
+                want: f64 = 1.0 if c % 5 == 0 else 0.0
+                bad <- 1 if number(doc, bytes, GltfAnimationMap::item(doc, array, c.i64())) != want else bad
+            bad
+
+    public:
+        error RestError:
+            MissingNodes
+            TooManyNodes
+            BadTransform
+            NotUnit
+            Matrix
+
+        # Ten values per node: translation xyz, rotation xyzw, scale xyz.
+        struct Rest:
+            node_count: i64
+            values: darray[f64]
+
+        # 0 when every node's rest transform can be read, else the error code
+        # 1 missing nodes, 2 too many, 3 bad transform, 4 not unit, 5 matrix.
+        def problem(doc: GltfJson::Doc&, bytes: darray[u8]&) -> i64:
+            words: darray[u8] = word_nodes()
+            nodes: i64 = GltfAnimationMap::member(doc, bytes, 0, words)
+            count: i64 = elements(doc, nodes)
+            return 1 if count < 0
+            return 2 if count > GltfRestIndex::MAX_NODES
+            code: mutable i64 = 0
+            for n in 0..<count.usize() |code, doc, bytes, nodes|:
+                object: i64 = GltfAnimationMap::item(doc, nodes, n.i64())
+                shape: mutable i64 = 0
+                for path in 0..<3 |shape, doc, bytes, object|:
+                    words_p: darray[u8] = word_path(path.i64())
+                    array: i64 = GltfAnimationMap::member(doc, bytes, object, words_p)
+                    shape <- 3 if array_problem(doc, bytes, array, GltfRestIndex::arity(path.i64())) != 0 else shape
+                shape <- 5 if shape == 0 and matrix_problem(doc, bytes, object) != 0 else shape
+                shape <- 4 if shape == 0 and unit_problem(doc, bytes, object) != 0 else shape
+                code <- shape if code == 0 else code
+            code
+
+        def build(doc: GltfJson::Doc&, bytes: darray[u8]&) -> Rest error[RestError]:
+            code: i64 = problem(doc, bytes)
+            raise RestError.MissingNodes if code == 1
+            raise RestError.TooManyNodes if code == 2
+            raise RestError.BadTransform if code == 3
+            raise RestError.NotUnit if code == 4
+            raise RestError.Matrix if code == 5
+            words: darray[u8] = word_nodes()
+            nodes: i64 = GltfAnimationMap::member(doc, bytes, 0, words)
+            count: i64 = elements(doc, nodes)
+            values: mutable darray[f64] = []
+            for n in 0..<count.usize() |values, doc, bytes, nodes|:
+                object: i64 = GltfAnimationMap::item(doc, nodes, n.i64())
+                for f in 0..<GltfRestIndex::FIELDS.usize() |values, doc, bytes, object|:
+                    values.push(component(doc, bytes, object, f.i64()))
+            Rest{node_count: count, values: values}
+
+        # One rest component, or NaN outside the node table or the path.
+        def value_of(rest: Rest&, node: i64, path: i64, index: i64) -> f64:
+            at: i64 = GltfRestIndex::slot(rest.node_count, node, GltfRestIndex::field(path, index))
+            return 0.0 / 0.0 if at < 0
+            rest.values[at.usize()]
