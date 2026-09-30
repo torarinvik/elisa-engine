@@ -1,0 +1,99 @@
+# Display order for one line of mixed-direction text: a reduced form of the
+# Unicode Bidirectional Algorithm (UAX #9) covering strong left and right
+# letters, European digits and neutrals. There are no explicit embeddings or
+# isolates and no Arabic-Indic digits. Levels come from rules W2/W7 (digits
+# follow the last strong letter), N1/N2 (neutrals between matching sides
+# join them, otherwise take the paragraph level) and I1/I2. Rule L2 reverses
+# runs from the highest level down, and rule L4 mirrors paired brackets at
+# odd levels.
+include "./message_format.elisa"
+
+module UiBidi:
+    public:
+        # Strong right-to-left: Hebrew, Arabic, Syriac, Thaana, NKo and the
+        # Hebrew/Arabic presentation forms.
+        def bidi_is_rtl(cp: i64) -> bool:
+            (cp >= 1424 and cp <= 2047) or (cp >= 64285 and cp <= 65023) or (cp >= 65136 and cp <= 65279)
+
+        def bidi_is_digit(cp: i64) -> bool:
+            cp >= 48 and cp <= 57
+
+        # Neutral: ASCII space and punctuation, plus general punctuation.
+        def bidi_is_neutral(cp: i64) -> bool:
+            (cp < 128 and not bidi_is_digit(cp) and not ((cp >= 65 and cp <= 90) or (cp >= 97 and cp <= 122))) or (cp >= 8192 and cp <= 8303)
+
+        def bidi_mirror(cp: i64) -> i64:
+            return 41 if cp == 40
+            return 40 if cp == 41
+            return 93 if cp == 91
+            return 91 if cp == 93
+            return 125 if cp == 123
+            return 123 if cp == 125
+            return 62 if cp == 60
+            return 60 if cp == 62
+            cp
+
+        # Embedding level of every character; `rtl_paragraph` picks level 1
+        # as the base, otherwise 0.
+        def bidi_levels(text: UiMessageFormat::Text&, rtl_paragraph: bool) -> UiMessageFormat::Text:
+            base: i64 = 1 if rtl_paragraph else 0
+            # Resolved direction per character: 0 left, 1 right, 2 neutral.
+            dirs: mutable i64[64] = zeroed
+            last: mutable i64 = base
+            for i in 0..<64 |dirs, last|:
+                cp: i64 = text.cp[i] if i.i64() < text.len else 32
+                d: i64 = 2 if bidi_is_neutral(cp) else (1 if bidi_is_rtl(cp) else (last if bidi_is_digit(cp) else 0))
+                dirs[i] <- d
+                last <- d if d != 2 and not bidi_is_digit(cp) else last
+            # N1/N2: direction of the next strong character, scanned backwards.
+            after: mutable i64[64] = zeroed
+            next: mutable i64 = base
+            for k in 0..<64 |after, next|:
+                i: usize = (63 - k.i64()).usize()
+                after[i] <- next
+                next <- dirs[i] if dirs[i] != 2 and i.i64() < text.len else next
+            out: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: text.len}
+            before: mutable i64 = base
+            for i in 0..<64 |out, before|:
+                cp: i64 = text.cp[i] if i.i64() < text.len else 32
+                d: i64 = dirs[i]
+                agree: bool = before == after[i]
+                resolved: i64 = d if d != 2 else (before if agree else 3)
+                right: i64 = 2 if bidi_is_digit(cp) else 1
+                strong: i64 = base if resolved == 0 and base == 0 else (base + 1 if resolved == 0 else right)
+                level: i64 = base if resolved == 3 else strong
+                out.cp[i] <- level if i.i64() < text.len else 0
+                before <- d if d != 2 else before
+            out
+
+        # Reverses every run at or above `min_level` (one pass of rule L2).
+        def bidi_reverse_pass(order: UiMessageFormat::Text&, levels: UiMessageFormat::Text&, min_level: i64, take_levels: bool) -> UiMessageFormat::Text:
+            src: mutable i64[64] = zeroed
+            for i in 0..<64 |src|:
+                src[i] <- levels.cp[i] if take_levels else order.cp[i]
+            out: mutable i64[64] = zeroed
+            start: mutable i64 = -1
+            for i in 0..<65 |out, start|:
+                inside: bool = i.i64() < order.len and levels.cp[i.usize() % 64] >= min_level
+                if inside and start < 0:
+                    start <- i.i64()
+                if not inside and start >= 0:
+                    for x in start..<i.i64() |out|:
+                        out[(start + i.i64() - 1 - x).usize()] <- src[x.usize()]
+                    start <- -1
+                if not inside and i < 64:
+                    out[i] <- src[i]
+            result: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: order.len}
+            for i in 0..<64 |result|:
+                result.cp[i] <- out[i]
+            result
+
+        # Codepoints of `text` in left-to-right display order.
+        def bidi_visual(text: UiMessageFormat::Text&, rtl_paragraph: bool) -> UiMessageFormat::Text:
+            levels: UiMessageFormat::Text = bidi_levels(text, rtl_paragraph)
+            mirrored: mutable UiMessageFormat::Text = UiMessageFormat::Text{cp: zeroed, len: text.len}
+            for i in 0..<64 |mirrored|:
+                mirrored.cp[i] <- bidi_mirror(text.cp[i]) if levels.cp[i] % 2 == 1 else text.cp[i]
+            order2: UiMessageFormat::Text = bidi_reverse_pass(mirrored, levels, 2, false)
+            levels2: UiMessageFormat::Text = bidi_reverse_pass(levels, levels, 2, true)
+            bidi_reverse_pass(order2, levels2, 1, false)

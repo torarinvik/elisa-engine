@@ -1,0 +1,47 @@
+include "../src/animation/graph_digest.elisa"
+include "../src/runtime/replay_subsystems.elisa"
+
+# States: 0 idle, 1 walk, 2 run. Params: 0 speed, 2 slow (1000 - speed).
+def agr_graph(walk_blend_ms: i64) -> AnimGraph::Graph:
+    AnimGraph::Graph{state_count: 3, entry: 0, count: 3, origin: [0, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], target: [1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], param: [0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], at_least: [100, 600, 700, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], blend_ms: [walk_blend_ms, 300, 200, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}
+
+# Speed script: idle, walk from tick 3, run from tick 6, back to walk at tick 10.
+def agr_speed(tick: i64, push_at: i64) -> i64:
+    base: i64 = 0 if tick < 3 else (300 if tick < 6 else (800 if tick < 10 else 200))
+    base + 500 if tick == push_at and base < 500 else base
+
+def agr_run(walk_blend_ms: i64, push_at: i64) -> ReplaySubsystems::Trace:
+    g: AnimGraph::Graph = agr_graph(walk_blend_ms)
+    mutable r: AnimGraph::Runtime = AnimGraph::start(&g)
+    mutable t: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+    for tick in 0..<14 |r, t|:
+        speed: i64 = agr_speed(tick.i64(), push_at)
+        params: i64[4] = [speed, 0, 1000 - speed, 0]
+        AnimGraph::step(&g, &r, &params, 50)
+        ok: bool = ReplaySubsystems::begin_tick(&t)
+        a: bool = ReplaySubsystems::record(&t, 0, speed)
+        b: bool = ReplaySubsystems::record(&t, 4, AnimGraphDigest::graph_runtime_digest(&r))
+    t
+
+def main() -> i32:
+    base: ReplaySubsystems::Trace = agr_run(200, -1)
+    again: ReplaySubsystems::Trace = agr_run(200, -1)
+    return 1 if base.ticks != 14 or ReplaySubsystems::judge(&base, &again, true) != ReplaySubsystems::Verdict.Match
+    # A slower walk blend with identical input first differs in animation at
+    # tick 3, the tick the walk transition fires with a different blend length.
+    slow: ReplaySubsystems::Trace = agr_run(400, -1)
+    d: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&base, &slow, true)
+    return 2 if d.tick != 3 or d.subsystem != 4
+    # A one-tick input spike at tick 1 is found in input (slot 0) first.
+    spiked: ReplaySubsystems::Trace = agr_run(200, 1)
+    e: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&base, &spiked, true)
+    return 3 if e.tick != 1 or e.subsystem != 0
+    # Animation is SameBuild scope: across builds it is not compared.
+    return 4 if ReplaySubsystems::judge(&base, &slow, false) != ReplaySubsystems::Verdict.Match
+    # The digest sees every field: an interruption count alone changes it.
+    g: AnimGraph::Graph = agr_graph(200)
+    mutable r: AnimGraph::Runtime = AnimGraph::start(&g)
+    before: i64 = AnimGraphDigest::graph_runtime_digest(&r)
+    r.interruptions <- 1
+    return 5 if AnimGraphDigest::graph_runtime_digest(&r) == before
+    return 0

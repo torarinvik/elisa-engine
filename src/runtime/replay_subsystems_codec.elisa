@@ -1,0 +1,96 @@
+# Durable form of a per-subsystem replay trace: a word stream (magic,
+# version, tick count, six digests per tick, checksum) packed as
+# little-endian bytes for the user-data payload service. Decoding checks
+# length, magic, version, tick count and checksum before it produces a
+# trace, so a truncated, corrupt or foreign record never feeds a comparison.
+include "./replay_subsystems.elisa"
+
+module ReplaySubsystemsCodec:
+    public:
+        const MAGIC: i64 = 5395283
+        const VERSION: i64 = 1
+        const WORDS: i64 = 100
+        const MAX_BYTES: usize = 800
+
+        enum Decode:
+            Ok
+            Truncated
+            BadMagic
+            BadVersion
+            BadTicks
+            BadChecksum
+
+        struct Stream:
+            words: mutable i64[100]
+            len: mutable i64
+
+        struct Loaded:
+            status: Decode
+            trace: ReplaySubsystems::Trace
+
+        struct Bytes:
+            b: mutable u8[800]
+            len: mutable usize
+
+        def trace_checksum(s: Stream&, upto: i64) -> i64:
+            mutable h: i64 = 1469598103
+            for i in 0..<100 |h|:
+                h <- (h * 31 + s.words[i] % 1000000007) % 1000000007 if i.i64() < upto else h
+            h
+
+        def encode_trace(t: ReplaySubsystems::Trace&) -> Stream:
+            mutable s: Stream = Stream{words: zeroed, len: 0}
+            s.words[0] <- MAGIC
+            s.words[1] <- VERSION
+            s.words[2] <- t.ticks
+            digests: i64 = t.ticks * ReplaySubsystems::Tune::SUBSYSTEMS
+            for i in 0..<96 |s|:
+                s.words[3 + i] <- t.digests[i] if i.i64() < digests else 0
+            n: i64 = 3 + digests
+            s.words[n.usize()] <- trace_checksum(&s, n)
+            s.len <- n + 1
+            s
+
+        def trace_failed(status: Decode) -> Loaded:
+            Loaded{status: status, trace: ReplaySubsystems::new_trace()}
+
+        def decode_trace(s: Stream&) -> Loaded:
+            return trace_failed(Decode.Truncated) if s.len < 4 or s.len > WORDS
+            return trace_failed(Decode.BadMagic) if s.words[0] != MAGIC
+            return trace_failed(Decode.BadVersion) if s.words[1] != VERSION
+            ticks: i64 = s.words[2]
+            return trace_failed(Decode.BadTicks) if ticks < 0 or ticks > ReplaySubsystems::Tune::TICKS
+            digests: i64 = ticks * ReplaySubsystems::Tune::SUBSYSTEMS
+            return trace_failed(Decode.Truncated) if s.len != 4 + digests
+            return trace_failed(Decode.BadChecksum) if s.words[(3 + digests).usize()] != trace_checksum(s, 3 + digests)
+            mutable t: ReplaySubsystems::Trace = ReplaySubsystems::new_trace()
+            for i in 0..<96 |t|:
+                t.digests[i] <- s.words[3 + i] if i.i64() < digests else 0
+            t.ticks <- ticks
+            Loaded{status: Decode.Ok, trace: t}
+
+        # 8 little-endian two's-complement bytes per word; unpack gives an
+        # empty stream for a partial word or an oversized record.
+        def pack_trace(s: Stream&) -> Bytes:
+            mutable out: Bytes = Bytes{b: zeroed, len: 0}
+            for i in 0..<100 |out|:
+                if i.i64() < s.len:
+                    w: i64 = s.words[i]
+                    for k in 0..<8 |out|:
+                        out.b[i * 8 + k] <- ((w >> (8 * k).i64()) & 255).u8()
+            out.len <- (s.len * 8).usize()
+            out
+
+        def unpack_trace(bytes: Bytes&) -> Stream:
+            mutable s: Stream = Stream{words: zeroed, len: 0}
+            return s if bytes.len % 8 != 0 or bytes.len > MAX_BYTES
+            n: i64 = (bytes.len / 8).i64()
+            for i in 0..<100 |s|:
+                if i.i64() < n:
+                    top: i64 = bytes.b[i * 8 + 7].i64()
+                    mutable w: i64 = top - 256 if top >= 128 else top
+                    for j in 0..<7 |w|:
+                        w <- w * 256 + bytes.b[i * 8 + 6 - j].i64()
+                    s.words[i] <- w
+            s.len <- n
+            s
