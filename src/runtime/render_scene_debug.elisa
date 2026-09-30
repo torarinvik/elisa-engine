@@ -9,6 +9,11 @@ module RenderSceneDebug:
         const LINE_CHUNK: usize = 256
         const LINE_VALUES: usize = 10
         const MAX_BATCH_LINES: usize = 16384
+        const TEXT_CHUNK: usize = 64
+        const TEXT_VALUES: usize = 7
+        const TEXT_STRIDE: usize = 64
+        const MAX_LABEL_BYTES: usize = 63
+        const MAX_BATCH_TEXTS: usize = 1024
 
 extend RenderScene:
     private:
@@ -17,6 +22,16 @@ extend RenderScene:
             count: mutable u32
             depth_tested: mutable i32
 
+        struct NativeDebugTextChunk:
+            values: f32[RenderSceneDebug::TEXT_CHUNK * RenderSceneDebug::TEXT_VALUES]
+            bytes: u8[RenderSceneDebug::TEXT_CHUNK * RenderSceneDebug::TEXT_STRIDE]
+            lengths: u32[RenderSceneDebug::TEXT_CHUNK]
+            count: mutable u32
+            depth_tested: mutable i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_debug_text_chunk(
+            chunk: mutable NativeDebugTextChunk&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_debug_line_chunk(
             chunk: mutable NativeDebugLineChunk&) -> i32
@@ -95,6 +110,55 @@ extend RenderScene:
                     try check_status(queued)
                 start <- start + take
             lines
+
+        struct DebugTextChunk:
+            private:
+                native: mutable NativeDebugTextChunk
+
+        def DebugTextChunk() -> DebugTextChunk:
+            DebugTextChunk{native: zeroed}
+
+        # Queues labels for the next flush, 64 per native call: `anchors`
+        # holds xyz and rgba per label, `text` the labels' UTF-8 bytes back
+        # to back and `lengths` each label's byte count (1..63, no zero
+        # byte). Every chunk is checked whole; on an error, the chunks before
+        # it stay queued.
+        def debug_label_records(anchors: darray[f64]&, text: darray[u8]&,
+            lengths: darray[i64]&, depth_tested: bool,
+            chunk: mutable DebugTextChunk&) -> usize error[RenderSceneError]:
+            labels: usize = lengths.count
+            raise RenderSceneError.InvalidValue if anchors.count != labels * RenderSceneDebug::TEXT_VALUES
+            raise RenderSceneError.InvalidValue if labels > RenderSceneDebug::MAX_BATCH_TEXTS
+            total: mutable i64 = 0
+            i: mutable usize = 0
+            while i < labels:
+                raise RenderSceneError.InvalidValue if lengths[i] < 1 or lengths[i] > RenderSceneDebug::MAX_LABEL_BYTES.i64()
+                total <- total + lengths[i]
+                i <- i + 1
+            raise RenderSceneError.InvalidValue if total != text.count.i64()
+            chunk.native.depth_tested <- depth_value(depth_tested)
+            start: mutable usize = 0
+            offset: mutable usize = 0
+            while start < labels:
+                take: usize = RenderSceneDebug::TEXT_CHUNK if labels - start > RenderSceneDebug::TEXT_CHUNK else labels - start
+                for v in 0..<take * RenderSceneDebug::TEXT_VALUES |chunk, anchors, start|:
+                    chunk.native.values[v] <- anchors[start * RenderSceneDebug::TEXT_VALUES + v].f32()
+                l: mutable usize = 0
+                while l < take:
+                    length: usize = lengths[start + l].usize()
+                    chunk.native.lengths[l] <- length.u32()
+                    b: mutable usize = 0
+                    while b < length:
+                        chunk.native.bytes[l * RenderSceneDebug::TEXT_STRIDE + b] <- text[offset + b]
+                        b <- b + 1
+                    offset <- offset + length
+                    l <- l + 1
+                chunk.native.count <- take.u32()
+                queued: i32 = elisa_render_scene_v1_debug_text_chunk(&chunk.native)
+                if queued < 0:
+                    try check_status(queued)
+                start <- start + take
+            labels
 
         def debug_flush() -> usize error[RenderSceneError]:
             flushed: i32 = elisa_render_scene_v1_debug_flush()

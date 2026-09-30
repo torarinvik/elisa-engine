@@ -38,8 +38,18 @@ because the prover times out on `%`. The test checks star coordinates and
 alpha, and every rejection. The mutation check caught every mutant: the size,
 ragged, colour, alpha and budget-edge mutants, some through the postcondition.
 
+## Labels
+
+Labels have their own native batch, beside the lines. For each label,
+`RenderScene::debug_label_records` takes a position and colour, the UTF-8 bytes
+and a byte count. It submits 64 labels per native call, and the batch holds
+1,024 labels between flushes. A label must be 1 to 63 bytes with no zero byte.
+Batched labels face the camera and are a fifth of a world unit tall. The
+Elisa side and the native side each check every chunk whole, and a chunk that
+fails leaves nothing queued. Wicked rasterises glyphs lazily, so text drawn for
+the first time comes out blank; the smoke test draws one warm-up frame first.
+See [`debug-drawing.md`](debug-drawing.md) for the test.
+
 ## Still open
 
-Batched native lines, the frame-budget run and the captured PNG are done (see
-[`debug-drawing.md`](debug-drawing.md) and [`overlay-budget.md`](overlay-budget.md)).
-Labels still go through the 128-command text path, one call each.
+Nothing for M05. Labels have no batched-label mode for a fixed pixel height yet.

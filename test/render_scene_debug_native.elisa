@@ -60,6 +60,80 @@ module RenderSceneDebugNativeTests:
             return 28 if none != 0
             0
 
+        # `count` labels "j" plus two digits on a ring; `bad` corrupts one.
+        def label_anchors(count: i64) -> darray[f64]:
+            out: mutable darray[f64] = []
+            for i in 0..<count.usize() |out, count|:
+                a: f64 = 6.283185307179586 * i.i64().f64() / count.f64()
+                out.push(1.2 * ElisaMath::cos(a))
+                out.push(1.0)
+                out.push(1.2 * ElisaMath::sin(a))
+                out.push(1.0)
+                out.push(1.0)
+                out.push(0.2)
+                out.push(1.0)
+            out
+
+        def label_text(count: i64) -> darray[u8]:
+            out: mutable darray[u8] = []
+            for i in 0..<count.usize() |out|:
+                out.push(106.u8())
+                out.push((48 + (i.i64() / 10) % 10).u8())
+                out.push((48 + i.i64() % 10).u8())
+            out
+
+        def label_lengths(count: i64) -> darray[i64]:
+            out: mutable darray[i64] = []
+            for i in 0..<count.usize() |out|:
+                out.push(3)
+            out
+
+        def label_status(anchors: darray[f64]&, text: darray[u8]&, lengths: darray[i64]&,
+            chunk: mutable RenderScene::DebugTextChunk&) -> i64:
+            catch RenderScene::debug_label_records(anchors, text, lengths, true, chunk):
+                value: value.i64()
+                RenderScene::RenderSceneError.InvalidValue: -1
+                RenderScene::RenderSceneError.Capacity: -2
+                error failure: -3
+
+        # Batched labels: 200 labels past the 128 command slots, whole-chunk
+        # rejection of a zero byte, a bad length or a NaN, and capacity.
+        def exercise_labels() -> i32:
+            chunk: mutable RenderScene::DebugTextChunk = RenderScene::DebugTextChunk()
+            anchors: darray[f64] = label_anchors(200)
+            text: darray[u8] = label_text(200)
+            lengths: darray[i64] = label_lengths(200)
+            return 31 if label_status(anchors, text, lengths, chunk) != 200
+            zero: mutable darray[u8] = label_text(200)
+            zero[4] <- 0.u8()
+            return 32 if label_status(anchors, zero, lengths, chunk) != -1
+            long: mutable darray[i64] = label_lengths(200)
+            long[0] <- 64
+            return 33 if label_status(anchors, text, long, chunk) != -1
+            empty: mutable darray[i64] = label_lengths(200)
+            empty[0] <- 0
+            return 34 if label_status(anchors, text, empty, chunk) != -1
+            nan: mutable darray[f64] = label_anchors(200)
+            nan[10] <- 0.0 / 0.0
+            return 35 if label_status(nan, text, lengths, chunk) != -1
+            short: darray[u8] = label_text(199)
+            return 36 if label_status(anchors, short, lengths, chunk) != -1
+            extra: darray[u8] = label_text(201)
+            return 43 if label_status(anchors, extra, lengths, chunk) != -1
+            few: darray[f64] = label_anchors(199)
+            return 44 if label_status(few, text, lengths, chunk) != -1
+            more: darray[f64] = label_anchors(201)
+            return 45 if label_status(more, text, lengths, chunk) != -1
+            many: darray[f64] = label_anchors(900)
+            many_text: darray[u8] = label_text(900)
+            many_lengths: darray[i64] = label_lengths(900)
+            return 37 if label_status(many, many_text, many_lengths, chunk) != -2
+            flushed: usize = catch RenderScene::debug_flush():
+                value: value
+                error failure: return 38
+            return 39 if flushed != 968
+            0
+
     public:
         def exercise() -> i32:
             cleared: i32 = catch RenderScene::debug_clear():
@@ -119,6 +193,16 @@ module RenderSceneDebugNativeTests:
             return 8 if flushed != 3
             batch_status: i32 = exercise_batches()
             return batch_status if batch_status != 0
+            label_result: i32 = exercise_labels()
+            return label_result if label_result != 0
+            # Wicked rasterises glyphs lazily, so labels drawn for the first
+            # time come out blank; one warm-up frame fills the glyph cache.
+            warm: mutable RenderScene::DebugTextChunk = RenderScene::DebugTextChunk()
+            warm_anchors: darray[f64] = label_anchors(24)
+            warm_names: darray[u8] = label_text(24)
+            warm_sizes: darray[i64] = label_lengths(24)
+            return 41 if label_status(warm_anchors, warm_names, warm_sizes, warm) != 24
+            return 42 if Application::pump() != Application::PumpStatus.Running
             auto_line_status: i32 = catch RenderScene::debug_line(
                 Geometry::Vec3{x: -1.0, y: 0.0, z: 1.0},
                 Geometry::Vec3{x: 1.0, y: 0.0, z: 1.0}, RenderScene::Color{
@@ -133,6 +217,11 @@ module RenderSceneDebugNativeTests:
                 value: value
                 error failure: return 29
             return 30 if overlay_queued != 2418
+            labels: mutable RenderScene::DebugTextChunk = RenderScene::DebugTextChunk()
+            anchors: darray[f64] = label_anchors(24)
+            names: darray[u8] = label_text(24)
+            sizes: darray[i64] = label_lengths(24)
+            return 40 if label_status(anchors, names, sizes, labels) != 24
             return 10 if Application::pump() != Application::PumpStatus.Running
             auto_flushed: usize = catch RenderScene::debug_flush():
                 value: value

@@ -79,6 +79,28 @@ extern "C" int32_t elisa_render_scene_v1_debug_line_chunk(
         int32_t(chunk->count) : ELISA_RENDER_SCENE_CAPACITY;
 }
 
+extern "C" int32_t elisa_render_scene_v1_debug_text_chunk(
+    const ElisaRenderSceneDebugTextChunk* chunk) {
+    if (chunk == nullptr || chunk->count > ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK ||
+        !valid_debug_depth(chunk->depth_tested)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    for (uint32_t index = 0; index < chunk->count; ++index) {
+        const float* v = chunk->values + index * ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES;
+        const uint32_t length = chunk->lengths[index];
+        if (!valid_debug_point(v[0], v[1], v[2]) || !valid_color(v[3], v[4], v[5], v[6]) ||
+            length == 0 || length > probe::DebugDrawBridge::MAX_LABEL_BYTES ||
+            std::memchr(chunk->bytes + index * ELISA_RENDER_SCENE_DEBUG_TEXT_STRIDE, 0, length) != nullptr) {
+            return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+        }
+    }
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    return state.debug_draw.text_batch(chunk->values, chunk->bytes, chunk->lengths,
+        ELISA_RENDER_SCENE_DEBUG_TEXT_STRIDE, chunk->count, chunk->depth_tested != 0) ?
+        int32_t(chunk->count) : ELISA_RENDER_SCENE_CAPACITY;
+}
+
 extern "C" int32_t elisa_render_scene_v1_debug_flush(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

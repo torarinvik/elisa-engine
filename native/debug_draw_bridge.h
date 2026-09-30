@@ -16,6 +16,10 @@ class DebugDrawBridge {
 public:
     static constexpr uint32_t MAX_COMMANDS = 128;
     static constexpr uint32_t MAX_BATCH_LINES = 16384;
+    static constexpr uint32_t MAX_BATCH_TEXTS = 1024;
+    static constexpr uint32_t MAX_LABEL_BYTES = 63;
+    // Batched labels face the camera at a fifth of a world unit tall.
+    static constexpr float LABEL_SCALE = 0.2f;
 
     bool box(const XMFLOAT3& minimum, const XMFLOAT3& maximum,
         const XMFLOAT4& color, bool depth_tested) {
@@ -64,7 +68,41 @@ public:
         return true;
     }
 
-    uint32_t pending() const { return count_ + uint32_t(batch_.size()); }
+    // Queues `count` labels as one batch, all or nothing: seven floats each
+    // (xyz, rgba) and `lengths[i]` bytes from `bytes + i * stride`, with no
+    // zero byte and at most MAX_LABEL_BYTES.
+    bool text_batch(const float* values, const uint8_t* bytes, const uint32_t* lengths,
+        uint32_t stride, uint32_t count, bool depth_tested) {
+        if (values == nullptr || bytes == nullptr || lengths == nullptr ||
+            count > MAX_BATCH_TEXTS - uint32_t(text_batch_.size())) return false;
+        for (uint32_t index = 0; index < count; ++index) {
+            if (lengths[index] == 0 || lengths[index] > MAX_LABEL_BYTES ||
+                lengths[index] > stride) return false;
+            for (uint32_t byte = 0; byte < lengths[index]; ++byte) {
+                if (bytes[index * stride + byte] == 0) return false;
+            }
+            for (uint32_t v = 0; v < 7; ++v) {
+                if (!std::isfinite(values[index * 7 + v])) return false;
+            }
+        }
+        text_batch_.reserve(text_batch_.size() + count);
+        for (uint32_t index = 0; index < count; ++index) {
+            const float* v = values + index * 7;
+            TextCommand command;
+            command.position = XMFLOAT3(v[0], v[1], v[2]);
+            command.color = XMFLOAT4(v[3], v[4], v[5], v[6]);
+            command.value.assign(reinterpret_cast<const char*>(bytes + index * stride), lengths[index]);
+            command.depth_tested = depth_tested;
+            command.facing = true;
+            command.valid = true;
+            text_batch_.push_back(std::move(command));
+        }
+        return true;
+    }
+
+    uint32_t pending() const {
+        return count_ + uint32_t(batch_.size()) + uint32_t(text_batch_.size());
+    }
 
     uint32_t flush() {
         const uint32_t flushed = pending();
@@ -76,6 +114,7 @@ public:
             line.color_end = batched.color;
             wi::renderer::DrawLine(line, batched.depth_tested);
         }
+        for (const TextCommand& batched : text_batch_) draw_text(batched);
         for (uint32_t index = 0; index < count_; ++index) {
             if (boxes_[index].valid) {
                 wi::renderer::DrawBox(boxes_[index].bounds, boxes_[index].color,
@@ -89,14 +128,7 @@ public:
                 line.color_end = lines_[index].color;
                 wi::renderer::DrawLine(line, lines_[index].depth_tested);
             }
-            if (texts_[index].valid) {
-                wi::renderer::DebugTextParams params;
-                params.position = texts_[index].position;
-                params.color = texts_[index].color;
-                params.flags = texts_[index].depth_tested ? wi::renderer::DebugTextParams::DEPTH_TEST :
-                    wi::renderer::DebugTextParams::NONE;
-                wi::renderer::DrawDebugText(texts_[index].value.c_str(), params);
-            }
+            if (texts_[index].valid) draw_text(texts_[index]);
         }
         clear();
         return flushed;
@@ -105,6 +137,7 @@ public:
     void clear() {
         count_ = 0;
         batch_.clear();
+        text_batch_.clear();
         for (uint32_t index = 0; index < MAX_COMMANDS; ++index) {
             boxes_[index].valid = false;
             lines_[index].valid = false;
@@ -132,8 +165,22 @@ private:
         XMFLOAT4 color = XMFLOAT4(1, 1, 1, 1);
         std::string value;
         bool depth_tested = false;
+        bool facing = false;
         bool valid = false;
     };
+
+    static void draw_text(const TextCommand& text) {
+        wi::renderer::DebugTextParams params;
+        params.position = text.position;
+        params.color = text.color;
+        params.flags = text.depth_tested ? wi::renderer::DebugTextParams::DEPTH_TEST :
+            wi::renderer::DebugTextParams::NONE;
+        if (text.facing) {
+            params.flags |= wi::renderer::DebugTextParams::CAMERA_FACING;
+            params.scaling = LABEL_SCALE;
+        }
+        wi::renderer::DrawDebugText(text.value.c_str(), params);
+    }
 
     static bool finite(const XMFLOAT3& value) {
         return std::isfinite(value.x) && std::isfinite(value.y) && std::isfinite(value.z);
@@ -147,6 +194,7 @@ private:
     std::array<LineCommand, MAX_COMMANDS> lines_{};
     std::array<TextCommand, MAX_COMMANDS> texts_{};
     std::vector<LineCommand> batch_;
+    std::vector<TextCommand> text_batch_;
     uint32_t count_ = 0;
 };
 
@@ -172,6 +220,29 @@ inline bool probe_debug_draw_bridge() {
             "debug draw rejects a non-finite batch whole") ||
         !check(bridge.flush() == 300 && bridge.pending() == 0,
             "debug draw flushes batched lines")) return false;
+    std::vector<float> anchors(200 * 7, 0.5f);
+    std::vector<uint8_t> names(200 * 64, uint8_t('j'));
+    std::vector<uint32_t> lengths(200, 5);
+    if (!check(bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64, 200, true) &&
+            bridge.pending() == 200, "debug draw batches labels past the command slots") ||
+        !check(!bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64,
+            DebugDrawBridge::MAX_BATCH_TEXTS, true) && bridge.pending() == 200,
+            "debug draw rejects a label batch past capacity whole")) return false;
+    names[64 + 2] = 0;
+    if (!check(!bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64, 2, false) &&
+            bridge.pending() == 200, "debug draw rejects an embedded zero byte whole")) return false;
+    names[64 + 2] = uint8_t('j');
+    lengths[1] = 64;
+    if (!check(!bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64, 2, false),
+            "debug draw rejects an oversized label")) return false;
+    lengths[1] = 0;
+    if (!check(!bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64, 2, false),
+            "debug draw rejects an empty label")) return false;
+    lengths[1] = 5;
+    anchors[7 + 6] = NAN;
+    if (!check(!bridge.text_batch(anchors.data(), names.data(), lengths.data(), 64, 2, false) &&
+            bridge.flush() == 200 && bridge.pending() == 0,
+            "debug draw rejects a non-finite label and flushes batched labels")) return false;
     return true;
 }
 

@@ -71,3 +71,20 @@ events, checks event translation and viewport controls, selects through
 framebuffer pixels, verifies the corresponding Wicked outline and visible
 overlay, rejects an undersized view without changing the existing selection,
 and checks miss cleanup and destruction.
+
+Batched labels: the SDL3/Metal smoke test queues 200 labels, past the 128
+command slots. It then checks that each of these is rejected whole:
+- a zero byte;
+- a 64-byte label;
+- an empty label;
+- a NaN anchor;
+- text shorter or longer than the byte counts add up to;
+- too few or too many anchors.
+
+It also checks the 1,024-label capacity (968 queued, then `Capacity`). After one
+warm-up frame, 24 labels, `j00` to `j23`, are readable on the ring in the
+visible capture: 1,193 changed pixels, against 1,052 without labels. The Wicked
+probe checks the same rejections on the bridge, directly. Mutating the
+text-total and anchor-count checks fails the smoke test with codes 43 and 45.
+Mutating the length checks passes, because the native side rejects those labels
+too.
