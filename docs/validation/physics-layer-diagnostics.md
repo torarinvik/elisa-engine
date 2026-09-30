@@ -23,5 +23,22 @@ Negative control: counting the pairs inside one layer as n*n makes the test
 fail with code 8.
 
 Limits: the matrix is a mirror kept by the engine, not read back from Jolt.
-Wicked has no getter for the layer matrix. It is not yet wired to
-`set_layer_collision`, and the counts come from the caller.
+Wicked has no getter for the layer matrix. The counts come from the caller.
+
+## Wired to the physics service (2026-09-30)
+
+`src/physics/layer_setup.elisa` adds `PhysicsLayerSetup::layer_setup_apply`.
+It calls `set_layer_collision` and updates the mirror only if the service
+accepted the setting. The mirror starts all-enabled, matching Jolt.
+`physics-collision-layers-smoke` now uses it for every layer change and
+checks the following (codes 58–62):
+
+- disabling 0–1 shows in the mirror;
+- a rejected out-of-range call and a `ConfigurationLocked` call after bodies
+  exist leave the mirror unchanged;
+- with three bodies on each of layers 0 and 1, the report shows 6 candidate
+  pairs and no asymmetry.
+
+Negative control: updating the mirror before the service call makes the smoke
+fail with status 60. Direct `set_layer_collision` calls still bypass the
+mirror; nothing forces games through the tracked setter.
