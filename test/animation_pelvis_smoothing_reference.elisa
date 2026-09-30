@@ -1,0 +1,35 @@
+# PelvisSmoothing against tools/pelvis_smoothing_reference.py, which runs
+# clean_leg_motion.py's smooth() and pelvis lines in numpy (float64).
+include "../src/animation/pelvis_smoothing.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000000001 and d > -0.000000001
+
+def fill(height: mutable MotionFilters::Signal&, path: mutable MotionFilters::Signal&) -> bool:
+    for i in 0..<40 |height, path|:
+        t: f64 = i.f64()
+        step: f64 = 0.05 if i > 20 else 0.0
+        return false if not MotionFilters::push(height, 0.95 + 0.03 * ElisaMath::sin(t * 2.0 * 3.141592653589793 / 6.0) - 0.002 * t)
+        return false if not MotionFilters::push(path, 0.1 * ElisaMath::sin(t / 5.0) + step)
+    true
+
+def check(height: MotionFilters::Signal&, path: MotionFilters::Signal&, a: mutable MotionFilters::Signal&, b: mutable MotionFilters::Signal&, out: mutable MotionFilters::Signal&, wrap: bool, p3: f64, p36: f64, d3: f64, d10: f64, d19: f64, d36: f64) -> i32:
+    return 10 if not PelvisSmoothing::smooth_axis(path, a, out, PelvisSmoothing::path_sigma(), 8, wrap)
+    return 11 if not near(out.values[3], p3) or not near(out.values[20], -0.04168925111169139) or not near(out.values[21], -0.044639322589132814) or not near(out.values[36], p36)
+    return 12 if not PelvisSmoothing::drop(height, a, b, out, 8, wrap)
+    return 13 if not near(out.values[3], d3) or not near(out.values[10], d10) or not near(out.values[19], d19) or not near(out.values[36], d36)
+    0
+
+def main() -> i32:
+    mutable height: MotionFilters::Signal = MotionFilters::Signal()
+    mutable path: MotionFilters::Signal = MotionFilters::Signal()
+    mutable a: MotionFilters::Signal = MotionFilters::Signal()
+    mutable b: MotionFilters::Signal = MotionFilters::Signal()
+    mutable out: MotionFilters::Signal = MotionFilters::Signal()
+    return 1 if not fill(height, path)
+    e: i32 = check(height, path, a, b, out, false, 0.05497472971579149, 0.12558778535401438, -0.003375563436896584, -0.008817021720046713, -0.008711133177369865, -0.0021123243845243026)
+    return e if e != 0
+    w: i32 = check(height, path, a, b, out, true, 0.06907640801757517, 0.10169122131344815, -0.023561207047750145, -0.013624037177892944, -0.008894553403894615, -0.006025791198213378)
+    return w + 10 if w != 0
+    0

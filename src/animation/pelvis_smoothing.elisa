@@ -1,0 +1,48 @@
+# Pelvis path cleanup for mocap (plan M08), ported from the boxing game's
+# tools/clean_leg_motion.py. A pelvis that drops into a landing and stops
+# dead snaps the knees, so its path is smoothed; quick height bobs make
+# planted knees wobble, so height is low-passed, but only ever downwards:
+# raising the pelvis would straighten a landing leg into a bounce. Both
+# corrections fade out at the ends of a non-looping clip.
+include "./motion_filters.elisa"
+include "./foot_pivot.elisa"
+include "./pelvis_smoothing_index.elisa"
+module PelvisSmoothing:
+    private:
+        const module Tune:
+            PATH_SIGMA: f64 = 3.0
+            BOB_SIGMA: f64 = 8.0
+
+        def fade_at(i: usize, count: usize, edge: i64, wrap: bool) -> f64:
+            FootPivot::edge_fade(i.i64(), count.i64(), PelvisSmoothingIndex::fade_span(edge, wrap))
+
+    public:
+        def path_sigma() -> f64:
+            Tune::PATH_SIGMA
+
+        def bob_sigma() -> f64:
+            Tune::BOB_SIGMA
+
+        # One path axis: move each sample toward its Gaussian-smoothed value
+        # by the edge fade. `smoothed` is scratch the caller owns.
+        def smooth_axis(source: MotionFilters::Signal&, smoothed: mutable MotionFilters::Signal&, target: mutable MotionFilters::Signal&, sigma: f64, edge: i64, wrap: bool) -> bool:
+            return false if not MotionFilters::gaussian(source, smoothed, sigma, wrap)
+            target.count <- source.count
+            for i in 0..<source.count |source, smoothed, target, edge, wrap|:
+                s: f64 = source.values[i]
+                target.values[i] <- s + (smoothed.values[i] - s) * fade_at(i, source.count, edge, wrap)
+            true
+
+        # The height change to add per frame: never positive, so the pelvis
+        # is only ever lowered. `low` and `lowered` are caller-owned scratch.
+        def drop(height: MotionFilters::Signal&, low: mutable MotionFilters::Signal&, lowered: mutable MotionFilters::Signal&, target: mutable MotionFilters::Signal&, edge: i64, wrap: bool) -> bool:
+            return false if not MotionFilters::gaussian(height, low, Tune::BOB_SIGMA, wrap)
+            for i in 0..<height.count |height, low|:
+                d: f64 = low.values[i] - height.values[i]
+                low.values[i] <- d if d < 0.0 else 0.0
+            return false if not MotionFilters::gaussian(low, lowered, Tune::PATH_SIGMA, wrap)
+            target.count <- height.count
+            for i in 0..<height.count |height, lowered, target, edge, wrap|:
+                v: f64 = lowered.values[i] * fade_at(i, height.count, edge, wrap)
+                target.values[i] <- v if v < 0.0 else 0.0
+            true

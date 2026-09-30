@@ -1,0 +1,37 @@
+# PelvisSmoothing properties: the drop is never positive, a steady pelvis is
+# left alone, and clip ends keep their source samples.
+include "../src/animation/pelvis_smoothing.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000000001 and d > -0.000000001
+
+def fill(height: mutable MotionFilters::Signal&, flat: mutable MotionFilters::Signal&) -> bool:
+    for i in 0..<60 |height, flat|:
+        bump: f64 = 0.08 if i % 7 < 2 else -0.04
+        return false if not MotionFilters::push(height, 1.0 + bump)
+        return false if not MotionFilters::push(flat, 0.9)
+    true
+
+def check(height: MotionFilters::Signal&, flat: MotionFilters::Signal&, a: mutable MotionFilters::Signal&, b: mutable MotionFilters::Signal&, out: mutable MotionFilters::Signal&) -> i32:
+    return 2 if not PelvisSmoothing::drop(height, a, b, out, 8, false)
+    for i in 0..<out.count |out|:
+        return 3 if out.values[i] > 0.0
+    return 4 if not near(out.values[0], 0.0) or not near(out.values[59], 0.0) or out.values[30] >= 0.0
+    return 5 if not PelvisSmoothing::drop(flat, a, b, out, 8, true)
+    for i in 0..<out.count |out|:
+        return 6 if not near(out.values[i], 0.0)
+    return 7 if not PelvisSmoothing::smooth_axis(height, a, out, 3.0, 8, false)
+    return 8 if not near(out.values[0], height.values[0]) or not near(out.values[59], height.values[59])
+    return 9 if not PelvisSmoothing::smooth_axis(flat, a, out, 3.0, 8, true)
+    return 10 if not near(out.values[25], 0.9)
+    0
+
+def main() -> i32:
+    mutable height: MotionFilters::Signal = MotionFilters::Signal()
+    mutable flat: MotionFilters::Signal = MotionFilters::Signal()
+    mutable a: MotionFilters::Signal = MotionFilters::Signal()
+    mutable b: MotionFilters::Signal = MotionFilters::Signal()
+    mutable out: MotionFilters::Signal = MotionFilters::Signal()
+    return 1 if not fill(height, flat)
+    check(height, flat, a, b, out)

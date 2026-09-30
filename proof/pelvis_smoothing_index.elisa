@@ -1,0 +1,17 @@
+include "../src/animation/pelvis_smoothing_index.elisa"
+
+extend PelvisSmoothingIndex:
+    def prove_looping_has_no_fade(edge: i64) -> i64:
+        ensure result == 0
+        fade_span(edge, true)
+
+    def prove_clip_keeps_edge(edge: i64) -> i64:
+        requires edge > 0
+        ensure result == edge
+        fade_span(edge, false)
+
+    def prove_span_bounded(edge: i64, wrap: bool) -> i64:
+        requires edge >= 0
+        ensure result >= 0
+        ensure result <= edge
+        fade_span(edge, wrap)

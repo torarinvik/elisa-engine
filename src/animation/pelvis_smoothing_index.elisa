@@ -1,0 +1,12 @@
+# Float-free choices for PelvisSmoothing, split out so the prover can check
+# them: a looping clip has no ends, so its fade span is zero (full weight).
+module PelvisSmoothingIndex:
+    public:
+        def fade_span(edge: i64, wrap: bool) -> i64:
+            ensure result >= 0
+            ensure result <= edge or edge < 0
+            ensure result == 0 or not wrap
+            ensure result == edge or wrap or edge <= 0
+            return 0 if wrap
+            return 0 if edge <= 0
+            edge
