@@ -281,6 +281,11 @@
             caption_shown: mutable u32 = 0
             menu_open: mutable bool = false
             menu: mutable CourseControls::Menu = CourseControls::Menu(keymap)
+            # Mouse-look holds the pointer only while playing outside the menu;
+            # `look_held` is the last requested mode so an unsupported
+            # platform is asked once per change, not every frame.
+            look: mutable CourseLook::Look = CourseLook::Look()
+            look_held: mutable bool = false
             # Sound is optional: a failed start releases what it loaded and
             # the course plays silently. `sound_tick` counts fixed steps.
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
@@ -304,7 +309,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads, look, look_held|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -313,6 +318,10 @@
                 if running and pump == Application::PumpStatus.Running:
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
+                    look_wanted: bool = state.phase == Phase.Playing and not menu_open
+                    if look_wanted != look_held:
+                        _ = Application::set_relative_mouse(look_wanted)
+                        look_held <- look_wanted
                     _ = CourseSounds::mix(&sounds, mood, frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(state.phase == Phase.Won), frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::poll_reload(&sounds, frame.elapsed_nanos / 1000000)
@@ -361,7 +370,7 @@
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
-                        _ = CourseControls::discard_pointer()
+                        look <- CourseLook::drain(look)
                         focus_lost: bool = CourseControls::drain_gameplay(input)
                         if focus_lost and state.phase == Phase.Playing:
                             toggle_pause(&state)
@@ -392,7 +401,7 @@
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                             _ = try update_avatar(avatar, pose, crouched)
-                            _ = try update_camera(pose)
+                            _ = try update_camera_look(pose, look)
                             _ = try refresh_status(instruction, state, crouched)
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_SAVE):
                             saved_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
@@ -423,7 +432,7 @@
                                 previous_elapsed_nanos <- frame.elapsed_nanos
                                 loaded_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                                 _ = try update_avatar(avatar, loaded_pose, crouched)
-                                _ = try update_camera(loaded_pose)
+                                _ = try update_camera_look(loaded_pose, look)
                                 _ = try refresh_status(instruction, state, crouched)
                                 if beacons_loaded != 0:
                                     _ = try RenderScene::set_overlay_text(instruction,
@@ -455,7 +464,7 @@
                                 previous_elapsed_nanos) / 1000).i64()
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
-                            direction: Geometry::Vec3 = movement_direction(input)
+                            direction: Geometry::Vec3 = movement_direction_look(input, look)
                             if jump_queued and jump_sounds and due_steps > 0:
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_JUMP, frame.elapsed_nanos)
                             for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds, guide, guide_agent|:
@@ -494,7 +503,7 @@
                                 jump_queued <- false
                                 _ = try refresh_status(instruction, state, crouched)
                             _ = try update_avatar(avatar, pose, crouched)
-                            _ = try update_camera(pose)
+                            _ = try update_camera_look(pose, look)
                             _ = try show_guide(session, guide)
                             guide_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, guide.character)
                             cycles_before: u64 = AudioTriggers::millimetres(walker.cycles)
@@ -508,6 +517,8 @@
                     if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
                         _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
                         resize_serial <- frame.resize_serial
+            if look_held:
+                _ = Application::set_relative_mouse(false)
             _ = CourseSounds::stop(&sounds)
             try CourseBeacons::release(&beacons)
             try release_legend(&legend)
