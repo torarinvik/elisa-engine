@@ -50,9 +50,20 @@ int main() {
     }
     if (gamepad_button_code(SDL_GAMEPAD_BUTTON_SOUTH) != GAMEPAD_BUTTON_SOUTH ||
         gamepad_button_code(SDL_GAMEPAD_BUTTON_DPAD_RIGHT) != GAMEPAD_BUTTON_DPAD_RIGHT ||
-        gamepad_button_code(SDL_GAMEPAD_BUTTON_MISC1) != 0) {
+        gamepad_button_code(SDL_GAMEPAD_BUTTON_MISC1) != 0 ||
+        gamepad_button_from_code(GAMEPAD_BUTTON_SOUTH) != SDL_GAMEPAD_BUTTON_SOUTH ||
+        gamepad_button_from_code(GAMEPAD_BUTTON_EAST) != SDL_GAMEPAD_BUTTON_EAST ||
+        static_cast<int>(gamepad_button_from_code(9999)) >= 0) {
         std::fprintf(stderr, "portable gamepad button mapping failed\n");
         return 1;
+    }
+    if (gamepad_button_label_code(SDL_GAMEPAD_BUTTON_LABEL_A) != ELISA_APPLICATION_GAMEPAD_LABEL_A ||
+        gamepad_button_label_code(SDL_GAMEPAD_BUTTON_LABEL_CROSS) != ELISA_APPLICATION_GAMEPAD_LABEL_CROSS ||
+        gamepad_button_label_code(SDL_GAMEPAD_BUTTON_LABEL_CIRCLE) != ELISA_APPLICATION_GAMEPAD_LABEL_CIRCLE ||
+        gamepad_button_label_code(SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE) != ELISA_APPLICATION_GAMEPAD_LABEL_TRIANGLE ||
+        gamepad_button_label_code(SDL_GAMEPAD_BUTTON_LABEL_UNKNOWN) != ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN) {
+        std::fprintf(stderr, "controller face-button label mapping failed\n");
+        return 13;
     }
     const GamepadAxisInput left = gamepad_axis_input(SDL_GAMEPAD_AXIS_LEFTX, -16384);
     if (left.negative_code != GAMEPAD_AXIS_LEFT_X_NEGATIVE ||

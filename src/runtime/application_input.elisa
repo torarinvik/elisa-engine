@@ -109,6 +109,10 @@ extend Application:
         extern elisa_application_v1_rumble_gamepad(device_slot: i32,
             low_frequency: f32, high_frequency: f32, duration_ms: i32) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_gamepad_button_label(device_slot: i32,
+            portable_button_code: i32, label: mutable i32&) -> i32
+
     public:
         const module PointerButtons:
             LEFT: i32 = 1
@@ -144,6 +148,26 @@ extend Application:
             NotInitialized
             WrongThread
             Unsupported
+
+        # Physical labels for a controller's positional face buttons. These
+        # describe what is printed on the active controller.
+        enum GamepadButtonLabel:
+            Unknown
+            A
+            B
+            X
+            Y
+            Cross
+            Circle
+            Square
+            Triangle
+
+        enum GamepadButtonLabelStatus:
+            Available
+            Unavailable
+            InvalidArgument
+            NotInitialized
+            WrongThread
 
         enum KeyboardKeyCode:
             A
@@ -332,6 +356,31 @@ extend Application:
             return GamepadRumbleStatus.NotInitialized if status == -2
             return GamepadRumbleStatus.WrongThread if status == -4
             GamepadRumbleStatus.Unsupported
+
+        # Returns the printed label for a positional button on a stable slot.
+        # Unknown layouts and absent devices should use a generic prompt.
+        def query_gamepad_button_label(device_slot: i32,
+            button: GamepadButtonCode,
+            label: mutable GamepadButtonLabel&) -> GamepadButtonLabelStatus:
+            raw_label: mutable i32 = 0
+            status: i32 = elisa_application_v1_gamepad_button_label(device_slot,
+                gamepad_button_code(button).i32(), &raw_label)
+            label <- GamepadButtonLabel.Unknown
+            if status == 1:
+                label <- GamepadButtonLabel.A if raw_label == 1
+                label <- GamepadButtonLabel.B if raw_label == 2
+                label <- GamepadButtonLabel.X if raw_label == 3
+                label <- GamepadButtonLabel.Y if raw_label == 4
+                label <- GamepadButtonLabel.Cross if raw_label == 5
+                label <- GamepadButtonLabel.Circle if raw_label == 6
+                label <- GamepadButtonLabel.Square if raw_label == 7
+                label <- GamepadButtonLabel.Triangle if raw_label == 8
+                return GamepadButtonLabelStatus.Available
+            return GamepadButtonLabelStatus.Unavailable if status == 0
+            return GamepadButtonLabelStatus.InvalidArgument if status == -1
+            return GamepadButtonLabelStatus.NotInitialized if status == -2
+            return GamepadButtonLabelStatus.WrongThread if status == -4
+            GamepadButtonLabelStatus.Unavailable
 
         # Pointer coordinates and deltas stay in logical window units. Editor
         # viewports apply the camera's display scale before ray construction.

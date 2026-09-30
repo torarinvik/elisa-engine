@@ -626,4 +626,30 @@ extern "C" int32_t elisa_application_v1_rumble_gamepad(
     return ELISA_APPLICATION_RUMBLE_STARTED;
 }
 
+extern "C" int32_t elisa_application_v1_gamepad_button_label(
+    int32_t device_slot, int32_t portable_button_code, int32_t* label) {
+    if (label == nullptr || device_slot < 1 ||
+        device_slot > static_cast<int32_t>(GAMEPAD_CAPACITY)) {
+        return ELISA_APPLICATION_INVALID_ARGUMENT;
+    }
+    const SDL_GamepadButton button =
+        probe::gamepad_button_from_code(portable_button_code);
+    if (static_cast<int>(button) < 0) return ELISA_APPLICATION_INVALID_ARGUMENT;
+
+    *label = ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN;
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+
+    SDL_Gamepad* gamepad = service.gamepads[static_cast<size_t>(device_slot - 1)].handle;
+    if (gamepad == nullptr || !SDL_GamepadConnected(gamepad)) {
+        return ELISA_APPLICATION_GAMEPAD_LABEL_UNAVAILABLE;
+    }
+    *label = probe::gamepad_button_label_code(SDL_GetGamepadButtonLabel(gamepad, button));
+    return *label == ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN
+        ? ELISA_APPLICATION_GAMEPAD_LABEL_UNAVAILABLE
+        : ELISA_APPLICATION_GAMEPAD_LABEL_AVAILABLE;
+}
+
 #include "application_service_exports.inc"

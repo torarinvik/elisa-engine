@@ -33,6 +33,23 @@ enum {
     ELISA_APPLICATION_RUMBLE_STARTED = 1,
 };
 
+enum {
+    ELISA_APPLICATION_GAMEPAD_LABEL_UNAVAILABLE = 0,
+    ELISA_APPLICATION_GAMEPAD_LABEL_AVAILABLE = 1,
+};
+
+enum {
+    ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN = 0,
+    ELISA_APPLICATION_GAMEPAD_LABEL_A = 1,
+    ELISA_APPLICATION_GAMEPAD_LABEL_B = 2,
+    ELISA_APPLICATION_GAMEPAD_LABEL_X = 3,
+    ELISA_APPLICATION_GAMEPAD_LABEL_Y = 4,
+    ELISA_APPLICATION_GAMEPAD_LABEL_CROSS = 5,
+    ELISA_APPLICATION_GAMEPAD_LABEL_CIRCLE = 6,
+    ELISA_APPLICATION_GAMEPAD_LABEL_SQUARE = 7,
+    ELISA_APPLICATION_GAMEPAD_LABEL_TRIANGLE = 8,
+};
+
 // Engine-internal extension points for runtime services. The public Elisa
 // surface uses opaque handles and scalar values; these callbacks stay in the
 // native engine boundary.
@@ -135,6 +152,11 @@ int32_t elisa_application_v1_next_pointer_event(
 int32_t elisa_application_v1_rumble_gamepad(
     int32_t device_slot, float low_frequency, float high_frequency,
     int32_t duration_ms);
+// Queries the printed label for a portable SDL gamepad button on a stable
+// one-based connection slot. Returns 1 when known, 0 when unavailable or
+// unknown, or a negative application status for invalid state/thread/args.
+int32_t elisa_application_v1_gamepad_button_label(
+    int32_t device_slot, int32_t portable_button_code, int32_t* label);
 int32_t elisa_application_v1_request_exit(void);
 int32_t elisa_application_v1_shutdown(void);
 uint64_t elisa_application_v1_frame_count(void);
