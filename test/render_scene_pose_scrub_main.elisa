@@ -1,0 +1,134 @@
+# M02 scrub timing on a live SDL3/Metal render instance. A 10,000-frame,
+# 64-bone, 120 Hz take is scrubbed with random jumps (the worst case for a
+# timeline drag); each frame samples the clip through PosePlayback, fills
+# and submits the render pose to a skinned instance, and presents. Run via
+# scripts/pose_scrub_benchmark.py, which reads the printed timings.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_pose_playback.elisa"
+include "../src/math/geometry.elisa"
+
+@callconv(c)
+extern putchar(c: i32) -> i32
+@callconv(c)
+extern fflush(stream: i64) -> i32
+
+# Native mains have no print; write one `frame_ns=<n>` or `work_ns=<n>` line
+# through libc.
+def emit(work: bool, value: u64) -> bool:
+    mutable digits: u64[20] = zeroed
+    mutable n: u64 = value
+    mutable count: usize = 0
+    while count == 0 or n > 0:
+        digits[count] <- n % 10
+        n <- n / 10
+        count <- count + 1
+    if work:
+        for c in [119, 111, 114, 107, 95, 110, 115, 61]:
+            _ = putchar(c)
+    else:
+        for c in [102, 114, 97, 109, 101, 95, 110, 115, 61]:
+            _ = putchar(c)
+    while count > 0:
+        count <- count - 1
+        _ = putchar((digits[count] + 48).i32())
+    putchar(10) == 10
+
+const module Setup:
+    FRAMES: i64 = 10000
+    # The glTF cooker caps a skin at 64 joints (scripts/cook_gltf_skin.py).
+    BONES: i64 = 64
+    RATE_HZ: i64 = 120
+    WARMUP: i64 = 30
+    MEASURED: i64 = 600
+
+def fill_take(clip: mutable MocapClip::Clip&) -> bool:
+    for frame in 0..<Setup::FRAMES |clip|:
+        for bone in 0..<Setup::BONES |clip, frame|:
+            a: f64 = (frame * 7 + bone * 13).f64() * 0.001
+            local: MocapClip::Sample = MocapClip::Sample{
+                t: MotionQuat::V{x: 0.0, y: 0.1, z: 0.0},
+                q: MotionQuat::axis_angle(MotionQuat::V{x: 0.0, y: 0.0, z: 1.0}, ElisaMath::sin(a) * 0.3),
+            }
+            return false if not MocapClip::set_local(clip, frame, bone, local)
+    true
+
+# One scrubbed frame; returns its wall time in nanoseconds, or a negative
+# code naming the failed step. `work` receives the time before presenting:
+# sampling, filling and submitting the pose.
+def scrub_frame(clip: MocapClip::Clip&, held: MocapClip::Clip&, fade: PoseFade::Fade&, shown: mutable MocapClip::Clip&,
+    pose: mutable RenderScene::AnimationPose&, mesh: RenderScene::InstanceHandle, step: i64, work: mutable u64&) -> i64:
+    start: u64 = Application::uptime_nanos()
+    frame: i64 = (step * 7919) % Setup::FRAMES
+    time_us: i64 = frame * 1000000 / Setup::RATE_HZ
+    _ = PosePlayback::show_clip(clip, time_us, held, fade, 0, shown)
+    written: i64 = catch RenderScene::fill_pose_from_playback(shown, pose):
+        value: value
+        error failure: -1
+    return -1 if written != Setup::BONES
+    submitted: i32 = catch RenderScene::submit_animation_pose(mesh, pose):
+        ok: 0
+        error failure: 1
+    return -2 if submitted != 0
+    work <- Application::uptime_nanos() - start
+    return -3 if Application::pump() != Application::PumpStatus.Running
+    completed: i32 = catch RenderScene::complete_animation_pose(mesh):
+        ok: 0
+        error failure: 1
+    return -4 if completed != 0
+    (Application::uptime_nanos() - start).i64()
+
+def exercise_scrub() -> i32:
+    config: Application::Config = Application::Config{title: "Elisa Pose Scrub Benchmark", width: 640, height: 400, hidden: true}
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(640, 400, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    camera: i32 = catch RenderScene::set_camera_look_at(Geometry::Vec3{x: 0.0, y: 2.0, z: 6.0}, Geometry::vec3_zero(), Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+        ok: 0
+        error failure: 1
+    return 3 if camera != 0
+    mesh: RenderScene::InstanceHandle = catch RenderScene::create_mesh("build/cooked/subsets/scrub-rig.pkg", Geometry::transform_identity(),
+        RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    clip: mutable MocapClip::Clip = MocapClip::Clip()
+    reserved: i64 = catch MocapClip::reserve(&clip, Setup::FRAMES, Setup::BONES, Setup::RATE_HZ):
+        value: value
+        error failure: -1
+    return 5 if reserved < 0
+    return 6 if not fill_take(&clip)
+    shown: mutable MocapClip::Clip = MocapClip::Clip()
+    shown_bones: i64 = catch PosePlayback::pose_buffer(&shown, Setup::BONES):
+        value: value
+        error failure: -1
+    return 7 if shown_bones <= 0
+    held: mutable MocapClip::Clip = MocapClip::Clip()
+    held_bones: i64 = catch PosePlayback::pose_buffer(&held, Setup::BONES):
+        value: value
+        error failure: -1
+    return 8 if held_bones <= 0
+    fade: PoseFade::Fade = PoseFade::Fade()
+    pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+    mutable spent: u64 = 0
+    for step in 0..<Setup::WARMUP |clip, held, fade, shown, pose, mesh, spent|:
+        warm: i64 = scrub_frame(&clip, &held, &fade, &shown, &pose, mesh, step, &spent)
+        return 20 - warm.i32() if warm <= 0
+    mutable times: u64[600] = zeroed
+    mutable works: u64[600] = zeroed
+    for step in 0..<Setup::MEASURED |clip, held, fade, shown, pose, mesh, times, works, spent|:
+        took: i64 = scrub_frame(&clip, &held, &fade, &shown, &pose, mesh, Setup::WARMUP + step, &spent)
+        return 30 - took.i32() if took <= 0
+        times[step.usize()] <- took.u64()
+        works[step.usize()] <- spent
+    for i in 0..<Setup::MEASURED |times, works|:
+        return 12 if not emit(false, times[i.usize()])
+        return 13 if not emit(true, works[i.usize()])
+    0
+
+def main() -> i32:
+    result: i32 = exercise_scrub()
+    _ = fflush(0)
+    return 31 if not Application::shutdown()
+    result
