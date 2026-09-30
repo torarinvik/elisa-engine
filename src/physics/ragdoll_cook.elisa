@@ -1,0 +1,92 @@
+# Ragdoll mapping source text to a validated PhysicsRagdollMapping. One joint
+# per line, in skeleton order: "<parent> <body>", where -1 marks the root's
+# parent or a joint with no body. Blank lines and lines starting with '#' are
+# skipped. Parsing stops at the first bad line and reports its number, and a
+# mapping that parses is then checked by PhysicsRagdollMapping::cook.
+include "./ragdoll_mapping.elisa"
+
+module PhysicsRagdollCook:
+    public:
+        enum Parse:
+            Ok
+            Syntax
+            TooManyJoints
+            Invalid
+
+        struct Source:
+            bytes: mutable u8[512]
+            len: mutable i64
+
+        struct Result:
+            status: Parse
+            line: i64
+            cook: PhysicsRagdollMapping::Cook
+            mapping: PhysicsRagdollMapping::Mapping
+
+        def ragdoll_source() -> Source:
+            Source{bytes: zeroed, len: 0}
+
+        def ragdoll_source_push(s: mutable Source&, byte: u8) -> bool:
+            return false if s.len >= 512
+            s.bytes[s.len.usize()] <- byte
+            s.len <- s.len + 1
+            true
+
+        def ragdoll_parse(src: Source&) -> Result:
+            parents: mutable i64[16] = zeroed
+            bodies: mutable i64[16] = zeroed
+            mutable joints: i64 = 0
+            mutable status: Parse = Parse.Ok
+            mutable bad_line: i64 = 0
+            mutable line: i64 = 1
+            # Per-line state: fields seen, current value, sign, digits in it,
+            # whether the line is a comment.
+            mutable fields: i64 = 0
+            mutable value: i64 = 0
+            mutable negative: bool = false
+            mutable digits: i64 = 0
+            mutable comment: bool = false
+            mutable first: i64 = 0
+            for i in 0..<513 |parents, bodies, joints, status, bad_line, line, fields, value, negative, digits, comment, first|:
+                byte: u8 = src.bytes[i.usize() % 512] if i.i64() < src.len else 10u8
+                ended: bool = i.i64() >= src.len
+                if status == Parse.Ok and not (ended and i.i64() > src.len):
+                    separator: bool = byte == 32u8 or byte == 10u8 or byte == 9u8 or byte == 13u8
+                    if comment:
+                        comment <- byte != 10u8
+                    elif byte == 35u8 and fields == 0 and digits == 0 and not negative:
+                        comment <- true
+                    elif byte == 45u8 and digits == 0 and not negative:
+                        negative <- true
+                    elif byte >= 48u8 and byte <= 57u8 and digits < 6:
+                        value <- value * 10 + (byte - 48u8).i64()
+                        digits <- digits + 1
+                    elif separator:
+                        if digits > 0:
+                            first <- (0 - value if negative else value) if fields == 0 else first
+                            second: i64 = 0 - value if negative else value
+                            if fields == 1:
+                                if joints >= 16:
+                                    status <- Parse.TooManyJoints
+                                else:
+                                    parents[joints.usize()] <- first
+                                    bodies[joints.usize()] <- second
+                                    joints <- joints + 1
+                            fields <- fields + 1
+                        elif negative:
+                            status <- Parse.Syntax
+                        status <- Parse.Syntax if status == Parse.Ok and fields > 2
+                        status <- Parse.Syntax if status == Parse.Ok and byte == 10u8 and fields == 1
+                        value <- 0
+                        negative <- false
+                        digits <- 0
+                        if byte == 10u8:
+                            fields <- 0 if status == Parse.Ok else fields
+                    else:
+                        status <- Parse.Syntax
+                    bad_line <- line if status != Parse.Ok and bad_line == 0 else bad_line
+                    line <- line + 1 if byte == 10u8 and status == Parse.Ok else line
+            m: PhysicsRagdollMapping::Mapping = PhysicsRagdollMapping::Mapping{parent: parents, body: bodies, joints: joints}
+            return Result{status: status, line: bad_line, cook: PhysicsRagdollMapping::Cook.Empty, mapping: m} if status != Parse.Ok
+            c: PhysicsRagdollMapping::Cook = PhysicsRagdollMapping::cook(m)
+            Result{status: Parse.Ok if c == PhysicsRagdollMapping::Cook.Ok else Parse.Invalid, line: 0, cook: c, mapping: m}

@@ -1,0 +1,60 @@
+include "../src/physics/ragdoll_cook.elisa"
+
+def rc_source(text: u8[96], len: i64) -> PhysicsRagdollCook::Source:
+    s: mutable PhysicsRagdollCook::Source = PhysicsRagdollCook::ragdoll_source()
+    for i in 0..<96 |s|:
+        ok: bool = PhysicsRagdollCook::ragdoll_source_push(&s, text[i]) if i.i64() < len else true
+    s
+
+def main() -> i32:
+    # "# pelvis\n-1 0\n0 1\n1 -1\n0 2\n": pelvis, spine, a follower, a thigh.
+    t1: mutable u8[96] = zeroed
+    txt: u8[28] = [35, 32, 112, 101, 108, 118, 105, 115, 10, 45, 49, 32, 48, 10, 48, 32, 49, 10, 49, 32, 45, 49, 10, 48, 32, 50, 10, 0]
+    for i in 0..<28 |t1|:
+        t1[i] <- txt[i]
+    r1: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t1, 27))
+    return 1 if r1.status != PhysicsRagdollCook::Parse.Ok or r1.mapping.joints != 4
+    return 2 if r1.mapping.parent[2] != 1 or r1.mapping.body[2] != 0 - 1 or r1.mapping.body[3] != 2
+    # The follower is driven by the spine body, so hitting body 1 takes joints 1 and 2.
+    return 3 if PhysicsRagdollMapping::driver(r1.mapping, 2) != 1 or PhysicsRagdollMapping::joints_for(r1.mapping, 2) != 6
+    # No trailing newline still ends the last line.
+    r2: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t1, 26))
+    return 4 if r2.status != PhysicsRagdollCook::Parse.Ok or r2.mapping.joints != 4
+    # "-1 0\n0 x\n": a letter is a syntax error on line 2.
+    t3: mutable u8[96] = zeroed
+    b3: u8[9] = [45, 49, 32, 48, 10, 48, 32, 120, 10]
+    for i in 0..<9 |t3|:
+        t3[i] <- b3[i]
+    r3: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t3, 9))
+    return 5 if r3.status != PhysicsRagdollCook::Parse.Syntax or r3.line != 2
+    # "-1 0\n0\n": a line with one field is a syntax error on line 2.
+    b4: u8[7] = [45, 49, 32, 48, 10, 48, 10]
+    t4: mutable u8[96] = zeroed
+    for i in 0..<7 |t4|:
+        t4[i] <- b4[i]
+    r4: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t4, 7))
+    return 6 if r4.status != PhysicsRagdollCook::Parse.Syntax or r4.line != 2
+    # "-1 0\n0 0\n": parses, but two joints share body 0.
+    b5: u8[9] = [45, 49, 32, 48, 10, 48, 32, 48, 10]
+    t5: mutable u8[96] = zeroed
+    for i in 0..<9 |t5|:
+        t5[i] <- b5[i]
+    r5: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t5, 9))
+    return 7 if r5.status != PhysicsRagdollCook::Parse.Invalid or r5.cook != PhysicsRagdollMapping::Cook.SharedBody
+    # Seventeen "0 -1" lines after the root overflow the 16-joint limit.
+    t6: mutable u8[96] = zeroed
+    head: u8[5] = [45, 49, 32, 48, 10]
+    for i in 0..<5 |t6|:
+        t6[i] <- head[i]
+    for k in 0..<17 |t6|:
+        t6[(5 + k.i64() * 5).usize()] <- 48u8
+        t6[(6 + k.i64() * 5).usize()] <- 32u8
+        t6[(7 + k.i64() * 5).usize()] <- 45u8
+        t6[(8 + k.i64() * 5).usize()] <- 49u8
+        t6[(9 + k.i64() * 5).usize()] <- 10u8 if k < 16 else 10u8
+    r6: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(rc_source(t6, 90))
+    return 8 if r6.status != PhysicsRagdollCook::Parse.TooManyJoints or r6.line != 17
+    # An empty source parses to no joints and cooks as Empty.
+    r7: PhysicsRagdollCook::Result = PhysicsRagdollCook::ragdoll_parse(PhysicsRagdollCook::ragdoll_source())
+    return 9 if r7.status != PhysicsRagdollCook::Parse.Invalid or r7.cook != PhysicsRagdollMapping::Cook.Empty
+    return 0

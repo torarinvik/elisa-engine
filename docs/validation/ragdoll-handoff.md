@@ -55,3 +55,30 @@ skeleton's parents and per-joint body indices.
 - Policy and cook validation only. Jolt bodies and the R08 animation
   submission are not connected yet, and mappings are built in code rather
   than cooked from assets.
+
+## Cooking mappings from text (2026-09-30)
+
+`src/physics/ragdoll_cook.elisa` (`PhysicsRagdollCook`) reads a ragdoll
+mapping source into `PhysicsRagdollMapping::Mapping`:
+
+- one `<parent> <body>` line per joint, with `-1` for "none";
+- `#` comments and blank lines are allowed;
+- then it runs `cook` on the mapping.
+
+A bad line is reported by number: a stray character, a single field or
+more than two fields is `Syntax`, and a 17th joint is `TooManyJoints`. A
+mapping that parses but fails `cook` is `Invalid`, with the cook reason.
+
+`test/physics_ragdoll_cook.elisa` (in the gate's unit-test list) checks:
+
+- a four-joint pelvis/spine/follower/thigh source parses;
+- its follower is driven by the spine body;
+- a source without a trailing newline still parses;
+- line-numbered syntax errors;
+- a shared body;
+- overflow;
+- an empty source.
+
+Negative control: accepting a one-field line fails with code 6.
+
+Asset-pipeline registration of `.ragdoll` files and native Jolt bodies remain.
