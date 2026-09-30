@@ -1,0 +1,62 @@
+# Grounded foot pivoting for mocap cleanup (plan M08), ported from the
+# boxing game's tools/clean_leg_motion.py. A planted foot's rotation is
+# corrected about whichever of heel and ball is lower, so the contact point
+# stays put and the foot neither sinks nor floats. Corrections fade out
+# towards the ends of a non-looping clip; the fade's frame counting is proved
+# in FootPivotIndex.
+include "./motion_quat.elisa"
+include "./foot_pivot_index.elisa"
+module FootPivot:
+    private:
+        const module Tune:
+            CONTACT_SHARPNESS: f64 = 0.01
+
+        def pivot_sub(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::V{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
+
+        def pivot_add(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::V{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
+
+    public:
+        # Weight of a correction at `frame`: 0 at the clip ends, easing
+        # (smoothstep) to 1 once `edge` frames in. Looping clips use 1.
+        def edge_fade(frame: i64, count: i64, edge: i64) -> f64:
+            return 1.0 if edge <= 0
+            r: f64 = FootPivotIndex::edge_steps(frame, count, edge).f64() / edge.f64()
+            r * r * (3.0 - 2.0 * r)
+
+        # How planted a foot is from its lowest contact's height above the
+        # clip floor: 1 at or below `low_m`, 0 at or above `high_m`.
+        def ground_weight(height: f64, low_m: f64, high_m: f64) -> f64:
+            w: f64 = (high_m - height) / (high_m - low_m)
+            return 0.0 if w <= 0.0
+            return 1.0 if w >= 1.0
+            w
+
+        # The heel in foot space: the point under the ankle at ball height in
+        # the first frame.
+        def heel_local(first_foot: MotionQuat::Q, first_ankle: MotionQuat::V, first_ball: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::rotate(MotionQuat::conjugate(first_foot), MotionQuat::V{x: 0.0, y: first_ball.y - first_ankle.y, z: 0.0})
+
+        def heel_at(ankle: MotionQuat::V, foot: MotionQuat::Q, local_heel: MotionQuat::V) -> MotionQuat::V:
+            pivot_add(ankle, MotionQuat::rotate(foot, local_heel))
+
+        # The contact the foot turns about: the lower of heel and ball, with a
+        # soft blend when they are within about a centimetre.
+        def pivot_point(ball: MotionQuat::V, heel: MotionQuat::V) -> MotionQuat::V:
+            lowest: f64 = ball.y if ball.y <= heel.y else heel.y
+            wb: f64 = ElisaMath::exp(0.0 - (ball.y - lowest) / Tune::CONTACT_SHARPNESS)
+            wh: f64 = ElisaMath::exp(0.0 - (heel.y - lowest) / Tune::CONTACT_SHARPNESS)
+            total: f64 = wb + wh
+            MotionQuat::V{x: (ball.x * wb + heel.x * wh) / total, y: (ball.y * wb + heel.y * wh) / total, z: (ball.z * wb + heel.z * wh) / total}
+
+        # The ankle after turning the foot by `delta` about its contact, lifted
+        # or lowered (by `ground`) so the lowest contact keeps its height.
+        def pivoted_ankle(ankle: MotionQuat::V, ball: MotionQuat::V, heel: MotionQuat::V, delta: MotionQuat::Q, ground: f64) -> MotionQuat::V:
+            lowest: f64 = ball.y if ball.y <= heel.y else heel.y
+            pivot: MotionQuat::V = pivot_point(ball, heel)
+            moved: MotionQuat::V = pivot_add(pivot, MotionQuat::rotate(delta, pivot_sub(ankle, pivot)))
+            ball_y: f64 = moved.y + MotionQuat::rotate(delta, pivot_sub(ball, ankle)).y
+            heel_y: f64 = moved.y + MotionQuat::rotate(delta, pivot_sub(heel, ankle)).y
+            low_new: f64 = ball_y if ball_y <= heel_y else heel_y
+            MotionQuat::V{x: moved.x, y: moved.y + (lowest - low_new) * ground, z: moved.z}

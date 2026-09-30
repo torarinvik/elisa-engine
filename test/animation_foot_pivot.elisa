@@ -1,0 +1,33 @@
+# FootPivot properties: the fade is zero at the clip ends and one inside,
+# ground weight clamps, the pivot sits on the lower contact, and a fully
+# grounded turn keeps the lowest contact's height.
+include "../src/animation/foot_pivot.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.000001 and d > -0.000001
+
+def v(x: f64, y: f64, z: f64) -> MotionQuat::V:
+    MotionQuat::V{x: x, y: y, z: z}
+
+def main() -> i32:
+    return 1 if not near(FootPivot::edge_fade(0, 30, 8), 0.0) or not near(FootPivot::edge_fade(29, 30, 8), 0.0)
+    return 2 if not near(FootPivot::edge_fade(8, 30, 8), 1.0) or not near(FootPivot::edge_fade(5, 30, 0), 1.0)
+    return 3 if not near(FootPivot::edge_fade(4, 30, 8), 0.5)
+    return 4 if not near(FootPivot::ground_weight(0.0, 0.015, 0.04), 1.0) or not near(FootPivot::ground_weight(0.1, 0.015, 0.04), 0.0)
+    ball: MotionQuat::V = v(0.0, 0.0, 0.15)
+    heel: MotionQuat::V = v(0.0, 0.2, -0.05)
+    p: MotionQuat::V = FootPivot::pivot_point(ball, heel)
+    return 5 if not near(p.y, 0.0) or not near(p.z, 0.15)
+    ankle: MotionQuat::V = v(0.0, 0.08, 0.0)
+    flat_heel: MotionQuat::V = v(0.0, 0.02, -0.05)
+    flat_ball: MotionQuat::V = v(0.0, 0.02, 0.15)
+    delta: MotionQuat::Q = MotionQuat::axis_angle(v(1.0, 0.0, 0.0), 0.3)
+    moved: MotionQuat::V = FootPivot::pivoted_ankle(ankle, flat_ball, flat_heel, delta, 1.0)
+    nb: f64 = moved.y + MotionQuat::rotate(delta, v(0.0, -0.06, 0.15)).y
+    nh: f64 = moved.y + MotionQuat::rotate(delta, v(0.0, -0.06, -0.05)).y
+    low: f64 = nb if nb <= nh else nh
+    return 6 if not near(low, 0.02)
+    same: MotionQuat::V = FootPivot::pivoted_ankle(ankle, flat_ball, flat_heel, MotionQuat::identity(), 1.0)
+    return 7 if not near(same.y, 0.08) or not near(same.z, 0.0)
+    0

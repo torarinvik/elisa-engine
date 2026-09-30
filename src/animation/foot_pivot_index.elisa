@@ -1,0 +1,25 @@
+# Float-free edge-fade bookkeeping for FootPivot, proved in
+# proof/foot_pivot_index.elisa. A correction fades out over `edge` frames
+# towards each end of a non-looping clip so clip boundaries stay exact.
+module FootPivotIndex:
+    public:
+        def fewer(a: i64, b: i64) -> i64:
+            requires a >= 0
+            requires b >= 0
+            ensure result >= 0
+            ensure result <= a
+            ensure result <= b
+            return a if a <= b
+            b
+
+        # Frames between `frame` and the nearer clip end, capped at `edge`.
+        def edge_steps(frame: i64, count: i64, edge: i64) -> i64:
+            ensure result >= 0
+            ensure result <= edge or edge < 0
+            ensure result == 0 or frame > 0
+            ensure result == 0 or frame < count - 1
+            return 0 if edge <= 0
+            return 0 if frame <= 0
+            return 0 if count <= 0
+            return 0 if frame >= count - 1
+            fewer(fewer(frame, count - 1 - frame), edge)

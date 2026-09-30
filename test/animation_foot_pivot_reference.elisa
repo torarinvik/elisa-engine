@@ -1,0 +1,28 @@
+# FootPivot against reference values from tools/foot_pivot_reference.py
+# (clean_leg_motion.py's foot-pivot lines run in Blender's float32
+# mathutils), so tolerances are about 1e-4.
+include "../src/animation/foot_pivot.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.0001 and d > -0.0001
+
+def v(x: f64, y: f64, z: f64) -> MotionQuat::V:
+    MotionQuat::V{x: x, y: y, z: z}
+
+def main() -> i32:
+    return 1 if not near(FootPivot::edge_fade(3, 30, 8), 0.31640625) or not near(FootPivot::edge_fade(26, 30, 8), 0.31640625) or not near(FootPivot::edge_fade(15, 30, 8), 1.0)
+    return 2 if not near(FootPivot::ground_weight(0.02, 0.015, 0.04), 0.8)
+    foot0: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::vnormalize(v(0.1, 1.0, 0.2)), 0.3)
+    local_heel: MotionQuat::V = FootPivot::heel_local(foot0, v(0.1, 0.09, 0.02), v(0.12, 0.02, 0.16))
+    foot: MotionQuat::Q = MotionQuat::mul(MotionQuat::axis_angle(MotionQuat::vnormalize(v(1.0, 0.2, 0.1)), 0.25), foot0)
+    ankle: MotionQuat::V = v(0.11, 0.095, 0.03)
+    ball: MotionQuat::V = v(0.13, 0.021, 0.17)
+    heel: MotionQuat::V = FootPivot::heel_at(ankle, foot, local_heel)
+    return 3 if not near(heel.x, 0.11127559095621109) or not near(heel.y, 0.027093201875686646) or not near(heel.z, 0.013057636097073555)
+    pivot: MotionQuat::V = FootPivot::pivot_point(ball, heel)
+    return 4 if not near(pivot.x, 0.12340498715639114) or not near(pivot.y, 0.023146113380789757) or not near(pivot.z, 0.11472266167402267)
+    delta: MotionQuat::Q = MotionQuat::axis_angle(MotionQuat::vnormalize(v(1.0, 0.0, 0.3)), -0.2)
+    moved: MotionQuat::V = FootPivot::pivoted_ankle(ankle, ball, heel, delta, 0.8)
+    return 5 if not near(moved.x, 0.11365918815135956) or not near(moved.y, 0.08832218497991562) or not near(moved.z, 0.017802700400352478)
+    0

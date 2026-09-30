@@ -1,0 +1,18 @@
+include "../src/animation/foot_pivot_index.elisa"
+
+extend FootPivotIndex:
+    def prove_steps_bounded(frame: i64, count: i64, edge: i64) -> i64:
+        requires edge >= 0
+        ensure result >= 0
+        ensure result <= edge
+        edge_steps(frame, count, edge)
+
+    def prove_first_frame_exact(count: i64, edge: i64) -> i64:
+        ensure result == 0
+        edge_steps(0, count, edge)
+
+    def prove_tail_frames_exact(frame: i64, count: i64, edge: i64) -> i64:
+        requires count > 0
+        requires frame >= count - 1
+        ensure result == 0
+        edge_steps(frame, count, edge)
