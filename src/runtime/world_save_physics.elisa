@@ -1,0 +1,77 @@
+# Rebuild physics bodies for a world restored by World::SaveGame. A save
+# holds no native body handles; each live entity gets a fresh box body for
+# its kind at its restored World pose. The pass is all-or-nothing: a failed
+# body creation destroys the bodies this pass already made.
+include "./world_physics.elisa"
+
+module WorldSavePhysics:
+    public:
+        error WorldSavePhysicsError:
+            BindingsNotEmpty
+            UnknownKind
+            Rejected
+
+        struct KindBody:
+            kind: PhysicsRuntime::BodyKind
+            half_extents: Geometry::Vec3
+            mass: f32
+
+        struct KindBodies:
+            actor: KindBody
+            enemy: KindBody
+            structure: KindBody
+
+    private:
+        def save_physics_body(bodies: KindBodies, kind: World::Entity) -> KindBody:
+            return bodies.actor if kind == World::Actor.Player
+            return bodies.enemy if kind == World::Enemy.Guard
+            bodies.structure
+
+        def save_physics_known(kind: World::Entity) -> bool:
+            kind == World::Actor.Player or kind == World::Enemy.Guard or kind == World::StaticObject.Structure
+
+        def save_physics_kind(world: World::World&, reference: World::EntityRef) -> World::Entity:
+            lookup: World::EntityLookup = catch World::world_lookup(world, reference):
+                value: value
+                error failure: World::EntityLookup{reference: reference, kind: World::Entity.Unknown}
+            lookup.kind
+
+        def save_physics_reference(world: World::World&, index: usize) -> World::EntityRef:
+            catch World::world_live_reference_at(world, index):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+
+        def save_physics_bind_one(session: RuntimeServices::Session&, world: World::World&,
+            bindings: mutable WorldPhysics::Bindings&, reference: World::EntityRef, body: KindBody) -> bool:
+            catch WorldPhysics::bind(session, world, bindings, reference, body.kind, body.half_extents, body.mass):
+                ok: true
+                error failure: false
+
+        def save_physics_unbind_one(session: RuntimeServices::Session&,
+            bindings: mutable WorldPhysics::Bindings&, reference: World::EntityRef) -> bool:
+            catch WorldPhysics::unbind(session, bindings, reference):
+                ok: true
+                error failure: false
+
+    public:
+        def rehydrate(session: RuntimeServices::Session&, world: World::World&,
+            bindings: mutable WorldPhysics::Bindings&, bodies: KindBodies) -> void error[WorldSavePhysicsError]:
+            raise WorldSavePhysicsError.BindingsNotEmpty if WorldPhysics::binding_count(bindings) != 0
+            count: usize = World::world_live_count(world)
+            mutable unknown: bool = false
+            for index in 0..<count |unknown, world|:
+                unknown <- unknown or not save_physics_known(save_physics_kind(world, save_physics_reference(world, index)))
+            raise WorldSavePhysicsError.UnknownKind if unknown
+            mutable made: usize = 0
+            mutable failed: bool = false
+            for index in 0..<count |made, failed, session, world, bindings, bodies|:
+                if not failed:
+                    reference: World::EntityRef = save_physics_reference(world, index)
+                    bound: bool = save_physics_bind_one(session, world, bindings, reference,
+                        save_physics_body(bodies, save_physics_kind(world, reference)))
+                    made <- made + 1 if bound
+                    failed <- not bound
+            if failed:
+                for index in 0..<made |session, world, bindings|:
+                    _ = save_physics_unbind_one(session, bindings, save_physics_reference(world, index))
+                raise WorldSavePhysicsError.Rejected

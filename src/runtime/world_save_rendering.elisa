@@ -1,0 +1,42 @@
+# Rebuild presentation for a world restored by World::SaveGame. A save holds
+# no render IDs or native handles, so the loaded world is rebound here: each
+# live entity gets the visual for its kind and render ID `base + live index`.
+# Save records keep live order, so the IDs match those of the saved world.
+include "./world_rendering.elisa"
+
+module WorldSaveRendering:
+    public:
+        struct KindVisuals:
+            actor: Assets::VisualAsset
+            enemy: Assets::VisualAsset
+            structure: Assets::VisualAsset
+
+    private:
+        def save_rendering_visual(visuals: KindVisuals, kind: World::Entity) -> Assets::VisualAsset:
+            return visuals.actor if kind == World::Actor.Player
+            return visuals.enemy if kind == World::Enemy.Guard
+            visuals.structure
+
+        def save_rendering_known(kind: World::Entity) -> bool:
+            kind == World::Actor.Player or kind == World::Enemy.Guard or kind == World::StaticObject.Structure
+
+    public:
+        # Binds every live entity of a freshly loaded world into empty
+        # bindings. Populated bindings are refused so stale rows from the
+        # replaced world cannot survive the swap.
+        def rehydrate(bindings: mutable WorldRendering::Bindings&, world: World::World&,
+            visuals: KindVisuals, render_id_base: i64) -> void error[WorldRendering::WorldRenderingError]:
+            raise WorldRendering::WorldRenderingError.InvalidBindings if WorldRendering::binding_count(bindings) != 0
+            raise WorldRendering::WorldRenderingError.InvalidRenderId if render_id_base <= 0
+            count: usize = World::world_live_count(world)
+            raise WorldRendering::WorldRenderingError.Capacity if count > WorldRendering::MAX_BINDINGS
+            for index in 0..<count:
+                reference: World::EntityRef = catch World::world_live_reference_at(world, index):
+                    value: value
+                    error failure: World::EntityRef{world_epoch: 0, id: 0}
+                lookup: World::EntityLookup = catch World::world_lookup(world, reference):
+                    value: value
+                    error failure: World::EntityLookup{reference: reference, kind: World::Entity.Unknown}
+                raise WorldRendering::WorldRenderingError.InvalidReference if not save_rendering_known(lookup.kind)
+                WorldRendering::bind(bindings, world, reference, render_id_base + index.i64(),
+                    save_rendering_visual(visuals, lookup.kind), Geometry::transform_identity())

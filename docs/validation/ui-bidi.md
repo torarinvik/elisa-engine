@@ -81,3 +81,35 @@ Arabic glyphs, so shaped Arabic captions still render without glyphs. An
 Arabic-capable font has to be bundled and registered with
 `wi::font::AddFontStyle`. Persian and Urdu letters outside U+0621..U+064A
 are left unshaped.
+
+## Arabic fallback font
+
+`RenderScene::add_overlay_font(path)` (native `elisa_render_scene_v1_add_font`)
+registers a project-relative `.ttf`/`.otf` asset as a Wicked font style. Wicked
+falls back across styles for glyphs the default Liberation Sans lacks. The call
+rejects files that are not TrueType or OpenType, and it clears the
+overlay-measure cache so metrics measured before the font was registered are
+dropped. The character course bundles Noto Naskh Arabic UI
+(`fonts/NotoNaskhArabicUI-Regular.ttf`, SIL OFL 1.1; the notice is in
+`third_party/notices/NotoNaskhArabic-OFL.txt`) and registers it right after
+renderer initialization.
+
+Course code 173 compares a run of lam-alef ligatures (U+FEFB) with a run of
+unassigned private-use points (U+E000). Without the font both runs measure as
+identical missing-glyph advances, so they differ in width only when the font is
+registered. The first version of the check, which only required a width above
+3 px, passed with no font registered; the control without registration now
+fails with 173.
+
+## Persian and Urdu letters
+
+`UiArabicShaping` also shapes peh, tcheh, jeh, keheh, gaf, farsi yeh, tteh,
+ddal, rreh, noon ghunna, heh goal, heh doachashmee and yeh barree. Their forms
+come from Arabic Presentation Forms-A (U+FB50..), in the same isolated, final,
+initial, medial order as the Forms-B block. Every slot was checked against
+Python `unicodedata` decompositions, and the bundled Noto Naskh Arabic UI covers
+the glyphs used. Superscript alef (U+0670) is treated as transparent.
+`test/ui_arabic_shaping` cases 10–11 cover peh/jeh/gaf, a medial farsi yeh and
+Urdu heh goal + yeh barree. Negative control: dropping farsi yeh's base fails
+with 11. Not covered: other extended letters, such as those for Pashto, Sindhi
+or Kurdish.

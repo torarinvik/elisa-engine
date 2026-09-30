@@ -138,8 +138,8 @@ def main() -> int:
         fixture.parent.mkdir(parents=True, exist_ok=True)
         write_physics_mesh_fixture(project)
         # The course self-test decodes its shipped clips from `sounds/` and
-        # animates two instances of `rigs/guide_rig.pkg`; captions come from `text/`.
-        for resource in ("sounds", "rigs", "text"):
+        # animates two instances of `rigs/guide_rig.pkg`; captions come from `text/`, the Arabic fallback font from `fonts/`.
+        for resource in ("sounds", "rigs", "text", "fonts"):
             shutil.copytree(ROOT / "examples/character_course" / resource, project / resource)
         samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
         with wave.open(str(fixture), "wb") as output:
@@ -159,6 +159,7 @@ def main() -> int:
             ("physics-material-smoke", ROOT / "test/physics_material_native_main.elisa"),
             ("physics-ccd3d-smoke", ROOT / "test/physics_ccd3d_native_main.elisa"),
             ("world-physics-pose-smoke", ROOT / "test/world_physics_pose_native_main.elisa"),
+            ("world-save-physics-smoke", ROOT / "test/world_save_physics_native_main.elisa"),
             ("world-physics-cadence-smoke",
                 ROOT / "test/world_physics_session_cadence_native_main.elisa"),
             ("world-hierarchy-render-smoke", ROOT / "test/world_hierarchy_render_native_main.elisa"),

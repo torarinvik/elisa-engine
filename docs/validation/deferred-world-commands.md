@@ -57,3 +57,15 @@ DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 ```
 
 Compiler phase-borrow lifetime diagnostics remain W03 follow-up work.
+
+## 2026-09-30: primary-world test repaired and gated
+
+`test/world_command_primary.elisa` was not in the shared gate and had been
+failing at HEAD with code 9. The static-spawn case asserted that the commit
+*fails* and then required three live entities, which contradict each other.
+Once commit 08e274af fixed the catch arms, the spawn committed and the stale
+assertion tripped. The test now requires the static spawn to commit, and
+failure codes that were used twice (4, 7–9, 11–13) are renumbered 27–33 so each
+failure is unique. It runs in the gate's unit-test list. Negative control:
+skipping `world_batch_valid` in `commit_world` fails with 14 (a duplicate
+despawn is applied).
