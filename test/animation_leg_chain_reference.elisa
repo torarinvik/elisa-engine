@@ -1,0 +1,36 @@
+# LegChain against reference values from the boxing game's
+# tools/clean_leg_motion.py logic, produced with Blender's mathutils
+# (float32), so tolerances are about 1e-4.
+include "../src/animation/leg_chain.elisa"
+
+def near(a: f64, b: f64) -> bool:
+    d: f64 = a - b
+    d < 0.0001 and d > -0.0001
+
+def v(x: f64, y: f64, z: f64) -> MotionQuat::V:
+    MotionQuat::V{x: x, y: y, z: z}
+
+# Equal as rotations: q and -q are the same.
+def same(a: MotionQuat::Q, x: f64, y: f64, z: f64, w: f64) -> bool:
+    d: f64 = a.x * x + a.y * y + a.z * z + a.w * w
+    near(d if d >= 0.0 else 0.0 - d, 1.0)
+
+def main() -> i32:
+    guard: MotionQuat::Q = MotionQuat::Q{x: 0.0281746257096529, y: 0.01878308318555355, z: 0.0939154177904129, w: 0.9950041770935059}
+    foot: MotionQuat::Q = MotionQuat::Q{x: -0.9440736174583435, y: 0.14164528250694275, z: -0.18869437277317047, w: 0.23033928871154785}
+    leg: LegChain::Leg = LegChain::Leg{
+        hip: v(0.0, 1.0, 0.0), ankle: v(0.07, 0.25, 0.12), upper: 0.45, lower: 0.43,
+        hinge_thigh: v(1.0, 0.1, 0.0), hinge_shin: v(0.9, -0.2, 0.1), straight_normal: v(1.0, 0.0, 0.0),
+        guard_foot: guard, foot: foot,
+    }
+    pole: MotionQuat::V = MotionQuat::vnormalize(v(0.1, 0.2, 1.0))
+    solved: LegChain::Chain = LegChain::chain(leg, pole)
+    return 1 if not near(solved.knee.x, 0.05806761980056763) or not near(solved.knee.y, 0.6501385569572449) or not near(solved.knee.z, 0.27699294686317444)
+    return 2 if not same(solved.thigh, 0.94180828332901, 0.05395965650677681, -0.041619546711444855, 0.32917076349258423)
+    return 3 if not same(solved.shin, -0.9824470281600952, -0.015761692076921463, 0.008672088384628296, 0.1856723427772522)
+    return 4 if not near(solved.miss, 0.0)
+    wring: f64 = LegChain::wring_with_pole(leg, pole)
+    return 5 if not near(wring, 0.41070482705462136)
+    return 6 if not near(LegChain::soft_limit(wring, 0.17453292519943295, 0.10471975511965977), 0.2769754692744608)
+    return 7 if not near(LegChain::knee_turn(leg, pole, 0.17453292519943295, 0.10471975511965977), 0.24434609527920614)
+    0

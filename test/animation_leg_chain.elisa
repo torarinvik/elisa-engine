@@ -1,0 +1,63 @@
+include "../src/animation/leg_chain.elisa"
+
+def near(a: f64, b: f64, tolerance: f64) -> bool:
+    d: f64 = a - b
+    d < tolerance and d > 0.0 - tolerance
+
+def v(x: f64, y: f64, z: f64) -> MotionQuat::V:
+    MotionQuat::V{x: x, y: y, z: z}
+
+def gap(a: MotionQuat::V, b: MotionQuat::V) -> f64:
+    d: MotionQuat::V = v(a.x - b.x, a.y - b.y, a.z - b.z)
+    ElisaMath::sqrt(MotionQuat::vdot(d, d))
+
+def unit_between(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::V:
+    MotionQuat::vnormalize(v(b.x - a.x, b.y - a.y, b.z - a.z))
+
+def leg_with(ankle: MotionQuat::V, foot: MotionQuat::Q) -> LegChain::Leg:
+    LegChain::Leg{
+        hip: v(0.0, 1.0, 0.0), ankle: ankle, upper: 0.45, lower: 0.45,
+        hinge_thigh: v(1.0, 0.0, 0.0), hinge_shin: v(1.0, 0.0, 0.0), straight_normal: v(1.0, 0.0, 0.0),
+        guard_foot: MotionQuat::identity(), foot: foot,
+    }
+
+def main() -> i32:
+    degree: f64 = 0.017453292519943295
+    forward: MotionQuat::V = v(0.0, 0.0, 1.0)
+    # The pole is the knee's offset from the hip-ankle line, unit length.
+    pole: MotionQuat::V = LegChain::pole_of(v(0.0, 1.0, 0.0), v(0.1, 0.55, 0.3), v(0.0, 0.1, 0.0))
+    return 1 if not near(MotionQuat::vdot(pole, pole), 1.0, 0.000001) or not near(pole.y, 0.0, 0.000001)
+    # A reachable ankle: both bones keep their length, the knee bends towards the pole.
+    leg: LegChain::Leg = leg_with(v(0.0, 0.2, 0.1), MotionQuat::identity())
+    solved: LegChain::Chain = LegChain::chain(leg, forward)
+    return 2 if not near(gap(solved.knee, leg.hip), 0.45, 0.000001) or not near(gap(solved.knee, leg.ankle), 0.45, 0.000001)
+    return 3 if not near(solved.miss, 0.0, 0.000001) or solved.knee.z <= 0.1
+    # Thigh and shin rotations carry +Y along their bones.
+    up: MotionQuat::V = v(0.0, 1.0, 0.0)
+    return 4 if gap(MotionQuat::rotate(solved.thigh, up), unit_between(leg.hip, solved.knee)) > 0.000001
+    return 5 if gap(MotionQuat::rotate(solved.shin, up), unit_between(solved.knee, leg.ankle)) > 0.000001
+    # Out of reach: the leg stops just short of straight and reports the miss.
+    far: LegChain::Leg = leg_with(v(0.0, -1.0, 0.0), MotionQuat::identity())
+    stretched: LegChain::Chain = LegChain::chain(far, forward)
+    return 6 if not near(stretched.miss, 2.0 - 0.9 + 0.0001, 0.000001)
+    # The soft limit leaves small values alone and never passes free + soft.
+    return 7 if LegChain::soft_limit(5.0 * degree, 10.0 * degree, 6.0 * degree) != 5.0 * degree
+    return 8 if LegChain::soft_limit(90.0 * degree, 10.0 * degree, 6.0 * degree) > 16.0 * degree
+    return 9 if not near(LegChain::soft_limit(10.001 * degree, 10.0 * degree, 6.0 * degree), 10.001 * degree, 0.00001)
+    # A foot that follows the shin does not wring and needs no knee turn.
+    calm: LegChain::Leg = leg_with(leg.ankle, solved.shin)
+    return 10 if not near(LegChain::wring_with_pole(calm, forward), 0.0, 0.00001)
+    return 11 if LegChain::knee_turn(calm, forward, 10.0 * degree, 6.0 * degree) != 0.0
+    # A foot twisted 20 degrees about the shin wrings; the knee turn brings it under the soft limit.
+    twisted: MotionQuat::Q = MotionQuat::mul(solved.shin, MotionQuat::axis_angle(up, 20.0 * degree))
+    wrung: LegChain::Leg = leg_with(leg.ankle, twisted)
+    before: f64 = LegChain::wring_with_pole(wrung, forward)
+    return 12 if not near(before, 20.0 * degree, 0.0001)
+    turn: f64 = LegChain::knee_turn(wrung, forward, 10.0 * degree, 6.0 * degree)
+    return 13 if turn == 0.0 or turn > 50.0 * degree or turn < -50.0 * degree
+    after: f64 = LegChain::wring_with_pole(wrung, LegChain::turned_pole(wrung, forward, turn))
+    return 14 if after > LegChain::soft_limit(before, 10.0 * degree, 6.0 * degree) + 0.000001
+    # The search takes the smallest turn that works: one degree less is not enough.
+    smaller: f64 = turn - degree if turn > 0.0 else turn + degree
+    return 15 if smaller != 0.0 and LegChain::wring_with_pole(wrung, LegChain::turned_pole(wrung, forward, smaller)) <= LegChain::soft_limit(before, 10.0 * degree, 6.0 * degree)
+    0

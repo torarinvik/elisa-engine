@@ -1,0 +1,22 @@
+include "../src/animation/leg_chain_index.elisa"
+
+extend LegChainIndex:
+    def prove_turn_bounded(step: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 50000
+        turn_millideg(step)
+
+    def prove_live_step_turns(step: i64) -> i64:
+        requires step >= 1
+        requires step <= 50
+        ensure result == step * 1000
+        turn_millideg(step)
+
+    def prove_outside_search_rests(step: i64) -> i64:
+        requires step > 50
+        ensure result == 0
+        turn_millideg(step)
+
+    def prove_search_size() -> i64:
+        ensure result == 100
+        candidates()

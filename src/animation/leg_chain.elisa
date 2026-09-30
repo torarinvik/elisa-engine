@@ -1,0 +1,130 @@
+# Two-bone leg IK with a knee pole and the knee-turn limit that stops ankle
+# wringing (plan M08), ported from the boxing game's
+# tools/clean_leg_motion.py (`chain`, `ankle_wring` and the knee-turn
+# search). Search bookkeeping is float-free and proved in LegChainIndex.
+include "./motion_quat.elisa"
+include "./leg_chain_index.elisa"
+module LegChain:
+    private:
+        const module Tune:
+            REACH_SLACK: f64 = 0.0001
+            TINY: f64 = 0.0000000001
+            DEGENERATE: f64 = 0.000001
+            MILLIDEG: f64 = 0.000017453292519943295
+
+        def leg_sub(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::V{x: a.x - b.x, y: a.y - b.y, z: a.z - b.z}
+
+        def leg_add(a: MotionQuat::V, b: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::V{x: a.x + b.x, y: a.y + b.y, z: a.z + b.z}
+
+        def leg_scale(a: MotionQuat::V, s: f64) -> MotionQuat::V:
+            MotionQuat::V{x: a.x * s, y: a.y * s, z: a.z * s}
+
+        def leg_length(a: MotionQuat::V) -> f64:
+            ElisaMath::sqrt(MotionQuat::vdot(a, a))
+
+        # The part of `v` perpendicular to the unit `axis`, normalized.
+        def leg_perpendicular(v: MotionQuat::V, axis: MotionQuat::V) -> MotionQuat::V:
+            MotionQuat::vnormalize(leg_sub(v, leg_scale(axis, MotionQuat::vdot(v, axis))))
+
+        def leg_tanh(x: f64) -> f64:
+            return 1.0 if x > 20.0
+            return -1.0 if x < -20.0
+            e: f64 = ElisaMath::exp(2.0 * x)
+            (e - 1.0) / (e + 1.0)
+
+    public:
+        # A leg to solve: the fixed hip, the cleaned ankle target, bone
+        # lengths, the source knee hinge in thigh and shin space, a hinge
+        # normal for a straight leg, the guard ankle rotation and the foot's
+        # world rotation.
+        struct Leg:
+            hip: MotionQuat::V
+            ankle: MotionQuat::V
+            upper: f64
+            lower: f64
+            hinge_thigh: MotionQuat::V
+            hinge_shin: MotionQuat::V
+            straight_normal: MotionQuat::V
+            guard_foot: MotionQuat::Q
+            foot: MotionQuat::Q
+
+        struct Chain:
+            knee: MotionQuat::V
+            thigh: MotionQuat::Q
+            shin: MotionQuat::Q
+            miss: f64
+
+        # Knee direction about the hip-ankle line, as a unit vector.
+        def pole_of(hip: MotionQuat::V, knee: MotionQuat::V, ankle: MotionQuat::V) -> MotionQuat::V:
+            leg_perpendicular(leg_sub(knee, hip), MotionQuat::vnormalize(leg_sub(ankle, hip)))
+
+        # Two-bone solve from the hip towards the ankle, bending towards the
+        # pole. Out-of-reach targets stop just short of full extension and
+        # report how far the ankle misses.
+        def chain(leg: Leg, pole: MotionQuat::V) -> Chain:
+            reach: MotionQuat::V = leg_sub(leg.ankle, leg.hip)
+            full: f64 = leg.upper + leg.lower - Tune::REACH_SLACK
+            raw: f64 = leg_length(reach)
+            distance: f64 = full if raw > full else raw
+            axis: MotionQuat::V = MotionQuat::vnormalize(reach)
+            bend: MotionQuat::V = leg_perpendicular(pole, axis)
+            along: f64 = (leg.upper * leg.upper - leg.lower * leg.lower + distance * distance) / (2.0 * distance)
+            square: f64 = leg.upper * leg.upper - along * along
+            height: f64 = ElisaMath::sqrt(square if square > Tune::TINY else Tune::TINY)
+            knee: MotionQuat::V = leg_add(leg_add(leg.hip, leg_scale(axis, along)), leg_scale(bend, height))
+            target: MotionQuat::V = leg_add(leg.hip, leg_scale(axis, distance))
+            n: MotionQuat::V = MotionQuat::cross(leg_sub(knee, leg.hip), leg_sub(target, knee))
+            normal: MotionQuat::V = leg.straight_normal if leg_length(n) < Tune::DEGENERATE else n
+            Chain{
+                knee: knee,
+                thigh: MotionQuat::aim(MotionQuat::vnormalize(leg_sub(knee, leg.hip)), normal, leg.hinge_thigh),
+                shin: MotionQuat::aim(MotionQuat::vnormalize(leg_sub(target, knee)), normal, leg.hinge_shin),
+                miss: leg_length(leg_sub(target, leg.ankle)),
+            }
+
+        # Foot rotation against the shin, away from the guard pose, that is
+        # not ankle flex about local X. Radians.
+        def ankle_wring(leg: Leg, shin: MotionQuat::Q) -> f64:
+            local: MotionQuat::Q = MotionQuat::mul(MotionQuat::conjugate(leg.guard_foot), MotionQuat::mul(MotionQuat::conjugate(shin), leg.foot))
+            flex: f64 = ElisaMath::atan2(local.x, local.w)
+            unflex: MotionQuat::Q = MotionQuat::Q{x: 0.0 - ElisaMath::sin(flex), y: 0.0, z: 0.0, w: ElisaMath::cos(flex)}
+            rest: MotionQuat::Q = MotionQuat::mul(unflex, local)
+            w: f64 = rest.w if rest.w >= 0.0 else 0.0 - rest.w
+            2.0 * ElisaMath::acos(1.0 if w > 1.0 else w)
+
+        def wring_with_pole(leg: Leg, pole: MotionQuat::V) -> f64:
+            ankle_wring(leg, chain(leg, pole).shin)
+
+        # Wringing above `free` eases into a ceiling of free + soft.
+        def soft_limit(now: f64, free: f64, soft: f64) -> f64:
+            return now if now <= free
+            free + soft * leg_tanh((now - free) / soft)
+
+        # The pole turned about the hip-ankle line by `radians`.
+        def turned_pole(leg: Leg, pole: MotionQuat::V, radians: f64) -> MotionQuat::V:
+            MotionQuat::rotate(MotionQuat::axis_angle(leg_sub(leg.ankle, leg.hip), radians), pole)
+
+        # Smallest turn of the knee about the hip-ankle line, in 1-degree
+        # steps up to 50 either way, that brings wringing under the soft
+        # limit. If none does, the turn with the least wringing. Radians.
+        def knee_turn(leg: Leg, pole: MotionQuat::V, free: f64, soft: f64) -> f64:
+            now: f64 = wring_with_pole(leg, pole)
+            return 0.0 if now <= free
+            limit: f64 = soft_limit(now, free, soft)
+            best_value: mutable f64 = now
+            best_angle: mutable f64 = 0.0
+            for step in 1..<(LegChainIndex::STEPS + 1) |leg, pole, limit, best_value, best_angle|:
+                size: f64 = LegChainIndex::turn_millideg(step).f64() * Tune::MILLIDEG
+                up: f64 = wring_with_pole(leg, turned_pole(leg, pole, size))
+                down: f64 = wring_with_pole(leg, turned_pole(leg, pole, 0.0 - size))
+                return size if up <= limit
+                return 0.0 - size if down <= limit
+                if up < best_value:
+                    best_value <- up
+                    best_angle <- size
+                if down < best_value:
+                    best_value <- down
+                    best_angle <- 0.0 - size
+            best_angle

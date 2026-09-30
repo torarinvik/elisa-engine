@@ -1,0 +1,22 @@
+# Float-free search bookkeeping for LegChain's knee turn, proved in
+# proof/leg_chain_index.elisa.
+module LegChainIndex:
+    public:
+        const STEPS: i64 = 50
+        const STEP_MILLIDEG: i64 = 1000
+
+        # Size of the turn tried at a search step, in millidegrees; the
+        # search tries it on both sides. Steps outside 1..STEPS try nothing.
+        def turn_millideg(step: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 50000
+            ensure result == step * 1000 or step <= 0 or step > 50
+            ensure result == 0 or step <= 50
+            return 0 if step <= 0
+            return 0 if step > 50
+            step * 1000
+
+        # Candidates the search tries before giving up.
+        def candidates() -> i64:
+            ensure result == 100
+            STEPS * 2
