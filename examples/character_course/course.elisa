@@ -10,6 +10,8 @@ include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
 include "../../src/runtime/replay_subsystems_codec.elisa"
+include "../../src/animation/graph_digest.elisa"
+include "../../src/ai/brain_digest.elisa"
 
 module CharacterCourse:
     private:

@@ -28,3 +28,21 @@
   same-input run, and after `remove_payload` it no longer loads.
 - Control: comparing the reload against the sidestep run fails with 187.
   Both course smokes pass.
+
+## AI and animation slots (2026-09-30)
+
+The course replay now fills all five compared slots each tick:
+
+- AI (3): an `AiBrain` watcher standing 4 m behind the spawn.
+- Animation (4): an idle/walk `AnimGraph` driven by the character's
+  measured speed.
+
+Code 188 has two checks:
+
+- With the watcher's sight cut to 0.5 m, the first difference is in AI,
+  even when builds are compared.
+- A 600 ms walk blend first differs in animation. A cross-build comparison
+  ignores that difference, because animation is SameBuild scope.
+
+Both course smokes pass. Negative control: recording a constant in the AI
+slot makes the course smoke fail with 188.
