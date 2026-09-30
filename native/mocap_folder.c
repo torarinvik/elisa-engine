@@ -1,5 +1,5 @@
 // Folder listing for the mocap batch CLI (plan M07). Elisa has no directory
-// API, so this lists `*.glb` names in sorted (byte) order and joins paths into
+// API, so this lists `*.glb` and `*.fbx` names in sorted (byte) order and joins paths into
 // one of four static buffers, each valid until four more calls.
 #include <dirent.h>
 #include <stdint.h>
@@ -18,12 +18,20 @@ static int by_name(const void *a, const void *b) {
   return strcmp(*(char *const *)a, *(char *const *)b);
 }
 
-static int is_glb(const char *name) {
+static int has_suffix(const char *name, const char *suffix) {
   size_t n = strlen(name);
-  return n > 4 && name[0] != '.' && strcmp(name + n - 4, ".glb") == 0;
+  return n > 4 && name[0] != '.' && strcmp(name + n - 4, suffix) == 0;
 }
 
-// Returns the number of .glb files in `dir`, or -1 when it cannot be read.
+static int is_glb(const char *name) {
+  return has_suffix(name, ".glb") || has_suffix(name, ".fbx");
+}
+
+int32_t elisa_mocap_is_fbx(int64_t index) {
+  return index >= 0 && index < name_count && has_suffix(names[index], ".fbx");
+}
+
+// Returns the number of .glb and .fbx files in `dir`, or -1 when it cannot be read.
 int64_t elisa_mocap_scan(const char *dir) {
   for (int64_t i = 0; i < name_count; i++) free(names[i]);
   name_count = 0;

@@ -1,8 +1,11 @@
-# Batch mocap cleanup (plan M07): clean every *.glb in MOCAP_IN into
-# MOCAP_OUT with MocapPipeline's default settings, and write NAME.png beside
-# each output: the pose at key MOCAP_THUMB_KEY (default 0) of the first
-# animation. A bad file is reported and skipped; the exit code is the number
-# of failures (capped at 100), or 101 when a folder is missing.
+# Batch mocap cleanup (plans M06/M07): clean every *.glb in MOCAP_IN into
+# MOCAP_OUT with MocapPipeline's default settings. Each *.fbx is first baked
+# to NAME.glb by native/fbx_to_glb.c at MOCAP_FBX_RATE samples per second
+# (default 30); a conversion failure prints FAIL with its code minus 100, and
+# MOCAP_CONVERT_ONLY=1 skips cleaning FBX takes. NAME.png beside each output
+# shows the pose at key MOCAP_THUMB_KEY (default 0) of the first animation.
+# A bad file is reported and skipped; the exit code is the number of
+# failures (capped at 100), or 101 when a folder is missing.
 # Build: scripts/build_mocap_clean.sh
 include "../src/assets/mocap_pipeline.elisa"
 include "../src/viewport/mocap_thumbnail.elisa"
@@ -17,6 +20,12 @@ extern c_name(index: i64) -> cstr
 extern c_env(key: cstr, fallback: cstr) -> cstr
 @link_name("elisa_mocap_line")
 extern c_line(status: cstr, name: cstr, a: i64, b: i64) can[Blocking.IO]
+@link_name("elisa_mocap_is_fbx")
+extern c_is_fbx(index: i64) -> i32
+@link_name("elisa_fbx_to_glb")
+extern c_fbx_to_glb(input: cstr, output: cstr, rate: f64) -> i64 can[Blocking.IO]
+@link_name("atof")
+extern c_atof(text: cstr) -> f64
 @link_name("atoll")
 extern c_atoll(text: cstr) -> i64
 
@@ -42,14 +51,27 @@ def main() -> i32:
     count: i64 = c_scan(source)
     return 101 if count < 0 or c_scan(target) < 0
     _ = c_scan(source)
+    convert_only: i64 = c_atoll(c_env("MOCAP_CONVERT_ONLY", "0"))
+    c_rate: f64 = c_atof(c_env("MOCAP_FBX_RATE", "0"))
     mutable failed: i64 = 0
     for i in 0..<count:
-        filtered: i64 = clean_one(c_path(source, i, ""), c_path(target, i, ""))
+        output: cstr = c_path(target, i, ".glb")
+        mutable input: cstr = c_path(source, i, "")
+        if c_is_fbx(i) != 0:
+            converted: i64 = c_fbx_to_glb(input, output, c_rate)
+            if converted != 0:
+                c_line("FAIL", c_name(i), converted - 100, 0)
+                failed <- failed + 1
+                continue
+            input <- output
+        mutable filtered: i64 = 0
+        if convert_only == 0 or c_is_fbx(i) == 0:
+            filtered <- clean_one(input, output)
         if filtered < 0:
             c_line("FAIL", c_name(i), filtered, 0)
             failed <- failed + 1
             continue
-        bytes: i64 = thumb(c_path(target, i, ""), c_path(target, i, ".png"), key.usize())
+        bytes: i64 = thumb(output, c_path(target, i, ".png"), key.usize())
         if bytes < 0:
             c_line("NOTHUMB", c_name(i), filtered, bytes)
             failed <- failed + 1
