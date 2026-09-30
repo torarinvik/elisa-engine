@@ -43,6 +43,8 @@ jobs:
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
       - name: CI stage recorder self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
+      - name: Native smoke artifact self-test
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" smoke-artifacts -- python scripts/native_smoke_artifacts.py --self-test
       - name: Course sounds match their generator
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" course-sounds -- python examples/character_course/make_sounds.py --check
       - name: Course rig matches its generator
@@ -96,6 +98,8 @@ jobs:
         run: |
           python3 scripts/ci_stage.py build/ci native fetch-ozz -- python3 scripts/fetch_ozz.py
           python3 scripts/ci_stage.py build/ci native fetch-recast -- python3 scripts/fetch_recast.py
+      - name: Crash reports (forked SIGSEGV/SIGABRT children)
+        run: python3 scripts/ci_stage.py build/ci native crash-report -- python3 scripts/test_crash_report.py
       - name: Boundary sanitizers (ASan + UBSan)
         run: python3 scripts/ci_stage.py build/ci native boundary-sanitizers -- python3 scripts/run_boundary_sanitized.py
       # Hosted runners have no GPU session: this artifact is headless evidence
