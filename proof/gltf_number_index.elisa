@@ -1,0 +1,27 @@
+include "../src/assets/gltf_number_index.elisa"
+
+extend GltfNumberIndex:
+    def prove_keeps_digit_bounded(kept: i64) -> bool:
+        ensure not result or kept < 18
+        ensure not result or kept >= 0
+        keeps_digit(kept)
+
+    def prove_exponent_saturates(exponent: i64, digit: i64) -> i64:
+        requires exponent >= 0
+        requires exponent <= 9999
+        requires digit >= 0
+        requires digit <= 9
+        ensure result >= 0
+        ensure result <= 9999
+        exponent_digit(exponent, digit)
+
+    def prove_decimal_power_bounded(written: i64, fraction_kept: i64, integer_dropped: i64) -> i64:
+        requires written >= -9999
+        requires written <= 9999
+        requires fraction_kept >= 0
+        requires fraction_kept <= 18
+        requires integer_dropped >= 0
+        requires integer_dropped <= 1000000
+        ensure result >= -10017
+        ensure result <= 1009999
+        decimal_power(written, fraction_kept, integer_dropped)

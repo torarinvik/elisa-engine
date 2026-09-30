@@ -1,0 +1,142 @@
+include "../src/assets/gltf_number.elisa"
+
+def bytes_of(codes: darray[i64]) -> darray[u8]:
+    out: mutable darray[u8] = []
+    for i in 0..<codes.count |out, codes|:
+        out.push(codes[i].u8())
+    out
+
+# Within one ulp of the correctly rounded reference.
+def close(got: f64, want: f64) -> bool:
+    return got == want if want == 0.0
+    gap: f64 = got - want
+    size: f64 = want if want > 0.0 else want * -1.0
+    (gap if gap > 0.0 else gap * -1.0) <= size * 2.3e-16
+
+def main() -> i32:
+    g10: darray[i64] = [48]
+    b10: darray[u8] = bytes_of(g10)
+    return 10 if not GltfNumber::valid(b10, 0, 1)
+    return 11 if not close(GltfNumber::value(b10, 0, 1), 0.0)
+    g12: darray[i64] = [45,48]
+    b12: darray[u8] = bytes_of(g12)
+    return 12 if not GltfNumber::valid(b12, 0, 2)
+    return 13 if not close(GltfNumber::value(b12, 0, 2), 0.0)
+    g14: darray[i64] = [49]
+    b14: darray[u8] = bytes_of(g14)
+    return 14 if not GltfNumber::valid(b14, 0, 1)
+    return 15 if not close(GltfNumber::value(b14, 0, 1), 1.0)
+    g16: darray[i64] = [45,49]
+    b16: darray[u8] = bytes_of(g16)
+    return 16 if not GltfNumber::valid(b16, 0, 2)
+    return 17 if not close(GltfNumber::value(b16, 0, 2), -1.0)
+    g18: darray[i64] = [48,46,53]
+    b18: darray[u8] = bytes_of(g18)
+    return 18 if not GltfNumber::valid(b18, 0, 3)
+    return 19 if not close(GltfNumber::value(b18, 0, 3), 0.5)
+    g20: darray[i64] = [51,46,49,52,49,53,57]
+    b20: darray[u8] = bytes_of(g20)
+    return 20 if not GltfNumber::valid(b20, 0, 7)
+    return 21 if not close(GltfNumber::value(b20, 0, 7), 3.14159)
+    g22: darray[i64] = [45,50,46,53,101,45,51]
+    b22: darray[u8] = bytes_of(g22)
+    return 22 if not GltfNumber::valid(b22, 0, 7)
+    return 23 if not close(GltfNumber::value(b22, 0, 7), -0.0025)
+    g24: darray[i64] = [49,69,49,48]
+    b24: darray[u8] = bytes_of(g24)
+    return 24 if not GltfNumber::valid(b24, 0, 4)
+    return 25 if not close(GltfNumber::value(b24, 0, 4), 10000000000.0)
+    g26: darray[i64] = [49,101,43,50]
+    b26: darray[u8] = bytes_of(g26)
+    return 26 if not GltfNumber::valid(b26, 0, 4)
+    return 27 if not close(GltfNumber::value(b26, 0, 4), 100.0)
+    g28: darray[i64] = [48,46,48,48,48,49,50,51]
+    b28: darray[u8] = bytes_of(g28)
+    return 28 if not GltfNumber::valid(b28, 0, 8)
+    return 29 if not close(GltfNumber::value(b28, 0, 8), 0.000123)
+    g30: darray[i64] = [49,50,51,52,53,54,55,56,57,48,49,50,51,52,53,54,55,56,57,48,49]
+    b30: darray[u8] = bytes_of(g30)
+    return 30 if not GltfNumber::valid(b30, 0, 21)
+    return 31 if not close(GltfNumber::value(b30, 0, 21), 1.2345678901234568e+20)
+    g32: darray[i64] = [48,46,49]
+    b32: darray[u8] = bytes_of(g32)
+    return 32 if not GltfNumber::valid(b32, 0, 3)
+    return 33 if not close(GltfNumber::value(b32, 0, 3), 0.1)
+    g34: darray[i64] = [48,46,55,48,55,49,48,54,55,55]
+    b34: darray[u8] = bytes_of(g34)
+    return 34 if not GltfNumber::valid(b34, 0, 10)
+    return 35 if not close(GltfNumber::value(b34, 0, 10), 0.70710677)
+    g36: darray[i64] = [45,48,46,55,48,55,49,48,54,55,55]
+    b36: darray[u8] = bytes_of(g36)
+    return 36 if not GltfNumber::valid(b36, 0, 11)
+    return 37 if not close(GltfNumber::value(b36, 0, 11), -0.70710677)
+    g38: darray[i64] = [49,46,48,48,48,48,48,48,49]
+    b38: darray[u8] = bytes_of(g38)
+    return 38 if not GltfNumber::valid(b38, 0, 9)
+    return 39 if not close(GltfNumber::value(b38, 0, 9), 1.0000001)
+    g40: darray[i64] = [54,46,48,50,50,49,52,48,55,54,101,50,51]
+    b40: darray[u8] = bytes_of(g40)
+    return 40 if not GltfNumber::valid(b40, 0, 13)
+    return 41 if not close(GltfNumber::value(b40, 0, 13), 6.02214076e+23)
+    g42: darray[i64] = [49,101,45,51,50,48]
+    b42: darray[u8] = bytes_of(g42)
+    return 42 if not GltfNumber::valid(b42, 0, 6)
+    return 43 if not close(GltfNumber::value(b42, 0, 6), 1e-320)
+    g44: darray[i64] = [49,50,51,52,53,46,54,55,56,101,45,50]
+    b44: darray[u8] = bytes_of(g44)
+    return 44 if not GltfNumber::valid(b44, 0, 12)
+    return 45 if not close(GltfNumber::value(b44, 0, 12), 123.45678)
+    g46: darray[i64] = [48,46,48,52,49,54,54,54,54,54,55,57,48,56,52,51,48,49,48]
+    b46: darray[u8] = bytes_of(g46)
+    return 46 if not GltfNumber::valid(b46, 0, 19)
+    return 47 if not close(GltfNumber::value(b46, 0, 19), 0.0416666679084301)
+    g48: darray[i64] = []
+    b48: darray[u8] = bytes_of(g48)
+    return 48 if GltfNumber::valid(b48, 0, 0)
+    g49: darray[i64] = [45]
+    b49: darray[u8] = bytes_of(g49)
+    return 49 if GltfNumber::valid(b49, 0, 1)
+    g50: darray[i64] = [48,49]
+    b50: darray[u8] = bytes_of(g50)
+    return 50 if GltfNumber::valid(b50, 0, 2)
+    g51: darray[i64] = [49,46]
+    b51: darray[u8] = bytes_of(g51)
+    return 51 if GltfNumber::valid(b51, 0, 2)
+    g52: darray[i64] = [49,46,101,53]
+    b52: darray[u8] = bytes_of(g52)
+    return 52 if GltfNumber::valid(b52, 0, 4)
+    g53: darray[i64] = [46,53]
+    b53: darray[u8] = bytes_of(g53)
+    return 53 if GltfNumber::valid(b53, 0, 2)
+    g54: darray[i64] = [43,49]
+    b54: darray[u8] = bytes_of(g54)
+    return 54 if GltfNumber::valid(b54, 0, 2)
+    g55: darray[i64] = [49,101]
+    b55: darray[u8] = bytes_of(g55)
+    return 55 if GltfNumber::valid(b55, 0, 2)
+    g56: darray[i64] = [49,101,43]
+    b56: darray[u8] = bytes_of(g56)
+    return 56 if GltfNumber::valid(b56, 0, 3)
+    g57: darray[i64] = [45,45,49]
+    b57: darray[u8] = bytes_of(g57)
+    return 57 if GltfNumber::valid(b57, 0, 3)
+    g58: darray[i64] = [49,120]
+    b58: darray[u8] = bytes_of(g58)
+    return 58 if GltfNumber::valid(b58, 0, 2)
+    g59: darray[i64] = [48,46,45,49]
+    b59: darray[u8] = bytes_of(g59)
+    return 59 if GltfNumber::valid(b59, 0, 4)
+    g60: darray[i64] = [49,101,101,50]
+    b60: darray[u8] = bytes_of(g60)
+    return 60 if GltfNumber::valid(b60, 0, 4)
+    # A range inside a larger buffer, and the sign of negative zero.
+    h: darray[i64] = [91,45,48,46,50,53,44,48,93]
+    hb: darray[u8] = bytes_of(h)
+    return 61 if not GltfNumber::valid(hb, 1, 6) or GltfNumber::value(hb, 1, 6) != -0.25
+    return 62 if GltfNumber::valid(hb, 0, 6) or GltfNumber::valid(hb, 1, 10)
+    return 63 if 1.0 / GltfNumber::value(b12, 0, 2) > 0.0
+    # Fraction digits past the 18 kept do not move the decimal point.
+    long: darray[i64] = [49,46,50,51,52,53,54,55,56,57,48,49,50,51,52,53,54,55,56,57,48,49,50,51]
+    lb: darray[u8] = bytes_of(long)
+    return 60 if not close(GltfNumber::value(lb, 0, 24), 1.2345678901234567)
+    0

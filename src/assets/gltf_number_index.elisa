@@ -1,0 +1,41 @@
+# Integer rules for GltfNumber, split out so the prover can check them: the
+# significand keeps at most 18 digits, and exponents saturate instead of
+# overflowing.
+module GltfNumberIndex:
+    public:
+        const MAX_DIGITS: i64 = 18
+        const MAX_EXPONENT: i64 = 9999
+
+        # Whether one more significant digit still fits the i64 significand.
+        def keeps_digit(kept: i64) -> bool:
+            ensure not result or kept < MAX_DIGITS
+            ensure not result or kept >= 0
+            return false if kept < 0
+            return false if kept >= MAX_DIGITS
+            true
+
+        # `exponent` with one more decimal digit, saturating at MAX_EXPONENT.
+        def exponent_digit(exponent: i64, digit: i64) -> i64:
+            requires exponent >= 0
+            requires exponent <= MAX_EXPONENT
+            requires digit >= 0
+            requires digit <= 9
+            ensure result >= 0
+            ensure result <= MAX_EXPONENT
+            return MAX_EXPONENT if exponent >= 999
+            next: i64 = exponent * 10 + digit
+            return MAX_EXPONENT if next > MAX_EXPONENT
+            next
+
+        # Decimal power applied to the kept significand: the written exponent
+        # minus kept fraction digits plus dropped integer digits.
+        def decimal_power(written: i64, fraction_kept: i64, integer_dropped: i64) -> i64:
+            requires written >= 0 - MAX_EXPONENT
+            requires written <= MAX_EXPONENT
+            requires fraction_kept >= 0
+            requires fraction_kept <= MAX_DIGITS
+            requires integer_dropped >= 0
+            requires integer_dropped <= 1000000
+            ensure result >= 0 - MAX_EXPONENT - MAX_DIGITS
+            ensure result <= MAX_EXPONENT + 1000000
+            written - fraction_kept + integer_dropped

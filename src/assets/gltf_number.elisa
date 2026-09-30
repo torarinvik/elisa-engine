@@ -1,0 +1,94 @@
+# Reads a JSON number from its byte range (M06), for the decimal node
+# transforms glTF stores in JSON. It validates the RFC 8259 grammar, keeps
+# up to 18 significant digits exactly and scales them by a power of ten.
+# The result is within a few ulps of the correctly rounded value.
+include "./gltf_number_index.elisa"
+
+module GltfNumber:
+    private:
+        def digit_of(b: i64) -> i64:
+            return b - 48 if b >= 48 and b <= 57
+            -1
+
+        # 10^n for n >= 0 by squaring; exact while n <= 22.
+        def ten_power(n: i64) -> f64:
+            result: mutable f64 = 1.0
+            base: mutable f64 = 10.0
+            rest: mutable i64 = n
+            for step in 0..<64 |result, base, rest|:
+                result <- result * base if rest % 2 == 1 else result
+                base <- base * base if rest > 1 else base
+                rest <- rest / 2
+            result
+
+        # Dividing by an exact power keeps the common glTF case (at most 15
+        # digits, |power| <= 22) correctly rounded.
+        def scale(significand: f64, power: i64) -> f64:
+            return significand * ten_power(power) if power >= 0
+            return significand / ten_power(0 - power) if power >= -300
+            significand / ten_power(300) / ten_power(0 - power - 300)
+
+    public:
+        # Grammar states.
+        const START: i64 = 0
+        const SIGN: i64 = 1
+        const ZERO: i64 = 2
+        const INTEGER: i64 = 3
+        const POINT: i64 = 4
+        const FRACTION: i64 = 5
+        const E: i64 = 6
+        const E_SIGN: i64 = 7
+        const EXPONENT: i64 = 8
+
+        # Whether bytes [begin, end) are one JSON number.
+        def valid(bytes: darray[u8]&, begin: i64, end: i64) -> bool:
+            return false if begin < 0 or end > bytes.count.i64() or end <= begin
+            state: mutable i64 = START
+            for i in begin.usize()..<end.usize() |state, bytes|:
+                b: i64 = bytes[i].i64()
+                d: i64 = digit_of(b)
+                next: mutable i64 = -1
+                next <- SIGN if state == START and b == 45 else next
+                next <- ZERO if (state == START or state == SIGN) and d == 0 else next
+                next <- INTEGER if (state == START or state == SIGN) and d > 0 else next
+                next <- INTEGER if state == INTEGER and d >= 0 else next
+                next <- POINT if (state == ZERO or state == INTEGER) and b == 46 else next
+                next <- FRACTION if (state == POINT or state == FRACTION) and d >= 0 else next
+                next <- E if (state == ZERO or state == INTEGER or state == FRACTION) and (b == 101 or b == 69) else next
+                next <- E_SIGN if state == E and (b == 43 or b == 45) else next
+                next <- EXPONENT if (state == E or state == E_SIGN or state == EXPONENT) and d >= 0 else next
+                state <- next if state >= 0 else state
+            state == ZERO or state == INTEGER or state == FRACTION or state == EXPONENT
+
+        # The value of a number already checked by `valid`.
+        def value(bytes: darray[u8]&, begin: i64, end: i64) -> f64:
+            negative: mutable bool = false
+            significand: mutable i64 = 0
+            kept: mutable i64 = 0
+            fraction_kept: mutable i64 = 0
+            leading_zeros: mutable i64 = 0
+            integer_dropped: mutable i64 = 0
+            exponent: mutable i64 = 0
+            exponent_negative: mutable bool = false
+            part: mutable i64 = 0
+            for i in begin.usize()..<end.usize() |negative, significand, kept, fraction_kept, leading_zeros, integer_dropped, exponent, exponent_negative, part, bytes|:
+                b: i64 = bytes[i].i64()
+                d: i64 = digit_of(b)
+                negative <- negative or (part == 0 and b == 45)
+                exponent_negative <- exponent_negative or (part == 2 and b == 45)
+                part <- 1 if b == 46 else part
+                part <- 2 if b == 101 or b == 69 else part
+                counts: bool = d >= 0 and part < 2
+                zero_prefix: bool = counts and significand == 0 and d == 0
+                keep: bool = counts and not zero_prefix and GltfNumberIndex::keeps_digit(kept)
+                significand <- significand * 10 + d if keep else significand
+                kept <- kept + 1 if keep else kept
+                fraction_kept <- fraction_kept + 1 if keep and part == 1 else fraction_kept
+                leading_zeros <- leading_zeros + 1 if zero_prefix and part == 1 else leading_zeros
+                integer_dropped <- integer_dropped + 1 if counts and not zero_prefix and not keep and part == 0 else integer_dropped
+                exponent <- GltfNumberIndex::exponent_digit(exponent, d) if d >= 0 and part == 2 else exponent
+            written: i64 = 0 - exponent if exponent_negative else exponent
+            power: i64 = GltfNumberIndex::decimal_power(written, fraction_kept, integer_dropped) - leading_zeros
+            magnitude: f64 = scale(significand.f64(), power)
+            return magnitude * -1.0 if negative
+            magnitude
