@@ -1,0 +1,72 @@
+# A control profile and a mixed action/pointer recording survive the
+# user-data directory; a damaged recording is refused without touching the
+# caller's logs, and a removed file reports NotFound.
+include "../src/runtime/action_input_store.elisa"
+
+module ActionInputStoreProbe:
+    private:
+        def store_probe_input() -> ActionInput::Input:
+            mutable input: ActionInput::Input = ActionInput::Input()
+            ActionInput::bind_checked(&input, ActionInput::Binding{action: 1, device: ActionInput::Device.Keyboard, code: 44, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
+            ActionInput::bind_checked(&input, ActionInput::Binding{action: 2, device: ActionInput::Device.Gamepad, code: 900, chord_code: 0, deadzone: 0.25, context: ActionInput::Context.Gameplay, live: true})
+            input
+
+        def store_probe_axes() -> ActionPointerAxes::Axes:
+            mutable axes: ActionPointerAxes::Axes = ActionPointerAxes::Axes()
+            ActionPointerAxes::pointer_axis_bind(&axes, ActionPointerAxes::AxisBinding{action: 3, source: ActionPointerAxes::Source.MotionX, scale: 0.4, live: true})
+            axes
+
+    public:
+        def run() -> i32:
+            mutable input: ActionInput::Input = store_probe_input()
+            return 110 if ActionInput::rebind_checked(&input, 0, 13, 0) != ActionInput::BindResult.Bound
+            return 111 if ActionInputStore::save_profile("controls", &input) != ActionInputStore::Stored.Ok
+            mutable reloaded: ActionInput::Input = ActionInput::Input()
+            return 112 if ActionInputStore::load_profile("controls", &reloaded) != ActionInputStore::Stored.Ok
+            return 113 if ActionInput::binding_count(&reloaded) != 2 or ActionInput::binding_at(&reloaded, 0).code != 13
+
+            mutable actions: ActionInputReplay::Log = ActionInputReplay::Log()
+            mutable pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
+            mutable axes: ActionPointerAxes::Axes = store_probe_axes()
+            mutable live_sum: f32 = 0.0
+            for tick in 0..<20 |actions, pointer, axes, input, live_sum|:
+                ActionInput::begin_frame(&input)
+                ActionPointerAxes::pointer_axis_begin_frame(&axes)
+                ActionInputReplay::feed_event(&actions, &input, tick.i64(), ActionInput::Event{device: ActionInput::Device.Keyboard, code: 13, value: 1.0, pressed: tick % 4 == 0, released: tick % 4 == 2, chord_down: false})
+                ActionPointerReplay::pointer_record(&pointer, &axes, tick.i64(), Application::PointerEvent{kind: Application::PointerEventKind.Motion, button: 0, x: 0.0, y: 0.0, delta_x: tick.f32() * 0.7, delta_y: 0.0, buttons: 0, pressed: false})
+                live_sum <- live_sum + ActionPointerAxes::pointer_axis_value(&axes, 3)
+            return 114 if ActionInputStore::save_recording("session-input", &actions, &pointer) != ActionInputStore::Stored.Ok
+            mutable loaded_actions: ActionInputReplay::Log = ActionInputReplay::Log()
+            mutable loaded_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
+            return 115 if ActionInputStore::load_recording("session-input", &loaded_actions, &loaded_pointer) != ActionInputStore::Stored.Ok
+            return 116 if loaded_actions.count != actions.count or loaded_pointer.count != 20
+            mutable replay_axes: ActionPointerAxes::Axes = store_probe_axes()
+            mutable cursor: usize = 0
+            mutable replay_sum: f32 = 0.0
+            for tick in 0..<20 |replay_axes, cursor, replay_sum|:
+                cursor <- ActionPointerReplay::pointer_replay_tick(&loaded_pointer, &replay_axes, tick.i64(), cursor)
+                replay_sum <- replay_sum + ActionPointerAxes::pointer_axis_value(&replay_axes, 3)
+            return 117 if replay_sum != live_sum or live_sum == 0.0
+
+            # A payload with a valid envelope but a damaged recording inside.
+            mutable junk: u8[16] = zeroed
+            junk[0] <- 69
+            junk[1] <- 73
+            junk[2] <- 83
+            junk[3] <- 49
+            _ = catch UserData::write_payload("session-input", ActionInputStore::RECORDING_VERSION, &junk[0], 16):
+                ok: 0
+                error failure: return 118
+            mutable untouched: ActionInputReplay::Log = ActionInputReplay::Log()
+            mutable untouched_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
+            return 119 if ActionInputStore::load_recording("session-input", &untouched, &untouched_pointer) != ActionInputStore::Stored.Corrupt
+            return 120 if untouched.count != 0 or untouched_pointer.count != 0
+            _ = catch UserData::remove_payload("session-input"):
+                ok: 0
+                error failure: return 121
+            _ = catch UserData::remove_payload("controls"):
+                ok: 0
+                error failure: return 121
+            mutable missing: ActionInput::Input = ActionInput::Input()
+            return 122 if ActionInputStore::load_profile("controls", &missing) != ActionInputStore::Stored.NotFound
+            0

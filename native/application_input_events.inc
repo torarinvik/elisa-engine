@@ -162,3 +162,23 @@ extern "C" int32_t elisa_application_v1_next_pointer_event(
     service.pointer_overflow_reported = false;
     return 0;
 }
+
+extern "C" int32_t elisa_application_v1_set_relative_mouse(int32_t enabled) {
+    if (enabled < 0 || enabled > 1) return ELISA_APPLICATION_INVALID_ARGUMENT;
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized || service.host.window() == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    if (!SDL_SetWindowRelativeMouseMode(service.host.window(), enabled != 0)) {
+        SDL_SetWindowRelativeMouseMode(service.host.window(), false);
+        return ELISA_APPLICATION_UNSUPPORTED;
+    }
+    return ELISA_APPLICATION_OK;
+}
+
+extern "C" int32_t elisa_application_v1_relative_mouse(void) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized || service.host.window() == nullptr) return 0;
+    return SDL_GetWindowRelativeMouseMode(service.host.window()) ? 1 : 0;
+}

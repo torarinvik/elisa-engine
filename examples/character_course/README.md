@@ -17,6 +17,8 @@ Default controls are **W/S/A/D** to move (the arrow keys always move too),
 from the entrance and **Escape** to quit. A gamepad uses the left stick or D-pad
 to move, South to jump, East to crouch, Start to pause, West to restart and Back
 for the controls menu. The on-screen legend always shows the current bindings.
+While playing, the window holds the mouse: moving it left or right turns the
+camera, and movement follows the camera. Pausing or opening the menu frees it.
 Losing window focus while playing pauses the game and releases held keys.
 
 While paused, press **Tab** (or gamepad Back) to rebind the six movement keys.

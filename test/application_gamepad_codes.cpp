@@ -47,6 +47,8 @@ int main() {
         keyboard_key_code(SDLK_F1) != KEY_F1 || keyboard_key_code(SDLK_F12) != KEY_F12 ||
         keyboard_key_code(SDLK_RETURN) != KEY_ENTER || keyboard_key_code(SDLK_LGUI) != KEY_LEFT_SUPER ||
         keyboard_key_code(SDLK_SLASH) != KEY_SLASH || keyboard_key_code(SDLK_0) != KEY_DIGIT_0 ||
+        keyboard_key_code(SDLK_KP_0) != KEY_KP_0 || keyboard_key_code(SDLK_KP_ENTER) != KEY_KP_ENTER ||
+        keyboard_key_code(SDLK_KP_ENTER) == KEY_ENTER || keyboard_key_code(SDLK_APPLICATION) != KEY_MENU ||
         keyboard_key_code(SDLK_PRINTSCREEN) != 0) {
         std::fprintf(stderr, "portable keyboard mapping failed\n");
         return 7;

@@ -6,6 +6,7 @@ include "./sounds.elisa"
 include "./beacons.elisa"
 include "./text.elisa"
 include "./access.elisa"
+include "./look.elisa"
 include "../../src/runtime/ui_semantics.elisa"
 include "../../src/nav/navmesh.elisa"
 include "../../src/nav/agent.elisa"
@@ -272,18 +273,26 @@ module CharacterCourse:
                 Tune::STANDING_HALF_HEIGHT)
 
         def movement_direction(input: ActionInput::Input&) -> Geometry::Vec3:
+            movement_direction_look(input, CourseLook::Look())
+
+        def movement_direction_look(input: ActionInput::Input&, look: CourseLook::Look) -> Geometry::Vec3:
             direction: mutable Geometry::Vec3 = Geometry::vec3_zero()
             direction.x <- 1.0 if ActionInput::action_down(input, CourseControls::ACTION_FORWARD)
             direction.x <- -1.0 if ActionInput::action_down(input, CourseControls::ACTION_BACKWARD)
             direction.z <- -1.0 if ActionInput::action_down(input, CourseControls::ACTION_LEFT)
             direction.z <- 1.0 if ActionInput::action_down(input, CourseControls::ACTION_RIGHT)
-            Geometry::vec3_normalize(direction)
+            Geometry::vec3_normalize(CourseLook::rotate(look, direction))
 
         def update_camera(pose: PhysicsRuntime::BodyPose) -> void error[RenderScene::RenderSceneError]:
+            try update_camera_look(pose, CourseLook::Look())
+
+        def update_camera_look(pose: PhysicsRuntime::BodyPose, look: CourseLook::Look) -> void error[RenderScene::RenderSceneError]:
+            offset: Geometry::Vec3 = CourseLook::rotate(look, Geometry::Vec3{
+                x: Tune::CAMERA_OFFSET_X, y: Tune::CAMERA_OFFSET_Y, z: Tune::CAMERA_OFFSET_Z})
             eye: Geometry::Vec3 = Geometry::Vec3{
-                x: pose.position.x + Tune::CAMERA_OFFSET_X,
-                y: pose.position.y + Tune::CAMERA_OFFSET_Y,
-                z: pose.position.z + Tune::CAMERA_OFFSET_Z}
+                x: pose.position.x + offset.x,
+                y: pose.position.y + offset.y,
+                z: pose.position.z + offset.z}
             target: Geometry::Vec3 = Geometry::Vec3{
                 x: pose.position.x,
                 y: pose.position.y + Tune::CAMERA_TARGET_HEIGHT,
@@ -339,6 +348,7 @@ module CharacterCourse:
         include "./access_test.inc"
         include "./pointer_test.inc"
         include "./pad_test.inc"
+        include "./look_test.inc"
         include "./audio_mix_test.inc"
         include "./stress_test.inc"
         include "./replay_test.inc"
@@ -420,6 +430,8 @@ module CharacterCourse:
                 return pointer_status if pointer_status != 0
                 pad_status: i32 = try pad_test()
                 return pad_status if pad_status != 0
+                look_status: i32 = look_test()
+                return look_status if look_status != 0
                 mix_status: i32 = audio_mix_test(session)
                 return mix_status if mix_status != 0
                 replay_status: i32 = try replay_digest_test(session)

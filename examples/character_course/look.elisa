@@ -1,0 +1,41 @@
+# Mouse-look for the character course. While the course is playing the window
+# holds the pointer in relative mode; horizontal motion turns an orbit camera
+# around the character, and movement keys follow the camera's heading. At a
+# zero yaw the camera offset and movement axes match the fixed course camera.
+module CourseLook:
+    public:
+        const module Tune:
+            # Radians per logical pointer unit.
+            SENSITIVITY: f32 = 0.004
+            PI: f32 = 3.14159265
+            TWO_PI: f32 = 6.2831853
+
+        struct Look:
+            yaw: mutable f32
+
+        def Look() -> Look:
+            Look{yaw: 0.0}
+
+        # Turns by a pointer delta; the yaw stays within [-pi, pi].
+        def turn(look: Look, delta_x: f32) -> Look:
+            yaw: mutable f32 = look.yaw - delta_x * Tune::SENSITIVITY
+            yaw <- yaw - Tune::TWO_PI if yaw > Tune::PI
+            yaw <- yaw + Tune::TWO_PI if yaw < -Tune::PI
+            Look{yaw: yaw}
+
+        # Rotates a vector about the vertical axis by the look's yaw.
+        def rotate(look: Look, v: Geometry::Vec3) -> Geometry::Vec3:
+            c: f32 = ElisaMath::cosf(look.yaw)
+            s: f32 = ElisaMath::sinf(look.yaw)
+            Geometry::Vec3{x: v.x * c + v.z * s, y: v.y, z: v.z * c - v.x * s}
+
+        # Consumes queued pointer events. Motion turns the camera only while
+        # relative mode holds the pointer, so a free cursor never spins it.
+        def drain(look: Look) -> Look:
+            turned: mutable Look = look
+            relative: bool = Application::relative_mouse()
+            event: mutable Application::PointerEvent = zeroed
+            while Application::next_pointer_event(&event) |turned, relative, event|:
+                if relative and event.kind == Application::PointerEventKind.Motion:
+                    turned <- turn(turned, event.delta_x)
+            turned

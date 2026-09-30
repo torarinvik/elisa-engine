@@ -12,7 +12,7 @@ module ActionInputReplay:
         # at that precision and clamped to [-1, 1].
         const VALUE_SCALE: f32 = 1048576.0
 
-        enum Kind:
+        enum EntryKind:
             Input
             Context
             Connect
@@ -23,7 +23,7 @@ module ActionInputReplay:
 
         struct Entry:
             tick: i64
-            kind: Kind
+            kind: EntryKind
             device: ActionInput::Device
             code: i64
             value_q: i64
@@ -65,7 +65,7 @@ module ActionInputReplay:
             log.dropped == 0
 
         def apply_entry(input: mutable ActionInput::Input&, entry: Entry) -> void:
-            if entry.kind == Kind.Input:
+            if entry.kind == EntryKind.Input:
                 ActionInput::apply(input, ActionInput::Event{
                     device: entry.device,
                     code: entry.code,
@@ -74,18 +74,18 @@ module ActionInputReplay:
                     released: entry.released,
                     chord_down: entry.chord_down,
                 })
-            if entry.kind == Kind.Context:
+            if entry.kind == EntryKind.Context:
                 ActionInput::set_context(input, entry.context)
-            if entry.kind == Kind.Connect:
+            if entry.kind == EntryKind.Connect:
                 ActionInput::set_connected(input, entry.device, true)
-            if entry.kind == Kind.Disconnect:
+            if entry.kind == EntryKind.Disconnect:
                 ActionInput::set_connected(input, entry.device, false)
-            if entry.kind == Kind.ClearDevice:
+            if entry.kind == EntryKind.ClearDevice:
                 ActionInput::clear_device_state(input, entry.device)
 
         def feed_event(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
             event: ActionInput::Event) -> bool:
-            entry: Entry = Entry{tick: tick, kind: Kind.Input, device: event.device,
+            entry: Entry = Entry{tick: tick, kind: EntryKind.Input, device: event.device,
                 code: event.code, value_q: quantize(event.value), pressed: event.pressed,
                 released: event.released, chord_down: event.chord_down,
                 context: ActionInput::Context.Gameplay}
@@ -95,7 +95,7 @@ module ActionInputReplay:
 
         def feed_context(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
             context: ActionInput::Context) -> bool:
-            entry: Entry = Entry{tick: tick, kind: Kind.Context, device: ActionInput::Device.Keyboard,
+            entry: Entry = Entry{tick: tick, kind: EntryKind.Context, device: ActionInput::Device.Keyboard,
                 code: 0, value_q: 0, pressed: false, released: false, chord_down: false,
                 context: context}
             recorded: bool = record(log, entry)
@@ -104,7 +104,7 @@ module ActionInputReplay:
 
         def feed_connection(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
             device: ActionInput::Device, connected: bool) -> bool:
-            entry: Entry = Entry{tick: tick, kind: Kind.Connect if connected else Kind.Disconnect,
+            entry: Entry = Entry{tick: tick, kind: EntryKind.Connect if connected else EntryKind.Disconnect,
                 device: device, code: 0, value_q: 0, pressed: false, released: false,
                 chord_down: false, context: ActionInput::Context.Gameplay}
             recorded: bool = record(log, entry)
@@ -113,7 +113,7 @@ module ActionInputReplay:
 
         def feed_clear(log: mutable Log&, input: mutable ActionInput::Input&, tick: i64,
             device: ActionInput::Device) -> bool:
-            entry: Entry = Entry{tick: tick, kind: Kind.ClearDevice, device: device,
+            entry: Entry = Entry{tick: tick, kind: EntryKind.ClearDevice, device: device,
                 code: 0, value_q: 0, pressed: false, released: false, chord_down: false,
                 context: ActionInput::Context.Gameplay}
             recorded: bool = record(log, entry)
