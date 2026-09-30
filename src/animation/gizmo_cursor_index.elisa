@@ -1,0 +1,124 @@
+# Integer rules for GizmoCursor, split out so the prover can check them: the
+# cursor's idle/dragging state machine, what each pointer event does in each
+# state, and how raw pointer events map to cursor events. The prover wants
+# single-condition guards and literal codes, so the bodies use the numbers:
+# states idle 0, dragging 1; events move 0, press 1, release 2, cancel 3,
+# none 4; actions none 0, hover 1, begin 2, update 3, commit 4, revert 5.
+module GizmoCursorIndex:
+    public:
+        const IDLE: i64 = 0
+        const DRAGGING: i64 = 1
+
+        const MOVE: i64 = 0
+        const PRESS: i64 = 1
+        const RELEASE: i64 = 2
+        const CANCEL: i64 = 3
+        const NO_EVENT: i64 = 4
+
+        const NONE: i64 = 0
+        const HOVER: i64 = 1
+        const BEGIN: i64 = 2
+        const UPDATE: i64 = 3
+        const COMMIT: i64 = 4
+        const REVERT: i64 = 5
+
+        # Pointer kind codes (motion, button) and the SDL left and right buttons.
+        const KIND_MOTION: i64 = 0
+        const KIND_BUTTON: i64 = 1
+        const LEFT: i64 = 1
+        const RIGHT: i64 = 3
+
+        # Idle: only a press on a handle (`hovered` >= 0) starts a drag.
+        def idle_next(event: i64, hovered: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1
+            ensure event < 1 or event > 1 or hovered < 0 or result == 1
+            ensure event == 1 or result == 0
+            ensure hovered >= 0 or result == 0
+            return 0 if event < 1
+            return 0 if event > 1
+            return 0 if hovered < 0
+            1
+
+        # Dragging: a release or cancel ends the drag.
+        def drag_next(event: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1
+            ensure event < 2 or event > 3 or result == 0
+            ensure event > 1 or result == 1
+            return 1 if event < 2
+            return 1 if event > 3
+            0
+
+        # State after `event` in `state` (0 or below idle, 1 or above dragging).
+        def next(state: i64, event: i64, hovered: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 1
+            return idle_next(event, hovered) if state < 1
+            drag_next(event)
+
+        # Idle: moving refreshes the hover, a press on a handle begins a drag,
+        # a press elsewhere only refreshes the hover.
+        def idle_action(event: i64, hovered: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 2
+            ensure event < 0 or event > 0 or result == 1
+            ensure event < 1 or event > 1 or hovered < 0 or result == 2
+            ensure event < 1 or event > 1 or hovered >= 0 or result == 1
+            ensure result < 2 or event == 1
+            return 0 if event < 0
+            return 1 if event < 1
+            return 0 if event > 1
+            return 1 if hovered < 0
+            2
+
+        # Dragging: moving updates, a release commits, a cancel reverts.
+        def drag_action(event: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 5
+            ensure result < 1 or result > 2
+            ensure event < 0 or event > 0 or result == 3
+            ensure event < 2 or event > 2 or result == 4
+            ensure event < 3 or event > 3 or result == 5
+            return 0 if event < 0
+            return 3 if event < 1
+            return 0 if event < 2
+            return 4 if event < 3
+            return 5 if event < 4
+            0
+
+        # What the app does for `event` in `state`; the rules are the
+        # per-state helpers' proved ensures.
+        def action(state: i64, event: i64, hovered: i64) -> i64:
+            return idle_action(event, hovered) if state < 1
+            drag_action(event)
+
+        # A left button event: a press presses, a release releases.
+        def left_event(pressed: i64) -> i64:
+            ensure result >= 1
+            ensure result <= 2
+            ensure pressed > 0 or result == 2
+            ensure pressed < 1 or result == 1
+            return 2 if pressed < 1
+            1
+
+        # A right button press cancels; anything else is no event.
+        def right_event(pressed: i64) -> i64:
+            ensure result >= 3
+            ensure result <= 4
+            ensure pressed < 1 or result == 3
+            ensure pressed > 0 or result == 4
+            return 4 if pressed < 1
+            3
+
+        # Cursor event for a raw pointer event (`pressed` 1 or 0).
+        def event_of(kind: i64, button: i64, pressed: i64) -> i64:
+            ensure result >= 0
+            ensure result <= 4
+            ensure kind < 0 or kind > 0 or result == 0
+            return 0 if kind == 0
+            return 4 if kind < 1
+            return 4 if kind > 1
+            return left_event(pressed) if button == 1
+            return right_event(pressed) if button == 3
+            4

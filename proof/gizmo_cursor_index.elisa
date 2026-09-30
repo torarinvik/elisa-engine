@@ -1,0 +1,29 @@
+include "../src/animation/gizmo_cursor_index.elisa"
+
+extend GizmoCursorIndex:
+    # The per-state helpers carry the exact rules as their own proved
+    # ensures; these wrappers restate the cases callers rely on.
+    def prove_idle_release_stays_idle(hovered: i64) -> i64:
+        ensure result == 0
+        idle_next(2, hovered)
+
+    def prove_miss_press_stays_idle(hovered: i64) -> i64:
+        requires hovered < 0
+        ensure result == 0
+        idle_next(1, hovered)
+
+    def prove_drag_ignores_press() -> i64:
+        ensure result == 1
+        drag_next(1)
+
+    def prove_drag_cancel_ends() -> i64:
+        ensure result == 0
+        drag_next(3)
+
+    def prove_drag_never_hovers(event: i64) -> i64:
+        ensure result < 1 or result > 2
+        drag_action(event)
+
+    def prove_idle_never_commits(event: i64, hovered: i64) -> i64:
+        ensure result <= 2
+        idle_action(event, hovered)

@@ -1,0 +1,72 @@
+include "../src/animation/gizmo_cursor.elisa"
+
+def near(a: f64, b: f64, e: f64) -> bool:
+    a - b < e and b - a < e
+
+# A ray straight down at (x, z).
+def down(x: f64, z: f64) -> darray[f64]:
+    [x, 5.0, z, 0.0, -1.0, 0.0]
+
+def main() -> i32:
+    # Pixel to device point.
+    p: darray[f64] = GizmoCursor::ndc(160.0, 120.0, 320.0, 240.0)
+    return 1 if p.count != 2 or p[0] != 0.0 or p[1] != 0.0
+    corner: darray[f64] = GizmoCursor::ndc(0.0, 0.0, 320.0, 240.0)
+    return 2 if corner[0] != -1.0 or corner[1] != 1.0
+    far: darray[f64] = GizmoCursor::ndc(320.0, 240.0, 320.0, 240.0)
+    return 3 if far[0] != 1.0 or far[1] != -1.0
+    return 4 if GizmoCursor::ndc(1.0, 1.0, 0.0, 240.0).count != 0 or GizmoCursor::ndc(1.0, 1.0, 320.0, -1.0).count != 0
+    # The image centre's ray runs along the camera's forward axis.
+    eye: darray[f64] = [0.0, 5.0, 0.0]
+    view: darray[f64] = [1.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, -1.0, 0.0]
+    centre: darray[f64] = SkeletonPick::perspective_ray(eye, view, 0.8, 4.0 / 3.0, p[0], p[1])
+    return 5 if not (near(centre[4], -1.0, 1.0e-12) and near(centre[3], 0.0, 1.0e-12))
+
+    basis: darray[f64] = Gizmo::world_basis()
+    origin: darray[f64] = [0.0, 0.0, 0.0]
+    c0: GizmoCursor::Cursor = GizmoCursor::Cursor()
+    # Moving over empty space hovers nothing.
+    r1: GizmoCursor::Report = GizmoCursor::feed(c0, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::MOVE, down(-0.5, -0.5))
+    return 10 if r1.action != GizmoCursorIndex::HOVER or r1.cursor.hovered != -1 or r1.cursor.state != GizmoCursorIndex::IDLE
+    # A press there does not start a drag.
+    r2: GizmoCursor::Report = GizmoCursor::feed(r1.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::PRESS, down(-0.5, -0.5))
+    return 11 if r2.cursor.state != GizmoCursorIndex::IDLE or r2.action != GizmoCursorIndex::HOVER
+    # Moving onto the x shaft hovers handle 0; pressing begins a drag on it.
+    r3: GizmoCursor::Report = GizmoCursor::feed(r2.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::MOVE, down(0.5, 0.0))
+    return 12 if r3.cursor.hovered != 0
+    r4: GizmoCursor::Report = GizmoCursor::feed(r3.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::PRESS, down(0.5, 0.0))
+    return 13 if r4.action != GizmoCursorIndex::BEGIN or r4.cursor.state != GizmoCursorIndex::DRAGGING or r4.cursor.active != 0
+    # Moving reports the x-constrained delta; z motion is dropped.
+    r5: GizmoCursor::Report = GizmoCursor::feed(r4.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::MOVE, down(0.8, 0.3))
+    return 14 if r5.action != GizmoCursorIndex::UPDATE or not (near(r5.delta[0], 0.3, 1.0e-12) and r5.delta[1] == 0.0 and r5.delta[2] == 0.0)
+    # Hover is frozen during the drag, even over another handle.
+    r6: GizmoCursor::Report = GizmoCursor::feed(r5.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::MOVE, down(0.0, 0.5))
+    return 15 if r6.cursor.hovered != 0 or r6.cursor.active != 0 or not near(r6.delta[0], -0.5, 1.0e-12)
+    # A second press mid-drag changes nothing.
+    r7: GizmoCursor::Report = GizmoCursor::feed(r6.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::PRESS, down(0.0, 0.0))
+    return 16 if r7.action != GizmoCursorIndex::NONE or r7.cursor.state != GizmoCursorIndex::DRAGGING
+    # Release commits the final delta and returns to idle.
+    r8: GizmoCursor::Report = GizmoCursor::feed(r7.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::RELEASE, down(0.9, 0.0))
+    return 17 if r8.action != GizmoCursorIndex::COMMIT or r8.cursor.state != GizmoCursorIndex::IDLE or not near(r8.delta[0], 0.4, 1.0e-12)
+    return 18 if r8.cursor.active != -1
+    # Cancel reverts with no delta.
+    r9: GizmoCursor::Report = GizmoCursor::feed(r8.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::PRESS, down(0.5, 0.0))
+    r10: GizmoCursor::Report = GizmoCursor::feed(r9.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::CANCEL, down(0.9, 0.0))
+    return 19 if r10.action != GizmoCursorIndex::REVERT or r10.cursor.state != GizmoCursorIndex::IDLE or r10.delta[0] != 0.0
+    # Rotate: press on the y ring at (0.6, 0, 0.8), move a quarter turn on.
+    q1: GizmoCursor::Report = GizmoCursor::feed(c0, 1, basis, origin, 1.0, 0.05, GizmoCursorIndex::PRESS, down(0.6, 0.8))
+    return 20 if q1.action != GizmoCursorIndex::BEGIN or q1.cursor.active != 1
+    q2: GizmoCursor::Report = GizmoCursor::feed(q1.cursor, 1, basis, origin, 1.0, 0.05, GizmoCursorIndex::MOVE, down(-0.8, 0.6))
+    return 21 if not near(q2.angle, -1.5707963267948966, 1.0e-9)
+    # A no-event leaves everything as it was.
+    n: GizmoCursor::Report = GizmoCursor::feed(r3.cursor, 0, basis, origin, 1.0, 0.05, GizmoCursorIndex::NO_EVENT, down(-0.5, -0.5))
+    return 22 if n.action != GizmoCursorIndex::NONE or n.cursor.hovered != 0
+    # Raw pointer events.
+    return 30 if GizmoCursorIndex::event_of(0, 0, 0) != GizmoCursorIndex::MOVE
+    return 31 if GizmoCursorIndex::event_of(1, 1, 1) != GizmoCursorIndex::PRESS
+    return 32 if GizmoCursorIndex::event_of(1, 1, 0) != GizmoCursorIndex::RELEASE
+    return 33 if GizmoCursorIndex::event_of(1, 3, 1) != GizmoCursorIndex::CANCEL
+    return 34 if GizmoCursorIndex::event_of(1, 3, 0) != GizmoCursorIndex::NO_EVENT
+    return 35 if GizmoCursorIndex::event_of(1, 2, 1) != GizmoCursorIndex::NO_EVENT
+    return 36 if GizmoCursorIndex::event_of(2, 1, 1) != GizmoCursorIndex::NO_EVENT
+    0
