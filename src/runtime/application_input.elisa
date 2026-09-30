@@ -149,6 +149,26 @@ extend Application:
             KEY_COMMA: i64 = 2081
             KEY_PERIOD: i64 = 2082
             KEY_SLASH: i64 = 2083
+            KEY_KP_0: i64 = 2084
+            KEY_KP_1: i64 = 2085
+            KEY_KP_2: i64 = 2086
+            KEY_KP_3: i64 = 2087
+            KEY_KP_4: i64 = 2088
+            KEY_KP_5: i64 = 2089
+            KEY_KP_6: i64 = 2090
+            KEY_KP_7: i64 = 2091
+            KEY_KP_8: i64 = 2092
+            KEY_KP_9: i64 = 2093
+            KEY_KP_DIVIDE: i64 = 2094
+            KEY_KP_MULTIPLY: i64 = 2095
+            KEY_KP_MINUS: i64 = 2096
+            KEY_KP_PLUS: i64 = 2097
+            KEY_KP_ENTER: i64 = 2098
+            KEY_KP_PERIOD: i64 = 2099
+            KEY_NUM_LOCK: i64 = 2100
+            KEY_SCROLL_LOCK: i64 = 2101
+            KEY_PAUSE: i64 = 2102
+            KEY_MENU: i64 = 2103
 
         @callconv(c)
         extern elisa_application_v1_next_input_event_token() -> i64
@@ -275,6 +295,26 @@ extend Application:
             Comma
             Period
             Slash
+            Numpad0
+            Numpad1
+            Numpad2
+            Numpad3
+            Numpad4
+            Numpad5
+            Numpad6
+            Numpad7
+            Numpad8
+            Numpad9
+            NumpadDivide
+            NumpadMultiply
+            NumpadMinus
+            NumpadPlus
+            NumpadEnter
+            NumpadPeriod
+            NumLock
+            ScrollLock
+            Pause
+            Menu
 
         enum GamepadButtonCode:
             South
@@ -431,6 +471,26 @@ extend Application:
                 KeyboardKeyCode.Comma: PortableInputCodes::KEY_COMMA
                 KeyboardKeyCode.Period: PortableInputCodes::KEY_PERIOD
                 KeyboardKeyCode.Slash: PortableInputCodes::KEY_SLASH
+                KeyboardKeyCode.Numpad0: PortableInputCodes::KEY_KP_0
+                KeyboardKeyCode.Numpad1: PortableInputCodes::KEY_KP_1
+                KeyboardKeyCode.Numpad2: PortableInputCodes::KEY_KP_2
+                KeyboardKeyCode.Numpad3: PortableInputCodes::KEY_KP_3
+                KeyboardKeyCode.Numpad4: PortableInputCodes::KEY_KP_4
+                KeyboardKeyCode.Numpad5: PortableInputCodes::KEY_KP_5
+                KeyboardKeyCode.Numpad6: PortableInputCodes::KEY_KP_6
+                KeyboardKeyCode.Numpad7: PortableInputCodes::KEY_KP_7
+                KeyboardKeyCode.Numpad8: PortableInputCodes::KEY_KP_8
+                KeyboardKeyCode.Numpad9: PortableInputCodes::KEY_KP_9
+                KeyboardKeyCode.NumpadDivide: PortableInputCodes::KEY_KP_DIVIDE
+                KeyboardKeyCode.NumpadMultiply: PortableInputCodes::KEY_KP_MULTIPLY
+                KeyboardKeyCode.NumpadMinus: PortableInputCodes::KEY_KP_MINUS
+                KeyboardKeyCode.NumpadPlus: PortableInputCodes::KEY_KP_PLUS
+                KeyboardKeyCode.NumpadEnter: PortableInputCodes::KEY_KP_ENTER
+                KeyboardKeyCode.NumpadPeriod: PortableInputCodes::KEY_KP_PERIOD
+                KeyboardKeyCode.NumLock: PortableInputCodes::KEY_NUM_LOCK
+                KeyboardKeyCode.ScrollLock: PortableInputCodes::KEY_SCROLL_LOCK
+                KeyboardKeyCode.Pause: PortableInputCodes::KEY_PAUSE
+                KeyboardKeyCode.Menu: PortableInputCodes::KEY_MENU
 
         def gamepad_axis_code(axis: GamepadAxisCode) -> i64:
             match axis:

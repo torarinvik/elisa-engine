@@ -167,6 +167,26 @@ enum ElisaKeyboardCode : int32_t {
     KEY_COMMA = 2081,
     KEY_PERIOD = 2082,
     KEY_SLASH = 2083,
+    KEY_KP_0 = 2084,
+    KEY_KP_1 = 2085,
+    KEY_KP_2 = 2086,
+    KEY_KP_3 = 2087,
+    KEY_KP_4 = 2088,
+    KEY_KP_5 = 2089,
+    KEY_KP_6 = 2090,
+    KEY_KP_7 = 2091,
+    KEY_KP_8 = 2092,
+    KEY_KP_9 = 2093,
+    KEY_KP_DIVIDE = 2094,
+    KEY_KP_MULTIPLY = 2095,
+    KEY_KP_MINUS = 2096,
+    KEY_KP_PLUS = 2097,
+    KEY_KP_ENTER = 2098,
+    KEY_KP_PERIOD = 2099,
+    KEY_NUM_LOCK = 2100,
+    KEY_SCROLL_LOCK = 2101,
+    KEY_PAUSE = 2102,
+    KEY_MENU = 2103,
 };
 
 constexpr int32_t keyboard_key_code(SDL_Keycode key) {
@@ -254,6 +274,26 @@ constexpr int32_t keyboard_key_code(SDL_Keycode key) {
     case SDLK_COMMA: return KEY_COMMA;
     case SDLK_PERIOD: return KEY_PERIOD;
     case SDLK_SLASH: return KEY_SLASH;
+    case SDLK_KP_0: return KEY_KP_0;
+    case SDLK_KP_1: return KEY_KP_1;
+    case SDLK_KP_2: return KEY_KP_2;
+    case SDLK_KP_3: return KEY_KP_3;
+    case SDLK_KP_4: return KEY_KP_4;
+    case SDLK_KP_5: return KEY_KP_5;
+    case SDLK_KP_6: return KEY_KP_6;
+    case SDLK_KP_7: return KEY_KP_7;
+    case SDLK_KP_8: return KEY_KP_8;
+    case SDLK_KP_9: return KEY_KP_9;
+    case SDLK_KP_DIVIDE: return KEY_KP_DIVIDE;
+    case SDLK_KP_MULTIPLY: return KEY_KP_MULTIPLY;
+    case SDLK_KP_MINUS: return KEY_KP_MINUS;
+    case SDLK_KP_PLUS: return KEY_KP_PLUS;
+    case SDLK_KP_ENTER: return KEY_KP_ENTER;
+    case SDLK_KP_PERIOD: return KEY_KP_PERIOD;
+    case SDLK_NUMLOCKCLEAR: return KEY_NUM_LOCK;
+    case SDLK_SCROLLLOCK: return KEY_SCROLL_LOCK;
+    case SDLK_PAUSE: return KEY_PAUSE;
+    case SDLK_APPLICATION: return KEY_MENU;
     default: return 0;
     }
 }
