@@ -1,3 +1,23 @@
+// Wicked reads a submitted pose's bone transforms during the next device
+// submission and copies them into its own per-frame GPU buffers. That frame
+// number is recorded at submit; the bridge buffer retires only after it.
+uint64_t animation_pose_reading_frame() {
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    return device == nullptr ? UINT64_MAX : device->GetFrameCount() + 1;
+}
+
+// ASSET_PENDING while the reading frame has not been submitted. Once it has,
+// wait for that one frame when the GPU has not finished it yet.
+int32_t wait_animation_pose_consumed(const InstanceSlot& instance) {
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    if (device->GetFrameCount() < instance.animation_consume_frame) return ELISA_RENDER_SCENE_ASSET_PENDING;
+    if (!device->SupportsFrameCompletionQuery() || !device->IsFrameComplete(instance.animation_consume_frame)) {
+        device->WaitForGPU();
+    }
+    return ELISA_RENDER_SCENE_OK;
+}
+
 bool ensure_animation_submission(RenderSceneService& state, size_t slot) {
     if (state.animation_submission == nullptr) return false;
     InstanceSlot& instance = state.instances[slot];
@@ -38,7 +58,9 @@ extern "C" int32_t elisa_render_scene_v1_submit_animation_pose(
         state.instances[slot].animation_submission,
         reinterpret_cast<const XMFLOAT4X4*>(submission->bones), submission->bone_count,
         submission->morphs, submission->morph_count);
-    return submitted ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    if (!submitted) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    state.instances[slot].animation_consume_frame = animation_pose_reading_frame();
+    return ELISA_RENDER_SCENE_OK;
 }
 
 extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle) {
@@ -49,10 +71,14 @@ extern "C" int32_t elisa_render_scene_v1_complete_animation_pose(int64_t handle)
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (state.animation_submission == nullptr || state.instances[slot].animation_submission.owner == 0 ||
-        !state.animation_submission->complete(state.instances[slot].animation_submission)) {
+        !state.animation_submission->pending(state.instances[slot].animation_submission)) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
-    return ELISA_RENDER_SCENE_OK;
+    // The pose stays owned until the device frame that reads it has run.
+    const int32_t consumed = wait_animation_pose_consumed(state.instances[slot]);
+    if (consumed != ELISA_RENDER_SCENE_OK) return consumed;
+    return state.animation_submission->complete(state.instances[slot].animation_submission)
+        ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_INVALID_ARGUMENT;
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)

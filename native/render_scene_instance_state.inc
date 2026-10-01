@@ -25,6 +25,10 @@ struct InstanceSlot {
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
     std::vector<float> morph_default_weights;
     probe::NativeAnimationHandle animation_submission{};
+    // Decoded cooked asset shared by an animated source and its clones.
+    std::shared_ptr<const elisa::assets::CookedGeometry> animated_asset;
+    // Device frame that reads the in-flight pose; completion waits for it.
+    uint64_t animation_consume_frame = 0;
     int32_t animation_clip = -1;
     int32_t previous_animation_clip = -1;
     float animation_time = 0.0f;

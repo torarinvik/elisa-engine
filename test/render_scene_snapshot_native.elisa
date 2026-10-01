@@ -586,9 +586,9 @@ module RenderSceneSnapshotNativeTests:
                 animated_handle, 2.0, 0.0, 1) == Stress::ANIMATION_STATE_MATCH_ALL
             return 129 if submit_animated != 0 or not animated_pose_ready
             complete_animated: i32 = elisa_render_scene_v1_complete_animation_pose(animated_handle)
-            animated_pose_completed: bool = elisa_render_scene_v1_test_animation_submission(
-                animated_handle, 2.0, 0.0, 0) == Stress::ANIMATION_STATE_MATCH_ALL
-            return 130 if complete_animated != 0 or not animated_pose_completed
+            animated_pose_held: bool = elisa_render_scene_v1_test_animation_submission(
+                animated_handle, 2.0, 0.0, 1) == Stress::ANIMATION_STATE_MATCH_ALL
+            return 130 if complete_animated != -11 or not animated_pose_held
             animated_cleared: bool = catch RenderSnapshotScene::clear(&animated_presenter):
                 ok: true
                 error failure: false

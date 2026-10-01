@@ -1,0 +1,20 @@
+# Runs the late render-scene groups so the main smoke stays within its line
+# budget. Each failure is logged as its exit-code group and case number.
+include "./render_scene_clearcoat_native.elisa"
+include "./render_scene_mirrored_normal_native.elisa"
+include "./render_scene_animation_clone_native.elisa"
+
+module RenderSceneLateGroupsNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
+
+    public:
+        def exercise() -> i32:
+            clearcoat_status: i32 = RenderSceneClearcoatNativeTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(233, clearcoat_status) if clearcoat_status != 0
+            mirrored_normal_status: i32 = RenderSceneMirroredNormalNativeTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(231, mirrored_normal_status) if mirrored_normal_status != 0
+            clone_status: i32 = RenderSceneAnimationCloneNativeTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(236, clone_status) if clone_status != 0
+            0

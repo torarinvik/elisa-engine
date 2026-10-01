@@ -1,13 +1,25 @@
 // Private implementation fragment: cooked mesh loading and instance creation.
+// Skinned, clip-carrying or morphing geometry stays decoded behind a shared
+// pointer so animated clones reuse it instead of reloading the package.
+bool animated_cooked_asset(const elisa::assets::CookedGeometry& geometry) {
+    return !geometry.skin_joints.empty() || !geometry.animation_clips.empty() ||
+        !geometry.morph_targets.empty();
+}
+
 // Builds a live instance from already decoded cooked geometry. A non-null
 // `base_map` becomes the material's base-colour texture, so the GPU resource
-// it names stays referenced until the instance is destroyed.
-int64_t install_cooked_mesh(RenderSceneService& state, elisa::assets::CookedGeometry& geometry,
+// it names stays referenced until the instance is destroyed. Wicked deforms
+// per mesh component, so every instance gets its own mesh, armature and
+// bones; an animated instance keeps a reference to the shared decoded asset.
+int64_t install_cooked_mesh_asset(RenderSceneService& state,
+    const std::shared_ptr<const elisa::assets::CookedGeometry>& asset,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,
     float red, float green, float blue, float alpha,
     const wi::graphics::Texture* base_map) {
+    if (asset == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    const elisa::assets::CookedGeometry& geometry = *asset;
     const size_t slot = find_free_slot(state);
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
@@ -28,6 +40,8 @@ int64_t install_cooked_mesh(RenderSceneService& state, elisa::assets::CookedGeom
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};
+    instance.animated_asset.reset();
+    instance.animation_consume_frame = 0;
     clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
     const std::string name = "elisa_cooked_mesh_" + std::to_string(slot) + "_" + std::to_string(generation);
@@ -116,12 +130,29 @@ int64_t install_cooked_mesh(RenderSceneService& state, elisa::assets::CookedGeom
 
     instance.entity = entity;
     instance.joint_entities = std::move(joint_entities);
-    instance.skin_joints = std::move(geometry.skin_joints);
-    instance.animation_clips = std::move(geometry.animation_clips);
-    instance.morph_default_weights = std::move(geometry.morph_default_weights);
+    instance.skin_joints = geometry.skin_joints;
+    instance.animation_clips = geometry.animation_clips;
+    instance.morph_default_weights = geometry.morph_default_weights;
+    if (animated_cooked_asset(geometry)) instance.animated_asset = asset;
     instance.generation = generation;
     instance.live = true;
     return int64_t(encode_handle(slot, generation));
+}
+
+int64_t install_cooked_mesh(RenderSceneService& state, elisa::assets::CookedGeometry& geometry,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha,
+    const wi::graphics::Texture* base_map) {
+    std::shared_ptr<const elisa::assets::CookedGeometry> asset;
+    try {
+        asset = std::make_shared<const elisa::assets::CookedGeometry>(std::move(geometry));
+    } catch (...) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
+    return install_cooked_mesh_asset(state, asset, px, py, pz, qx, qy, qz, qw, sx, sy, sz,
+        red, green, blue, alpha, base_map);
 }
 
 

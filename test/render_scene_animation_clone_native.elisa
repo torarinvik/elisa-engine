@@ -1,0 +1,147 @@
+# Native coverage for animated clones (group 236): clones reuse the source's
+# decoded cooked package but own their Wicked mesh, armature and bones, so
+# separately submitted poses move separate bones and bounds. A submitted pose
+# stays in flight until a rendered frame has read it, and the shared asset
+# outlives the source while any clone still uses it.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_animation_submission.elisa"
+
+module RenderSceneAnimationCloneNativeTests:
+    private:
+        const SOURCE_X: f32 = 1.5
+        const CLONE_X: f32 = -1.0
+        const LATE_X: f32 = 0.5
+        const ZERO_MORPH: f32 = 0.0
+        const ANIMATION_STATE_MATCH_ALL: i32 = 31
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animated_asset_shared(first: i64,
+            second: i64, expected_owners: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animated_asset_owners(handle: i64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_instances(
+            first_handle: i64, first_x: f32,
+            second_handle: i64, second_x: f32,
+            expected_pending: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_submission(handle: i64,
+            expected_x: f32, expected_morph: f32, expected_pending: i32) -> i32
+
+        def tint() -> RenderScene::Color:
+            RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}
+
+        # The two-bone morphed rig: bone 0 shifted on x, bone 1 at rest.
+        def shifted_pose(x: f32) -> RenderScene::AnimationPose error[RenderScene::RenderSceneError]:
+            pose: mutable RenderScene::AnimationPose = RenderScene::AnimationPose()
+            shifted: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: x, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }
+            try RenderScene::set_bone_transform(&pose, 0, shifted)
+            try RenderScene::set_bone_transform(&pose, 1, Geometry::transform_identity())
+            try RenderScene::set_morph_weight(&pose, 0, ZERO_MORPH)
+            pose
+
+        def submit_shifted(handle: RenderScene::InstanceHandle, x: f32) -> i32:
+            pose: mutable RenderScene::AnimationPose = catch shifted_pose(x):
+                value: value
+                error failure: return 1
+            catch RenderScene::submit_animation_pose(handle, &pose):
+                ok: 0
+                error failure: 2
+
+        def complete_code(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::complete_animation_pose(handle):
+                ok: 0
+                RenderScene::RenderSceneError.AssetPending: 1
+                error failure: 2
+
+        def state_code(handle: RenderScene::InstanceHandle) -> i32:
+            state: RenderScene::AnimationPoseState = catch RenderScene::animation_pose_state(handle):
+                value: value
+                error failure: return -1
+            return 0 if state == RenderScene::AnimationPoseState.Idle
+            return 1 if state == RenderScene::AnimationPoseState.InFlight
+            2
+
+        def static_clone_code(box: RenderScene::InstanceHandle) -> i32:
+            clone: RenderScene::InstanceHandle = catch RenderScene::create_animated_mesh_instance(
+                box, Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 1
+            _ = catch RenderScene::destroy(clone):
+                ok: 0
+                error failure: 0
+            0
+
+        def static_clone_kind(box: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::create_animated_mesh_instance(box, Geometry::transform_identity(), tint()):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+
+        def destroy_code(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::destroy(handle):
+                ok: 0
+                error failure: 1
+
+    public:
+        def exercise() -> i32:
+            instances_before: u64 = RenderScene::instance_count()
+            source: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 1
+            raw_source: i64 = RenderScene::native_smoke_handle(source)
+            return 2 if elisa_render_scene_v1_test_animated_asset_owners(raw_source) != 1
+            clone: RenderScene::InstanceHandle = catch RenderScene::create_animated_mesh_instance(
+                source, Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 3
+            raw_clone: i64 = RenderScene::native_smoke_handle(clone)
+            return 4 if elisa_render_scene_v1_test_animated_asset_shared(raw_source, raw_clone, 2) != 1
+            box: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Box,
+                Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 5
+            return 6 if static_clone_kind(box) != 1 or static_clone_code(box) != 1
+            return 7 if destroy_code(box) != 0
+            return 8 if state_code(source) != 0
+            return 9 if submit_shifted(source, SOURCE_X) != 0 or submit_shifted(clone, CLONE_X) != 0
+            # No frame has read either pose yet: both stay owned and in flight.
+            return 10 if state_code(source) != 1 or complete_code(source) != 1
+            return 11 if elisa_render_scene_v1_test_animation_submission(raw_source, SOURCE_X,
+                ZERO_MORPH, 1) != ANIMATION_STATE_MATCH_ALL
+            return 12 if Application::pump() != Application::PumpStatus.Running
+            # Wicked's armature update moved each instance's own bone and bounds.
+            return 13 if elisa_render_scene_v1_test_animation_instances(raw_source, SOURCE_X,
+                raw_clone, CLONE_X, 1) != 1
+            return 14 if state_code(source) < 1 or complete_code(source) != 0 or complete_code(clone) != 0
+            return 15 if state_code(source) != 0 or state_code(clone) != 0
+            return 16 if elisa_render_scene_v1_test_animation_instances(raw_source, SOURCE_X,
+                raw_clone, CLONE_X, 0) != 1
+            return 17 if destroy_code(source) != 0
+            return 18 if elisa_render_scene_v1_test_animated_asset_owners(raw_clone) != 1
+            late: RenderScene::InstanceHandle = catch RenderScene::create_animated_mesh_instance(
+                clone, Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 19
+            raw_late: i64 = RenderScene::native_smoke_handle(late)
+            return 20 if elisa_render_scene_v1_test_animated_asset_shared(raw_clone, raw_late, 2) != 1
+            return 21 if submit_shifted(late, LATE_X) != 0 or submit_shifted(clone, SOURCE_X) != 0
+            return 22 if Application::pump() != Application::PumpStatus.Running
+            return 23 if elisa_render_scene_v1_test_animation_instances(raw_clone, SOURCE_X,
+                raw_late, LATE_X, 1) != 1
+            return 24 if complete_code(late) != 0 or complete_code(clone) != 0
+            return 25 if elisa_render_scene_v1_test_animation_submission(raw_late, LATE_X,
+                ZERO_MORPH, 0) != ANIMATION_STATE_MATCH_ALL
+            return 26 if destroy_code(clone) != 0
+            return 27 if elisa_render_scene_v1_test_animated_asset_owners(raw_late) != 1
+            return 28 if destroy_code(late) != 0
+            return 29 if RenderScene::instance_count() != instances_before
+            0

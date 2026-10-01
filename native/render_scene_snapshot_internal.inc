@@ -428,6 +428,8 @@ void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) 
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};
+    instance.animated_asset.reset();
+    instance.animation_consume_frame = 0;
     clear_animation_state(instance);
     instance.live = false;
 }

@@ -400,6 +400,7 @@ group G failed at case N` to stderr, then exits G.
 | 232 | `render_scene_selection_native.elisa` | logged |
 | 234 | `render_scene_ktx2_budget_native.elisa` | logged |
 | 235 | `render_scene_hot_reload_native.elisa` | logged |
+| 236 | `render_scene_animation_clone_native.elisa` (run by `render_scene_late_groups_native.elisa`) | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

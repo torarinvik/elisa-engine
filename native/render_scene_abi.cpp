@@ -485,6 +485,8 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};
+    instance.animated_asset.reset();
+    instance.animation_consume_frame = 0;
     clear_animation_state(instance);
     const uint64_t generation = instance.generation + 1;
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
@@ -540,6 +542,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_asset_watch_abi.inc"
 #include "render_scene_animation_abi.inc"
 #include "render_scene_animation_submission_abi.inc"
+#include "render_scene_animation_clone_abi.inc"
 #include "render_scene_effects_abi.inc"
 #include "render_scene_material_abi.inc"
 #include "render_scene_environment_abi.inc"

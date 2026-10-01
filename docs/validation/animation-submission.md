@@ -23,3 +23,27 @@ submission, verifies explicit completion for both instances, and destroys both
 instances. The native bridge probe independently submits a morph weight and
 checks Wicked's morph-target state and owner validation. Elisa-driven runtime
 scheduling remains open R08 work.
+
+## Animated clones and device-consumed completion (2026-10-02)
+
+`RenderScene::create_animated_mesh_instance(source, transform, color)` clones
+a skinned or morphed cooked instance. Wicked deforms per mesh component, so
+each clone gets its own mesh, armature and bones, while the decoded cooked
+asset (geometry, joints, clips, morph defaults) is held once through a
+`shared_ptr` that every clone retains. The asset outlives a destroyed source.
+Static or non-animated sources are rejected with `InvalidValue`.
+
+A submitted pose now records the device frame that will read it
+(`GetFrameCount() + 1`). `complete_animation_pose` returns `AssetPending`
+until that frame has been submitted, then waits on the GPU if the frame has
+not finished, so the in-flight buffer is released only after device
+consumption. `RenderScene::animation_pose_state` reports Idle, InFlight or
+Consumed.
+
+Evidence: render smoke group 236 (`test/render_scene_animation_clone_native.elisa`)
+checks one shared asset with distinct entities, meshes, armatures and bones;
+static-clone rejection; separate poses moving separate bones and bounds after
+a pump; `AssetPending` before any frame; asset ownership after the source and
+then the first clone are destroyed; and instance-count cleanup. Negative
+controls: not retaining the asset fails 236 case 2; skipping the consumption
+wait fails group 227 case 130.

@@ -26,6 +26,15 @@ extend RenderScene:
         @callconv(c)
         extern elisa_render_scene_v1_complete_animation_pose(handle: i64) -> i32
 
+        @callconv(c)
+        extern elisa_render_scene_v1_create_animated_mesh_instance(source_handle: i64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32,
+            red: f32, green: f32, blue: f32, alpha: f32) -> i64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_animation_pose_state(handle: i64) -> i32
+
     public:
         struct AnimationPose:
             private:
@@ -58,5 +67,37 @@ extend RenderScene:
             try check_status(elisa_render_scene_v1_submit_animation_pose(handle.native_value,
                 &pose.native))
 
+        # Retire the in-flight pose. AssetPending means no frame has read it
+        # yet; once one has, this waits for that frame on the device if needed.
         def complete_animation_pose(handle: InstanceHandle) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_complete_animation_pose(handle.native_value))
+
+        enum AnimationPoseState:
+            Idle
+            InFlight
+            Consumed
+
+        # Non-blocking: whether a submitted pose is still being read by the device.
+        def animation_pose_state(handle: InstanceHandle) -> AnimationPoseState error[RenderSceneError]:
+            status: i32 = elisa_render_scene_v1_animation_pose_state(handle.native_value)
+            return AnimationPoseState.Idle if status == 0
+            return AnimationPoseState.InFlight if status == 1
+            return AnimationPoseState.Consumed if status == 2
+            try check_status(status)
+            raise RenderSceneError.BackendFailure
+
+        # Another animated instance of a skinned, clip-carrying or morphing
+        # cooked source. It reuses the source's decoded package (no reload)
+        # and gets its own Wicked mesh, armature, bones, clip playback and pose
+        # submission. Static sources use create_mesh_instance instead.
+        def create_animated_mesh_instance(source: InstanceHandle, transform: Geometry::Transform,
+            color: Color) -> InstanceHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_animated_mesh_instance(source.native_value,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z,
+                color.red, color.green, color.blue, color.alpha)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            InstanceHandle{native_value: native_value}
