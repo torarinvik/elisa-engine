@@ -5,6 +5,56 @@ include "../src/animation/overlay_lines.elisa"
 
 module RenderSceneDebugNativeTests:
     private:
+        extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
+
+        # A dense magenta patch of lines over x 1..3, z -1..1 at height 0.05:
+        # Elisa world +X must land on the right of the smoke camera's frame.
+        def patch() -> darray[f64]:
+            out: mutable darray[f64] = []
+            for i in 0..<201 |out|:
+                z: f64 = -1.0 + 0.01 * i.i64().f64()
+                out.push(1.0)
+                out.push(0.05)
+                out.push(z)
+                out.push(3.0)
+                out.push(0.05)
+                out.push(z)
+                out.push(1.0)
+                out.push(0.0)
+                out.push(1.0)
+                out.push(1.0)
+            out
+
+        def absolute(value: f32) -> f32:
+            value if value >= 0.0 else 0.0 - value
+
+        # Case 46: the camera; 47: the patch; 48: probe; 49: right side
+        # unchanged; 50: mirrored left side changed.
+        def exercise_handedness() -> i32:
+            camera: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 6.0, z: 8.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 46 if camera != 0 or Application::pump() != Application::PumpStatus.Running
+            right_before: f32 = elisa_render_scene_v1_test_last_frame_luminance(HANDED_RIGHT, HANDED_ROW)
+            left_before: f32 = elisa_render_scene_v1_test_last_frame_luminance(1000 - HANDED_RIGHT, HANDED_ROW)
+            chunk: mutable RenderScene::DebugLineChunk = RenderScene::DebugLineChunk()
+            records: darray[f64] = patch()
+            queued: usize = catch RenderScene::debug_line_records(records, false, chunk):
+                value: value
+                error failure: return 47
+            return 47 if queued != 201 or Application::pump() != Application::PumpStatus.Running
+            right_after: f32 = elisa_render_scene_v1_test_last_frame_luminance(HANDED_RIGHT, HANDED_ROW)
+            left_after: f32 = elisa_render_scene_v1_test_last_frame_luminance(1000 - HANDED_RIGHT, HANDED_ROW)
+            return 48 if right_before < 0.0 or left_before < 0.0 or right_after < 0.0 or left_after < 0.0
+            return 49 if absolute(right_after - right_before) < 0.1
+            return 50 if absolute(left_after - left_before) > 0.05
+            0
+
+        const HANDED_RIGHT: u32 = 620
+        const HANDED_ROW: u32 = 500
+
         def save_capture(environment_name: cstr) -> bool:
             path: cstr = Application::environment_value(environment_name)
             path != "" and Application::save_screenshot(path)
@@ -232,4 +282,4 @@ module RenderSceneDebugNativeTests:
                 ok: 0
                 error failure: 1
             return 13 if cleared_after_flush != 0
-            0
+            exercise_handedness()

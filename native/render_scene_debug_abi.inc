@@ -25,8 +25,10 @@ extern "C" int32_t elisa_render_scene_v1_debug_box(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return state.debug_draw.box(XMFLOAT3(min_x, min_y, min_z),
-        XMFLOAT3(max_x, max_y, max_z), XMFLOAT4(red, green, blue, alpha),
+    // Reflecting X swaps which corner is smaller on that axis.
+    const XMFLOAT3 low = probe::coordinates::to_wicked(max_x, min_y, min_z);
+    const XMFLOAT3 high = probe::coordinates::to_wicked(min_x, max_y, max_z);
+    return state.debug_draw.box(low, high, XMFLOAT4(red, green, blue, alpha),
         depth_tested != 0) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_CAPACITY;
 }
 
@@ -42,8 +44,8 @@ extern "C" int32_t elisa_render_scene_v1_debug_line(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return state.debug_draw.line(XMFLOAT3(start_x, start_y, start_z),
-        XMFLOAT3(end_x, end_y, end_z), XMFLOAT4(red, green, blue, alpha),
+    return state.debug_draw.line(probe::coordinates::to_wicked(start_x, start_y, start_z),
+        probe::coordinates::to_wicked(end_x, end_y, end_z), XMFLOAT4(red, green, blue, alpha),
         depth_tested != 0) ? ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_CAPACITY;
 }
 
@@ -57,7 +59,7 @@ extern "C" int32_t elisa_render_scene_v1_debug_text(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return state.debug_draw.text(XMFLOAT3(x, y, z), text,
+    return state.debug_draw.text(probe::coordinates::to_wicked(x, y, z), text,
         XMFLOAT4(red, green, blue, alpha), depth_tested != 0) ?
         ELISA_RENDER_SCENE_OK : ELISA_RENDER_SCENE_CAPACITY;
 }
@@ -75,7 +77,18 @@ extern "C" int32_t elisa_render_scene_v1_debug_line_chunk(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return state.debug_draw.line_batch(chunk->values, chunk->count, chunk->depth_tested != 0) ?
+    // Records arrive in Elisa world space; reflect both endpoints into Wicked.
+    float values[ELISA_RENDER_SCENE_DEBUG_LINE_CHUNK * ELISA_RENDER_SCENE_DEBUG_LINE_VALUES];
+    for (uint32_t index = 0; index < chunk->count; ++index) {
+        const float* v = chunk->values + index * ELISA_RENDER_SCENE_DEBUG_LINE_VALUES;
+        float* out = values + index * ELISA_RENDER_SCENE_DEBUG_LINE_VALUES;
+        const XMFLOAT3 start = probe::coordinates::to_wicked(v[0], v[1], v[2]);
+        const XMFLOAT3 end = probe::coordinates::to_wicked(v[3], v[4], v[5]);
+        out[0] = start.x; out[1] = start.y; out[2] = start.z;
+        out[3] = end.x; out[4] = end.y; out[5] = end.z;
+        for (uint32_t c = 6; c < ELISA_RENDER_SCENE_DEBUG_LINE_VALUES; ++c) out[c] = v[c];
+    }
+    return state.debug_draw.line_batch(values, chunk->count, chunk->depth_tested != 0) ?
         int32_t(chunk->count) : ELISA_RENDER_SCENE_CAPACITY;
 }
 
@@ -96,7 +109,16 @@ extern "C" int32_t elisa_render_scene_v1_debug_text_chunk(
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
-    return state.debug_draw.text_batch(chunk->values, chunk->bytes, chunk->lengths,
+    // Label anchors arrive in Elisa world space; reflect them into Wicked.
+    float values[ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK * ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES];
+    for (uint32_t index = 0; index < chunk->count; ++index) {
+        const float* v = chunk->values + index * ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES;
+        float* out = values + index * ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES;
+        const XMFLOAT3 anchor = probe::coordinates::to_wicked(v[0], v[1], v[2]);
+        out[0] = anchor.x; out[1] = anchor.y; out[2] = anchor.z;
+        for (uint32_t c = 3; c < ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES; ++c) out[c] = v[c];
+    }
+    return state.debug_draw.text_batch(values, chunk->bytes, chunk->lengths,
         ELISA_RENDER_SCENE_DEBUG_TEXT_STRIDE, chunk->count, chunk->depth_tested != 0) ?
         int32_t(chunk->count) : ELISA_RENDER_SCENE_CAPACITY;
 }

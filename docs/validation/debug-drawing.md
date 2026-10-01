@@ -88,3 +88,16 @@ probe checks the same rejections on the bridge, directly. Mutating the
 text-total and anchor-count checks fails the smoke test with codes 43 and 45.
 Mutating the length checks passes, because the native side rejects those labels
 too.
+
+## Handedness (2026-10-01)
+
+Debug boxes, lines and text anchors now pass through
+`probe::coordinates::to_wicked` in native/render_scene_debug_abi.inc, like
+meshes and pick rays; before this they reached Wicked unconverted and drew
+mirrored in x. Group 231 checks it with a magenta patch at Elisa x 1..3: the
+right side of the frame (x_permille 620) must change and the mirrored left
+side (380) must not. Cases: 46 camera/pump, 47 queue, 48 probe, 49 right side
+unchanged, 50 left side changed. Negative control: passing the unconverted
+chunk to `line_batch` again makes the focused debug smoke exit 49. The
+skeleton display test, which had placed its skeleton at negative x to
+compensate, now uses the panel's real Elisa x.

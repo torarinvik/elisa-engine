@@ -73,8 +73,8 @@ mesh with placement metadata draws through child objects, so the panel stayed
 visible. `set_visible` now hides and shows those children too; it checks
 them all before changing any.
 
-Wicked's view is left-handed here: +x draws to the left of the screen, so
-the skeleton sits at negative x to lie under the panel.
+Debug lines go through `to_wicked` like meshes (since 2026-10-01), so the
+skeleton sits at the panel's Elisa x (1..2.9) to lie under it.
 
 ## Still open
 
