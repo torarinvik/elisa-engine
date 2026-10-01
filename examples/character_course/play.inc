@@ -305,6 +305,11 @@
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
                 error failure: return 34
+            # Dynamic crates the player can push; Q/L save and load their
+            # whole World through WorldSaveLoad alongside the checkpoint.
+            props: mutable CourseProps::Props = catch CourseProps::create(session):
+                value: value
+                error failure: return 35
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
@@ -313,7 +318,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -414,7 +419,7 @@
                             checkpoint_stored: bool = catch CourseProgress::save(&checkpoint):
                                 ok: true
                                 error failure: false
-                            stored: bool = checkpoint_stored and CourseBeacons::save(beacons)
+                            stored: bool = checkpoint_stored and CourseBeacons::save(beacons) and CourseProps::save(props)
                             if stored:
                                 _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_SAVE, frame.elapsed_nanos)
@@ -425,6 +430,7 @@
                             if loaded.status == CourseProgress::LoadStatus.Loaded:
                                 character <- try apply_checkpoint(session, character, loaded.checkpoint)
                                 beacons_loaded: i32 = try CourseBeacons::load(&beacons)
+                                props_loaded: i32 = try CourseProps::load(session, &props)
                                 state.phase <- phase_from_code(loaded.checkpoint.phase)
                                 state.attempts <- loaded.checkpoint.attempts
                                 crouched <- loaded.checkpoint.crouched
@@ -439,9 +445,9 @@
                                 _ = try update_avatar(avatar, loaded_pose, crouched)
                                 _ = try update_camera_look(loaded_pose, look)
                                 _ = try refresh_status(instruction, state, crouched)
-                                if beacons_loaded != 0:
+                                if beacons_loaded != 0 or props_loaded != 0:
                                     _ = try RenderScene::set_overlay_text(instruction,
-                                        "Checkpoint loaded; saved beacons unreadable, current kept")
+                                        "Checkpoint loaded; saved beacons or crates unreadable, current kept")
                             else:
                                 _ = try RenderScene::set_overlay_text(instruction, load_message(loaded.status))
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_PAUSE):
@@ -486,6 +492,7 @@
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
                             update_outcome(&state, pose.position)
+                            try CourseProps::sync(session, &props)
                             newly_lit: usize = try CourseBeacons::update(&beacons, pose.position)
                             if newly_lit > 0:
                                 _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
@@ -528,6 +535,7 @@
             _ = ActionInputStore::save_recording(RECORDING_KEY, &recording, &no_pointer)
             _ = CourseSounds::stop(&sounds)
             try CourseBeacons::release(&beacons)
+            try CourseProps::release(session, &props)
             try release_legend(&legend)
             try release_walker(&walker)
             try NavMesh::unload(guide.mesh)

@@ -1,0 +1,174 @@
+# Course props: three dynamic crates in their own World. Each crate has a
+# WorldRendering row and a Jolt body through WorldPhysics. Saving writes the
+# whole World through World::SaveGame into a UserData payload; loading goes
+# through WorldSaveLoad::load, which rejects a bad payload before the live
+# World, rows or bodies change.
+include "../../src/world/world_save.elisa"
+include "../../src/runtime/world_save_load.elisa"
+
+module CourseProps:
+    private:
+        const module PropTune:
+            HALF: f32 = 0.3
+            MASS: f32 = 20.0
+            Z: f32 = 4.5
+            RENDER_BASE: i64 = 900
+            MESH: u64 = 1
+            MATERIAL: u64 = 2
+            SHELF: u64 = 7302
+            # Version of the course's payload envelope, not of the save format.
+            PAYLOAD_VERSION: i64 = 1
+
+        def props_spawn_point(index: usize) -> Geometry::Vec3:
+            Geometry::Vec3{x: -8.5 + 1.5 * index.f32(), y: 1.0 + 0.4 * index.f32(), z: PropTune::Z}
+
+        def props_visual() -> Assets::VisualAsset:
+            Assets::VisualAsset{mesh: Assets::AssetId{high: PropTune::SHELF, low: PropTune::MESH},
+                material: Assets::AssetId{high: PropTune::SHELF, low: PropTune::MATERIAL},
+                local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                    maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}}
+
+        def props_body() -> WorldSavePhysics::KindBody:
+            WorldSavePhysics::KindBody{kind: PhysicsRuntime::BodyKind.Dynamic,
+                half_extents: Geometry::Vec3{x: PropTune::HALF, y: PropTune::HALF, z: PropTune::HALF},
+                mass: PropTune::MASS}
+
+        def props_box(transform: Geometry::Transform) -> Geometry::Transform:
+            Geometry::Transform{position: transform.position, rotation: transform.rotation,
+                scale: Geometry::Vec3{x: PropTune::HALF, y: PropTune::HALF, z: PropTune::HALF}}
+
+        def props_spawn_world() -> World::World error[World::WorldError]:
+            world: mutable World::World = try World::World()
+            for index in 0..<COUNT |world|:
+                crate: World::EntityRef = try World::world_spawn(&world, World::StaticObject.Structure)
+                try World::world_set_transform(&world, crate, Geometry::transform_translate(Geometry::transform_identity(), props_spawn_point(index)))
+            return move world
+
+        def props_load_code(session: RuntimeServices::Session&, props: mutable Props&, bytes: u8&, length: usize) -> i32:
+            catch WorldSaveLoad::load(session, &props.world, &props.render, &props.physics, presentation(), bytes, length):
+                ok: 0
+                WorldSaveLoad::WorldSaveLoadError.Rejected: LOAD_REJECTED
+                error failure: LOAD_FAILED
+
+        def props_read_code(bytes: mutable u8&, length: mutable usize&) -> i32:
+            version: mutable i64 = 0
+            catch UserData::read_payload(KEY, &version, bytes, CAPACITY, length):
+                ok: 0 if version == PropTune::PAYLOAD_VERSION else LOAD_REJECTED
+                UserData::UserDataError.NotFound: LOAD_MISSING
+                error failure: LOAD_REJECTED
+
+        def props_release_draws(props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
+            draws: RenderScene::InstanceBatch = props.draws
+            for index in 0..<RenderScene::batch_count(draws):
+                handle: RenderScene::InstanceHandle = try RenderScene::batch_get(draws, index)
+                try RenderScene::destroy(handle)
+            props.draws <- RenderScene::InstanceBatch()
+
+        def props_extract(props: mutable Props&, view: mutable RenderSnapshot::Snapshot&) -> bool:
+            catch WorldRendering::extract(&props.world, &props.render, view):
+                ok: true
+                error failure: false
+
+        # Recreates one box per render row; the rows are the only source of
+        # what is drawn, so a load shows exactly what it rebound.
+        def props_create_draws(props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
+            view: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            raise RenderScene::RenderSceneError.InvalidValue if not props_extract(props, &view)
+            color: RenderScene::Color = RenderScene::Color{red: 0.72, green: 0.46, blue: 0.2, alpha: 1.0}
+            for index in 0..<RenderSnapshot::snapshot_count(&view) |props, view|:
+                entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(&view, index)
+                handle: RenderScene::InstanceHandle = try RenderScene::create(RenderScene::Primitive.Box, props_box(entry.transform), color)
+                try RenderScene::batch_append(&props.draws, handle)
+
+    public:
+        const COUNT: usize = 3
+        const KEY: cstr = "course-props-world"
+        const CAPACITY: usize = 16 + 8 * 56
+        const LOAD_MISSING: i32 = 1
+        const LOAD_REJECTED: i32 = 2
+        const LOAD_FAILED: i32 = 3
+
+        affine struct Props:
+            world: mutable World::World
+            render: mutable WorldRendering::Bindings
+            physics: mutable WorldPhysics::Bindings
+            draws: mutable RenderScene::InstanceBatch
+
+        def presentation() -> WorldSaveLoad::Presentation:
+            WorldSaveLoad::Presentation{
+                visuals: WorldSaveRendering::KindVisuals{actor: props_visual(), enemy: props_visual(), structure: props_visual()},
+                bodies: WorldSavePhysics::KindBodies{actor: props_body(), enemy: props_body(), structure: props_body()},
+                render_id_base: PropTune::RENDER_BASE,
+            }
+
+        def render_base() -> i64:
+            PropTune::RENDER_BASE
+
+        # Spawns the authored crates and binds them through the same rebuild
+        # passes a load uses.
+        def create(session: RuntimeServices::Session&) -> Props error[World::WorldError, RenderScene::RenderSceneError, WorldRendering::WorldRenderingError, WorldSavePhysics::WorldSavePhysicsError]:
+            world: World::World = try props_spawn_world()
+            props: mutable Props = Props{world: world, render: WorldRendering::Bindings(),
+                physics: WorldPhysics::Bindings(), draws: RenderScene::InstanceBatch()}
+            shown: WorldSaveLoad::Presentation = presentation()
+            try WorldSaveRendering::rehydrate(&props.render, &props.world, shown.visuals, shown.render_id_base)
+            try WorldSavePhysics::rehydrate(session, &props.world, &props.physics, shown.bodies)
+            try props_create_draws(&props)
+            return move props
+
+        def crate_reference(props: Props&, index: usize) -> World::EntityRef:
+            catch World::world_live_reference_at(props.world, index):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+
+        def crate_pose(props: Props&, index: usize) -> Geometry::Transform:
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            _ = World::world_try_transform(props.world, crate_reference(props, index), &pose)
+            pose
+
+        # Pulls simulated body poses into the World and moves the boxes.
+        def sync(session: RuntimeServices::Session&, props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
+            synced: bool = catch WorldPhysics::sync_world(session, &props.world, &props.physics):
+                ok: true
+                error failure: false
+            raise RenderScene::RenderSceneError.InvalidValue if not synced
+            view: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+            raise RenderScene::RenderSceneError.InvalidValue if not props_extract(props, &view)
+            draws: RenderScene::InstanceBatch = props.draws
+            count: usize = RenderSnapshot::snapshot_count(&view)
+            raise RenderScene::RenderSceneError.InvalidValue if count != RenderScene::batch_count(draws)
+            for index in 0..<count |view|:
+                handle: RenderScene::InstanceHandle = try RenderScene::batch_get(draws, index)
+                entry: RenderSnapshot::Entry = RenderSnapshot::snapshot_entry(&view, index)
+                try RenderScene::update_transform(handle, props_box(entry.transform))
+
+        def save(props: Props&) -> bool:
+            bytes: mutable u8[CAPACITY] = zeroed
+            length: usize = catch World::SaveGame::save_world(props.world, &bytes[0], CAPACITY):
+                value: value
+                error failure: 0
+            return false if length == 0
+            catch UserData::write_payload(KEY, PropTune::PAYLOAD_VERSION, &bytes[0], length):
+                ok: true
+                error failure: false
+
+        # Returns 0 when the saved World replaced the live one, else a LOAD_*
+        # code with the live World, rows, bodies and boxes unchanged.
+        def load(session: RuntimeServices::Session&, props: mutable Props&) -> i32 error[RenderScene::RenderSceneError]:
+            bytes: mutable u8[CAPACITY] = zeroed
+            length: mutable usize = 0
+            status: i32 = props_read_code(&bytes[0], &length)
+            return status if status != 0
+            loaded: i32 = props_load_code(session, props, &bytes[0], length)
+            return loaded if loaded == LOAD_REJECTED
+            # Past the swap the old boxes are stale even if a rebuild failed.
+            try props_release_draws(props)
+            try props_create_draws(props)
+            loaded
+
+        def release(session: RuntimeServices::Session&, props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
+            try props_release_draws(props)
+            _ = catch WorldPhysics::unbind_all(session, &props.physics):
+                ok: true
+                error failure: false
+            WorldRendering::clear(&props.render)

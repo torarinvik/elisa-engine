@@ -4,6 +4,7 @@ include "./pad.elisa"
 include "./controls.elisa"
 include "./sounds.elisa"
 include "./beacons.elisa"
+include "./props.elisa"
 include "./text.elisa"
 include "./access.elisa"
 include "./look.elisa"
@@ -349,6 +350,7 @@ module CharacterCourse:
         include "./walker_test.inc"
 
         include "./beacons_test.inc"
+        include "./props_test.inc"
 
         include "./access_test.inc"
         include "./pointer_test.inc"
@@ -399,6 +401,8 @@ module CharacterCourse:
                 relaunched: ProgressOutcome = try relaunch_test(session, character)
                 character <- relaunched.character
                 return relaunched.status if relaunched.status != 0
+                props_relaunched: i32 = try props_relaunch_test(session)
+                return props_relaunched if props_relaunched != 0
                 access_relaunched: i32 = try access_relaunch_test()
                 return access_relaunched if access_relaunched != 0
                 devices_relaunched: i32 = devices_relaunch_test()
@@ -433,6 +437,8 @@ module CharacterCourse:
                 return rig_status if rig_status != 0
                 beacon_status: i32 = try beacons_test()
                 return beacon_status if beacon_status != 0
+                props_status: i32 = try props_test(session)
+                return props_status if props_status != 0
                 access_status: i32 = try access_test(session)
                 return access_status if access_status != 0
                 pointer_status: i32 = pointer_test()
