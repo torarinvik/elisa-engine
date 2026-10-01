@@ -99,21 +99,21 @@ module GltfJson:
             is_digit(c) or c == 45 or c == 43 or c == 46 or (c >= 97 and c <= 122) or (c >= 65 and c <= 90)
 
         # Count a new value against its enclosing array.
-        def count_element(tokens: mutable darray[Token]&, open_list: darray[usize]&):
+        def count_element(json_tokens: mutable darray[Token]&, open_list: darray[usize]&):
             if open_list.count > 0:
                 parent: usize = open_list[open_list.count - 1]
-                if tokens[parent].kind == KIND_ARRAY:
-                    tokens[parent].size <- tokens[parent].size + 1
+                if json_tokens[parent].kind == KIND_ARRAY:
+                    json_tokens[parent].size <- json_tokens[parent].size + 1
 
         def after_value(open_list: darray[usize]&) -> u8:
             Expect::DONE if open_list.count == 0 else Expect::COMMA_OR_CLOSE
 
     public:
-        # Tokenize `bytes[start, stop)` into `tokens`, which is cleared first.
+        # Tokenize `bytes[start, stop)` into `json_tokens`, which is cleared first.
         # False on any syntax error, an empty_state document, or nesting deeper than
-        # MAX_DEPTH; the tokens are then meaningless.
-        def tokenize(bytes: darray[u8]&, start: usize, stop: usize, tokens: mutable darray[Token]&) -> bool:
-            tokens.clear()
+        # MAX_DEPTH; the json_tokens are then meaningless.
+        def tokenize(bytes: darray[u8]&, start: usize, stop: usize, json_tokens: mutable darray[Token]&) -> bool:
+            json_tokens.clear()
             return false if stop > bytes.count or start >= stop
             open_list: mutable darray[usize] = []
             mutable expect: u8 = Expect::VALUE
@@ -127,10 +127,10 @@ module GltfJson:
                     if (expect != Expect::VALUE and expect != Expect::VALUE_OR_CLOSE) or open_list.count >= MAX_DEPTH:
                         ok <- false
                     else:
-                        count_element(tokens, &open_list)
+                        count_element(json_tokens, &open_list)
                         kind: u8 = KIND_OBJECT if c == 123 else KIND_ARRAY
-                        open_list.push(tokens.count)
-                        tokens.push(Token{kind: kind, start: i, stop: i, size: 0, after: 0})
+                        open_list.push(json_tokens.count)
+                        json_tokens.push(Token{kind: kind, start: i, stop: i, size: 0, after: 0})
                         expect <- Expect::KEY_OR_CLOSE if c == 123 else Expect::VALUE_OR_CLOSE
                         i <- i + 1
                 elif c == 125 or c == 93:
@@ -140,11 +140,11 @@ module GltfJson:
                         ok <- false
                     else:
                         top: usize = open_list[open_list.count - 1]
-                        if tokens[top].kind != kind:
+                        if json_tokens[top].kind != kind:
                             ok <- false
                         else:
-                            tokens[top].stop <- i + 1
-                            tokens[top].after <- tokens.count
+                            json_tokens[top].stop <- i + 1
+                            json_tokens[top].after <- json_tokens.count
                             _ = open_list.pop()
                             expect <- after_value(&open_list)
                             i <- i + 1
@@ -154,13 +154,13 @@ module GltfJson:
                         ok <- false
                     elif expect == Expect::KEY_OR_CLOSE or expect == Expect::KEY:
                         top: usize = open_list[open_list.count - 1]
-                        tokens[top].size <- tokens[top].size + 1
-                        tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: tokens.count + 1})
+                        json_tokens[top].size <- json_tokens[top].size + 1
+                        json_tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: json_tokens.count + 1})
                         expect <- Expect::COLON
                         i <- end + 1
                     elif expect == Expect::VALUE or expect == Expect::VALUE_OR_CLOSE:
-                        count_element(tokens, &open_list)
-                        tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: tokens.count + 1})
+                        count_element(json_tokens, &open_list)
+                        json_tokens.push(Token{kind: KIND_STRING, start: i + 1, stop: end, size: 0, after: json_tokens.count + 1})
                         expect <- after_value(&open_list)
                         i <- end + 1
                     else:
@@ -174,7 +174,7 @@ module GltfJson:
                         ok <- false
                     else:
                         top: usize = open_list[open_list.count - 1]
-                        expect <- Expect::KEY if tokens[top].kind == KIND_OBJECT else Expect::VALUE
+                        expect <- Expect::KEY if json_tokens[top].kind == KIND_OBJECT else Expect::VALUE
                         i <- i + 1
                 elif primitive_char(c):
                     mutable end: usize = i
@@ -183,8 +183,8 @@ module GltfJson:
                     if (expect != Expect::VALUE and expect != Expect::VALUE_OR_CLOSE) or not primitive_valid(bytes, i, end):
                         ok <- false
                     else:
-                        count_element(tokens, &open_list)
-                        tokens.push(Token{kind: KIND_PRIMITIVE, start: i, stop: end, size: 0, after: tokens.count + 1})
+                        count_element(json_tokens, &open_list)
+                        json_tokens.push(Token{kind: KIND_PRIMITIVE, start: i, stop: end, size: 0, after: json_tokens.count + 1})
                         expect <- after_value(&open_list)
                         i <- end
                 else:
@@ -196,41 +196,41 @@ module GltfJson:
             literal_is(bytes, token.start, token.stop, text)
 
         # Value token of `key` in the object at `object`, or -1.
-        def member(bytes: darray[u8]&, tokens: darray[Token]&, object: i64, key: sview) -> i64:
-            return -1 if object < 0 or object.usize() >= tokens.count
-            holder: Token = tokens[object.usize()]
+        def member(bytes: darray[u8]&, json_tokens: darray[Token]&, object: i64, key: sview) -> i64:
+            return -1 if object < 0 or object.usize() >= json_tokens.count
+            holder: Token = json_tokens[object.usize()]
             return -1 if holder.kind != KIND_OBJECT
             mutable at: usize = object.usize() + 1
             mutable found: i64 = -1
             for m in 0..<holder.size:
-                if found < 0 and at + 1 < tokens.count:
-                    found <- (at + 1).i64() if text_is(bytes, tokens[at], key) else -1
-                    at <- tokens[at + 1].after
+                if found < 0 and at + 1 < json_tokens.count:
+                    found <- (at + 1).i64() if text_is(bytes, json_tokens[at], key) else -1
+                    at <- json_tokens[at + 1].after
             found
 
         # Element `index` of the array at `array`, or -1.
-        def element(tokens: darray[Token]&, array: i64, index: usize) -> i64:
-            return -1 if array < 0 or array.usize() >= tokens.count
-            holder: Token = tokens[array.usize()]
+        def element(json_tokens: darray[Token]&, array: i64, index: usize) -> i64:
+            return -1 if array < 0 or array.usize() >= json_tokens.count
+            holder: Token = json_tokens[array.usize()]
             return -1 if holder.kind != KIND_ARRAY or index >= holder.size
             mutable at: usize = array.usize() + 1
             for k in 0..<index:
-                at <- tokens[at].after
+                at <- json_tokens[at].after
             at.i64()
 
-        def kind_of(tokens: darray[Token]&, token: i64) -> u8:
-            return 0 if token < 0 or token.usize() >= tokens.count
-            tokens[token.usize()].kind
+        def kind_of(json_tokens: darray[Token]&, token: i64) -> u8:
+            return 0 if token < 0 or token.usize() >= json_tokens.count
+            json_tokens[token.usize()].kind
 
-        def child_count(tokens: darray[Token]&, token: i64) -> usize:
-            return 0 if token < 0 or token.usize() >= tokens.count
-            tokens[token.usize()].size
+        def child_count(json_tokens: darray[Token]&, token: i64) -> usize:
+            return 0 if token < 0 or token.usize() >= json_tokens.count
+            json_tokens[token.usize()].size
 
         # A non-negative integer written without fraction or exponent, or -1.
         # Values past 2^40 are refused; no glTF index or length gets there.
-        def index_value(bytes: darray[u8]&, tokens: darray[Token]&, token: i64) -> i64:
-            return -1 if kind_of(tokens, token) != KIND_PRIMITIVE
-            held: Token = tokens[token.usize()]
+        def index_value(bytes: darray[u8]&, json_tokens: darray[Token]&, token: i64) -> i64:
+            return -1 if kind_of(json_tokens, token) != KIND_PRIMITIVE
+            held: Token = json_tokens[token.usize()]
             return -1 if held.stop - held.start > 13
             mutable value: i64 = 0
             mutable ok: bool = true
@@ -241,11 +241,11 @@ module GltfJson:
             value if ok else -1
 
         # A number, with `ok` cleared when the token is not one.
-        def number_value(bytes: darray[u8]&, tokens: darray[Token]&, token: i64, ok: mutable bool&) -> f64:
-            if kind_of(tokens, token) != KIND_PRIMITIVE:
+        def number_value(bytes: darray[u8]&, json_tokens: darray[Token]&, token: i64, ok: mutable bool&) -> f64:
+            if kind_of(json_tokens, token) != KIND_PRIMITIVE:
                 ok <- false
                 return 0.0
-            held: Token = tokens[token.usize()]
+            held: Token = json_tokens[token.usize()]
             if held.stop - held.start > 63 or not number_valid(bytes, held.start, held.stop):
                 ok <- false
                 return 0.0

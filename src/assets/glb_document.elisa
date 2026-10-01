@@ -120,7 +120,7 @@ module GlbDocument:
 
         # Everything a parse needs besides the document it fills.
         struct Index:
-            tokens: mutable darray[GltfJson::Token]
+            json_tokens: mutable darray[GltfJson::Token]
             # Accessor index -> track slot, -1 until decoded.
             slots: mutable darray[i64]
             accessors: mutable i64
@@ -145,20 +145,20 @@ module GlbDocument:
             Document{bytes: [], nodes: [], animations: [], channels: [], tracks: [], values: [], bin_start: 0, bin_length: 0, edits: 0}
 
         def member(doc: Document&, index: Index&, object: i64, key: sview) -> i64:
-            GltfJson::member(&doc.bytes, &index.tokens, object, key)
+            GltfJson::member(&doc.bytes, &index.json_tokens, object, key)
 
         # An optional non-negative integer member: `fallback` when absent.
         def optional_index(doc: Document&, index: Index&, object: i64, key: sview, fallback: i64) -> i64 error[GlbError]:
             at: i64 = member(doc, index, object, key)
             return fallback if at < 0
-            value: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, at)
+            value: i64 = GltfJson::index_value(&doc.bytes, &index.json_tokens, at)
             raise GlbError.BadJson if value < 0
             value
 
         def required_index(doc: Document&, index: Index&, object: i64, key: sview) -> i64 error[GlbError]:
             at: i64 = member(doc, index, object, key)
             raise GlbError.MissingField if at < 0
-            value: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, at)
+            value: i64 = GltfJson::index_value(&doc.bytes, &index.json_tokens, at)
             raise GlbError.BadJson if value < 0
             value
 
@@ -166,20 +166,20 @@ module GlbDocument:
         def optional_array(doc: Document&, index: Index&, object: i64, key: sview) -> i64 error[GlbError]:
             at: i64 = member(doc, index, object, key)
             return -1 if at < 0
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, at) != GltfJson::KIND_ARRAY
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, at) != GltfJson::KIND_ARRAY
             at
 
         def string_is(doc: Document&, index: Index&, token: i64, text: sview) -> bool:
-            return false if GltfJson::kind_of(&index.tokens, token) != GltfJson::KIND_STRING
-            GltfJson::text_is(&doc.bytes, index.tokens[token.usize()], text)
+            return false if GltfJson::kind_of(&index.json_tokens, token) != GltfJson::KIND_STRING
+            GltfJson::text_is(&doc.bytes, index.json_tokens[token.usize()], text)
 
         # `count` numbers of a fixed-length array member, or false.
         def read_numbers(doc: Document&, index: Index&, array: i64, count: usize, out: mutable f64[16]&) -> bool:
-            return false if GltfJson::kind_of(&index.tokens, array) != GltfJson::KIND_ARRAY
-            return false if GltfJson::child_count(&index.tokens, array) != count
+            return false if GltfJson::kind_of(&index.json_tokens, array) != GltfJson::KIND_ARRAY
+            return false if GltfJson::child_count(&index.json_tokens, array) != count
             mutable ok: bool = true
             for k in 0..<count:
-                out[k] <- GltfJson::number_value(&doc.bytes, &index.tokens, GltfJson::element(&index.tokens, array, k), &ok)
+                out[k] <- GltfJson::number_value(&doc.bytes, &index.json_tokens, GltfJson::element(&index.json_tokens, array, k), &ok)
             ok
 
         def vec3_member(doc: Document&, index: Index&, object: i64, key: sview, fallback: Geometry::Vec3) -> Geometry::Vec3 error[GlbError]:
@@ -202,8 +202,8 @@ module GlbDocument:
             start <- 0
             length <- 0
             return true if at < 0
-            return false if GltfJson::kind_of(&index.tokens, at) != GltfJson::KIND_STRING
-            token: GltfJson::Token = index.tokens[at.usize()]
+            return false if GltfJson::kind_of(&index.json_tokens, at) != GltfJson::KIND_STRING
+            token: GltfJson::Token = index.json_tokens[at.usize()]
             start <- token.start
             length <- token.stop - token.start
             true
@@ -222,23 +222,23 @@ module GlbDocument:
             raise GlbError.IndexOutOfRange if which < 0 or which.usize() >= index.slots.count
             known: i64 = index.slots[which.usize()]
             return known.usize() if known >= 0
-            accessor: i64 = GltfJson::element(&index.tokens, index.accessors, which.usize())
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, accessor) != GltfJson::KIND_OBJECT
+            accessor: i64 = GltfJson::element(&index.json_tokens, index.accessors, which.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, accessor) != GltfJson::KIND_OBJECT
             raise GlbError.UnsupportedLayout if member(doc, index, accessor, "sparse") >= 0
             raise GlbError.UnsupportedLayout if member(doc, index, accessor, "bufferView") < 0
             view_index: i64 = try required_index(doc, index, accessor, "bufferView")
             component: i64 = try required_index(doc, index, accessor, "componentType")
             raise GlbError.UnsupportedComponentType if component != COMPONENT_FLOAT
             normalized: i64 = member(doc, index, accessor, "normalized")
-            raise GlbError.UnsupportedComponentType if normalized >= 0 and not GltfJson::text_is(&doc.bytes, index.tokens[normalized.usize()], "false")
+            raise GlbError.UnsupportedComponentType if normalized >= 0 and not GltfJson::text_is(&doc.bytes, index.json_tokens[normalized.usize()], "false")
             components: usize = components_of(doc, index, accessor)
             raise GlbError.AccessorShape if components == 0
             count: i64 = try required_index(doc, index, accessor, "count")
             raise GlbError.AccessorShape if count == 0
             accessor_offset: i64 = try optional_index(doc, index, accessor, "byteOffset", 0)
-            raise GlbError.IndexOutOfRange if index.views < 0 or view_index.usize() >= GltfJson::child_count(&index.tokens, index.views)
-            view: i64 = GltfJson::element(&index.tokens, index.views, view_index.usize())
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, view) != GltfJson::KIND_OBJECT
+            raise GlbError.IndexOutOfRange if index.views < 0 or view_index.usize() >= GltfJson::child_count(&index.json_tokens, index.views)
+            view: i64 = GltfJson::element(&index.json_tokens, index.views, view_index.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, view) != GltfJson::KIND_OBJECT
             buffer: i64 = try required_index(doc, index, view, "buffer")
             raise GlbError.UnsupportedLayout if buffer != 0 or doc.bin_length == 0
             view_offset: i64 = try optional_index(doc, index, view, "byteOffset", 0)
@@ -284,11 +284,11 @@ module GlbDocument:
         def read_nodes(doc: mutable Document&, index: mutable Index&, root: i64) -> usize error[GlbError]:
             array: i64 = try optional_array(doc, index, root, "nodes")
             return 0 if array < 0
-            count: usize = GltfJson::child_count(&index.tokens, array)
+            count: usize = GltfJson::child_count(&index.json_tokens, array)
             raise GlbError.Capacity if count > MAX_NODES
             for n in 0..<count:
-                node: i64 = GltfJson::element(&index.tokens, array, n)
-                raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, node) != GltfJson::KIND_OBJECT
+                node: i64 = GltfJson::element(&index.json_tokens, array, n)
+                raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, node) != GltfJson::KIND_OBJECT
                 mutable name_start: usize = 0
                 mutable name_length: usize = 0
                 raise GlbError.BadJson if not name_range(doc, index, node, &name_start, &name_length)
@@ -298,10 +298,10 @@ module GlbDocument:
                 has_matrix: bool = member(doc, index, node, "matrix") >= 0
                 doc.nodes.push(Node{name_start: name_start, name_length: name_length, parent: -1, rest: Geometry::Transform{position: translation, rotation: rotation, scale: scale}, has_matrix: has_matrix})
             for n in 0..<count:
-                node: i64 = GltfJson::element(&index.tokens, array, n)
+                node: i64 = GltfJson::element(&index.json_tokens, array, n)
                 children: i64 = try optional_array(doc, index, node, "children")
-                for c in 0..<GltfJson::child_count(&index.tokens, children):
-                    child: i64 = GltfJson::index_value(&doc.bytes, &index.tokens, GltfJson::element(&index.tokens, children, c))
+                for c in 0..<GltfJson::child_count(&index.json_tokens, children):
+                    child: i64 = GltfJson::index_value(&doc.bytes, &index.json_tokens, GltfJson::element(&index.json_tokens, children, c))
                     raise GlbError.BadJson if child < 0
                     raise GlbError.IndexOutOfRange if child.usize() >= count
                     raise GlbError.InvalidHierarchy if child.usize() == n or doc.nodes[child.usize()].parent >= 0
@@ -318,14 +318,14 @@ module GlbDocument:
             count
 
         def read_channel(doc: mutable Document&, index: mutable Index&, channel: i64, samplers: i64) -> Channel error[GlbError]:
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, channel) != GltfJson::KIND_OBJECT
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, channel) != GltfJson::KIND_OBJECT
             sampler_index: i64 = try required_index(doc, index, channel, "sampler")
-            raise GlbError.IndexOutOfRange if sampler_index.usize() >= GltfJson::child_count(&index.tokens, samplers)
-            sampler: i64 = GltfJson::element(&index.tokens, samplers, sampler_index.usize())
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, sampler) != GltfJson::KIND_OBJECT
+            raise GlbError.IndexOutOfRange if sampler_index.usize() >= GltfJson::child_count(&index.json_tokens, samplers)
+            sampler: i64 = GltfJson::element(&index.json_tokens, samplers, sampler_index.usize())
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, sampler) != GltfJson::KIND_OBJECT
             target: i64 = member(doc, index, channel, "target")
             raise GlbError.MissingField if target < 0
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, target) != GltfJson::KIND_OBJECT
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, target) != GltfJson::KIND_OBJECT
             node: i64 = try required_index(doc, index, target, "node")
             raise GlbError.IndexOutOfRange if node.usize() >= doc.nodes.count
             path_token: i64 = member(doc, index, target, "path")
@@ -372,10 +372,10 @@ module GlbDocument:
         def read_animations(doc: mutable Document&, index: mutable Index&, root: i64) -> usize error[GlbError]:
             array: i64 = try optional_array(doc, index, root, "animations")
             return 0 if array < 0
-            count: usize = GltfJson::child_count(&index.tokens, array)
+            count: usize = GltfJson::child_count(&index.json_tokens, array)
             for a in 0..<count:
-                animation: i64 = GltfJson::element(&index.tokens, array, a)
-                raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, animation) != GltfJson::KIND_OBJECT
+                animation: i64 = GltfJson::element(&index.json_tokens, array, a)
+                raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, animation) != GltfJson::KIND_OBJECT
                 mutable name_start: usize = 0
                 mutable name_length: usize = 0
                 raise GlbError.BadJson if not name_range(doc, index, animation, &name_start, &name_length)
@@ -383,24 +383,24 @@ module GlbDocument:
                 samplers: i64 = try optional_array(doc, index, animation, "samplers")
                 raise GlbError.MissingField if channels < 0 or samplers < 0
                 first: usize = doc.channels.count
-                for c in 0..<GltfJson::child_count(&index.tokens, channels):
-                    channel: Channel = try read_channel(doc, index, GltfJson::element(&index.tokens, channels, c), samplers)
+                for c in 0..<GltfJson::child_count(&index.json_tokens, channels):
+                    channel: Channel = try read_channel(doc, index, GltfJson::element(&index.json_tokens, channels, c), samplers)
                     doc.channels.push(channel)
                 doc.animations.push(Animation{name_start: name_start, name_length: name_length, first_channel: first, channel_count: doc.channels.count - first})
             count
 
         def build(doc: mutable Document&) -> bool error[GlbError]:
             json_length: usize = try read_container(doc)
-            mutable index: Index = Index{tokens: [], slots: [], accessors: -1, views: -1}
-            raise GlbError.BadJson if not GltfJson::tokenize(&doc.bytes, 20, 20 + json_length, &index.tokens)
+            mutable index: Index = Index{json_tokens: [], slots: [], accessors: -1, views: -1}
+            raise GlbError.BadJson if not GltfJson::tokenize(&doc.bytes, 20, 20 + json_length, &index.json_tokens)
             root: i64 = 0
-            raise GlbError.BadJson if GltfJson::kind_of(&index.tokens, root) != GltfJson::KIND_OBJECT
+            raise GlbError.BadJson if GltfJson::kind_of(&index.json_tokens, root) != GltfJson::KIND_OBJECT
             index.accessors <- try optional_array(doc, &index, root, "accessors")
             index.views <- try optional_array(doc, &index, root, "bufferViews")
-            for k in 0..<GltfJson::child_count(&index.tokens, index.accessors):
+            for k in 0..<GltfJson::child_count(&index.json_tokens, index.accessors):
                 index.slots.push(-1)
             buffers: i64 = try optional_array(doc, &index, root, "buffers")
-            first_buffer: i64 = GltfJson::element(&index.tokens, buffers, 0)
+            first_buffer: i64 = GltfJson::element(&index.json_tokens, buffers, 0)
             # Buffer 0 is the BIN chunk only when it names no external file.
             if doc.bin_length > 0 and (first_buffer < 0 or member(doc, &index, first_buffer, "uri") >= 0):
                 doc.bin_length <- 0
