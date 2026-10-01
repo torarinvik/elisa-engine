@@ -90,7 +90,7 @@ module MeshOverlay:
                 if area > 0.0 and Geometry::vec3_is_finite(cross):
                     d: i64 = facing(Geometry::vec3_scale(cross, 1.0 / Geometry::sqrt_f32(area)), unit_light)
                     level: i64 = SkinMeshPolicy::light_level(d, ambient)
-                    color: u32 = ViewportDraw::rgba(SkinMeshPolicy::shade(clamp_byte(style.red), level), SkinMeshPolicy::shade(clamp_byte(style.green), level), SkinMeshPolicy::shade(clamp_byte(style.blue), level), clamp_byte(style.alpha))
+                    color: u32 = ViewportDraw::rgba(SkinMeshPolicy::shade(mesh_clamp_byte(style.red), level), SkinMeshPolicy::shade(mesh_clamp_byte(style.green), level), SkinMeshPolicy::shade(mesh_clamp_byte(style.blue), level), mesh_clamp_byte(style.alpha))
                     failed: i64 = catch ViewportDraw::triangle(list, a, b, c, color, style.layer):
                         value: 0
                         error failure: 1
@@ -99,7 +99,7 @@ module MeshOverlay:
             drawn
 
     private:
-        def clamp_byte(value: i64) -> i64:
+        def mesh_clamp_byte(value: i64) -> i64:
             return 0 if value < 0
             return 255 if value > 255
             value

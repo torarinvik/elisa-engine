@@ -74,7 +74,7 @@ module GlbSkinMesh:
         # Parse the skinned mesh out of a whole GLB file's bytes.
         def from_bytes(bytes: darray[u8]&) -> Mesh error[SkinMeshError]:
             mutable mesh: Mesh = empty()
-            _ = try build(bytes, &mesh)
+            _ = try mesh_build(bytes, &mesh)
             return move mesh
 
         def load(path: cstr) -> Mesh error[SkinMeshError]:
@@ -120,26 +120,26 @@ module GlbSkinMesh:
             components: usize
             normalized: bool
 
-        def f32_ref(value: f32&) -> f32:
+        def mesh_f32_ref(value: f32&) -> f32:
             value
 
-        def bits_float(value: u32) -> f32:
-            f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
+        def mesh_bits_float(value: u32) -> f32:
+            mesh_f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
 
-        def le_u16(bytes: darray[u8]&, at: usize) -> u32:
+        def mesh_le_u16(bytes: darray[u8]&, at: usize) -> u32:
             bytes[at].u32() | (bytes[at + 1].u32() << 8)
 
-        def le_u32(bytes: darray[u8]&, at: usize) -> u32:
+        def mesh_le_u32(bytes: darray[u8]&, at: usize) -> u32:
             bytes[at].u32() | (bytes[at + 1].u32() << 8) | (bytes[at + 2].u32() << 16) | (bytes[at + 3].u32() << 24)
 
-        def index_member(bytes: darray[u8]&, json: Json&, object: i64, key: sview, fallback: i64) -> i64 error[SkinMeshError]:
+        def mesh_index_member(bytes: darray[u8]&, json: Json&, object: i64, key: sview, fallback: i64) -> i64 error[SkinMeshError]:
             at: i64 = GltfJson::member(bytes, &json.json_tokens, object, key)
             return fallback if at < 0
             value: i64 = GltfJson::index_value(bytes, &json.json_tokens, at)
             raise SkinMeshError.BadJson if value < 0
             value
 
-        def components_of(bytes: darray[u8]&, json: Json&, accessor: i64) -> usize:
+        def mesh_components_of(bytes: darray[u8]&, json: Json&, accessor: i64) -> usize:
             at: i64 = GltfJson::member(bytes, &json.json_tokens, accessor, "type")
             return 0 if GltfJson::kind_of(&json.json_tokens, at) != GltfJson::KIND_STRING
             token: GltfJson::Token = json.json_tokens[at.usize()]
@@ -150,33 +150,33 @@ module GlbSkinMesh:
             return 16 if GltfJson::text_is(bytes, token, "MAT4")
             0
 
-        def layout(bytes: darray[u8]&, json: Json&, which: i64) -> Layout error[SkinMeshError]:
+        def mesh_layout(bytes: darray[u8]&, json: Json&, which: i64) -> Layout error[SkinMeshError]:
             raise SkinMeshError.IndexOutOfRange if which < 0 or which.usize() >= GltfJson::child_count(&json.json_tokens, json.accessors)
             accessor: i64 = GltfJson::element(&json.json_tokens, json.accessors, which.usize())
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, accessor) != GltfJson::KIND_OBJECT
             raise SkinMeshError.UnsupportedLayout if GltfJson::member(bytes, &json.json_tokens, accessor, "sparse") >= 0
-            view_index: i64 = try index_member(bytes, json, accessor, "bufferView", -1)
+            view_index: i64 = try mesh_index_member(bytes, json, accessor, "bufferView", -1)
             raise SkinMeshError.UnsupportedLayout if view_index < 0
-            component: i64 = try index_member(bytes, json, accessor, "componentType", -1)
+            component: i64 = try mesh_index_member(bytes, json, accessor, "componentType", -1)
             component_size: i64 = SkinMeshPolicy::component_bytes(component)
             raise SkinMeshError.UnsupportedComponentType if component_size == 0
             normalized_at: i64 = GltfJson::member(bytes, &json.json_tokens, accessor, "normalized")
             normalized: bool = normalized_at >= 0 and GltfJson::text_is(bytes, json.json_tokens[normalized_at.usize()], "true")
-            components: usize = components_of(bytes, json, accessor)
+            components: usize = mesh_components_of(bytes, json, accessor)
             raise SkinMeshError.AccessorShape if components == 0
-            count: i64 = try index_member(bytes, json, accessor, "count", -1)
+            count: i64 = try mesh_index_member(bytes, json, accessor, "count", -1)
             raise SkinMeshError.AccessorShape if count < 1
-            accessor_offset: i64 = try index_member(bytes, json, accessor, "byteOffset", 0)
+            accessor_offset: i64 = try mesh_index_member(bytes, json, accessor, "byteOffset", 0)
             raise SkinMeshError.IndexOutOfRange if view_index.usize() >= GltfJson::child_count(&json.json_tokens, json.views)
             view: i64 = GltfJson::element(&json.json_tokens, json.views, view_index.usize())
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, view) != GltfJson::KIND_OBJECT
-            buffer: i64 = try index_member(bytes, json, view, "buffer", -1)
+            buffer: i64 = try mesh_index_member(bytes, json, view, "buffer", -1)
             raise SkinMeshError.UnsupportedLayout if buffer != 0 or json.bin_length == 0
-            view_offset: i64 = try index_member(bytes, json, view, "byteOffset", 0)
-            view_length: i64 = try index_member(bytes, json, view, "byteLength", -1)
+            view_offset: i64 = try mesh_index_member(bytes, json, view, "byteOffset", 0)
+            view_length: i64 = try mesh_index_member(bytes, json, view, "byteLength", -1)
             raise SkinMeshError.BadJson if view_length < 0
             element: i64 = component_size * components.i64()
-            stride: i64 = try index_member(bytes, json, view, "byteStride", element)
+            stride: i64 = try mesh_index_member(bytes, json, view, "byteStride", element)
             span_bytes: i64 = SkinMeshPolicy::strided_span(count, stride, element)
             raise SkinMeshError.AccessorOutOfRange if span_bytes < 0
             raise SkinMeshError.AccessorOutOfRange if not GlbLayout::accessor_fits(view_offset, view_length, accessor_offset, span_bytes, json.bin_length.i64())
@@ -184,40 +184,40 @@ module GlbSkinMesh:
 
         # Component `c` of element `e`, as a float (normalized integers are
         # scaled to [0, 1]).
-        def read_float(bytes: darray[u8]&, at: Layout&, e: usize, c: usize) -> f32:
+        def mesh_read_float(bytes: darray[u8]&, at: Layout&, e: usize, c: usize) -> f32:
             base: usize = at.start + e * at.stride
             if at.component == SkinMeshPolicy::FLOAT:
-                return bits_float(le_u32(bytes, base + c * 4))
+                return mesh_bits_float(mesh_le_u32(bytes, base + c * 4))
             if at.component == SkinMeshPolicy::UNSIGNED_BYTE:
                 raw: f32 = bytes[base + c].f32()
                 return raw / 255.0 if at.normalized else raw
             if at.component == SkinMeshPolicy::UNSIGNED_SHORT:
-                raw: f32 = le_u16(bytes, base + c * 2).f32()
+                raw: f32 = mesh_le_u16(bytes, base + c * 2).f32()
                 return raw / 65535.0 if at.normalized else raw
             0.0
 
         # Component `c` of element `e` of an unsigned integer accessor.
-        def read_index(bytes: darray[u8]&, at: Layout&, e: usize, c: usize) -> u32:
+        def mesh_read_index(bytes: darray[u8]&, at: Layout&, e: usize, c: usize) -> u32:
             base: usize = at.start + e * at.stride
             return bytes[base + c].u32() if at.component == SkinMeshPolicy::UNSIGNED_BYTE
-            return le_u16(bytes, base + c * 2) if at.component == SkinMeshPolicy::UNSIGNED_SHORT
-            le_u32(bytes, base + c * 4)
+            return mesh_le_u16(bytes, base + c * 2) if at.component == SkinMeshPolicy::UNSIGNED_SHORT
+            mesh_le_u32(bytes, base + c * 4)
 
-        def attribute(bytes: darray[u8]&, json: Json&, attributes: i64, key: sview) -> Layout error[SkinMeshError]:
-            which: i64 = try index_member(bytes, json, attributes, key, -1)
+        def mesh_attribute(bytes: darray[u8]&, json: Json&, attributes: i64, key: sview) -> Layout error[SkinMeshError]:
+            which: i64 = try mesh_index_member(bytes, json, attributes, key, -1)
             raise SkinMeshError.MissingAttribute if which < 0
-            found: Layout = try layout(bytes, json, which)
+            found: Layout = try mesh_layout(bytes, json, which)
             found
 
-        def read_primitive(bytes: darray[u8]&, json: Json&, primitive: i64, mesh: mutable Mesh&) -> usize error[SkinMeshError]:
+        def mesh_read_primitive(bytes: darray[u8]&, json: Json&, primitive: i64, mesh: mutable Mesh&) -> usize error[SkinMeshError]:
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, primitive) != GltfJson::KIND_OBJECT
-            mode: i64 = try index_member(bytes, json, primitive, "mode", MODE_TRIANGLES)
+            mode: i64 = try mesh_index_member(bytes, json, primitive, "mode", MODE_TRIANGLES)
             return 0 if mode != MODE_TRIANGLES
             attributes: i64 = GltfJson::member(bytes, &json.json_tokens, primitive, "attributes")
             raise SkinMeshError.MissingAttribute if GltfJson::kind_of(&json.json_tokens, attributes) != GltfJson::KIND_OBJECT
-            positions: Layout = try attribute(bytes, json, attributes, "POSITION")
-            joints: Layout = try attribute(bytes, json, attributes, "JOINTS_0")
-            weights: Layout = try attribute(bytes, json, attributes, "WEIGHTS_0")
+            positions: Layout = try mesh_attribute(bytes, json, attributes, "POSITION")
+            joints: Layout = try mesh_attribute(bytes, json, attributes, "JOINTS_0")
+            weights: Layout = try mesh_attribute(bytes, json, attributes, "WEIGHTS_0")
             raise SkinMeshError.UnsupportedComponentType if positions.component != SkinMeshPolicy::FLOAT
             raise SkinMeshError.AccessorShape if positions.components != 3 or joints.components != 4 or weights.components != 4
             raise SkinMeshError.UnsupportedComponentType if joints.component != SkinMeshPolicy::UNSIGNED_BYTE and joints.component != SkinMeshPolicy::UNSIGNED_SHORT
@@ -227,30 +227,30 @@ module GlbSkinMesh:
             first: usize = mesh.positions.count
             skin_joints: usize = mesh.joints.count
             for v in 0..<positions.count:
-                mesh.positions.push(Geometry::Vec3{x: read_float(bytes, &positions, v, 0), y: read_float(bytes, &positions, v, 1), z: read_float(bytes, &positions, v, 2)})
+                mesh.positions.push(Geometry::Vec3{x: mesh_read_float(bytes, &positions, v, 0), y: mesh_read_float(bytes, &positions, v, 1), z: mesh_read_float(bytes, &positions, v, 2)})
                 for k in 0..<INFLUENCES:
-                    joint: u32 = read_index(bytes, &joints, v, k)
-                    weight: f32 = read_float(bytes, &weights, v, k)
+                    joint: u32 = mesh_read_index(bytes, &joints, v, k)
+                    weight: f32 = mesh_read_float(bytes, &weights, v, k)
                     raise SkinMeshError.IndexOutOfRange if joint.usize() >= skin_joints and weight != 0.0
                     slot: u32 = 0 if joint.usize() >= skin_joints else joint
                     mesh.influence_joints.push(slot.u16())
                     mesh.influence_weights.push(weight)
-            indices_at: i64 = try index_member(bytes, json, primitive, "indices", -1)
+            indices_at: i64 = try mesh_index_member(bytes, json, primitive, "indices", -1)
             if indices_at < 0:
                 raise SkinMeshError.AccessorShape if positions.count % 3 != 0
                 for v in 0..<positions.count:
                     mesh.indices.push((first + v).u32())
                 return positions.count / 3
-            corners: Layout = try layout(bytes, json, indices_at)
+            corners: Layout = try mesh_layout(bytes, json, indices_at)
             raise SkinMeshError.AccessorShape if corners.components != 1 or corners.count % 3 != 0
             raise SkinMeshError.UnsupportedComponentType if corners.component != SkinMeshPolicy::UNSIGNED_BYTE and corners.component != SkinMeshPolicy::UNSIGNED_SHORT and corners.component != SkinMeshPolicy::UNSIGNED_INT
             for k in 0..<corners.count:
-                corner: u32 = read_index(bytes, &corners, k, 0)
+                corner: u32 = mesh_read_index(bytes, &corners, k, 0)
                 raise SkinMeshError.IndexOutOfRange if not SkinMeshPolicy::index_ok(corner.i64(), positions.count.i64())
                 mesh.indices.push((first + corner.usize()).u32())
             corners.count / 3
 
-        def read_skin(bytes: darray[u8]&, json: Json&, skin: i64, mesh: mutable Mesh&) -> usize error[SkinMeshError]:
+        def mesh_read_skin(bytes: darray[u8]&, json: Json&, skin: i64, mesh: mutable Mesh&) -> usize error[SkinMeshError]:
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, skin) != GltfJson::KIND_OBJECT
             joints: i64 = GltfJson::member(bytes, &json.json_tokens, skin, "joints")
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, joints) != GltfJson::KIND_ARRAY
@@ -260,29 +260,29 @@ module GlbSkinMesh:
                 node: i64 = GltfJson::index_value(bytes, &json.json_tokens, GltfJson::element(&json.json_tokens, joints, j))
                 raise SkinMeshError.IndexOutOfRange if node < 0 or node.usize() >= json.nodes
                 mesh.joints.push(node)
-            binds_at: i64 = try index_member(bytes, json, skin, "inverseBindMatrices", -1)
+            binds_at: i64 = try mesh_index_member(bytes, json, skin, "inverseBindMatrices", -1)
             if binds_at < 0:
                 for j in 0..<count:
                     for e in 0..<16:
                         mesh.inverse_binds.push(1.0 if e % 5 == 0 else 0.0)
                 return count
-            binds: Layout = try layout(bytes, json, binds_at)
+            binds: Layout = try mesh_layout(bytes, json, binds_at)
             raise SkinMeshError.AccessorShape if binds.components != 16 or binds.count != count or binds.component != SkinMeshPolicy::FLOAT
             for j in 0..<count:
                 for e in 0..<16:
-                    mesh.inverse_binds.push(read_float(bytes, &binds, j, e))
+                    mesh.inverse_binds.push(mesh_read_float(bytes, &binds, j, e))
             count
 
-        def build(bytes: darray[u8]&, mesh: mutable Mesh&) -> bool error[SkinMeshError]:
+        def mesh_build(bytes: darray[u8]&, mesh: mutable Mesh&) -> bool error[SkinMeshError]:
             total: usize = bytes.count
             raise SkinMeshError.BadContainer if total < 20 or total > MAX_BYTES
-            raise SkinMeshError.BadContainer if le_u32(bytes, 0) != MAGIC or le_u32(bytes, 8).usize() != total
-            json_length: usize = le_u32(bytes, 12).usize()
-            raise SkinMeshError.BadContainer if le_u32(bytes, 16) != CHUNK_JSON or not GlbLayout::range_fits(20, json_length.i64(), total.i64())
+            raise SkinMeshError.BadContainer if mesh_le_u32(bytes, 0) != MAGIC or mesh_le_u32(bytes, 8).usize() != total
+            json_length: usize = mesh_le_u32(bytes, 12).usize()
+            raise SkinMeshError.BadContainer if mesh_le_u32(bytes, 16) != CHUNK_JSON or not GlbLayout::range_fits(20, json_length.i64(), total.i64())
             mutable json: Json = Json{json_tokens: [], accessors: -1, views: -1, nodes: 0, bin_start: 0, bin_length: 0}
             next: usize = 20 + json_length
-            if next + 8 <= total and le_u32(bytes, next + 4) == CHUNK_BIN:
-                bin_length: usize = le_u32(bytes, next).usize()
+            if next + 8 <= total and mesh_le_u32(bytes, next + 4) == CHUNK_BIN:
+                bin_length: usize = mesh_le_u32(bytes, next).usize()
                 raise SkinMeshError.BadContainer if not GlbLayout::range_fits((next + 8).i64(), bin_length.i64(), total.i64())
                 json.bin_start <- next + 8
                 json.bin_length <- bin_length
@@ -303,8 +303,8 @@ module GlbSkinMesh:
             for n in 0..<GltfJson::child_count(&json.json_tokens, nodes):
                 if holder < 0:
                     node: i64 = GltfJson::element(&json.json_tokens, nodes, n)
-                    m: i64 = try index_member(bytes, &json, node, "mesh", -1)
-                    s: i64 = try index_member(bytes, &json, node, "skin", -1)
+                    m: i64 = try mesh_index_member(bytes, &json, node, "mesh", -1)
+                    s: i64 = try mesh_index_member(bytes, &json, node, "skin", -1)
                     if m >= 0 and s >= 0:
                         holder <- n.i64()
                         mesh_index <- m
@@ -313,13 +313,13 @@ module GlbSkinMesh:
             raise SkinMeshError.IndexOutOfRange if mesh_index.usize() >= GltfJson::child_count(&json.json_tokens, meshes)
             raise SkinMeshError.IndexOutOfRange if skin_index.usize() >= GltfJson::child_count(&json.json_tokens, skins)
             mesh.node <- holder
-            _ = try read_skin(bytes, &json, GltfJson::element(&json.json_tokens, skins, skin_index.usize()), mesh)
+            _ = try mesh_read_skin(bytes, &json, GltfJson::element(&json.json_tokens, skins, skin_index.usize()), mesh)
             mesh_object: i64 = GltfJson::element(&json.json_tokens, meshes, mesh_index.usize())
             primitives: i64 = GltfJson::member(bytes, &json.json_tokens, mesh_object, "primitives")
             raise SkinMeshError.BadJson if GltfJson::kind_of(&json.json_tokens, primitives) != GltfJson::KIND_ARRAY
             mutable triangles: usize = 0
             for p in 0..<GltfJson::child_count(&json.json_tokens, primitives):
-                added: usize = try read_primitive(bytes, &json, GltfJson::element(&json.json_tokens, primitives, p), mesh)
+                added: usize = try mesh_read_primitive(bytes, &json, GltfJson::element(&json.json_tokens, primitives, p), mesh)
                 triangles <- triangles + added
             raise SkinMeshError.AccessorShape if triangles == 0
             true
