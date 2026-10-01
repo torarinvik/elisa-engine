@@ -1,0 +1,196 @@
+include "../src/viewport/mesh_overlay.elisa"
+include "../src/viewport/viewport_raster.elisa"
+include "../src/viewport/png_writer.elisa"
+include "../src/assets/glb_document.elisa"
+
+@link_name("putchar")
+extern c_putchar(c: i32) -> i32 can[Blocking.IO]
+
+def print_number(label: sview, value: i64):
+    for c in label:
+        _ = c_putchar(c.i32())
+    if value < 0:
+        _ = c_putchar(45)
+    mutable digits: darray[i32] = []
+    mutable rest: i64 = value if value >= 0 else 0 - value
+    digits.push((rest % 10).i32())
+    rest <- rest / 10
+    while rest > 0:
+        digits.push((rest % 10).i32())
+        rest <- rest / 10
+    for k in 0..<digits.count:
+        _ = c_putchar(48 + digits[digits.count - 1 - k])
+    _ = c_putchar(10)
+
+# Plan M03 mesh pass: linear blend skinning and flat-shaded mesh drawing.
+# A synthetic two-joint mesh checks the skinning arithmetic; the boxing
+# game's exported character, when present next to this checkout, checks the
+# GLB loader and renders its bind pose headlessly. Run from the repo root.
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def at(p: Geometry::Vec3) -> Geometry::Transform:
+    Geometry::Transform{position: p, rotation: Geometry::quat_identity(), scale: Geometry::vec3_one()}
+
+def near(a: Geometry::Vec3, b: Geometry::Vec3) -> bool:
+    Geometry::vec3_length(Geometry::vec3_sub(a, b)) < 0.0001
+
+def identity_into(out: mutable darray[f32]&):
+    for e in 0..<16:
+        out.push(1.0 if e % 5 == 0 else 0.0)
+
+# Joint 0 bound at the origin, joint 1 bound at y = 1 (inverse bind moves
+# y down by 1). Vertex 0 follows joint 0, vertex 1 joint 1, vertex 2 half
+# and half.
+def synthetic() -> GlbSkinMesh::Mesh:
+    mutable mesh: GlbSkinMesh::Mesh = GlbSkinMesh::empty()
+    mesh.joints.push(0)
+    mesh.joints.push(1)
+    identity_into(&mesh.inverse_binds)
+    identity_into(&mesh.inverse_binds)
+    mesh.inverse_binds[16 + 13] <- -1.0
+    mesh.positions.push(v(0.0, 0.0, 0.0))
+    mesh.positions.push(v(1.0, 1.0, 0.0))
+    mesh.positions.push(v(0.0, 1.0, 1.0))
+    weights: f32[12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0]
+    joints: u16[12] = [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0]
+    for k in 0..<12:
+        mesh.influence_weights.push(weights[k])
+        mesh.influence_joints.push(joints[k])
+    mesh.indices.push(0)
+    mesh.indices.push(1)
+    mesh.indices.push(2)
+    return move mesh
+
+def skinning_cases() -> i32:
+    mesh: GlbSkinMesh::Mesh = synthetic()
+    mutable models: darray[Geometry::Transform] = []
+    models.push(at(v(0.0, 0.0, 0.0)))
+    models.push(at(v(0.0, 1.0, 0.0)))
+    mutable out: darray[Geometry::Vec3] = []
+    # Bind pose reproduces the bind positions.
+    n: usize = catch MeshOverlay::skin(&mesh, &models, &out):
+        value: value
+        error failure: 0
+    return 1 if n != 3
+    return 2 if not near(out[0], v(0.0, 0.0, 0.0)) or not near(out[1], v(1.0, 1.0, 0.0)) or not near(out[2], v(0.0, 1.0, 1.0))
+    # Move joint 1 up by 2: vertex 1 follows fully, vertex 2 half way.
+    models[1] <- at(v(0.0, 3.0, 0.0))
+    _ = catch MeshOverlay::skin(&mesh, &models, &out):
+        value: value
+        error failure: 0
+    return 3 if not near(out[0], v(0.0, 0.0, 0.0))
+    return 4 if not near(out[1], v(1.0, 3.0, 0.0))
+    return 5 if not near(out[2], v(0.0, 2.0, 1.0))
+    # Rotate joint 1 a quarter turn about z at y = 1: (1, 1) -> (0, 2).
+    models[1] <- Geometry::Transform{position: v(0.0, 1.0, 0.0), rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}, scale: Geometry::vec3_one()}
+    _ = catch MeshOverlay::skin(&mesh, &models, &out):
+        value: value
+        error failure: 0
+    return 6 if not near(out[1], v(0.0, 2.0, 0.0))
+    # A joint count mismatch is refused.
+    mutable short: darray[Geometry::Transform] = []
+    short.push(at(v(0.0, 0.0, 0.0)))
+    refused: i32 = catch MeshOverlay::skin(&mesh, &short, &out):
+        value: 0
+        error failure: 1
+    return 7 if refused != 1
+    # Drawing: one lit triangle, shaded at or under the base colour.
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    drawn: usize = catch MeshOverlay::draw(&list, &mesh, &out, v(0.0, 0.0, 1.0), MeshOverlay::default_style()):
+        value: value
+        error failure: 0
+    return 8 if drawn != 1 or list.depth_tris.colors.count != 3
+    # A degenerate face is skipped.
+    mutable flat: darray[Geometry::Vec3] = []
+    flat.push(v(0.0, 0.0, 0.0))
+    flat.push(v(0.0, 0.0, 0.0))
+    flat.push(v(0.0, 0.0, 0.0))
+    skipped: usize = catch MeshOverlay::draw(&list, &mesh, &flat, v(0.0, 0.0, 1.0), MeshOverlay::default_style()):
+        value: value
+        error failure: 99
+    return 9 if skipped != 0
+    0
+
+# Node model transforms from the document's rest pose.
+def rest_models(doc: GlbDocument::Document&) -> darray[Geometry::Transform]:
+    mutable models: darray[Geometry::Transform] = []
+    for n in 0..<GlbDocument::node_count(doc):
+        models.push(Geometry::transform_identity())
+    mutable done: darray[bool] = []
+    for n in 0..<GlbDocument::node_count(doc):
+        done.push(false)
+    mutable left: usize = GlbDocument::node_count(doc)
+    while left > 0:
+        for n in 0..<GlbDocument::node_count(doc):
+            parent: i64 = GlbDocument::node_parent(doc, n)
+            if not done[n] and (parent < 0 or done[parent.usize()]):
+                models[n] <- GlbDocument::node_rest(doc, n) if parent < 0 else Geometry::transform_compose(models[parent.usize()], GlbDocument::node_rest(doc, n))
+                done[n] <- true
+                left <- left - 1
+    return move models
+
+def boxer_case() -> i32:
+    path: cstr = "../elisa-boxing-game/build/dual-stance/black/black-boxer.glb"
+    doc: GlbDocument::Document = catch GlbDocument::load(path):
+        value: value
+        error failure: GlbDocument::Document()
+    if GlbDocument::node_count(&doc) == 0:
+        print_number("viewport_mesh: boxer GLB not found, skipped: ", 0)
+        return 0
+    mesh: GlbSkinMesh::Mesh = catch GlbSkinMesh::load(path):
+        value: value
+        error failure: GlbSkinMesh::empty()
+    return 20 if GlbSkinMesh::vertex_count(&mesh) == 0
+    return 21 if GlbSkinMesh::joint_count(&mesh) != 52
+    nodes: darray[Geometry::Transform] = rest_models(&doc)
+    mutable joint_models: darray[Geometry::Transform] = []
+    for j in 0..<GlbSkinMesh::joint_count(&mesh):
+        joint_models.push(nodes[GlbSkinMesh::joint_node(&mesh, j).usize()])
+    mutable posed: darray[Geometry::Vec3] = []
+    _ = catch MeshOverlay::skin(&mesh, &joint_models, &posed):
+        value: value
+        error failure: 0
+    # The rest pose reproduces the bind positions (to a millimetre).
+    mutable worst: f32 = 0.0
+    for k in 0..<posed.count:
+        d: f32 = Geometry::vec3_length(Geometry::vec3_sub(posed[k], mesh.positions[k]))
+        worst <- d if d > worst else worst
+    print_number("viewport_mesh: boxer vertices: ", GlbSkinMesh::vertex_count(&mesh).i64())
+    print_number("viewport_mesh: boxer triangles: ", GlbSkinMesh::triangle_count(&mesh).i64())
+    print_number("viewport_mesh: rest-pose drift um: ", (worst * 1000000.0).i64())
+    return 22 if worst > 0.001
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    drawn: usize = catch MeshOverlay::draw(&list, &mesh, &posed, v(0.4, 0.8, 0.6), MeshOverlay::default_style()):
+        value: value
+        error failure: 0
+    return 23 if drawn == 0
+    mutable cam: ViewportCamera::Camera = ViewportCamera::create(480, 480)
+    _ = ViewportCamera::frame_points(&cam, &posed, 1.1)
+    mutable img: ViewportRaster::Image = ViewportRaster::create(480, 480)
+    ViewportRaster::clear(&img, ViewportDraw::rgba(20, 22, 26, 255))
+    ViewportRaster::render(&img, &cam, &list)
+    mutable inked: i64 = 0
+    for y in 0..<480:
+        for x in 0..<480:
+            inked <- inked + (1 if ViewportRaster::pixel(&img, x.i64(), y.i64()) != ViewportDraw::rgba(20, 22, 26, 255) else 0)
+    print_number("viewport_mesh: faces drawn: ", drawn.i64())
+    print_number("viewport_mesh: pixels inked: ", inked)
+    return 24 if inked < 10000
+    _ = catch PngWriter::save("build/viewport_mesh.png", 480, 480, &img.rgba):
+        value: value
+        error failure: 0
+    0
+
+def main() -> i32:
+    s: i32 = skinning_cases()
+    if s != 0:
+        print_number("viewport_mesh: skinning case failed: ", s.i64())
+        return s
+    b: i32 = boxer_case()
+    if b != 0:
+        print_number("viewport_mesh: boxer case failed: ", b.i64())
+        return b
+    print_number("viewport_mesh: ok ", 0)
+    0

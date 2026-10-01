@@ -1,0 +1,102 @@
+# Integer policy behind skinned-mesh loading and drawing (GlbSkinMesh,
+# MeshOverlay), proved by proof/skin_mesh_policy.elisa:
+#   - an accessor component type maps to 1, 2 or 4 bytes, or 0 (refused);
+#   - a strided accessor's byte span covers exactly its last element and is
+#     never shorter than one element;
+#   - a triangle corner index is accepted only inside the vertex range;
+#   - a lit colour channel stays a byte and never exceeds the base colour.
+module SkinMeshPolicy:
+    public:
+        const BYTE: i64 = 5120
+        const UNSIGNED_BYTE: i64 = 5121
+        const SHORT: i64 = 5122
+        const UNSIGNED_SHORT: i64 = 5123
+        const UNSIGNED_INT: i64 = 5125
+        const FLOAT: i64 = 5126
+        # Accessor element counts and strides the loader accepts.
+        const MAX_COUNT: i64 = 268435456
+        const MAX_STRIDE: i64 = 252
+        # Light levels are permille.
+        const FULL_LIGHT: i64 = 1000
+
+        # Bytes per component of a glTF component type; 0 when unsupported.
+        def component_bytes(component: i64) -> i64:
+            ensure result == 0 or result == 1 or result == 2 or result == 4
+            ensure component != UNSIGNED_BYTE or result == 1
+            ensure component != UNSIGNED_SHORT or result == 2
+            ensure component != FLOAT or result == 4
+            return 1 if component == BYTE or component == UNSIGNED_BYTE
+            return 2 if component == SHORT or component == UNSIGNED_SHORT
+            return 4 if component == UNSIGNED_INT or component == FLOAT
+            return 0
+
+        # Byte span of `count` elements of `element` bytes laid `stride` bytes
+        # apart: (count - 1) * stride + element. -1 when the layout is refused
+        # (no elements, stride shorter than an element, out of range).
+        def strided_span(count: i64, stride: i64, element: i64) -> i64:
+            ensure result == -1 or result >= element
+            ensure result == -1 or element >= 1
+            ensure result == -1 or stride >= element
+            ensure result == -1 or count >= 1
+            return -1 if count < 1 or count > MAX_COUNT
+            return -1 if element < 1 or element > 64
+            return -1 if stride < element or stride > MAX_STRIDE
+            return element if count == 1
+            steps: i64 = count - 1
+            gaps: i64 = steps * stride
+            return -1 if gaps < 0
+            return -1 if gaps > MAX_COUNT * MAX_STRIDE
+            total: i64 = gaps + element
+            return -1 if total < element
+            return total
+
+        # A triangle corner index is usable for `vertices` vertices.
+        def index_ok(index: i64, vertices: i64) -> bool:
+            ensure not result or index >= 0
+            ensure not result or index < vertices
+            return index >= 0 and index < vertices
+
+        # |facing| held to [0, FULL_LIGHT].
+        def facing_magnitude(facing: i64) -> i64:
+            ensure result >= 0
+            ensure result <= FULL_LIGHT
+            ensure facing < 0 or facing > FULL_LIGHT or result == facing
+            ensure facing > 0 or facing < 0 - FULL_LIGHT or result == 0 - facing
+            return FULL_LIGHT if facing >= FULL_LIGHT
+            return FULL_LIGHT if facing <= 0 - FULL_LIGHT
+            return 0 - facing if facing < 0
+            return facing
+
+        # Light level (permille) for a face turned `d` permille toward the
+        # light (the caller folds back faces to |cosine|: faces are
+        # two-sided), over an `ambient` floor.
+        def light_level(d: i64, ambient: i64) -> i64:
+            requires d >= 0
+            requires d <= FULL_LIGHT
+            requires ambient >= 0
+            requires ambient <= FULL_LIGHT
+            ensure result >= ambient
+            ensure result <= FULL_LIGHT
+            ensure d != 0 or result == ambient
+            return ambient if d == 0
+            v: i64 = ambient + (FULL_LIGHT - ambient) * d / FULL_LIGHT
+            return ambient if v < ambient
+            return FULL_LIGHT if v > FULL_LIGHT
+            return v
+
+        # A colour channel `base` (0..255) lit at `level` permille.
+        def shade(base: i64, level: i64) -> i64:
+            requires base >= 0
+            requires base <= 255
+            requires level >= 0
+            requires level <= FULL_LIGHT
+            ensure result >= 0
+            ensure result <= base
+            ensure level != FULL_LIGHT or result == base
+            ensure level != 0 or result == 0
+            return base if level == FULL_LIGHT
+            return 0 if level == 0
+            v: i64 = base * level / FULL_LIGHT
+            return 0 if v < 0
+            return base if v > base
+            return v
