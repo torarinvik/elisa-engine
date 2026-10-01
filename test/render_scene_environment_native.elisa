@@ -1,5 +1,6 @@
 include "./render_scene_art_material_native.elisa"
 include "./render_scene_sky_map_native.elisa"
+include "./render_scene_cascade_native.elisa"
 
 module RenderSceneEnvironmentNativeTests:
     private:
@@ -413,6 +414,8 @@ module RenderSceneEnvironmentNativeTests:
             return bias_variant if bias_variant != 0
             rasterizer_bias_variant: i32 = verify_rasterizer_bias_variant()
             return rasterizer_bias_variant if rasterizer_bias_variant != 0
+            cascade_policy: i32 = RenderSceneCascadeNativeTests::verify_cascade_policy()
+            return cascade_policy if cascade_policy != 0
             environment_reference: i32 = verify_indoor_outdoor_lighting_reference()
             return environment_reference if environment_reference != 0
             transparent_reference: i32 = verify_transparent_lit_object()

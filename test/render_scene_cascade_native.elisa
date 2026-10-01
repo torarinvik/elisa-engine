@@ -1,0 +1,48 @@
+# Sun cascade policy reference (R05): BackendShadowCascades practical splits
+# reach Wicked's directional light. A uniform 300 m split puts the receiver in
+# a 100 m cascade; a tight 12 m practical split spends the same shadow map on
+# the view and must visibly sharpen its cast shadow. Cases log under group 197.
+module RenderSceneCascadeNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_sun_cascade_distances_match(
+            near_end: f32, middle_end: f32, far_end: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_lighting_frame_change(capture_reference: i32) -> f32
+
+        const MINIMUM_CASCADE_IMAGE_CHANGE: f32 = 0.01
+
+        def policy_status(near_mm: i64, far_mm: i64, lambda_permille: i64) -> i32:
+            catch RenderScene::set_sun_cascade_policy(near_mm, far_mm, lambda_permille):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+
+    public:
+        # Runs inside the isolated lit caster/receiver fixture; the receiver
+        # is 8 m from the orthographic camera.
+        def verify_cascade_policy() -> i32:
+            return 240 if policy_status(100, 100000, 1001) != 1
+            return 241 if policy_status(100, 100, 500) != 1
+            return 242 if policy_status(100, 300000, 0) != 0
+            return 243 if elisa_render_scene_v1_test_sun_cascade_distances_match(100.067, 200.033, 300.0) != 1
+            for frame in 0..<3:
+                return 244 if Application::pump() != Application::PumpStatus.Running
+            wide_capture: cstr = Application::environment_value("ELISA_SHADOW_CASCADE_WIDE_CAPTURE")
+            return 245 if wide_capture != "" and not Application::save_screenshot(wide_capture)
+            return 246 if elisa_render_scene_v1_test_lighting_frame_change(1) < 0.0
+            return 247 if policy_status(100, 12000, 500) != 0
+            return 248 if elisa_render_scene_v1_test_sun_cascade_distances_match(2.28, 5.233, 12.0) != 1
+            for frame in 0..<3:
+                return 249 if Application::pump() != Application::PumpStatus.Running
+            tight_capture: cstr = Application::environment_value("ELISA_SHADOW_CASCADE_TIGHT_CAPTURE")
+            return 250 if tight_capture != "" and not Application::save_screenshot(tight_capture)
+            change: f32 = elisa_render_scene_v1_test_lighting_frame_change(0)
+            return 251 if change < MINIMUM_CASCADE_IMAGE_CHANGE
+            restored: i32 = catch RenderScene::set_sun_cascade_distances(10.0, 100.0, 400.0):
+                ok: 0
+                error failure: 1
+            return 252 if restored != 0
+            for frame in 0..<3:
+                return 253 if Application::pump() != Application::PumpStatus.Running
+            0

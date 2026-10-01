@@ -1,4 +1,5 @@
 include "../vendor/elisa_math.elisa"
+include "./shadow_cascade_grid.elisa"
 
 # Sun shadow cascade policy. Split distances follow the practical split
 # scheme: a per-mille blend of logarithmic splits (even texel density per
@@ -29,44 +30,14 @@ module BackendShadowCascades:
             w: f64 = lambda_permille.f64() / 1000.0
             ElisaMath::round(w * logarithmic + (1.0 - w) * uniform).i64()
 
-        # Rounds a bounding radius up to a multiple of `step_mm` so the
-        # projection size does not change frame to frame as the camera turns.
         def stable_radius(radius_mm: i64, step_mm: i64) -> i64:
-            return 0 if radius_mm <= 0 or step_mm <= 0
-            (radius_mm + step_mm - 1) / step_mm * step_mm
+            BackendShadowCascadeGrid::stable_radius(radius_mm, step_mm)
 
-        # World size of one shadow-map texel for a cascade of the given radius,
-        # in micrometres (at least 1).
         def texel_um(radius_mm: i64, resolution: i64) -> i64:
-            ensure result >= 0
-            return 0 if radius_mm <= 0 or resolution <= 0 or radius_mm > 1000000000000
-            size: i64 = radius_mm * 2000 / resolution
-            size if size > 0 else 1
+            BackendShadowCascadeGrid::texel_um(radius_mm, resolution)
 
-        # Snaps a light-space coordinate (micrometres) down to a whole texel,
-        # flooring negative values too so the grid has no seam at 0.
         def snap_um(coordinate_um: i64, texel: i64) -> i64:
-            return coordinate_um if texel <= 0
-            q: i64 = coordinate_um / texel
-            down: bool = coordinate_um < 0 and q * texel != coordinate_um
-            floored: i64 = q - 1 if down else q
-            floored * texel
+            BackendShadowCascadeGrid::snap_um(coordinate_um, texel)
 
-        # Weight of the next cascade at `distance_mm`: 0 before the band that
-        # ends at `split_mm`, rising to 1000 at the split.
         def blend_permille(distance_mm: i64, split_mm: i64, band_mm: i64) -> i64:
-            ensure result >= 0
-            ensure result <= 1000
-            return 0 if band_mm <= 0 or band_mm > 1000000000000
-            return 0 if distance_mm < 0 or distance_mm > 1000000000000 or split_mm < 0 or split_mm > 1000000000000
-            into: i64 = distance_mm - (split_mm - band_mm)
-            return 0 if into <= 0
-            ramp(into, band_mm)
-
-        # `into` of `band` as a per-mille, saturating at 1000.
-        def ramp(into: i64, band: i64) -> i64:
-            requires into >= 0 and into <= 2000000000000 and band > 0 and band <= 1000000000000
-            ensure result >= 0
-            ensure result <= 1000
-            return 1000 if into >= band
-            into * 1000 / band
+            BackendShadowCascadeGrid::blend_permille(distance_mm, split_mm, band_mm)

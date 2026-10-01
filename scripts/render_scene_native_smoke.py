@@ -388,6 +388,8 @@ def main() -> int:
     shadow_receiver_variant_capture = build / "render-scene-shadow-receiver-variant.png"
     shadow_rasterizer_baseline_capture = build / "render-scene-shadow-rasterizer-baseline.png"
     shadow_rasterizer_variant_capture = build / "render-scene-shadow-rasterizer-variant.png"
+    cascade_wide_capture = build / "render-scene-shadow-cascade-wide.png"
+    cascade_tight_capture = build / "render-scene-shadow-cascade-tight.png"
     postprocess_high_capture = build / "render-scene-postprocess-high.png"
     postprocess_low_capture = build / "render-scene-postprocess-low.png"
     debug_baseline_capture = build / "render-scene-debug-disabled.png"
@@ -400,7 +402,7 @@ def main() -> int:
         lighting_transparent_capture, lighting_opaque_capture,
         shadow_receiver_baseline_capture, shadow_receiver_variant_capture,
         shadow_rasterizer_baseline_capture, shadow_rasterizer_variant_capture,
-        postprocess_high_capture, postprocess_low_capture,
+        cascade_wide_capture, cascade_tight_capture, postprocess_high_capture, postprocess_low_capture,
         debug_baseline_capture, debug_visible_capture]
     capture_lod_quality = False
     if not profile_cost_only:
@@ -423,6 +425,8 @@ def main() -> int:
         runtime_env["ELISA_SHADOW_RECEIVER_VARIANT_CAPTURE"] = str(shadow_receiver_variant_capture)
         runtime_env["ELISA_SHADOW_RASTERIZER_BASELINE_CAPTURE"] = str(shadow_rasterizer_baseline_capture)
         runtime_env["ELISA_SHADOW_RASTERIZER_VARIANT_CAPTURE"] = str(shadow_rasterizer_variant_capture)
+        runtime_env["ELISA_SHADOW_CASCADE_WIDE_CAPTURE"] = str(cascade_wide_capture)
+        runtime_env["ELISA_SHADOW_CASCADE_TIGHT_CAPTURE"] = str(cascade_tight_capture)
         runtime_env["ELISA_POSTPROCESS_HIGH_CAPTURE"] = str(postprocess_high_capture)
         runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
         runtime_env["ELISA_DEBUG_DRAW_BASELINE_CAPTURE"] = str(debug_baseline_capture)

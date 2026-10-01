@@ -1,0 +1,16 @@
+# R05 sun cascade rules: the blend weight stays a per-mille for any input,
+# and a valid cascade's texel is never empty. Saturation at the split,
+# snapping and radius rounding rest on facts the prover lacks (long guard
+# disjunctions, division); test/backend_shadow_cascades.elisa covers them.
+include "../src/backend/shadow_cascade_grid.elisa"
+
+extend BackendShadowCascadeGrid:
+    def prove_blend_bounded(distance_mm: i64, split_mm: i64, band_mm: i64) -> i64:
+        ensure result >= 0
+        ensure result <= 1000
+        blend_permille(distance_mm, split_mm, band_mm)
+
+    def prove_texel_nonempty(radius_mm: i64, resolution: i64) -> i64:
+        requires radius_mm > 0 and radius_mm <= 1000000000000 and resolution > 0
+        ensure result >= 1
+        texel_um(radius_mm, resolution)

@@ -26,6 +26,8 @@ CAPTURES = (
     ("receiver-bias-variant", "render-scene-shadow-receiver-variant.png"),
     ("rasterizer-bias-baseline", "render-scene-shadow-rasterizer-baseline.png"),
     ("rasterizer-bias-variant", "render-scene-shadow-rasterizer-variant.png"),
+    ("cascade-wide", "render-scene-shadow-cascade-wide.png"),
+    ("cascade-tight", "render-scene-shadow-cascade-tight.png"),
 )
 REFERENCE_WIDTH = 160
 REFERENCE_HEIGHT = 100
