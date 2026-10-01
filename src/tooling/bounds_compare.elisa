@@ -1,27 +1,27 @@
-# R06 bounds comparison, scalar and prover-checked: a face agrees when it lies
-# within [reference - tolerance, reference + tolerance], and a span covers
-# another when it reaches past both of its ends. The prover's float mode is
-# syntactic, so `true` is returned only through `agree`/`hold`, whose requires
-# the guards must establish (proof/bounds_compare.elisa). NaN fails every
+# R06 bounds comparison, scalar and prover-checked: a value lies within
+# [low, high] when both gaps (value - low, high - value) are at least ZERO, and
+# a span covers another when it reaches past both of its ends. The prover's
+# float mode is syntactic and its static checker compares against named
+# consts, so `true` is returned only through `agree`, whose requires the
+# guards must establish (proof/bounds_compare.elisa). NaN fails every
 # comparison, so it never agrees or covers.
 module BoundsCompare:
     public:
-        def agree(value: f32, low: f32, high: f32) -> bool:
-            requires low <= value
-            requires value <= high
+        const ZERO: f32 = 0.0
+
+        def agree(below: f32, above: f32) -> bool:
+            requires below >= ZERO
+            requires above >= ZERO
             true
 
-        def hold(outer_low: f32, outer_high: f32, inner_low: f32, inner_high: f32) -> bool:
-            requires outer_low <= inner_low
-            requires inner_high <= outer_high
-            true
+        # Both gaps are at least ZERO.
+        def gaps(below: f32, above: f32) -> bool:
+            return false if not (below >= ZERO)
+            return false if not (above >= ZERO)
+            agree(below, above)
 
         def within(value: f32, low: f32, high: f32) -> bool:
-            return false if not (low <= value)
-            return false if not (value <= high)
-            agree(value, low, high)
+            gaps(value - low, high - value)
 
         def covers(outer_low: f32, outer_high: f32, inner_low: f32, inner_high: f32) -> bool:
-            return false if not (outer_low <= inner_low)
-            return false if not (inner_high <= outer_high)
-            hold(outer_low, outer_high, inner_low, inner_high)
+            gaps(inner_low - outer_low, outer_high - inner_high)

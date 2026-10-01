@@ -1,10 +1,10 @@
-# R06 bounds comparison: `within` and `covers` reach `true` only through
-# `agree`/`hold`, so the prover checks that their guards establish the window
-# and cover facts. A conjunctive guard must establish them too.
+# R06 bounds comparison: `gaps` reaches `true` only through `agree`, so the
+# prover checks that its guards establish both gap facts. A conjunctive guard
+# must establish them too.
 include "../src/tooling/bounds_compare.elisa"
 
 extend BoundsCompare:
-    def prove_conjunct_window(value: f32, low: f32, high: f32) -> bool:
-        if low <= value and value <= high:
-            return agree(value, low, high)
+    def prove_conjunct_gaps(below: f32, above: f32) -> bool:
+        if below >= ZERO and above >= ZERO:
+            return agree(below, above)
         false

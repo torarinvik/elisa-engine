@@ -143,8 +143,10 @@ every face within a tolerance, `covers_footprint` checks that one box covers
 another in x/z, and `draw` submits all three through `RenderScene::debug_box`
 in blue (render, depth tested), orange (physics) and green (nav). The scalar
 comparisons are `BoundsCompare::within` and `covers`; proof/bounds_compare.elisa
-proves them, 11 of 11 obligations, and dropping the upper guard of `within`
-makes the proof fail. Body bounds support box, sphere, capsule and cylinder
+proves them, 9 of 9 obligations, with no semantic diagnostics; both reduce
+to `gaps`, which checks two differences against a named `ZERO` (the static
+checker discharges preconditions only against named consts). Dropping either
+gap guard makes the proof fail. Body bounds support box, sphere, capsule and cylinder
 shapes; other shapes raise InvalidArgument. `Primitive.Box` has half extent 1,
 so a render box matching a 0.5 half-extent body uses scale 0.5.
 
