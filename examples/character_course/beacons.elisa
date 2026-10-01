@@ -1,8 +1,12 @@
 # Durable course beacons: three prefab instances in their own World whose lamp
 # overrides are the saved state. A load decodes, checks every asset against
 # the shelf and spawns into a fresh World before the live one is retired, so
-# a failed load leaves the running beacons untouched.
+# a failed load leaves the running beacons untouched. Every render row is
+# built from the cooked mesh and material packages that the stable asset IDs
+# name, streamed from the shipped `cells/` directory; the rows for a load are
+# all created before the old rows go, so a missing package fails the load.
 include "../../src/world/prefab_scene_codec.elisa"
+include "../../src/runtime/render_scene_streamed.elisa"
 include "../../src/world/events.elisa"
 include "../../src/assets/visual_shelf.elisa"
 using AssetCatalogue
@@ -16,6 +20,8 @@ module CourseBeacons:
             POST_MATERIAL: u64 = 3
             LAMP_UNLIT: u64 = 4
             LAMP_LIT: u64 = 5
+            # Registered but never shipped: the self-test's failed-package load.
+            LAMP_ABSENT: u64 = 6
 
         const module Layout:
             PREFAB: i64 = 1
@@ -32,6 +38,8 @@ module CourseBeacons:
             LAMP_SIZE: f32 = 0.35
             LIGHT_RADIUS: f32 = 2.2
             LISTENER: i64 = 1
+            PUMP_LIMIT: usize = 64
+            STAGE_RESIDENT: i64 = 4
 
         def asset(low: u64) -> Assets::AssetId:
             Assets::AssetId{high: Shelf::ID, low: low}
@@ -75,19 +83,81 @@ module CourseBeacons:
             _ = catch VisualShelf::add_material(&shelf, asset(Shelf::LAMP_LIT), VisualShelf::Colour{red: 1.0, green: 0.82, blue: 0.25}):
                 ok: true
                 error failure: false
+            _ = catch VisualShelf::add_material(&shelf, asset(Shelf::LAMP_ABSENT), VisualShelf::Colour{red: 1.0, green: 0.0, blue: 1.0}):
+                ok: true
+                error failure: false
             shelf
 
-        def primitive_of(shelf: VisualShelf::Shelf&, id: Assets::AssetId) -> RenderScene::Primitive:
-            shape: i32 = catch VisualShelf::mesh_shape(shelf, id):
-                value: value
-                error failure: SHAPE_BOX
-            RenderScene::Primitive.Sphere if shape == SHAPE_SPHERE else RenderScene::Primitive.Box
+        # The cooked package each stable ID names, inside the mounted `cells/`.
+        def beacon_package(id: Assets::AssetId) -> cstr:
+            return "beacon-absent.elpk" if id.high != Shelf::ID
+            return "beacon-post.elpk" if id.low == Shelf::POST_MESH
+            return "beacon-lamp.elpk" if id.low == Shelf::LAMP_MESH
+            return "beacon-stone.elpk" if id.low == Shelf::POST_MATERIAL
+            return "beacon-unlit.elpk" if id.low == Shelf::LAMP_UNLIT
+            return "beacon-lit.elpk" if id.low == Shelf::LAMP_LIT
+            "beacon-absent.elpk"
 
-        def color_of(shelf: VisualShelf::Shelf&, id: Assets::AssetId) -> RenderScene::Color:
-            found: VisualShelf::Colour = catch VisualShelf::material_colour(shelf, id):
+        def beacon_request(package: cstr, section: cstr) -> AssetStream::StreamHandle:
+            catch AssetStream::stream_request(package, section):
                 value: value
-                error failure: VisualShelf::Colour{red: 0.55, green: 0.5, blue: 0.44}
-            RenderScene::Color{red: found.red, green: found.green, blue: found.blue, alpha: 1.0}
+                error failure: AssetStream::stream_none()
+
+        def beacon_stage(handle: AssetStream::StreamHandle) -> i64:
+            report: AssetStream::StreamReport = catch AssetStream::stream_query(handle):
+                value: value
+                error failure: AssetStream::StreamReport{stage: 5, bytes: 0, texel: 0}
+            report.stage
+
+        # Pumps the stream until both requests settle; true when both are
+        # resident, false when either failed or the pump limit ran out.
+        def beacon_wait(mesh: AssetStream::StreamHandle, material: AssetStream::StreamHandle) -> bool:
+            for _ in 0..<Layout::PUMP_LIMIT |done: bool = false| -> done:
+                pumped: i32 = catch AssetStream::stream_pump(4, 4):
+                    value: value
+                    error failure: -1
+                mesh_stage: i64 = beacon_stage(mesh)
+                material_stage: i64 = beacon_stage(material)
+                resident: bool = mesh_stage == Layout::STAGE_RESIDENT and material_stage == Layout::STAGE_RESIDENT
+                settled: bool = mesh_stage >= Layout::STAGE_RESIDENT and material_stage >= Layout::STAGE_RESIDENT
+                stop: bool = settled or pumped < 0
+                break resident if stop
+
+        def beacon_drop(handle: AssetStream::StreamHandle) -> bool:
+            return true if handle.token == 0
+            catch AssetStream::stream_drop(handle):
+                ok: true
+                error failure: false
+
+        def beacon_unmade() -> BeaconRow:
+            BeaconRow{handle: RenderScene::empty_instance_handle(), ok: false}
+
+        def beacon_create(mesh: AssetStream::StreamHandle, material: AssetStream::StreamHandle, pose: Geometry::Transform) -> BeaconRow:
+            catch RenderScene::create_streamed_mesh(mesh, material, pose):
+                value: BeaconRow{handle: value, ok: true}
+                error failure: beacon_unmade()
+
+        def beacon_destroy(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::destroy(handle):
+                ok: true
+                error failure: false
+
+        # One row from the packages `shown` names. The row copies the mesh
+        # bytes and shares the texture, so both requests are dropped before
+        # returning. `ok` is false when a package did not load or the row does
+        # not sample the material's texture.
+        def beacon_row(shown: Assets::VisualAsset, pose: Geometry::Transform) -> BeaconRow:
+            mesh: AssetStream::StreamHandle = beacon_request(beacon_package(shown.mesh), "mesh")
+            material: AssetStream::StreamHandle = beacon_request(beacon_package(shown.material), "albedo")
+            requested: bool = mesh.token != 0 and material.token != 0
+            resident: bool = beacon_wait(mesh, material) if requested else false
+            created: BeaconRow = beacon_create(mesh, material, pose) if resident else beacon_unmade()
+            bound: bool = RenderScene::streamed_material_bound(created.handle, material) if created.ok else false
+            discarded: bool = beacon_destroy(created.handle) if created.ok and not bound else true
+            mesh_dropped: bool = beacon_drop(mesh)
+            material_dropped: bool = beacon_drop(material)
+            kept: bool = bound and discarded and mesh_dropped and material_dropped
+            BeaconRow{handle: created.handle, ok: kept}
 
         def build_scene() -> PrefabScene::Scene:
             definition: mutable Prefab::Definition = Prefab::Definition()
@@ -116,27 +186,53 @@ module CourseBeacons:
                     entry: PrefabPersistence::OverrideRecord = overrides.records[record]
                     known <- false if entry.has_visual and not VisualShelf::visual_known(shelf, &entry.visual)
 
-        def node_pose(beacons: Beacons&, index: usize, node: i64) -> Geometry::Transform:
-            reference: World::EntityRef = PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), node)
+        def placed_pose(world: World::World&, instance: PrefabScene::Instance&, scene: PrefabScene::Scene&, index: usize, node: i64) -> Geometry::Transform:
+            reference: World::EntityRef = PrefabScene::instance_reference(instance, scene, link_id(index), node)
             pose: mutable Geometry::Transform = Geometry::transform_identity()
-            _ = World::world_try_transform(beacons.world, reference, &pose)
+            _ = World::world_try_transform(world, reference, &pose)
             pose
 
-        def create_renders(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
-            for index in 0..<COUNT |beacons|:
-                for part in 0..<2 |beacons, index|:
-                    node: i64 = Layout::POST_NODE if part == 0 else Layout::LAMP_NODE
-                    shown: Assets::VisualAsset = PrefabScene::instance_visual(beacons.instance, beacons.scene, link_id(index), node)
-                    handle: RenderScene::InstanceHandle = try RenderScene::create(primitive_of(&beacons.shelf, shown.mesh),
-                        node_pose(beacons, index, node), color_of(&beacons.shelf, shown.material))
-                    try RenderScene::batch_append(&beacons.renders, handle)
+        def node_pose(beacons: Beacons&, index: usize, node: i64) -> Geometry::Transform:
+            placed_pose(beacons.world, beacons.instance, beacons.scene, index, node)
+
+        # Destroys the first `made` rows.
+        def destroy_rows(rows: RenderScene::InstanceHandle[ROWS]&, made: usize) -> bool:
+            for slot in 0..<made |gone: bool = true| -> gone:
+                gone <- beacon_destroy(rows[slot]) and gone
+
+        # Builds every row for a spawned instance from its cooked packages. On
+        # any failure the rows made so far are destroyed and `ok` is false.
+        def build_rows(world: World::World&, instance: PrefabScene::Instance&, scene: PrefabScene::Scene&) -> Rows:
+            empty: RenderScene::InstanceHandle = RenderScene::empty_instance_handle()
+            handles: mutable RenderScene::InstanceHandle[ROWS] = [empty, empty, empty, empty, empty, empty]
+            made: usize =
+                for slot in 0..<ROWS |handles, count: usize = 0| -> count:
+                    index: usize = slot / 2
+                    node: i64 = Layout::POST_NODE if slot % 2 == 0 else Layout::LAMP_NODE
+                    shown: Assets::VisualAsset = PrefabScene::instance_visual(instance, scene, link_id(index), node)
+                    row: BeaconRow = beacon_row(shown, placed_pose(world, instance, scene, index, node))
+                    handles[slot] <- row.handle
+                    break count if not row.ok
+                    count <- count + 1
+            complete: bool = made == ROWS
+            if not complete:
+                _ = destroy_rows(&handles, made)
+            Rows{handles: handles, ok: complete}
 
         def release_renders(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
-            renders: RenderScene::InstanceBatch = beacons.renders
-            for index in 0..<RenderScene::batch_count(renders):
-                handle: RenderScene::InstanceHandle = try RenderScene::batch_get(renders, index)
-                try RenderScene::destroy(handle)
-            beacons.renders <- RenderScene::InstanceBatch()
+            gone: bool = destroy_rows(&beacons.renders, ROWS if beacons.rendered else 0)
+            beacons.rendered <- false
+            empty: RenderScene::InstanceHandle = RenderScene::empty_instance_handle()
+            beacons.renders <- [empty, empty, empty, empty, empty, empty]
+            raise RenderScene::RenderSceneError.UnknownHandle if not gone
+
+        # Swaps a lamp's row for one built from its new material package; the
+        # old row stays if the package does not load.
+        def relight(beacons: mutable Beacons&, index: usize, shown: Assets::VisualAsset) -> void error[RenderScene::RenderSceneError]:
+            row: BeaconRow = beacon_row(shown, node_pose(beacons, index, Layout::LAMP_NODE))
+            if row.ok:
+                try RenderScene::destroy(beacons.renders[index * 2 + 1])
+                beacons.renders[index * 2 + 1] <- row.handle
 
         def read_status(beacons: Beacons&) -> i32:
             catch PrefabSceneCodec::read_user_data_for_scene(KEY, beacons.scene, Layout::SCENE_ID):
@@ -161,16 +257,23 @@ module CourseBeacons:
             instance: mutable PrefabScene::Instance = PrefabScene::Instance()
             spawned: bool = PrefabScene::spawn_restored(&instance, &world, beacons.scene, Layout::SCENE_ID, snapshot) if restored else PrefabScene::spawn(&instance, &world, beacons.scene, Layout::SCENE_ID)
             return LOAD_REJECTED if not spawned
+            rows: Rows = build_rows(&world, &instance, beacons.scene)
+            if not rows.ok:
+                _ = PrefabScene::destroy(&instance, &world)
+                return LOAD_ASSET_FAILED
             try release_renders(beacons)
             _ = PrefabScene::destroy(&beacons.instance, &beacons.world)
             beacons.world <- move world
             beacons.instance <- move instance
+            beacons.renders <- rows.handles
+            beacons.rendered <- true
             beacons.ready <- true
-            try create_renders(beacons)
             0
 
     public:
         const COUNT: usize = 3
+        # A post and a lamp row per beacon.
+        const ROWS: usize = 6
         const SHAPE_BOX: i32 = 0
         const SHAPE_SPHERE: i32 = 1
         const KEY: cstr = "course-beacons"
@@ -180,15 +283,27 @@ module CourseBeacons:
         const LOAD_REJECTED: i32 = 4
         const LOAD_UNKNOWN_ASSET: i32 = 5
         const LOAD_FAILED: i32 = 6
+        const LOAD_ASSET_FAILED: i32 = 7
+        # Lamp material ID registered on the shelf with no shipped package.
+        const ABSENT_MATERIAL: u64 = 6
 
         affine struct Beacons:
             scene: mutable PrefabScene::Scene
             shelf: VisualShelf::Shelf
             world: mutable World::World
             instance: mutable PrefabScene::Instance
-            renders: mutable RenderScene::InstanceBatch
+            renders: mutable RenderScene::InstanceHandle[ROWS]
+            rendered: mutable bool
             announced: mutable usize
             ready: mutable bool
+
+        struct BeaconRow:
+            handle: RenderScene::InstanceHandle
+            ok: bool
+
+        struct Rows:
+            handles: RenderScene::InstanceHandle[ROWS]
+            ok: bool
 
         def anchor(index: usize) -> Geometry::Vec3:
             if index == 0:
@@ -212,13 +327,27 @@ module CourseBeacons:
             _ = WorldEvents::end_frame(&queue)
             delivered
 
-        def create() -> Beacons error[World::WorldError, RenderScene::RenderSceneError]:
+        # Mounts the shipped `cells/` packages (CourseCells mounts the same
+        # directory) and builds unlit beacons from them.
+        # Builds the beacons without spawning them; `start` spawns. They are
+        # two calls so the large `create` frame is gone before `start`
+        # spawns the scene, since callers are already deep in the stack.
+        def create() -> Beacons error[World::WorldError]:
             world: World::World = try World::World()
             beacons: mutable Beacons = Beacons{scene: build_scene(), shelf: stock_shelf(), world: world, instance: PrefabScene::Instance(),
-                renders: RenderScene::InstanceBatch(), announced: 0, ready: false}
-            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
-            _ = try replace(&beacons, &empty, false)
+                renders: [RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(),
+                    RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle()], rendered: false, announced: 0, ready: false}
             return move beacons
+
+        # Mounts the shipped packages and spawns the authored scene with its
+        # render rows: 0, or LOAD_FAILED / LOAD_ASSET_FAILED and not ready.
+        def start(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+            mounted: bool = catch AssetStream::stream_mount("cells"):
+                ok: true
+                error failure: false
+            return LOAD_FAILED if not mounted
+            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+            try replace(beacons, &empty, false)
 
         def lamp_reference(beacons: Beacons&, index: usize) -> World::EntityRef:
             PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), Layout::LAMP_NODE)
@@ -249,9 +378,7 @@ module CourseBeacons:
                     moved: bool = PrefabScene::override_local(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, raised)
                     changed: bool = PrefabScene::override_visual(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, true, shown)
                     if moved and changed:
-                        handle: RenderScene::InstanceHandle = try RenderScene::batch_get(beacons.renders, index * 2 + 1)
-                        try RenderScene::set_color(handle, color_of(&beacons.shelf, shown.material))
-                        try RenderScene::update_transform(handle, node_pose(beacons, index, Layout::LAMP_NODE))
+                        try relight(beacons, index, shown)
                         delivered: usize = catch announce(beacons.world, lamp_reference(beacons, index), index):
                             value: value
                             error failure: 0

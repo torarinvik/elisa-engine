@@ -66,6 +66,7 @@ process.
 | 145 | reset clears every lamp |
 | 146 | hands the relaunch beacons 0 and 2 lit, plus a checkpoint |
 | 147 | release returns to the render baseline |
+| 189 | a shelf-known material with no shipped package fails the load (`LOAD_ASSET_FAILED`); the live beacons, render count and stream stay unchanged |
 | 148 | relaunch: the checkpoint loads in the new process |
 | 149 | relaunch: the character pose matches the saved position |
 | 150 | relaunch: beacons 0 and 2 come back lit, 1 unlit |
@@ -83,6 +84,24 @@ elisascript scripts/native_gate.elisascript native
 Both smokes pass. The full check and the native gate also pass (`check=0`,
 `gate=0`); they ran on the tree that also holds the next slice,
 [`course-accessibility.md`](course-accessibility.md).
+
+## Cooked beacon packages (2026-10-01)
+
+Restored mesh and material IDs now load cooked packages. `make_cells.py`
+writes `cells/beacon-post.elpk` (box), `beacon-lamp.elpk` (octahedron) and
+three albedo packages (`beacon-stone`, `beacon-unlit`, `beacon-lit`).
+`CourseBeacons::start` mounts `cells`. Each render row requests its mesh and
+albedo through `AssetStream`, pumps to resident within a bounded number of
+pumps, creates the row with `RenderScene::create_streamed_mesh`, checks that
+the texture is bound, then drops both streams. `replace` builds the new rows
+before it releases the old ones, so a missing package (`ABSENT_MATERIAL` is on
+the shelf but not shipped) fails the whole load with nothing published.
+A lit/unlit swap rebuilds only that lamp's row.
+
+`create` no longer spawns: callers call `create`, then `start`. With the
+spawn inside `create`, its ~1.9 MB frame stacked under `replace` and the
+self-test overflowed the 8 MB main stack (exit 245). The same chain was
+already ~8.2 MB at 0147d71c.
 
 ## Negative controls
 
@@ -104,9 +123,8 @@ Both controls were reverted.
 
 ## Gaps
 
-- The course renders the asset IDs as primitives from its own table.
-  Loading catalogue meshes and materials for restored IDs (A01/A04) is still
-  open for W04.
+- Lamp materials are flat albedo packages; there is no authored PBR
+  material beyond the base-colour map.
 - There is no runtime-schema migration chain or crash-recovery journal
   through the runtime byte API (W06). A wrong version is refused, not
   migrated.

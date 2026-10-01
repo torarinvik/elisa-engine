@@ -43,6 +43,7 @@ listed catalogue resolution of restored asset IDs as remaining.
 
 ## Gaps
 
-- The shelf still resolves to primitives and colours. Loading cooked mesh
-  and material packages by these IDs through the native asset loader remains.
+- The course beacons now load cooked mesh and albedo packages for these IDs
+  (see [`course-durable-beacons.md`](course-durable-beacons.md)). The
+  course maps IDs to package names in code (`beacon_package`).
 - The shelf is stocked in code, not read from an authored catalogue file.

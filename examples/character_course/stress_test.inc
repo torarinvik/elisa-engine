@@ -57,6 +57,10 @@
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
                 error failure: return ProgressOutcome{status: 173, character: restarted}
+            started: i32 = catch CourseBeacons::start(&beacons):
+                value: value
+                error failure: -1
+            return ProgressOutcome{status: 173, character: restarted} if started != 0
             lit: usize = try CourseBeacons::update(&beacons, CourseBeacons::anchor(iteration % 3))
             try CourseBeacons::release(&beacons)
             return ProgressOutcome{status: 173, character: restarted} if lit != 1

@@ -41,7 +41,7 @@
         def renders_bounded(baseline: usize) -> bool:
             RenderScene::instance_count() == baseline + BeaconTune::RENDERS
 
-        # Corrupt, wrong-version, unknown-asset and foreign-scene saves are
+        # Corrupt, wrong-version, unknown-asset, foreign-scene and absent-package saves are
         # all refused without touching the live beacons.
         def rejected_loads_test(beacons: mutable CourseBeacons::Beacons&, baseline: usize) -> i32 error[RenderScene::RenderSceneError]:
             live_lamp: World::EntityRef = CourseBeacons::lamp_reference(beacons, 0)
@@ -62,6 +62,14 @@
             return 143 if not write_snapshot(&foreign)
             foreign_scene: i32 = try CourseBeacons::load(beacons)
             return 143 if foreign_scene != CourseBeacons::LOAD_REJECTED or not unchanged(beacons, live_lamp, 2) or not renders_bounded(baseline)
+            # A shelf-known material whose cooked package is not shipped: the
+            # new rows are built before the old ones go, so the load fails
+            # whole and no extra rows or streams are left behind.
+            unknown.links[1].overrides.records[2].visual.material.low <- CourseBeacons::ABSENT_MATERIAL
+            return 189 if not write_snapshot(&unknown)
+            absent_package: i32 = try CourseBeacons::load(beacons)
+            return 189 if absent_package != CourseBeacons::LOAD_ASSET_FAILED or not unchanged(beacons, live_lamp, 2)
+            return 189 if not renders_bounded(baseline) or AssetStream::stream_live() != 0
             0
 
         def beacons_test() -> i32 error[RenderScene::RenderSceneError, Save::SaveError, UserData::UserDataError]:
@@ -69,6 +77,10 @@
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
                 error failure: return 131
+            started: i32 = catch CourseBeacons::start(&beacons):
+                value: value
+                error failure: -1
+            return 131 if started != 0
             return 131 if not beacons.ready or CourseBeacons::lit_count(beacons) != 0 or CourseBeacons::live_entities(beacons) != BeaconTune::LIVE_ENTITIES or not renders_bounded(baseline)
             _ = catch UserData::remove_payload(CourseBeacons::KEY):
                 ok: true
@@ -130,6 +142,10 @@
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
                 error failure: return ProgressOutcome{status: 150, character: restored}
+            started: i32 = catch CourseBeacons::start(&beacons):
+                value: value
+                error failure: -1
+            return ProgressOutcome{status: 150, character: restored} if started != 0
             beacons_loaded: i32 = try CourseBeacons::load(&beacons)
             return ProgressOutcome{status: 150, character: restored} if beacons_loaded != 0 or not handoff_beacons_restored(beacons)
             reset: i32 = try CourseBeacons::reset(&beacons)
