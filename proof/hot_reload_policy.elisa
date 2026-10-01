@@ -1,0 +1,43 @@
+# A10 swap rules: a slot never swaps over an unfreed generation, swaps only a
+# staged generation, keeps at most three generations resident, and never
+# numbers a generation past the cap.
+include "../src/assets/hot_reload_policy.elisa"
+
+extend AssetsHotReloadPolicy:
+    def prove_retired_blocks_swap(staged: i64, retired: i64, ready: bool) -> bool:
+        requires retired != 0
+        ensure not result
+        return may_swap(staged, retired, ready)
+
+    def prove_swap_needs_staged(staged: i64, retired: i64, ready: bool) -> bool:
+        requires staged <= 0
+        ensure not result
+        return may_swap(staged, retired, ready)
+
+    def prove_swap_needs_ready(staged: i64, retired: i64) -> bool:
+        ensure not result
+        return may_swap(staged, retired, false)
+
+    def prove_resident_bounded(staged: i64, retired: i64) -> i64:
+        ensure result >= 1
+        ensure result <= 3
+        resident(staged, retired)
+
+    # A slot that may stage numbers its next generation within the cap;
+    # one that may not keeps its live generation.
+    def prove_next_generation_within_cap(live: i64) -> i64:
+        requires live >= 1
+        requires live <= MAX_GENERATION
+        ensure result >= 1
+        ensure result <= MAX_GENERATION
+        available: bool = generation_available(live)
+        return live if not available
+        live + 1
+
+    # Every slot the table accepts indexes its arrays.
+    def prove_slot_indexes_table(slot: i64, count: i64) -> i64:
+        ensure result >= 0
+        ensure result < SLOTS
+        accepted: bool = in_slot(slot, count)
+        return 0 if not accepted
+        slot

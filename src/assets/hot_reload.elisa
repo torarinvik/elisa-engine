@@ -2,13 +2,17 @@
 # new generation; a broken import is recorded and never replaces the live
 # one. At a safe frame boundary `commit` swaps every staged generation whose
 # dependency chain (`parent` links) has no broken asset, all in one step. The
-# replaced generation is retired, not freed, until its consumers release it.
+# replaced generation is retired, not freed, until its consumers release it,
+# and a slot with an unfreed retired generation waits before swapping again.
+include "./hot_reload_policy.elisa"
+
 module AssetsHotReload:
     public:
         enum Stage:
             Staged
             Broken
             BadSlot
+            Exhausted
 
         struct Table:
             live: mutable i64[8]
@@ -25,7 +29,8 @@ module AssetsHotReload:
             Table{live: [1, 1, 1, 1, 1, 1, 1, 1], staged: zeroed, broken: zeroed, parent: parent, retired: zeroed, retired_refs: zeroed, count: count, errors: 0}
 
         def stage(t: mutable Table&, slot: i64, import_ok: bool) -> Stage:
-            return Stage.BadSlot if slot < 0 or slot >= t.count
+            return Stage.BadSlot if not AssetsHotReloadPolicy::in_slot(slot, t.count)
+            return Stage.Exhausted if not AssetsHotReloadPolicy::generation_available(t.live[slot])
             if not import_ok:
                 t.broken[slot] <- 1
                 t.staged[slot] <- 0
@@ -47,11 +52,12 @@ module AssetsHotReload:
             false
 
         # Swap at the frame boundary; returns how many assets swapped.
-        # `consumers` is how many frames/voices still use the old generation.
+        # `consumers` is how many frames/voices still use the old generation;
+        # a slot whose last retired generation is still held keeps waiting.
         def commit(t: mutable Table&, consumers: i64) -> i64:
             mutable go: i64[8] = zeroed
             for i in 0..<t.count:
-                go[i] <- 1 if t.staged[i] > 0 and ready(t, i)
+                go[i] <- 1 if AssetsHotReloadPolicy::may_swap(t.staged[i], t.retired[i], ready(t, i))
             mutable swapped: i64 = 0
             for i in 0..<t.count:
                 if go[i] == 1:
@@ -60,8 +66,9 @@ module AssetsHotReload:
             swapped
 
         def retire(t: mutable Table&, i: i64, consumers: i64) -> bool:
-            t.retired[i] <- t.live[i]
-            t.retired_refs[i] <- consumers
+            # With no consumers the old generation is free at once.
+            t.retired[i] <- t.live[i] if consumers > 0 else 0
+            t.retired_refs[i] <- consumers if consumers > 0 else 0
             t.live[i] <- t.staged[i]
             t.staged[i] <- 0
             true

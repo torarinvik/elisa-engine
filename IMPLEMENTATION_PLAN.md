@@ -279,6 +279,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **A10 · P1 · Safe asset hot reload** — After: A04, W04.
   Stage replacement dependency graphs and swap generations at a safe frame boundary, retaining old GPU/audio resources until consumers finish. Done: edited textures/materials/meshes update live; a broken replacement preserves the last good scene and reports import errors.
   Progress on 2026-09-29: `src/assets/hot_reload.elisa` stages generations, keeps the last good asset on a broken import, holds back dependants of a broken parent, swaps at a frame boundary and retires old generations until released, with `test/assets_hot_reload.elisa` (see `docs/validation/assets-hot-reload.md`); no watcher or live renderer path, so the item stays open.
+  Progress on 2026-10-01: `src/assets/hot_reload_policy.elisa` bounds retention: a slot never swaps over a retired generation still held, so it keeps at most three generations, and staging stops at a generation cap; `proof/hot_reload_policy.elisa` proves the rules (see `docs/validation/assets-hot-reload.md`).
 - [ ] **A11 · P2 · Collision and navigation cook artifacts** — After: A05, P02, N01.
   Cache Jolt collision data and Recast tiles by geometry/settings/version; add CoACD convex decomposition for selected dynamic concave assets. Done: runtime never repeats offline decomposition; hull error/cost limits and incompatible artifact rebuilds are tested.
 - [ ] **A12 · P2 · Asset import fuzzing and workers** — After: A05, A06.

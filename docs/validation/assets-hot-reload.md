@@ -33,6 +33,24 @@ broken texture holds back a mesh two links away, and a cyclic table never
 swaps instead of looping. The test adds both cases (codes 12 and 13).
 Negative control: checking only the direct parent makes the test exit 12.
 
+## Bounded retention (2026-10-01)
+
+`src/assets/hot_reload_policy.elisa` (`AssetsHotReloadPolicy`) holds the
+float-free swap rules. `commit` swaps a slot only when `may_swap` allows it:
+a staged generation, a ready dependency chain, and no retired generation
+still held. A slot therefore keeps at most three generations resident (live,
+retired, staged), and a retire with no consumers frees at once. `stage`
+refuses a slot at `MAX_GENERATION` (2^40) with `Stage.Exhausted`.
+
+`proof/hot_reload_policy.elisa` proves 42 obligations: a held retired
+generation, a missing staged one or an unready chain each block the swap;
+`resident` stays within 1..3; the next generation stays within the cap; and
+an accepted slot indexes the 8-entry arrays. The test adds cases 14-18.
+
+Negative controls: letting `may_swap` ignore the retired generation trips
+its runtime postcondition (exit 134) and fails the proof; keeping a retired
+generation when there are no consumers makes the test exit 17.
+
 ## Gaps
 
 There is no file watcher, and nothing reaches the renderer or audio yet, so A10 stays open.

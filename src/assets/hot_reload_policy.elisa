@@ -1,0 +1,38 @@
+# Float-free A10 swap rules, split out so the prover can read them. A slot
+# swaps only when it has a staged generation, its dependency chain is ready,
+# and its previous generation has been freed. So each slot keeps at most
+# three generations resident: live, retired and staged.
+module AssetsHotReloadPolicy:
+    public:
+        const SLOTS: i64 = 8
+        # Generations number from 1; a slot stops staging at this one.
+        const MAX_GENERATION: i64 = 1099511627776
+
+        def in_slot(slot: i64, count: i64) -> bool:
+            ensure not result or slot >= 0
+            ensure not result or slot < count
+            ensure not result or count <= SLOTS
+            slot >= 0 and slot < count and count <= SLOTS
+
+        def generation_available(live: i64) -> bool:
+            ensure not result or live >= 1
+            ensure not result or live < MAX_GENERATION
+            live >= 1 and live < MAX_GENERATION
+
+        def may_swap(staged: i64, retired: i64, ready: bool) -> bool:
+            ensure not result or retired == 0
+            ensure not result or staged > 0
+            ensure not result or ready
+            return false if retired != 0
+            staged > 0 and ready
+
+        # Generations a slot holds resident: the live one, plus a staged one
+        # and a retired one still awaiting release.
+        def resident(staged: i64, retired: i64) -> i64:
+            ensure result >= 1
+            ensure result <= 3
+            if staged > 0:
+                return 3 if retired != 0
+                return 2
+            return 2 if retired != 0
+            1
