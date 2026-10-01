@@ -1,0 +1,290 @@
+# Per-cell ownership of asynchronous asset requests. Each resident cell holds
+# a bounded manifest of stable asset keys; the ledger shares one AssetLoader
+# request per key across cells with a reference count, admits a manifest only
+# when its new bytes fit the declared budget, and releases (or cancels, when
+# still in flight) a request when its last owning cell unloads. The declared
+# budget never exceeds the loader's own byte budget, so the loader never has
+# to evict a resource that a resident cell still references.
+include "../assets/loader.elisa"
+include "./cell_asset_budget.elisa"
+include "./cell_streaming.elisa"
+
+module CellAssets:
+    private:
+        const module Limits:
+            MAX_CELLS: usize = 16
+            MAX_ASSETS: usize = 32
+            MAX_PER_CELL: usize = 4
+            INVALID: usize = 64
+
+        struct SharedAsset:
+            key: AssetLoader::RequestKey
+            handle: AssetLoader::RequestHandle
+            refs: i64
+            bytes: i64
+            live: bool
+
+        struct CellRow:
+            key: WorldStreaming::CellKey
+            assets: usize[Limits::MAX_PER_CELL]
+            count: usize
+            live: bool
+
+        def same_key(left: AssetLoader::RequestKey, right: AssetLoader::RequestKey) -> bool:
+            Assets::same_asset_id(left.id, right.id) and left.variant == right.variant
+
+        def find_asset(ledger: Ledger&, key: AssetLoader::RequestKey) -> usize:
+            for index in 0..<Limits::MAX_ASSETS |slot: usize = Limits::INVALID| -> slot:
+                break index if ledger.assets[index].live and CellAssets::same_key(ledger.assets[index].key, key)
+
+        def free_asset(ledger: Ledger&) -> usize:
+            for index in 0..<Limits::MAX_ASSETS |slot: usize = Limits::INVALID| -> slot:
+                break index if not ledger.assets[index].live
+
+        def find_cell(ledger: Ledger&, key: WorldStreaming::CellKey) -> usize:
+            for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID| -> slot:
+                break index if ledger.cells[index].live and ledger.cells[index].key.x == key.x and ledger.cells[index].key.y == key.y
+
+        def free_cell(ledger: Ledger&) -> usize:
+            for index in 0..<Limits::MAX_CELLS |slot: usize = Limits::INVALID| -> slot:
+                break index if not ledger.cells[index].live
+
+        # Bytes the manifest adds beyond assets that are already shared, or -1
+        # when an entry repeats an earlier key of the same manifest.
+        def new_bytes(ledger: Ledger&, manifest: Manifest&) -> i64:
+            total: mutable i64 = 0
+            for index in 0..<Limits::MAX_PER_CELL |ledger, manifest, total|:
+                if index < manifest.count and total >= 0:
+                    for earlier in 0..<index |manifest, index, total|:
+                        total <- -1 if CellAssets::same_key(manifest.keys[earlier], manifest.keys[index])
+                    if total >= 0 and find_asset(ledger, manifest.keys[index]) == Limits::INVALID:
+                        total <- total + manifest.bytes[index]
+            total
+
+        def acquire_one(ledger: mutable Ledger&, key: AssetLoader::RequestKey, bytes: i64, priority: i64) -> usize:
+            existing: usize = find_asset(ledger, key)
+            if existing != Limits::INVALID:
+                ledger.assets[existing].refs <- ledger.assets[existing].refs + 1
+                return existing
+            slot: usize = free_asset(ledger)
+            return Limits::INVALID if slot == Limits::INVALID
+            invalid: AssetLoader::RequestHandle = AssetLoader::RequestHandle{slot: Limits::INVALID, generation: -1}
+            handle: AssetLoader::RequestHandle = catch AssetLoader::request(&ledger.loader, key, priority, bytes.usize()):
+                value: value
+                error failure: invalid
+            return Limits::INVALID if handle.slot == Limits::INVALID
+            ledger.assets[slot] <- SharedAsset{key: key, handle: handle, refs: 1, bytes: bytes, live: true}
+            ledger.committed <- ledger.committed + bytes
+            slot
+
+        # Drops one owner. The last owner releases a resident request and
+        # cancels one still queued, decoding or uploading.
+        def release_one(ledger: mutable Ledger&, slot: usize) -> bool:
+            return false if slot >= Limits::MAX_ASSETS or not ledger.assets[slot].live
+            if ledger.assets[slot].refs > 1:
+                ledger.assets[slot].refs <- ledger.assets[slot].refs - 1
+                return true
+            handle: AssetLoader::RequestHandle = ledger.assets[slot].handle
+            state: AssetLoader::RequestState = AssetLoader::state(&ledger.loader, handle)
+            if state == AssetLoader::RequestState.Resident:
+                released: bool = catch AssetLoader::release(&ledger.loader, handle):
+                    ok: true
+                    error failure: false
+                return false if not released
+                ledger.releases <- ledger.releases + 1
+            elif AssetLoader::request_valid(&ledger.loader, handle):
+                cancelled: bool = catch AssetLoader::cancel(&ledger.loader, handle):
+                    ok: true
+                    error failure: false
+                return false if not cancelled
+                ledger.cancellations <- ledger.cancellations + 1
+            ledger.committed <- CellAssetBudget::released(ledger.committed, ledger.assets[slot].bytes)
+            ledger.assets[slot].live <- false
+            true
+
+    public:
+        const MAX_PER_CELL: usize = Limits::MAX_PER_CELL
+
+        struct Manifest:
+            keys: mutable AssetLoader::RequestKey[Limits::MAX_PER_CELL]
+            bytes: mutable i64[Limits::MAX_PER_CELL]
+            count: mutable usize
+
+        def Manifest() -> Manifest:
+            Manifest{keys: zeroed, bytes: zeroed, count: 0}
+
+        def manifest_add(manifest: mutable Manifest&, key: AssetLoader::RequestKey, bytes: i64) -> bool:
+            return false if manifest.count >= Limits::MAX_PER_CELL
+            return false if not Assets::asset_id_valid(key.id) or bytes <= 0 or bytes > CellAssetBudget::MAX_BYTES
+            manifest.keys[manifest.count] <- key
+            manifest.bytes[manifest.count] <- bytes
+            manifest.count <- manifest.count + 1
+            true
+
+        affine struct Ledger:
+            private:
+                loader: mutable AssetLoader::Loader
+                assets: mutable SharedAsset[Limits::MAX_ASSETS]
+                cells: mutable CellRow[Limits::MAX_CELLS]
+                committed: mutable i64
+                budget: i64
+                releases: mutable usize
+                cancellations: mutable usize
+
+        # `budget` is the declared resident byte budget for all cells; the
+        # loader gets the same budget so admitted residents are never evicted.
+        def Ledger(budget: i64) -> Ledger:
+            bounded: i64 = 0 if budget < 0 else budget
+            Ledger{
+                loader: AssetLoader::Loader(bounded.usize()),
+                assets: zeroed,
+                cells: zeroed,
+                committed: 0,
+                budget: bounded,
+                releases: 0,
+                cancellations: 0,
+            }
+
+        def committed_bytes(ledger: Ledger&) -> i64:
+            ledger.committed
+
+        def resident_bytes(ledger: Ledger&) -> usize:
+            AssetLoader::resident_bytes(&ledger.loader)
+
+        def eviction_count(ledger: Ledger&) -> usize:
+            AssetLoader::eviction_count(&ledger.loader)
+
+        def release_count(ledger: Ledger&) -> usize:
+            ledger.releases
+
+        def cancellation_count(ledger: Ledger&) -> usize:
+            ledger.cancellations
+
+        def live_assets(ledger: Ledger&) -> usize:
+            for index in 0..<Limits::MAX_ASSETS |count: usize = 0| -> count:
+                count <- count + 1 if ledger.assets[index].live
+
+        const MAX_CELLS: usize = Limits::MAX_CELLS
+
+        def cell_live_at(ledger: Ledger&, index: usize) -> bool:
+            index < Limits::MAX_CELLS and ledger.cells[index].live
+
+        def cell_at(ledger: Ledger&, index: usize) -> WorldStreaming::CellKey:
+            return WorldStreaming::CellKey{x: 0, y: 0} if index >= Limits::MAX_CELLS
+            ledger.cells[index].key
+
+        def owns(ledger: Ledger&, cell: WorldStreaming::CellKey) -> bool:
+            find_cell(ledger, cell) != Limits::INVALID
+
+        def refcount(ledger: Ledger&, key: AssetLoader::RequestKey) -> i64:
+            slot: usize = find_asset(ledger, key)
+            return 0 if slot == Limits::INVALID
+            ledger.assets[slot].refs
+
+        def handle_of(ledger: Ledger&, key: AssetLoader::RequestKey) -> AssetLoader::RequestHandle:
+            slot: usize = find_asset(ledger, key)
+            return AssetLoader::RequestHandle{slot: Limits::INVALID, generation: -1} if slot == Limits::INVALID
+            ledger.assets[slot].handle
+
+        def asset_state(ledger: Ledger&, key: AssetLoader::RequestKey) -> AssetLoader::RequestState:
+            AssetLoader::state(&ledger.loader, handle_of(ledger, key))
+
+        def loader_state(ledger: Ledger&, handle: AssetLoader::RequestHandle) -> AssetLoader::RequestState:
+            AssetLoader::state(&ledger.loader, handle)
+
+        # Every request a cell references is still live in the loader: queued,
+        # in flight or resident, never evicted, released or cancelled.
+        def cell_valid(ledger: Ledger&, cell: WorldStreaming::CellKey) -> bool:
+            slot: usize = find_cell(ledger, cell)
+            return false if slot == Limits::INVALID
+            row: CellRow = ledger.cells[slot]
+            for index in 0..<Limits::MAX_PER_CELL |ok: bool = true| -> ok:
+                if CellAssetBudget::slot_in_use(index.i64(), row.count.i64(), Limits::MAX_PER_CELL.i64()):
+                    asset: usize = row.assets[index]
+                    ok <- false if asset >= Limits::MAX_ASSETS
+                    ok <- false if ok and not ledger.assets[asset].live
+                    ok <- false if ok and not AssetLoader::request_valid(&ledger.loader, ledger.assets[asset].handle)
+
+        def cell_resident(ledger: Ledger&, cell: WorldStreaming::CellKey) -> bool:
+            return false if not cell_valid(ledger, cell)
+            row: CellRow = ledger.cells[find_cell(ledger, cell)]
+            for index in 0..<Limits::MAX_PER_CELL |ok: bool = true| -> ok:
+                if index < row.count:
+                    ok <- false if AssetLoader::state(&ledger.loader, ledger.assets[row.assets[index]].handle) != AssetLoader::RequestState.Resident
+
+        # All-or-nothing: either every manifest entry gains this cell as an
+        # owner, or nothing changes. Rejects duplicates, budget overruns and
+        # loader capacity failures.
+        def acquire(ledger: mutable Ledger&, cell: WorldStreaming::CellKey, manifest: Manifest&, priority: i64) -> bool:
+            return false if manifest.count > Limits::MAX_PER_CELL
+            return false if find_cell(ledger, cell) != Limits::INVALID
+            row_slot: usize = free_cell(ledger)
+            return false if row_slot == Limits::INVALID
+            extra: i64 = new_bytes(ledger, manifest)
+            return false if extra < 0 or not CellAssetBudget::admits(ledger.committed, extra, ledger.budget)
+            indices: mutable usize[Limits::MAX_PER_CELL] = zeroed
+            taken: mutable usize = 0
+            failed: mutable bool = false
+            for index in 0..<Limits::MAX_PER_CELL |ledger, manifest, priority, indices, taken, failed|:
+                if index < manifest.count and not failed:
+                    slot: usize = acquire_one(ledger, manifest.keys[index], manifest.bytes[index], priority)
+                    if slot == Limits::INVALID:
+                        failed <- true
+                    else:
+                        indices[index] <- slot
+                        taken <- taken + 1
+            if failed:
+                for index in 0..<Limits::MAX_PER_CELL |ledger, indices, taken|:
+                    if index < taken:
+                        _ = release_one(ledger, indices[index])
+                return false
+            ledger.cells[row_slot] <- CellRow{key: cell, assets: indices, count: manifest.count, live: true}
+            true
+
+        def release(ledger: mutable Ledger&, cell: WorldStreaming::CellKey) -> bool:
+            slot: usize = find_cell(ledger, cell)
+            return false if slot == Limits::INVALID
+            row: CellRow = ledger.cells[slot]
+            ok: mutable bool = true
+            for index in 0..<Limits::MAX_PER_CELL |ledger, row, ok|:
+                if index < row.count:
+                    ok <- false if not release_one(ledger, row.assets[index])
+            ledger.cells[slot].live <- false
+            ok
+
+        # Device-side stage hooks: native workers report progress by stable key.
+        def begin_decode(ledger: mutable Ledger&, key: AssetLoader::RequestKey) -> bool:
+            handle: AssetLoader::RequestHandle = handle_of(ledger, key)
+            catch AssetLoader::begin_decode(&ledger.loader, handle):
+                ok: true
+                error failure: false
+
+        # A decode may report a different size than reserved; the reservation
+        # is replaced only when the real size still fits the declared budget.
+        def complete_decode(ledger: mutable Ledger&, key: AssetLoader::RequestKey, decoded: i64) -> bool:
+            slot: usize = find_asset(ledger, key)
+            return false if slot == Limits::INVALID or decoded <= 0 or decoded > CellAssetBudget::MAX_BYTES
+            reserved: i64 = ledger.assets[slot].bytes
+            next: i64 = CellAssetBudget::resized(ledger.committed, reserved, decoded)
+            return false if next > ledger.budget
+            done: bool = catch AssetLoader::complete_decode(&ledger.loader, ledger.assets[slot].handle, decoded.usize()):
+                ok: true
+                error failure: false
+            return false if not done
+            ledger.assets[slot].bytes <- decoded
+            ledger.committed <- next
+            true
+
+        def upload_complete(ledger: mutable Ledger&, key: AssetLoader::RequestKey) -> bool:
+            handle: AssetLoader::RequestHandle = handle_of(ledger, key)
+            catch AssetLoader::upload_complete(&ledger.loader, handle):
+                ok: true
+                error failure: false
+
+        def destroy(ledger: mutable Ledger&) -> bool:
+            ok: mutable bool = true
+            for index in 0..<Limits::MAX_CELLS |ledger, ok|:
+                if ledger.cells[index].live:
+                    key: WorldStreaming::CellKey = ledger.cells[index].key
+                    ok <- false if not release(ledger, key)
+            ok and ledger.committed == 0 and AssetLoader::resident_bytes(&ledger.loader) == 0

@@ -60,6 +60,13 @@ module CellWorld:
         def active_count(runtime: Runtime&) -> usize:
             runtime.active_count
 
+        def hysteresis(runtime: Runtime&) -> i64:
+            WorldStreaming::hysteresis(runtime.stream)
+
+        # Whether `key` lies beyond the trim radius plus hysteresis.
+        def outside(key: WorldStreaming::CellKey, player_x: i64, player_y: i64, radius: i64, hysteresis: i64) -> bool:
+            distance_outside(key, player_x, player_y, radius, hysteresis)
+
         def resident_count(runtime: Runtime&) -> usize:
             WorldStreaming::resident_count(runtime.stream)
 

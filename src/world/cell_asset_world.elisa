@@ -1,0 +1,55 @@
+# Joins scene-cell residency (CellWorld) with per-cell asset ownership
+# (CellAssets). A cell's assets are acquired before its world payload is
+# created and released only after the payload is destroyed, so any entity a
+# resident cell spawns can rely on its referenced requests staying live.
+include "./cell_assets.elisa"
+include "./cell_world.elisa"
+
+module CellAssetWorld:
+    public:
+        def activate(runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, key: WorldStreaming::CellKey, dependency_generation: i64,
+            manifest: CellAssets::Manifest&, priority: i64) -> bool:
+            return false if CellAssets::owns(ledger, key)
+            return false if not CellAssets::acquire(ledger, key, manifest, priority)
+            if not CellWorld::activate(runtime, world, key, dependency_generation):
+                _ = CellAssets::release(ledger, key)
+                return false
+            true
+
+        def activate_prefab(runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, key: WorldStreaming::CellKey, dependency_generation: i64,
+            manifest: CellAssets::Manifest&, priority: i64,
+            definition: Prefab::Definition&, prefab_id: i64, instance_id: i64) -> bool:
+            return false if CellAssets::owns(ledger, key)
+            return false if not CellAssets::acquire(ledger, key, manifest, priority)
+            if not CellWorld::activate_prefab(runtime, world, key, dependency_generation, definition, prefab_id, instance_id):
+                _ = CellAssets::release(ledger, key)
+                return false
+            true
+
+        def deactivate(runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, key: WorldStreaming::CellKey) -> bool:
+            return false if not CellAssets::owns(ledger, key)
+            return false if not CellWorld::deactivate(runtime, world, key)
+            CellAssets::release(ledger, key)
+
+        def trim(runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, player_x: i64, player_y: i64, radius: i64) -> usize:
+            return 0 if radius < 0
+            hysteresis: i64 = CellWorld::hysteresis(runtime)
+            changes: mutable usize = 0
+            for index in 0..<CellAssets::MAX_CELLS |runtime, ledger, world, player_x, player_y, radius, hysteresis, changes|:
+                if CellAssets::cell_live_at(ledger, index):
+                    key: WorldStreaming::CellKey = CellAssets::cell_at(ledger, index)
+                    if CellWorld::outside(key, player_x, player_y, radius, hysteresis):
+                        changes <- changes + 1 if deactivate(runtime, ledger, world, key)
+            changes
+
+        def valid(runtime: CellWorld::Runtime&, ledger: CellAssets::Ledger&, world: World::World&) -> bool:
+            return false if not CellWorld::valid(runtime, world)
+            for index in 0..<CellAssets::MAX_CELLS |ok: bool = true| -> ok:
+                if ok and CellAssets::cell_live_at(ledger, index):
+                    key: WorldStreaming::CellKey = CellAssets::cell_at(ledger, index)
+                    ok <- false if not CellAssets::cell_valid(ledger, key)
+                    ok <- false if not CellWorld::cell_reference(runtime, key).id > 0

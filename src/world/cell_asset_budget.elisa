@@ -1,0 +1,56 @@
+# Integer budget and index rules for CellAssets, split out so the prover can
+# check them: admission never lets committed bytes pass the declared budget,
+# a release never goes negative, and per-cell reference slots stay in bounds.
+module CellAssetBudget:
+    public:
+        const MAX_BYTES: i64 = 1099511627776
+
+        # Whether `extra` more bytes fit beside `committed` under `budget`.
+        def admits(committed: i64, extra: i64, budget: i64) -> bool:
+            requires committed <= MAX_BYTES
+            requires extra <= MAX_BYTES
+            requires budget <= MAX_BYTES
+            ensure not result or committed >= 0
+            ensure not result or extra >= 0
+            ensure not result or committed + extra <= budget
+            return false if committed < 0 or extra < 0 or budget < 0
+            committed + extra <= budget
+
+        # Committed bytes after releasing `bytes`; clamps at zero.
+        def released(committed: i64, bytes: i64) -> i64:
+            requires committed <= MAX_BYTES
+            requires bytes <= MAX_BYTES
+            requires bytes >= 0
+            ensure result >= 0
+            ensure result <= committed or committed < 0
+            return 0 if bytes >= committed
+            committed - bytes
+
+        # Committed bytes after a decode replaces a reservation with its real size.
+        def resized(committed: i64, reserved: i64, decoded: i64) -> i64:
+            requires committed >= 0
+            requires committed <= MAX_BYTES
+            requires reserved >= 0
+            requires reserved <= MAX_BYTES
+            requires decoded >= 0
+            requires decoded <= MAX_BYTES
+            ensure result >= 0
+            ensure result >= decoded
+            kept: i64 = released(committed, reserved)
+            grown(kept, decoded)
+
+        def grown(kept: i64, decoded: i64) -> i64:
+            requires kept >= 0
+            requires kept <= MAX_BYTES
+            requires decoded >= 0
+            requires decoded <= MAX_BYTES
+            ensure result >= 0
+            ensure result >= decoded
+            kept + decoded
+
+        # Whether reference `index` is one of a cell's `count` used slots.
+        def slot_in_use(index: i64, count: i64, capacity: i64) -> bool:
+            ensure not result or index >= 0
+            ensure not result or index < capacity
+            ensure not result or index < count
+            index >= 0 and index < count and index < capacity

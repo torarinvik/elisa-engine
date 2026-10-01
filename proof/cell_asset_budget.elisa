@@ -1,0 +1,21 @@
+include "../src/world/cell_asset_budget.elisa"
+
+extend CellAssetBudget:
+    def prove_admission_stays_within(committed: i64, extra: i64, budget: i64) -> bool:
+        requires committed <= MAX_BYTES
+        requires extra <= MAX_BYTES
+        requires budget <= MAX_BYTES
+        ensure not result or committed + extra <= budget
+        admits(committed, extra, budget)
+
+    def prove_release_nonnegative(committed: i64, bytes: i64) -> i64:
+        requires committed >= 0 and committed <= MAX_BYTES
+        requires bytes >= 0 and bytes <= MAX_BYTES
+        ensure result >= 0
+        ensure result <= committed
+        released(committed, bytes)
+
+    def prove_slot_bound(index: i64, count: i64) -> bool:
+        ensure not result or index < 8
+        ensure not result or index >= 0
+        slot_in_use(index, count, 8)
