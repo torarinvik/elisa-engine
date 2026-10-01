@@ -1,6 +1,6 @@
-def compiler_path() -> sview:
+def tool_path(variable: sview, name: sview) -> sview:
     _ =
-        configured: sview = get_environment_or("ELISA_COMPILER_BIN", "")
+        configured: sview = get_environment_or(variable, "")
         if configured != "":
             return configured
         configured
@@ -10,33 +10,24 @@ def compiler_path() -> sview:
     for directory in directories:
         candidate: sview =
             base: sview = "." if directory == "" else directory
-            f"{base}/elisac-stage1"
-        if is_file(path(candidate)) and is_executable(path(candidate)):
-            return candidate
-    ""
-def godot_path() -> sview:
-    _ =
-        configured: sview = get_environment_or("GODOT_BIN", "")
-        if configured != "":
-            return configured
-        configured
-    directories: darray[sview] =
-        search_path: sview = get_environment_or("PATH", "")
-        split(search_path, ":")
-    for directory in directories:
-        candidate: sview =
-            base: sview = "." if directory == "" else directory
-            f"{base}/godot"
+            f"{base}/{name}"
         if is_file(path(candidate)) and is_executable(path(candidate)):
             return candidate
     ""
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
-    result: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(program), arguments, empty_input)
-    _ = write_stdout(result.stdout)
-    _ = write_stderr(result.stderr)
-    result.exit_status
+    # The launcher reports a spawn that never started (e.g. ENOMEM under swap pressure) as a
+    # silent 126; retry it, and name the program if it still cannot start.
+    for attempt in 0..<3:
+        result: ProcessCapture =
+            empty_input: sview = ""
+            capture_process_result(executable(program), arguments, empty_input)
+        if result.exit_status != 126 or result.stdout != "" or result.stderr != "":
+            _ = write_stdout(result.stdout)
+            _ = write_stderr(result.stderr)
+            return result.exit_status
+    eprint("check: could not start:")
+    eprint(program)
+    126
 def rejects_owner_violation(compiler: sview, source: sview, output: sview, privacy: bool = false) -> bool:
     # Retry only empty compiler crashes; preserve changed diagnostics as real failures.
     for attempt in 0..<2:
@@ -60,7 +51,7 @@ def main(arguments: darray[sview]) -> i64:
         return 2
     root: Path = Script::source_path().parent().parent()
     compiler: sview =
-        candidate: sview = compiler_path()
+        candidate: sview = tool_path("ELISA_COMPILER_BIN", "elisac-stage1")
         if candidate == "" or not is_file(path(candidate)) or not is_executable(path(candidate)):
             eprint("Put elisac-stage1 on PATH or set ELISA_COMPILER_BIN to its executable path.")
             return 2
@@ -191,7 +182,7 @@ def main(arguments: darray[sview]) -> i64:
             return status
         status
     println("SDL3 platform probe passed.")
-    godot_binary: sview = godot_path()
+    godot_binary: sview = tool_path("GODOT_BIN", "godot")
     if godot_binary == "" or not is_file(path(godot_binary)) or not is_executable(path(godot_binary)):
         eprint("Install Godot or set GODOT_BIN to its executable path.")
         return 2
