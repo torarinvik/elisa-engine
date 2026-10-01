@@ -42,4 +42,13 @@ def main() -> i32:
     # f32 round trip for the runtime pose.
     back: MotionQuat::Q = MotionQuat::from_geometry(MotionQuat::to_geometry(b))
     return 11 if MotionQuat::dot(back, b) < 0.999999
+    # Shortest arc maps one direction onto another, including opposites.
+    src_dir: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: 0.2, y: 1.0, z: -0.4})
+    dst_dir: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: -0.7, y: 0.1, z: 0.5})
+    return 12 if not same_v(MotionQuat::rotate(MotionQuat::between(src_dir, dst_dir), src_dir), dst_dir)
+    flipped: MotionQuat::V = MotionQuat::V{x: -src_dir.x, y: -src_dir.y, z: -src_dir.z}
+    return 13 if not same_v(MotionQuat::rotate(MotionQuat::between(src_dir, flipped), src_dir), flipped)
+    return 14 if not same(MotionQuat::between(src_dir, src_dir), MotionQuat::identity())
+    return 15 if not close(MotionQuat::angle(MotionQuat::axis_angle(z, 0.9)), 0.9)
+    return 16 if not close(MotionQuat::angle(nb), 1.5707963267948966)
     return 0

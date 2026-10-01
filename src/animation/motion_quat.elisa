@@ -109,6 +109,27 @@ module MotionQuat:
             angle: f64 = 2.0 * ElisaMath::atan2(along, t.w)
             angle - 6.283185307179586 if angle > 3.141592653589793 else (angle + 6.283185307179586 if angle <= -3.141592653589793 else angle)
 
+        # Rotation angle of a quaternion in [0, pi] (q and -q give the same).
+        def angle(q: Q) -> f64:
+            n: Q = normalize(q)
+            w: f64 = n.w if n.w >= 0.0 else -n.w
+            2.0 * ElisaMath::acos(1.0 if w > 1.0 else w)
+
+        # Shortest-arc rotation taking direction `source` onto direction `target`.
+        # Opposite directions turn a half turn about any axis perpendicular
+        # to `source`; a zero-length input gives the identity.
+        def between(source: V, target: V) -> Q:
+            a: V = vnormalize(source)
+            b: V = vnormalize(target)
+            return identity() if vdot(a, a) <= Tune::EPSILON or vdot(b, b) <= Tune::EPSILON
+            c: f64 = vdot(a, b)
+            if c < -1.0 + Tune::EPSILON:
+                side: V = cross(a, V{x: 1.0, y: 0.0, z: 0.0})
+                axis: V = side if vdot(side, side) > 0.000001 else cross(a, V{x: 0.0, y: 1.0, z: 0.0})
+                return axis_angle(axis, 3.141592653589793)
+            v: V = cross(a, b)
+            normalize(Q{x: v.x, y: v.y, z: v.z, w: 1.0 + c})
+
         # Rotation taking local +Y and the local hinge onto the world ones.
         # Both hinges are first made perpendicular to their +Y axis.
         def aim(y_world: V, hinge_world: V, hinge_local: V) -> Q:
