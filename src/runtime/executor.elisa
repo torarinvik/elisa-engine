@@ -124,12 +124,12 @@ module Executor:
         # Function-value arrays are not supported by the compiler, so a single
         # dispatcher receives the system index rather than one callback per
         # system; that keeps the executor independent of what systems do.
-        def plan_execute(plan: Plan&, state: mutable FrameState&, dispatch: fn(mutable FrameState&, usize) -> void) -> void error[ExecError]:
+        def plan_execute(plan: Plan&, state: mutable FrameState&, run_system: fn(mutable FrameState&, usize) -> void) -> void error[ExecError]:
             raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
             sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
-            for slot in 0..<plan.count |state, sequence, dispatch|:
+            for slot in 0..<plan.count |state, sequence, run_system|:
                 system: usize = sequence[slot].usize()
-                dispatch(state, system)
+                run_system(state, system)
                 if state.length < Executor::MAX_TRACE_EVENTS:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
@@ -138,12 +138,12 @@ module Executor:
         # reference, so system dispatch needs no captured closure or allocation.
         def plan_execute_with_context[Context](plan: Plan&,
             state: mutable FrameState&, context: mutable Context&,
-            dispatch: fn(mutable FrameState&, usize, mutable Context&) -> void) -> void error[ExecError]:
+            run_system: fn(mutable FrameState&, usize, mutable Context&) -> void) -> void error[ExecError]:
             raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
             sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
-            for slot in 0..<plan.count |state, sequence, context, dispatch|:
+            for slot in 0..<plan.count |state, sequence, context, run_system|:
                 system: usize = sequence[slot].usize()
-                dispatch(state, system, context)
+                run_system(state, system, context)
                 if state.length < Executor::MAX_TRACE_EVENTS:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
@@ -154,12 +154,12 @@ module Executor:
         def plan_execute_with_contexts[ContextA, ContextB](plan: Plan&,
             state: mutable FrameState&, context_a: mutable ContextA&,
             context_b: mutable ContextB&,
-            dispatch: fn(mutable FrameState&, usize, mutable ContextA&, mutable ContextB&) -> void) -> void error[ExecError]:
+            run_system: fn(mutable FrameState&, usize, mutable ContextA&, mutable ContextB&) -> void) -> void error[ExecError]:
             raise ExecError.BadPlan if plan.count > Limits::MAX_SYSTEMS
             sequence: i64[Limits::MAX_SYSTEMS] = plan_sequence(plan)
-            for slot in 0..<plan.count |state, sequence, context_a, context_b, dispatch|:
+            for slot in 0..<plan.count |state, sequence, context_a, context_b, run_system|:
                 system: usize = sequence[slot].usize()
-                dispatch(state, system, context_a, context_b)
+                run_system(state, system, context_a, context_b)
                 if state.length < Executor::MAX_TRACE_EVENTS:
                     state.trace[state.length] <- system.i64()
                     state.length <- state.length + 1
