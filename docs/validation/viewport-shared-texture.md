@@ -102,3 +102,24 @@ Both are registered in `scripts/check.elisascript`. The second is linked by `scr
 ## Camera sync (2026-10-01)
 
 `ViewportWicked::sync_camera` (src/viewport/viewport_wicked.elisa) copies a `ViewportCamera` to Wicked's main camera: perspective field of view and clip range, or orthographic height `2 * half_height`, then eye, target and up. The backdrop test drives Wicked from a perspective camera, the front and side orthographic cameras, and the perspective camera again after an orbit and zoom. At 25 pixels per view, Wicked's `RenderScene::camera_ray` must agree with `ViewportCamera::ray`: 1 - cos of the angle between directions, and the distance of Wicked's origin from the viewport ray, must both stay under 50e-6. The measured mismatch rounds to 0 at 1e-6. A 10% field-of-view mutant is caught (exit 41), and a 0.75x orthographic-height mutant is caught (exit 42). The first version of the check accumulated its worst value in nested `for` loops and always reported 0 even for the mutants. It now uses one `while` loop with a per-sample helper; the Elisa discarded-accumulator quirk is suspected.
+
+## Three views in an elisa-ui layout (2026-10-01)
+
+The elisa-ui branch `mocap-viewport` hosts perspective, front and side `Viewport`s
+with one shared `ViewportScene`, in `examples/viewport/three_views_layout.elisa`.
+Run its check from that repository:
+`ELISA_ENGINE_ROOT=../elisa-engine bash scripts/check_viewport_three_views.sh`.
+It prints `viewport three views passed`. The check covers:
+
+- panel-matched pixel sizes at 1200×800 and 900×700, at scale 2;
+- tiles that do not overlap;
+- no renders while idle;
+- a grow change on the lower row, which redraws only the front and side views;
+- the selected joint centred within 2 px in every view after frame-selection;
+- pointer routing to the right view.
+
+Sizing every view from panel 0 fails with code 11, and redrawing on every sync
+fails with code 20. To build the window, run
+`ELISA_VIEWPORT_APP=three_views scripts/build_appkit_canvas_viewport.sh`. The
+window was only smoke-run (`ELISA_UI_SMOKE_FRAMES=3`, exit 0), which does not
+show it on screen.
