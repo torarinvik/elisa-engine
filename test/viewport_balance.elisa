@@ -1,0 +1,68 @@
+# Balance overlay (plan M05): the support hull of foot corners drops interior,
+# duplicate and non-finite points; degenerate supports (none, one point, a
+# segment) draw without failing; and in a CPU raster of a front view the
+# centre-of-mass marker takes the "bad" colour only when balance is
+# impossible (written to build/viewport_balance.png).
+include "../src/viewport/viewport_raster.elisa"
+include "../src/viewport/png_writer.elisa"
+include "../src/viewport/balance_overlay.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def count_red(img: ViewportRaster::Image&) -> i64:
+    mutable n: i64 = 0
+    for y in 0..<img.height:
+        for x in 0..<img.width:
+            k: usize = ((y * img.width + x) * 4).usize()
+            n <- n + 1 if img.rgba[k] > 200 and img.rgba[k + 1] < 90 and img.rgba[k + 2] < 90
+    n
+
+def render(balanced: bool, path: cstr) -> i64:
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(320, 240, ViewportCamera::FRONT)
+    feet: darray[Geometry::Vec3] = [v(-0.3, 0.0, -0.1), v(0.3, 0.0, -0.1), v(-0.3, 0.0, 0.1), v(0.3, 0.0, 0.1)]
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    n: i64 = catch BalanceOverlay::draw(&list, &cam, v(0.0, 0.5, 0.0), 0.0, &feet, balanced, BalanceOverlay::default_style(), ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+    return -1 if n != 2 + 4 + 3
+    mutable img: ViewportRaster::Image = ViewportRaster::create(320, 240)
+    ViewportRaster::clear(&img, ViewportDraw::rgba(20, 20, 24, 255))
+    ViewportRaster::render(&img, &cam, &list)
+    _ = catch PngWriter::save(path, 320, 240, &img.rgba):
+        value: 0
+        error failure: return -2
+    count_red(&img)
+
+def main() -> i32:
+    square: darray[Geometry::Vec3] = [v(0.0, 0.0, 0.0), v(1.0, 0.0, 0.0), v(0.5, 0.0, 0.5), v(1.0, 0.0, 1.0), v(0.0, 0.0, 1.0), v(1.0, 0.0, 1.0)]
+    return 1 if BalanceOverlay::hull(&square).count != 4
+    nan: f32 = 0.0 / 0.0
+    bad: darray[Geometry::Vec3] = [v(nan, 0.0, 0.0), v(0.0, 0.0, 0.0), v(2.0, 0.0, 0.0)]
+    return 2 if BalanceOverlay::hull(&bad).count != 2
+    one: darray[Geometry::Vec3] = [v(0.2, 0.0, 0.2), v(0.2, 0.0, 0.2), v(0.2, 0.0, 0.2)]
+    return 3 if BalanceOverlay::hull(&one).count != 1
+    line: darray[Geometry::Vec3] = [v(0.0, 0.0, 0.0), v(1.0, 0.0, 1.0), v(2.0, 0.0, 2.0)]
+    return 4 if BalanceOverlay::hull(&line).count != 2
+    empty: darray[Geometry::Vec3] = []
+    return 5 if BalanceOverlay::hull(&empty).count != 0
+    cam: ViewportCamera::Camera = ViewportCamera::create_ortho(320, 240, ViewportCamera::FRONT)
+    mutable list: ViewportDraw::List = ViewportDraw::create()
+    none: i64 = catch BalanceOverlay::draw(&list, &cam, v(0.0, 1.0, 0.0), 0.0, &empty, true, BalanceOverlay::default_style(), ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+    return 6 if none != 3
+    seg: i64 = catch BalanceOverlay::draw(&list, &cam, v(0.0, 1.0, 0.0), 0.0, &line, true, BalanceOverlay::default_style(), ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+    return 7 if seg != 4
+    nan_com: i64 = catch BalanceOverlay::draw(&list, &cam, v(nan, 1.0, 0.0), 0.0, &line, true, BalanceOverlay::default_style(), ViewportDraw::TOP):
+        value: value.i64()
+        error failure: -1
+    return 8 if nan_com != -1
+    ok: i64 = render(true, "build/viewport_balance_ok.png")
+    impossible: i64 = render(false, "build/viewport_balance.png")
+    return 9 if ok < 0 or impossible < 0
+    return 10 if ok != 0
+    return 11 if impossible < 30
+    0
