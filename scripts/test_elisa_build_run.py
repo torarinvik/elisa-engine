@@ -595,6 +595,50 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse((log_dir / "ran.json").exists())
 
+    def test_console_host_compiles_executable_without_native_host(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa console ") as temporary_directory:
+            root = Path(temporary_directory)
+            project = root / "tool project"
+            (project / "src").mkdir(parents=True)
+            (project / "src/main.elisa").write_text("def main() -> i32:\n    0\n", encoding="utf-8")
+            (project / "elisa.project.json").write_text(json.dumps({
+                "name": "Tool", "main": "src/main.elisa", "output": "build/tool", "host": "console",
+            }), encoding="utf-8")
+            log_dir = root / "logs"
+            log_dir.mkdir()
+            compiler = root / "fake compiler"
+            compiler.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "pathlib.Path(os.environ['FAKE_LOG_DIR'], 'compiler.json').write_text(json.dumps(sys.argv[1:]))\n"
+                "out = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+                "out.write_text('#!/usr/bin/env python3\\nimport json, os, sys\\n'\n"
+                "    'open(os.path.join(os.environ[\"FAKE_LOG_DIR\"], \"ran.json\"), \"w\").write(json.dumps(sys.argv[1:]))\\n')\n"
+                "out.chmod(0o755)\n",
+                encoding="utf-8",
+            )
+            compiler.chmod(0o755)
+            runner = __import__("elisa_build_run")
+            environment = {"ELISA_COMPILER_BIN": str(compiler), "FAKE_LOG_DIR": str(log_dir),
+                "PATH": os.environ.get("PATH", "")}
+            with mock.patch.dict(os.environ, environment, clear=True), \
+                    mock.patch.object(sys, "platform", "linux"), \
+                    mock.patch.object(runner, "resolve_native_paths", side_effect=AssertionError("native host used")):
+                status = runner.main(["run", "--project", str(project), "--", "clean", "in.glb"])
+            self.assertEqual(status, 0)
+            arguments = json.loads((log_dir / "compiler.json").read_text())
+            self.assertEqual(arguments[:2], ["-emit", "exe"])
+            self.assertEqual(arguments[-1], str((project / "src/main.elisa").resolve()))
+            self.assertEqual(json.loads((log_dir / "ran.json").read_text()), ["clean", "in.glb"])
+            self.assertTrue((project / "build/tool").is_file())
+
+    def test_unknown_project_host_is_rejected(self) -> None:
+        runner = __import__("elisa_build_run")
+        with self.assertRaises(runner.BuildConfigurationError):
+            runner.project_host({"host": "web"}, False)
+        self.assertEqual(runner.project_host({}, True), "console")
+        self.assertEqual(runner.project_host({}, False), "application")
+
 
 if __name__ == "__main__":
     unittest.main()
