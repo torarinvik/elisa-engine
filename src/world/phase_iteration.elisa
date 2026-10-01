@@ -1,0 +1,58 @@
+# Phase-bound dense iteration over live world entities. A cursor owns a read
+# token for its whole lifetime, so while it is open the frame cannot advance,
+# end, or commit structural commands: the iteration borrow cannot outlive its
+# phase and no despawn can interleave with it. The cursor also records the
+# world epoch and live-column length and rejects a world that changed anyway.
+include "./schedule.elisa"
+include "./iteration_bounds.elisa"
+
+module WorldPhaseIteration:
+    public:
+        enum IterError:
+            Exhausted
+            WorldChanged
+            Closed
+            ReleaseRejected
+
+        affine struct Cursor:
+            private:
+                token: mutable WorldAccess::Token
+                next_index: mutable usize
+                live_total: usize
+                opened_epoch: i64
+                open: mutable bool
+
+        # Opening fails with the schedule's own error when no read token is
+        # available (inactive frame, phase mismatch, or a live writer).
+        def open_cursor(frame: mutable WorldSchedule::Frame&, world: World::World&) -> Cursor error[WorldSchedule::Error]:
+            read_token: WorldAccess::Token = try WorldSchedule::acquire_read(frame)
+            Cursor{token: read_token, next_index: 0,
+                live_total: World::world_live_ids_count(world),
+                opened_epoch: World::world_epoch(world), open: true}
+
+        def cursor_open(cursor: Cursor&) -> bool:
+            cursor.open
+
+        def cursor_remaining(cursor: Cursor&) -> usize:
+            return 0 if not cursor.open or cursor.next_index >= cursor.live_total
+            cursor.live_total - cursor.next_index
+
+        def cursor_next(cursor: mutable Cursor&, world: World::World&) -> World::EntityRef error[IterError]:
+            raise IterError.Closed if not cursor.open
+            raise IterError.WorldChanged if World::world_epoch(world) != cursor.opened_epoch
+            raise IterError.WorldChanged if World::world_live_ids_count(world) != cursor.live_total
+            raise IterError.Exhausted if not WorldIterationBounds::iteration_step_allowed(cursor.next_index, cursor.live_total)
+            found: World::EntityRef = catch World::world_live_reference_at(world, cursor.next_index):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+            raise IterError.WorldChanged if found.id == 0
+            cursor.next_index <- WorldIterationBounds::iteration_next_index(cursor.next_index, cursor.live_total)
+            found
+
+        def close_cursor(frame: mutable WorldSchedule::Frame&, cursor: mutable Cursor&) -> void error[IterError]:
+            raise IterError.Closed if not cursor.open
+            released: bool = catch WorldSchedule::release_access(frame, &cursor.token):
+                ok: true
+                error failure: false
+            raise IterError.ReleaseRejected if not released
+            cursor.open <- false

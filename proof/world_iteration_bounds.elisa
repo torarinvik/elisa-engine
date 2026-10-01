@@ -1,0 +1,20 @@
+# Bounded cursor stepping for phase-bound world iteration: a read is allowed
+# only below the live length recorded at open, and each step stays in bounds.
+include "../src/world/iteration_bounds.elisa"
+
+extend WorldIterationBounds:
+    def prove_step_allowed_below(next_index: usize, live_total: usize) -> bool:
+        requires next_index < live_total
+        ensure result
+        return iteration_step_allowed(next_index, live_total)
+
+    def prove_step_refused_at_end(next_index: usize, live_total: usize) -> bool:
+        requires next_index >= live_total
+        ensure not result
+        return iteration_step_allowed(next_index, live_total)
+
+    def prove_advance_bounded(next_index: usize, live_total: usize) -> usize:
+        requires next_index < live_total
+        ensure result <= live_total
+        ensure result > next_index
+        return iteration_next_index(next_index, live_total)

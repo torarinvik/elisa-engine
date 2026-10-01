@@ -1,0 +1,14 @@
+# Bounded step rule for phase-bound world iteration: a cursor may read index
+# `next_index` only while it is below the length recorded at open; after the
+# read it moves by exactly one and never passes that length.
+module WorldIterationBounds:
+    public:
+        def iteration_step_allowed(next_index: usize, live_total: usize) -> bool:
+            ensure result == (next_index < live_total)
+            next_index < live_total
+
+        def iteration_next_index(next_index: usize, live_total: usize) -> usize:
+            requires next_index < live_total
+            ensure result <= live_total
+            ensure result == next_index + 1
+            next_index + 1

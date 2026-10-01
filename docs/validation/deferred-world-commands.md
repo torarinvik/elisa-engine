@@ -69,3 +69,30 @@ failure codes that were used twice (4, 7–9, 11–13) are renumbered 27–33 so
 failure is unique. It runs in the gate's unit-test list. Negative control:
 skipping `world_batch_valid` in `commit_world` fails with 14 (a duplicate
 despawn is applied).
+
+## 2026-10-01: phase-bound world iteration cursor
+
+`src/world/phase_iteration.elisa` adds `WorldPhaseIteration::Cursor`, the
+supported way to walk live entities during a phase. Opening a cursor acquires a
+schedule read token and records the world epoch and live-column length; the
+token stays held until `close_cursor`. While a cursor is open the frame cannot
+advance, end, or commit structural commands, so an iteration borrow cannot
+outlive its phase and a deferred despawn cannot interleave with it. A cursor
+that observes a world changed behind the schedule (different epoch or live
+length) raises `WorldChanged` instead of yielding a reference. Closing against
+another frame is rejected and leaves the owning frame locked; a closed cursor
+cannot be read or closed again. The step rule lives in
+`src/world/iteration_bounds.elisa` and is proved by
+`proof/world_iteration_bounds.elisa` (reads only below the recorded length,
+each step stays within it).
+
+`test/world_phase_iteration.elisa` runs in the gate's unit-test list. Negative
+controls: dropping the live-length check fails with 27 (a reference is yielded
+after a bypassing spawn); closing without releasing the token fails with 21
+(the deferred despawn stays blocked). Weakening the step proof's ensure fails
+the prover.
+
+Stage1 does not enforce affinity for affine structs with only scalar fields: a
+probe copying a `WorldAccess::Token` (or a cursor) from a reference, and a
+use-after-move of a local, both compile. A copied token can therefore be
+released twice; the next slice makes release reject unknown token serials.
