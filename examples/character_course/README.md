@@ -66,6 +66,15 @@ panel cooked by `make_rigs.py`; `python3 make_rigs.py --check` fails if the
 committed package drifted. Play continues without the rigs if the package is
 missing.
 
+The floor is split into 2 m streamed cells (`cells.elisa`). The cell under the
+player and its neighbours load their cooked mesh and material packages from
+`cells/` through the native asset stream; each tile draws the decoded mesh
+with the uploaded texture bound as its material, and cells that fall out of
+range release their row, world payload and assets. `make_cells.py` writes the
+packages; `python3 make_cells.py --check` fails if they drifted.
+`stream_test_main.elisa` runs the real game loop hidden while pushed arrow key
+events walk the player back and forth across the cells.
+
 Build and run the hidden check without waiting for input. It covers state
 transitions, step traversal, restart, save/restart/load (including rejected
 records), control rebinding and persistence, sound events, streaming and

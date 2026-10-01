@@ -8,6 +8,7 @@ include "./props.elisa"
 include "./text.elisa"
 include "./access.elisa"
 include "./look.elisa"
+include "./cells.elisa"
 include "../../src/runtime/action_input_recording.elisa"
 include "../../src/runtime/action_input_store.elisa"
 include "../../src/runtime/ui_semantics.elisa"
@@ -367,7 +368,8 @@ module CharacterCourse:
         # Mode 0 plays, 1 runs the self-test, 2 checks the self-test's saves
         # from a second process.
         def run_after_open(session: mutable RuntimeServices::Session&,
-            mode: i32) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
+            mode: i32, cells: mutable CourseCells::Cells&, cell_runtime: mutable CellWorld::Runtime&,
+            cell_world: mutable World::World&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
@@ -467,7 +469,12 @@ module CharacterCourse:
                     ok: true
                     error failure: false
                 devices: DeviceSettings::Saved = devices_start()
-                played: i32 = interactive_loop(session, character, avatar, instruction, guide)
+                # Beacons are built here, not in the loop, so their 2 MB
+                # create frame never stacks on top of the loop's own frame.
+                beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
+                    value: value
+                    error failure: return 34
+                played: i32 = interactive_loop(session, character, avatar, instruction, guide, mode, cells, cell_runtime, cell_world, beacons)
                 _ = devices_quit(&devices)
                 played
 
@@ -478,7 +485,23 @@ module CharacterCourse:
         def run_relaunch() -> i32:
             run_mode(2)
 
+        # Plays the real game loop hidden while CourseCells pilots the player
+        # across streamed floor cells with pushed key events.
+        def run_cells_test() -> i32:
+            run_mode(3)
+
         def run_mode(mode: i32) -> i32:
+            catch run_mode_cells(mode):
+                value: value
+                error failure: 5
+
+        # Streamed floor cells (cells.elisa). Their World and cell runtime
+        # are large by-value state, so they live here once and the play
+        # loop borrows them instead of holding copies in its own frame.
+        def run_mode_cells(mode: i32) -> i32 error[World::WorldError]:
+            cell_world: mutable World::World = try World::World()
+            cell_runtime: mutable CellWorld::Runtime = CourseCells::cells_make_runtime()
+            cells: mutable CourseCells::Cells = CourseCells::Cells()
             config: mutable Application::Config = Application::default_config()
             config.hidden <- true if mode != 0
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
@@ -504,7 +527,7 @@ module CharacterCourse:
             if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
                 _ = RuntimeServices::shutdown(&session)
                 return 2
-            result: i32 = catch run_after_open(&session, mode):
+            result: i32 = catch run_after_open(&session, mode, &cells, &cell_runtime, &cell_world):
                 value: value
                 error failure: 3
             render_closed: mutable bool = true

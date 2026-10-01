@@ -68,3 +68,5 @@ extern "C" int32_t elisa_application_v1_memory_usage(
 }
 
 #include "application_asset_stream_exports.inc"
+
+#include "application_test_input_exports.inc"

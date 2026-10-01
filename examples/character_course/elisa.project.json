@@ -13,7 +13,8 @@
       "sounds",
       "rigs",
       "text",
-      "fonts"
+      "fonts",
+      "cells"
     ],
     "notices": [
       "third_party/notices/FAudio.txt",

@@ -148,11 +148,11 @@ def cooked_mesh_text(name: str, positions: tuple, indices: tuple) -> bytes:
     )).encode("ascii")
 
 
-def write_cell_stream_fixtures(project: Path) -> None:
-    """Cooked packages for cell-streaming-smoke: two meshes shared by even and
-    odd cells, and one material package per cell whose first texel encodes
-    red = x*255/12, green = 102, blue = 255 - red."""
-    directory = project / "cell-stream"
+def write_cell_stream_fixtures(directory: Path) -> None:
+    """Cooked cell packages: two meshes shared by even and odd cells, and 13
+    material packages whose first texel encodes red = x*255/12, green = 102,
+    blue = 255 - red. cell-streaming-smoke writes them to `cell-stream/`;
+    the character course ships the same set in `cells/` (make_cells.py)."""
     box = (
         -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5,
         -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
@@ -185,10 +185,10 @@ def main() -> int:
         fixture = project / "test/fixtures/audio-smoke.wav"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         write_physics_mesh_fixture(project)
-        write_cell_stream_fixtures(project)
+        write_cell_stream_fixtures(project / "cell-stream")
         # The course self-test decodes its shipped clips from `sounds/` and
         # animates two instances of `rigs/guide_rig.pkg`; captions come from `text/`, the Arabic fallback font from `fonts/`.
-        for resource in ("sounds", "rigs", "text", "fonts"):
+        for resource in ("sounds", "rigs", "text", "fonts", "cells"):
             shutil.copytree(ROOT / "examples/character_course" / resource, project / resource)
         samples = [int(6000 * math.sin(2.0 * math.pi * 440.0 * frame / 8000)) for frame in range(400)]
         with wave.open(str(fixture), "wb") as output:
@@ -225,6 +225,8 @@ def main() -> int:
             # A second process reloads the saves the course self-test leaves in
             # the shared user-data directory, so it must run right after it.
             ("character-course-relaunch-smoke", ROOT / "examples/character_course/relaunch_main.elisa"),
+            # The real course loop, piloted by pushed key events across streamed floor cells.
+            ("character-course-cells-smoke", ROOT / "examples/character_course/stream_test_main.elisa"),
             ("physics-collision-layers-smoke", ROOT / "test/physics_collision_layers_native.elisa"),
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),

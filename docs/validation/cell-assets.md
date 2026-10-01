@@ -48,8 +48,19 @@ Mutation check (scratch copies, all killed): forcing the last-owner path, removi
 - `RenderScene::create_streamed_mesh` (`src/runtime/render_scene_streamed.elisa`, `native/render_scene_streamed_mesh_abi.inc`) builds a row from the cooked mesh bytes the native stream already decoded (copied out under the loader lock by `elisa_asset_stream_copy_bytes`, `native/asset_stream_borrow.h`); nothing is reread from disk. The material stream's uploaded texture is shared into the row's Wicked material as its base-colour map, with a white base colour.
 - `RenderScene::streamed_material_bound` checks that the row's base map is the very texture the stream keeps resident. `cell-streaming-smoke` requires it for every live row after every step (code 84) and passes.
 
+## Character course crossing cells (2026-10-01)
+
+`examples/character_course` now streams a 15 by 7 grid of floor cells (`cells.elisa`, built by `make_cells.py`) around the real player character. Each frame the player's physics position goes through `CellAssetWorld`, `CellVisuals` and the native asset stream. Each resident cell draws a streamed mesh with its streamed texture bound. Every step checks that the referenced rows, meshes and materials are still valid. GPU and process memory are checked against the 8 MiB and 16 MiB growth allowances after a warm pass.
+
+`character-course-cells-smoke` builds `stream_test_main.elisa` (mode 3). It drives the game's own input path by pushing SDL key events (`native/application_test_input_exports.inc`): the player runs six legs between the course ends and turns at each one. The smoke passes only with these results:
+- at least 24 cell crossings
+- at least 12 native loads
+- no reference or budget violations
+- a clean close (codes 101 to 104 and 60 to 112 name each failure)
+
+The play loop's stack frame stays small. The cell World, the cell runtime and `Cells` are created once in `run_mode_cells` and passed to the loop by `mutable &`. Beacons are created in `run_after_open`, so their 2 MB create frame is never stacked on top of the loop. With this layout the course runs on the default 8 MB main-thread stack; no stack-size linker flag is used.
+
 ## Remaining
 
-- The traveller is a scripted walker in a native smoke, not a player in a shipped game (for example `examples/character_course`).
-
-W05 stays open until a real game crosses cells with the native loader backing the stages.
+- The streamed floor tiles are generated stand-ins (`make_cells.py`), not authored course content.
+- Cell prefabs carry no gameplay colliders; the player walks on the course's own floor.

@@ -255,7 +255,9 @@
             character: mutable PhysicsRuntime::CharacterHandle,
             avatar: RenderScene::InstanceHandle,
             instruction: RenderScene::OverlayTextHandle,
-            guide: mutable Guide) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            guide: mutable Guide, mode: i32, cells: mutable CourseCells::Cells&,
+            cell_runtime: mutable CellWorld::Runtime&, cell_world: mutable World::World&,
+            beacons: mutable CourseBeacons::Beacons&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
             running: mutable bool = true
             crouched: mutable bool = false
             state: mutable GameState = GameState()
@@ -300,16 +302,14 @@
             rigs: Rigs = optional_rigs()
             walker: mutable Walker = optional_walker(session, &guide)
             grounded: mutable bool = true
-            # Beacons light as the player passes; Q/L save and load their
-            # prefab overrides alongside the checkpoint.
-            beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
-                value: value
-                error failure: return 34
             # Dynamic crates the player can push; Q/L save and load their
             # whole World through WorldSaveLoad alongside the checkpoint.
             props: mutable CourseProps::Props = catch CourseProps::create(session):
                 value: value
                 error failure: return 35
+            # Floor cells stream in and out around the player (cells.elisa);
+            # mode 3 also pilots the player with real key events.
+            return 37 if not CourseCells::open(cells, Tune::START_Z) and mode == 3
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
@@ -318,7 +318,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -326,6 +326,8 @@
                     return 40
                 if running and pump == Application::PumpStatus.Running:
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                    if mode == 3:
+                        CourseCells::pilot(cells, frame.elapsed_nanos)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
                     look_wanted: bool = state.phase == Phase.Playing and not menu_open
                     if look_wanted != look_held:
@@ -403,7 +405,7 @@
                             CourseSounds::reset_scene(&sounds)
                             _ = CourseSounds::restart_music(&sounds)
                             _ = CourseSounds::set_paused(&sounds, false)
-                            _ = try CourseBeacons::reset(&beacons)
+                            _ = try CourseBeacons::reset(beacons)
                             grounded <- true
                             crouched <- false
                             jump_queued <- false
@@ -429,7 +431,7 @@
                             loaded: CourseProgress::LoadResult = CourseProgress::load()
                             if loaded.status == CourseProgress::LoadStatus.Loaded:
                                 character <- try apply_checkpoint(session, character, loaded.checkpoint)
-                                beacons_loaded: i32 = try CourseBeacons::load(&beacons)
+                                beacons_loaded: i32 = try CourseBeacons::load(beacons)
                                 props_loaded: i32 = try CourseProps::load(session, &props)
                                 state.phase <- phase_from_code(loaded.checkpoint.phase)
                                 state.attempts <- loaded.checkpoint.attempts
@@ -492,8 +494,9 @@
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
                             update_outcome(&state, pose.position)
+                            CourseCells::update(cells, cell_runtime, cell_world, pose.position)
                             try CourseProps::sync(session, &props)
-                            newly_lit: usize = try CourseBeacons::update(&beacons, pose.position)
+                            newly_lit: usize = try CourseBeacons::update(beacons, pose.position)
                             if newly_lit > 0:
                                 _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, sound_tick)
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_SAVE, frame.elapsed_nanos)
@@ -534,9 +537,11 @@
             no_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
             _ = ActionInputStore::save_recording(RECORDING_KEY, &recording, &no_pointer)
             _ = CourseSounds::stop(&sounds)
-            try CourseBeacons::release(&beacons)
+            try CourseBeacons::release(beacons)
             try CourseProps::release(session, &props)
             try release_legend(&legend)
             try release_walker(&walker)
             try NavMesh::unload(guide.mesh)
+            closed_cells: i32 = CourseCells::close(cells, cell_runtime, cell_world)
+            return CourseCells::verdict(cells, closed_cells) if mode == 3
             0

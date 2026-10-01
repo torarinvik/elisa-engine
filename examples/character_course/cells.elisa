@@ -1,0 +1,427 @@
+# Streamed floor cells. The course floor is split into 2 m cells; the cell
+# under the player and the neighbours inside the hysteresis ring stay
+# resident. Crossing a boundary activates the new cell through CellAssetWorld
+# (World payload plus an all-or-nothing CellAssets acquire), requests its
+# cooked mesh and material packages from the native asset stream, forwards
+# the stream's real per-key stages to the ledger each frame, and only when the
+# cell is resident builds its floor tile from the stream's decoded mesh bytes
+# with the stream's uploaded texture bound as the material. Cells outside the
+# ring drop their row, then their World payload and asset references, then any
+# native load whose last owner left. Every frame checks that live rows are
+# backed by owned resident assets and bound to the right texture, that the
+# ledger stays within its byte budget, and that memory after warm-up stays
+# within declared allowances. Mode 3 pilots the player with real key events.
+include "../../src/runtime/application_memory.elisa"
+include "../../src/runtime/asset_stream.elisa"
+include "../../src/runtime/render_scene_streamed.elisa"
+include "../../src/world/cell_asset_world.elisa"
+include "../../src/world/cell_memory_budget.elisa"
+include "../../src/world/cell_visuals.elisa"
+
+module CourseCells:
+    public:
+        const module CellTune:
+            SLOTS: usize = 6
+            PAINTS: usize = 13
+            GRID_X: i64 = 15
+            GRID_Z: i64 = 7
+            ORIGIN_X: f32 = -15.0
+            ORIGIN_Z: f32 = -7.0
+            SIZE: f32 = 2.0
+            HYSTERESIS: i64 = 1
+            ASSET_BUDGET: i64 = 4096
+            MESH_BYTES: i64 = 1024
+            PAINT_BYTES: i64 = 48
+            # Memory peaks are taken over the first loads; later samples must
+            # stay within these allowances of the warm peak.
+            WARM_LOADS: i64 = 6
+            GPU_ALLOWANCE: i64 = 8388608
+            CPU_ALLOWANCE: i64 = 16777216
+            STAGE_FREE: i32 = 0
+            STAGE_LOADING: i32 = 1
+            STAGE_LIVE: i32 = 2
+            # Pilot: walk along z between these bounds at the start x.
+            PILOT_LOW_Z: f32 = -3.5
+            PILOT_HIGH_Z: f32 = 6.0
+            PILOT_LEGS: i64 = 6
+            PILOT_TIMEOUT_NANOS: u64 = 90000000000
+            PILOT_MIN_CROSSINGS: i64 = 24
+            PILOT_MIN_LOADS: i64 = 12
+
+        affine struct Cells:
+            shelf: mutable VisualShelf::Shelf
+            ledger: mutable CellAssets::Ledger
+            meshes: mutable AssetStream::StreamHandle[2]
+            paints: mutable AssetStream::StreamHandle[CellTune::PAINTS]
+            cell_x: mutable i64[CellTune::SLOTS]
+            cell_z: mutable i64[CellTune::SLOTS]
+            stage: mutable i32[CellTune::SLOTS]
+            rows: mutable RenderScene::InstanceHandle[CellTune::SLOTS]
+            opened: mutable bool
+            failure: mutable i32
+            loads: mutable i64
+            crossings: mutable i64
+            violations: mutable i64
+            generation: mutable i64
+            last_x: mutable i64
+            last_z: mutable i64
+            player_z: mutable f32
+            warm_gpu: mutable i64
+            warm_cpu: mutable i64
+            heading: mutable i32
+            legs: mutable i64
+            quit_sent: mutable bool
+            started_nanos: mutable u64
+
+    private:
+        @callconv(c)
+        extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
+
+        const module PilotKey:
+            RIGHT: i32 = 1
+            LEFT: i32 = 2
+            ESCAPE: i32 = 3
+
+        def cells_key_of(high: u64, low: u64) -> AssetLoader::RequestKey:
+            AssetLoader::RequestKey{id: Assets::AssetId{high: high, low: low}, variant: Assets::ArtifactVariant.Runtime}
+
+        def cells_mesh_key(shape: usize) -> AssetLoader::RequestKey:
+            cells_key_of(7, (shape + 1).u64())
+
+        def cells_paint_key(paint: usize) -> AssetLoader::RequestKey:
+            cells_key_of(8, (paint + 1).u64())
+
+        def cells_key(cx: i64, cz: i64) -> WorldStreaming::CellKey:
+            WorldStreaming::CellKey{x: cx, y: cz}
+
+        # Neighbouring cells alternate meshes; materials cycle through 13.
+        def cells_shape(cx: i64, cz: i64) -> usize:
+            ((cx + cz) % 2).usize()
+
+        def cells_paint(cx: i64, cz: i64) -> usize:
+            ((cx + 3 * cz) % 13).usize()
+
+        def cells_axis(value: f32, origin: f32, count: i64) -> i64:
+            offset: f32 = (value - origin) / CellTune::SIZE
+            return 0 if offset < 0.0
+            index: i64 = ElisaMath::floor(offset.f64()).i64()
+            return count - 1 if index >= count
+            index
+
+        def cells_mesh_package(shape: usize) -> cstr:
+            return "cell-mesh-1.elpk" if shape == 1
+            "cell-mesh-0.elpk"
+
+        def cells_paint_package(paint: usize) -> cstr:
+            return "cell-paint-00.elpk" if paint == 0
+            return "cell-paint-01.elpk" if paint == 1
+            return "cell-paint-02.elpk" if paint == 2
+            return "cell-paint-03.elpk" if paint == 3
+            return "cell-paint-04.elpk" if paint == 4
+            return "cell-paint-05.elpk" if paint == 5
+            return "cell-paint-06.elpk" if paint == 6
+            return "cell-paint-07.elpk" if paint == 7
+            return "cell-paint-08.elpk" if paint == 8
+            return "cell-paint-09.elpk" if paint == 9
+            return "cell-paint-10.elpk" if paint == 10
+            return "cell-paint-11.elpk" if paint == 11
+            "cell-paint-12.elpk"
+
+        # A thin floor tile over the cell, just above the floor's top face.
+        def cells_tile(cx: i64, cz: i64) -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: CellTune::ORIGIN_X + (cx.f32() + 0.5) * CellTune::SIZE, y: 0.012,
+                    z: CellTune::ORIGIN_Z + (cz.f32() + 0.5) * CellTune::SIZE},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.8, y: 0.02, z: 1.8}}
+
+        def cells_stock(shelf: mutable VisualShelf::Shelf&) -> bool:
+            box: bool = catch VisualShelf::add_mesh(shelf, cells_mesh_key(0).id, 0):
+                ok: true
+                error failure: false
+            peak: bool = catch VisualShelf::add_mesh(shelf, cells_mesh_key(1).id, 1):
+                ok: true
+                error failure: false
+            for paint in 0..<CellTune::PAINTS |shelf, painted: bool = box and peak| -> painted:
+                shade: f32 = paint.f32() / 12.0
+                colour: VisualShelf::Colour = VisualShelf::Colour{red: shade, green: 0.4, blue: 1.0 - shade}
+                added: bool = catch VisualShelf::add_material(shelf, cells_paint_key(paint).id, colour):
+                    ok: true
+                    error failure: false
+                painted <- painted and added
+
+        def cells_request(package: cstr, section: cstr) -> AssetStream::StreamHandle:
+            catch AssetStream::stream_request(package, section):
+                value: value
+                error failure: AssetStream::stream_none()
+
+        def cells_drop(handle: AssetStream::StreamHandle) -> bool:
+            catch AssetStream::stream_drop(handle):
+                ok: true
+                error failure: false
+
+        def cells_forward(ledger: mutable CellAssets::Ledger&, key: AssetLoader::RequestKey, handle: AssetStream::StreamHandle) -> bool:
+            report: AssetStream::StreamReport = catch AssetStream::stream_query(handle):
+                value: value
+                error failure: AssetStream::StreamReport{stage: 0, bytes: 0, texel: 0}
+            CellAssets::report_native(ledger, key, report.stage, report.bytes)
+
+        def cells_row_alive(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::probe_instance(handle):
+                value: true
+                error failure: false
+
+        def cells_destroy_row(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::destroy(handle):
+                ok: true
+                error failure: false
+
+        def cells_memory() -> ApplicationMemory::Sample:
+            catch ApplicationMemory::sample():
+                value: value
+                error failure: ApplicationMemory::Sample{gpu_usage: -1, gpu_budget: -1, cpu_footprint: -1}
+
+        def cells_slot_of(cells: Cells&, cx: i64, cz: i64) -> usize:
+            for index in 0..<CellTune::SLOTS |slot: usize = CellTune::SLOTS| -> slot:
+                break index if cells.stage[index] != CellTune::STAGE_FREE and cells.cell_x[index] == cx and cells.cell_z[index] == cz
+
+        def cells_free_slot(cells: Cells&) -> usize:
+            for index in 0..<CellTune::SLOTS |slot: usize = CellTune::SLOTS| -> slot:
+                break index if cells.stage[index] == CellTune::STAGE_FREE
+
+        def cells_loading_slot(cells: Cells&) -> usize:
+            for index in 0..<CellTune::SLOTS |slot: usize = CellTune::SLOTS| -> slot:
+                break index if cells.stage[index] == CellTune::STAGE_LOADING
+
+        def cells_stale_slot(cells: Cells&, cx: i64, cz: i64) -> usize:
+            for index in 0..<CellTune::SLOTS |slot: usize = CellTune::SLOTS| -> slot:
+                break index if cells.stage[index] != CellTune::STAGE_FREE and CellWorld::outside(cells_key(cells.cell_x[index], cells.cell_z[index]), cx, cz, 0, CellTune::HYSTERESIS)
+
+        # Row first, then the World payload and asset references, then the
+        # native loads whose last portable owner left; 0 or a failure code.
+        def cells_unload(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&, slot: usize) -> i32:
+            cx: i64 = cells.cell_x[slot]
+            cz: i64 = cells.cell_z[slot]
+            if cells.stage[slot] == CellTune::STAGE_LIVE:
+                return 60 if not cells_destroy_row(cells.rows[slot])
+            return 61 if not CellAssetWorld::deactivate(runtime, &cells.ledger, world, cells_key(cx, cz))
+            cells.stage[slot] <- CellTune::STAGE_FREE
+            cells.rows[slot] <- RenderScene::empty_instance_handle()
+            shape: usize = cells_shape(cx, cz)
+            if CellAssets::refcount(cells.ledger, cells_mesh_key(shape)) == 0 and cells.meshes[shape].token != 0:
+                return 62 if not cells_drop(cells.meshes[shape])
+                cells.meshes[shape] <- AssetStream::stream_none()
+            paint: usize = cells_paint(cx, cz)
+            if CellAssets::refcount(cells.ledger, cells_paint_key(paint)) == 0 and cells.paints[paint].token != 0:
+                return 63 if not cells_drop(cells.paints[paint])
+                cells.paints[paint] <- AssetStream::stream_none()
+            0
+
+        # Activates the player's cell and requests whatever native loads it
+        # does not already share with a resident neighbour.
+        def cells_load(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&, cx: i64, cz: i64) -> i32:
+            slot: usize = cells_free_slot(cells)
+            return 70 if slot == CellTune::SLOTS
+            shape: usize = cells_shape(cx, cz)
+            paint: usize = cells_paint(cx, cz)
+            manifest: mutable CellAssets::Manifest = CellAssets::Manifest()
+            return 71 if not CellAssets::manifest_add(&manifest, cells_mesh_key(shape), CellTune::MESH_BYTES)
+            return 72 if not CellAssets::manifest_add(&manifest, cells_paint_key(paint), CellTune::PAINT_BYTES)
+            cells.generation <- cells.generation + 1
+            return 73 if not CellAssetWorld::activate(runtime, &cells.ledger, world, cells_key(cx, cz), cells.generation, &manifest, 1)
+            if cells.meshes[shape].token == 0:
+                cells.meshes[shape] <- cells_request(cells_mesh_package(shape), "mesh")
+            if cells.paints[paint].token == 0:
+                cells.paints[paint] <- cells_request(cells_paint_package(paint), "albedo")
+            return 74 if cells.meshes[shape].token == 0 or cells.paints[paint].token == 0
+            cells.cell_x[slot] <- cx
+            cells.cell_z[slot] <- cz
+            cells.stage[slot] <- CellTune::STAGE_LOADING
+            0
+
+        # One stream pump per frame; a loading cell gets its row only once
+        # every asset it owns is resident.
+        def cells_advance(cells: mutable Cells&) -> i32:
+            uploaded: i32 = catch AssetStream::stream_pump(1, 1):
+                value: value
+                error failure: -1
+            return 80 if uploaded < 0
+            slot: usize = cells_loading_slot(cells)
+            return 0 if slot == CellTune::SLOTS
+            cx: i64 = cells.cell_x[slot]
+            cz: i64 = cells.cell_z[slot]
+            shape: usize = cells_shape(cx, cz)
+            paint: usize = cells_paint(cx, cz)
+            return 81 if not cells_forward(&cells.ledger, cells_mesh_key(shape), cells.meshes[shape])
+            return 82 if not cells_forward(&cells.ledger, cells_paint_key(paint), cells.paints[paint])
+            return 83 if CellAssets::cell_failed(cells.ledger, cells_key(cx, cz))
+            return 0 if not CellAssets::cell_resident(cells.ledger, cells_key(cx, cz))
+            visual: CellVisuals::Visual = CellVisuals::resolve(cells.shelf, cells.ledger, cells_key(cx, cz), cells_mesh_key(shape), cells_paint_key(paint))
+            return 84 if not visual.ready
+            created: RenderScene::InstanceHandle = catch RenderScene::create_streamed_mesh(cells.meshes[shape], cells.paints[paint], cells_tile(cx, cz)):
+                value: value
+                error failure: RenderScene::empty_instance_handle()
+            return 85 if not cells_row_alive(created)
+            cells.rows[slot] <- created
+            cells.stage[slot] <- CellTune::STAGE_LIVE
+            cells.loads <- cells.loads + 1
+            0
+
+        # A live row is backed by owned resident assets and samples exactly
+        # the texture its material stream keeps resident.
+        def cells_row_backed(cells: Cells&, index: usize) -> i32:
+            cx: i64 = cells.cell_x[index]
+            cz: i64 = cells.cell_z[index]
+            paint: usize = cells_paint(cx, cz)
+            visual: CellVisuals::Visual = CellVisuals::resolve(cells.shelf, cells.ledger, cells_key(cx, cz), cells_mesh_key(cells_shape(cx, cz)), cells_paint_key(paint))
+            return 95 if not visual.ready
+            return 96 if not cells_row_alive(cells.rows[index])
+            return 97 if not RenderScene::streamed_material_bound(cells.rows[index], cells.paints[paint])
+            0
+
+        def cells_check(cells: mutable Cells&, runtime: CellWorld::Runtime&, world: World::World&) -> i32:
+            return 90 if not CellAssetWorld::valid(runtime, cells.ledger, world)
+            return 91 if CellAssets::committed_bytes(cells.ledger) > CellTune::ASSET_BUDGET
+            return 92 if CellAssets::resident_bytes(cells.ledger).i64() > CellTune::ASSET_BUDGET
+            return 93 if CellAssets::eviction_count(cells.ledger) != 0
+            return 94 if AssetStream::stream_live() != CellAssets::live_assets(cells.ledger).i32()
+            backed: i32 =
+                for index in 0..<CellTune::SLOTS |code: i32 = 0| -> code:
+                    if code == 0 and cells.stage[index] == CellTune::STAGE_LIVE:
+                        code <- cells_row_backed(cells, index)
+            return backed if backed != 0
+            sample: ApplicationMemory::Sample = cells_memory()
+            return 98 if sample.cpu_footprint <= 0 or sample.gpu_usage <= 0
+            if cells.loads <= CellTune::WARM_LOADS:
+                cells.warm_gpu <- CellMemoryBudget::peak(cells.warm_gpu, sample.gpu_usage)
+                cells.warm_cpu <- CellMemoryBudget::peak(cells.warm_cpu, sample.cpu_footprint)
+            else:
+                gpu_ok: bool = CellMemoryBudget::within(cells.warm_gpu, sample.gpu_usage, CellTune::GPU_ALLOWANCE)
+                cpu_ok: bool = CellMemoryBudget::within(cells.warm_cpu, sample.cpu_footprint, CellTune::CPU_ALLOWANCE)
+                cells.violations <- cells.violations + 1 if not gpu_ok or not cpu_ok
+            0
+
+        def cells_push(cells: mutable Cells&, key: i32, down: bool) -> void:
+            pushed: i32 = elisa_application_v1_test_push_key(key, 1 if down else 0)
+            cells.failure <- 100 if pushed != 0 and cells.failure == 0
+
+        def cells_quit(cells: mutable Cells&) -> void:
+            if cells.heading == 1:
+                cells_push(cells, PilotKey::RIGHT, false)
+            elif cells.heading == 2:
+                cells_push(cells, PilotKey::LEFT, false)
+            cells.heading <- 3
+            cells_push(cells, PilotKey::ESCAPE, true)
+            cells.quit_sent <- true
+
+        # After a leg ends, start the next one or quit once all legs are done.
+        def cells_turn(cells: mutable Cells&, released: i32) -> void:
+            cells_push(cells, released, false)
+            cells.legs <- cells.legs + 1
+            cells.heading <- 0
+            if cells.legs >= CellTune::PILOT_LEGS:
+                cells_quit(cells)
+            else:
+                next_key: i32 = PilotKey::LEFT if released == PilotKey::RIGHT else PilotKey::RIGHT
+                cells_push(cells, next_key, true)
+                cells.heading <- 2 if next_key == PilotKey::LEFT else 1
+
+    public:
+        # The cell World and CellWorld::Runtime are large; the caller owns
+        # them as locals and lends them to update and close.
+        def Cells() -> Cells:
+            none: AssetStream::StreamHandle = AssetStream::stream_none()
+            empty: RenderScene::InstanceHandle = RenderScene::empty_instance_handle()
+            cells: mutable Cells = Cells{shelf: VisualShelf::Shelf(),
+                ledger: CellAssets::Ledger(CellTune::ASSET_BUDGET),
+                meshes: [none, none],
+                paints: [none, none, none, none, none, none, none, none, none, none, none, none, none],
+                cell_x: zeroed, cell_z: zeroed, stage: zeroed,
+                rows: [empty, empty, empty, empty, empty, empty],
+                opened: false, failure: 0, loads: 0, crossings: 0, violations: 0, generation: 0,
+                last_x: -1, last_z: -1, player_z: 0.0, warm_gpu: 0, warm_cpu: 0,
+                heading: 0, legs: 0, quit_sent: false, started_nanos: 0}
+            return move cells
+
+        def cells_make_runtime() -> CellWorld::Runtime:
+            CellWorld::Runtime(CellTune::SLOTS, CellTune::HYSTERESIS)
+
+        # Stocks the visual shelf and mounts the shipped `cells/` packages.
+        def open(cells: mutable Cells&, start_z: f32) -> bool:
+            stocked: bool = cells_stock(&cells.shelf)
+            mounted: bool = catch AssetStream::stream_mount("cells"):
+                ok: true
+                error failure: false
+            cells.player_z <- start_z
+            cells.opened <- stocked and mounted
+            cells.opened
+
+        # Called once per played frame with the player's position. The first
+        # failure stops streaming and is kept for the verdict.
+        def update(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&, position: Geometry::Vec3) -> void:
+            if cells.opened and cells.failure == 0:
+                cx: i64 = cells_axis(position.x, CellTune::ORIGIN_X, CellTune::GRID_X)
+                cz: i64 = cells_axis(position.z, CellTune::ORIGIN_Z, CellTune::GRID_Z)
+                cells.player_z <- position.z
+                moved: bool = cx != cells.last_x or cz != cells.last_z
+                cells.crossings <- cells.crossings + 1 if cells.last_x >= 0 and moved
+                cells.last_x <- cx
+                cells.last_z <- cz
+                stale: usize = cells_stale_slot(cells, cx, cz)
+                code: mutable i32 = 0
+                code <- cells_unload(cells, runtime, world, stale) if stale != CellTune::SLOTS
+                code <- cells_load(cells, runtime, world, cx, cz) if code == 0 and cells_slot_of(cells, cx, cz) == CellTune::SLOTS
+                code <- cells_advance(cells) if code == 0
+                code <- cells_check(cells, runtime, world) if code == 0
+                cells.failure <- code
+
+        # Mode 3 pilot: pushes real Right/Left arrow key events through the
+        # application's SDL queue, so the course's own pump, bindings and
+        # character controller move the player across cell boundaries along z.
+        def pilot(cells: mutable Cells&, elapsed_nanos: u64) -> void:
+            cells.started_nanos <- elapsed_nanos + 1 if cells.started_nanos == 0
+            if not cells.quit_sent:
+                timed_out: bool = elapsed_nanos > cells.started_nanos + CellTune::PILOT_TIMEOUT_NANOS
+                if timed_out or cells.failure != 0 or not cells.opened:
+                    cells.failure <- 99 if cells.failure == 0
+                    cells_quit(cells)
+                elif cells.legs == 0 and cells.heading == 0:
+                    if cells.loads > 0:
+                        cells_push(cells, PilotKey::RIGHT, true)
+                        cells.heading <- 1
+                elif cells.heading == 1 and cells.player_z >= CellTune::PILOT_HIGH_Z:
+                    cells_turn(cells, PilotKey::RIGHT)
+                elif cells.heading == 2 and cells.player_z <= CellTune::PILOT_LOW_Z:
+                    cells_turn(cells, PilotKey::LEFT)
+
+        # Rows, then cells, then their native loads; 0 or a failure code.
+        def close(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&) -> i32:
+            unloaded: i32 =
+                for index in 0..<CellTune::SLOTS |code: i32 = 0| -> code:
+                    if code == 0 and cells.stage[index] != CellTune::STAGE_FREE:
+                        code <- cells_unload(cells, runtime, world, index)
+            return unloaded if unloaded != 0
+            return 110 if not CellWorld::destroy(runtime, world)
+            return 111 if not CellAssets::destroy(&cells.ledger)
+            return 112 if cells.opened and AssetStream::stream_live() != 0
+            AssetStream::stream_reset() if cells.opened
+            0
+
+        def loads(cells: Cells&) -> i64:
+            cells.loads
+
+        def crossings(cells: Cells&) -> i64:
+            cells.crossings
+
+        # The mode 3 verdict: streaming never failed, the pilot finished every
+        # leg, enough boundaries were crossed and cells loaded, memory stayed
+        # within allowances after warm-up, and teardown released everything.
+        def verdict(cells: Cells&, closed: i32) -> i32:
+            return cells.failure if cells.failure != 0
+            return closed if closed != 0
+            return 101 if cells.legs < CellTune::PILOT_LEGS
+            return 102 if cells.crossings < CellTune::PILOT_MIN_CROSSINGS
+            return 103 if cells.loads < CellTune::PILOT_MIN_LOADS
+            return 104 if cells.violations != 0
+            0
+
