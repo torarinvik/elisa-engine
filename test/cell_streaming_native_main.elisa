@@ -1,0 +1,240 @@
+# W05 native streaming smoke: a player walks across 13 scene cells and back
+# three times on a live Wicked scene. Each step unloads cells outside the
+# hysteresis ring (render row first, then world payload, then assets), streams
+# in the player's cell through CellAssets stage reports separated by real
+# frames, and rebuilds the cell's renderer row from its owned mesh/material
+# keys via CellVisuals. After the first pass warms caches, every live GPU and
+# process-memory sample must stay within declared growth allowances.
+include "../src/runtime/public.elisa"
+include "../src/runtime/application_memory.elisa"
+include "../src/world/cell_asset_world.elisa"
+include "../src/world/cell_memory_budget.elisa"
+include "../src/world/cell_visuals.elisa"
+using AssetCatalogue
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+module CellStreamingSmoke:
+    private:
+        const module Tune:
+            CELLS: usize = 13
+            STEPS: usize = 78
+            WARM_STEPS: usize = 26
+            ASSET_BUDGET: i64 = 100
+            MESH_BYTES: i64 = 10
+            PAINT_BYTES: i64 = 20
+            MAX_LIVE_CELLS: i32 = 3
+            GPU_ALLOWANCE: i64 = 8388608
+            CPU_ALLOWANCE: i64 = 16777216
+
+        def pump(frames: i32) -> bool:
+            for _ in 0..<frames |ok: bool = true| -> ok:
+                ok <- ok and elisa_application_v1_pump() == 1
+
+        def key_of(high: u64, low: u64) -> AssetLoader::RequestKey:
+            AssetLoader::RequestKey{id: Assets::AssetId{high: high, low: low}, variant: Assets::ArtifactVariant.Runtime}
+
+        # Even cells draw a box, odd cells a sphere: meshes are shared between
+        # cells, while each cell's material is its own.
+        def mesh_key(x: i64) -> AssetLoader::RequestKey:
+            key_of(7, (1 + x % 2).u64())
+
+        def paint_key(x: i64) -> AssetLoader::RequestKey:
+            key_of(8, (x + 1).u64())
+
+        def cell_of(x: i64) -> WorldStreaming::CellKey:
+            WorldStreaming::CellKey{x: x, y: 1}
+
+        def stock(shelf: mutable VisualShelf::Shelf&) -> bool:
+            box: bool = catch VisualShelf::add_mesh(shelf, mesh_key(0).id, 0):
+                ok: true
+                error failure: false
+            ball: bool = catch VisualShelf::add_mesh(shelf, mesh_key(1).id, 1):
+                ok: true
+                error failure: false
+            for x in 0..<Tune::CELLS |shelf, painted: bool = box and ball| -> painted:
+                shade: f32 = x.f32() / 12.0
+                colour: VisualShelf::Colour = VisualShelf::Colour{red: shade, green: 0.4, blue: 1.0 - shade}
+                added: bool = catch VisualShelf::add_material(shelf, paint_key(x.i64()).id, colour):
+                    ok: true
+                    error failure: false
+                painted <- painted and added
+
+        def stage(ledger: mutable CellAssets::Ledger&, key: AssetLoader::RequestKey, bytes: i64) -> bool:
+            return true if CellAssets::asset_state(ledger, key) == AssetLoader::RequestState.Resident
+            return false if not CellAssets::begin_decode(ledger, key)
+            return false if not pump(1)
+            return false if not CellAssets::complete_decode(ledger, key, bytes)
+            return false if not pump(1)
+            CellAssets::upload_complete(ledger, key)
+
+        def spawn(visual: CellVisuals::Visual, x: i64) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+            primitive: RenderScene::Primitive = RenderScene::Primitive.Sphere if visual.shape == 1 else RenderScene::Primitive.Box
+            pose: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(),
+                Geometry::Vec3{x: x.f32() * 2.0 - 12.0, y: 0.0, z: 0.0})
+            try RenderScene::create(primitive, pose,
+                RenderScene::Color{red: visual.red, green: visual.green, blue: visual.blue, alpha: 1.0})
+
+        def drop_row(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::destroy(handle):
+                ok: true
+                error failure: false
+
+        def row_alive(handle: RenderScene::InstanceHandle) -> bool:
+            catch RenderScene::probe_instance(handle):
+                value: true
+                error failure: false
+
+        def instances() -> i32:
+            counts: RenderScene::ResourceCounts = catch RenderScene::resource_counts():
+                value: value
+                error failure: RenderScene::ResourceCounts{instances: -1, lights: -1, scene_entities: -1}
+            counts.instances
+
+        def memory() -> ApplicationMemory::Sample:
+            catch ApplicationMemory::sample():
+                value: value
+                error failure: ApplicationMemory::Sample{gpu_usage: -1, gpu_budget: -1, cpu_footprint: -1}
+
+        # Streams in the player's cell; returns 0 or a failure code.
+        def stream_in(shelf: VisualShelf::Shelf&, runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, x: i64, generation: i64) -> i32:
+            manifest: mutable CellAssets::Manifest = CellAssets::Manifest()
+            return 50 if not CellAssets::manifest_add(&manifest, mesh_key(x), Tune::MESH_BYTES)
+            return 51 if not CellAssets::manifest_add(&manifest, paint_key(x), Tune::PAINT_BYTES)
+            return 52 if not CellAssetWorld::activate(runtime, ledger, world, cell_of(x), generation, &manifest, 1)
+            early: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(x), mesh_key(x), paint_key(x))
+            fresh_paint: bool = CellAssets::asset_state(ledger, paint_key(x)) != AssetLoader::RequestState.Resident
+            return 53 if early.ready and fresh_paint
+            return 54 if not stage(ledger, mesh_key(x), Tune::MESH_BYTES)
+            return 55 if not stage(ledger, paint_key(x), Tune::PAINT_BYTES)
+            0
+
+        # One walk; 0 or a failure code. Render rows live in local arrays.
+        def travel(shelf: VisualShelf::Shelf&, runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Ledger&,
+            world: mutable World::World&, baseline: i32) -> i32:
+            empty: RenderScene::InstanceHandle = RenderScene::empty_instance_handle()
+            rows: mutable RenderScene::InstanceHandle[Tune::CELLS] = [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty]
+            live: mutable bool[Tune::CELLS] = zeroed
+            hysteresis: i64 = CellWorld::hysteresis(runtime)
+            warm_gpu: mutable i64 = 0
+            warm_cpu: mutable i64 = 0
+            code: mutable i32 = 0
+            for step in 0..<Tune::STEPS |shelf, runtime, ledger, world, rows, live, hysteresis, warm_gpu, warm_cpu, code, baseline|:
+                if code == 0:
+                    leg: i64 = step.i64() % 26
+                    px: i64 = leg if leg <= 12 else 25 - leg
+                    # Unload outside the ring: render row, then world, then assets.
+                    for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, hysteresis, code, px|:
+                        if code == 0 and live[x] and CellWorld::outside(cell_of(x.i64()), px, 1, 1, hysteresis):
+                            code <- 60 if not drop_row(rows[x])
+                            code <- 61 if code == 0 and not CellAssetWorld::deactivate(runtime, ledger, world, cell_of(x.i64()))
+                            live[x] <- false
+                    index: usize = px.usize()
+                    if code == 0 and not live[index]:
+                        code <- stream_in(shelf, runtime, ledger, world, px, step.i64() + 1)
+                        visual: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(px), mesh_key(px), paint_key(px))
+                        code <- 62 if code == 0 and not visual.ready
+                        if code == 0:
+                            created: RenderScene::InstanceHandle = catch spawn(visual, px):
+                                value: value
+                                error failure: rows[index]
+                            code <- 63 if not row_alive(created)
+                            rows[index] <- created
+                            live[index] <- code == 0
+                    code <- 64 if code == 0 and not pump(1)
+                    # Every live row is backed by owned, resident assets.
+                    for x in 0..<Tune::CELLS |shelf, ledger, rows, live, code|:
+                        if live[x]:
+                            backed: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(x.i64()), mesh_key(x.i64()), paint_key(x.i64()))
+                            code <- 65 if code == 0 and not backed.ready
+                            code <- 66 if code == 0 and not row_alive(rows[x])
+                    live_count: i32 =
+                        for x in 0..<Tune::CELLS |live, count: i32 = 0| -> count:
+                            count <- count + 1 if live[x]
+                    code <- 67 if code == 0 and instances() != baseline + live_count
+                    code <- 68 if code == 0 and live_count > Tune::MAX_LIVE_CELLS
+                    code <- 69 if code == 0 and not CellAssetWorld::valid(runtime, ledger, world)
+                    code <- 70 if code == 0 and CellAssets::committed_bytes(ledger) > Tune::ASSET_BUDGET
+                    code <- 71 if code == 0 and CellAssets::resident_bytes(ledger).i64() > Tune::ASSET_BUDGET
+                    code <- 72 if code == 0 and CellAssets::eviction_count(ledger) != 0
+                    sample: ApplicationMemory::Sample = memory()
+                    code <- 73 if code == 0 and (sample.cpu_footprint <= 0 or sample.gpu_usage <= 0)
+                    code <- 74 if code == 0 and sample.gpu_budget > 0 and sample.gpu_usage > sample.gpu_budget
+                    if code == 0 and step < Tune::WARM_STEPS:
+                        warm_gpu <- CellMemoryBudget::peak(warm_gpu, sample.gpu_usage)
+                        warm_cpu <- CellMemoryBudget::peak(warm_cpu, sample.cpu_footprint)
+                    if code == 0 and step >= Tune::WARM_STEPS:
+                        code <- 75 if not CellMemoryBudget::within(warm_gpu, sample.gpu_usage, Tune::GPU_ALLOWANCE)
+                        code <- 76 if code == 0 and not CellMemoryBudget::within(warm_cpu, sample.cpu_footprint, Tune::CPU_ALLOWANCE)
+            return code if code != 0
+            # Teardown: rows first, then cells.
+            for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, done: i32 = 0| -> done:
+                if done == 0 and live[x]:
+                    done <- 80 if not drop_row(rows[x])
+                    done <- 81 if done == 0 and not CellAssetWorld::deactivate(runtime, ledger, world, cell_of(x.i64()))
+
+        def exercise() -> i32:
+            return 30 if not pump(2)
+            baseline: i32 = instances()
+            return 31 if baseline < 0
+            return 32 if memory().cpu_footprint <= 0
+            shelf: mutable VisualShelf::Shelf = VisualShelf::Shelf()
+            return 33 if not stock(&shelf)
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 34
+            runtime: mutable CellWorld::Runtime = CellWorld::Runtime(4, 1)
+            ledger: mutable CellAssets::Ledger = CellAssets::Ledger(Tune::ASSET_BUDGET)
+            walked: i32 = travel(&shelf, &runtime, &ledger, &world, baseline)
+            return walked if walked != 0
+            return 35 if not pump(1)
+            return 36 if instances() != baseline
+            return 37 if CellAssets::release_count(&ledger) < 30 or CellAssets::live_assets(&ledger) != 0
+            return 38 if CellAssets::committed_bytes(&ledger) != 0 or CellAssets::resident_bytes(&ledger) != 0
+            return 39 if not CellWorld::destroy(&runtime, &world) or not CellAssets::destroy(&ledger)
+            0
+
+        def execute() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Cell Streaming Smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            startup.services[0] <- Capabilities::BackendFeature.Rendering
+            startup.services[1] <- Capabilities::BackendFeature.NativeWindow
+            startup.service_count <- 2
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if (opened != RuntimeServices::OpenStatus.Ready and
+                opened != RuntimeServices::OpenStatus.FallbackRequired):
+                _ = RuntimeServices::shutdown(&session)
+                return 20
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            result: mutable i32 = 21
+            if init_status == 0:
+                result <- exercise()
+                closed_scene: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                result <- 22 if result == 0 and not closed_scene else result
+            closed: bool = RuntimeServices::shutdown(&session)
+            return result if result != 0
+            return 23 if not closed
+            0
+
+    public:
+        def run() -> i32:
+            CellStreamingSmoke::execute()
+
+def main() -> i32:
+    CellStreamingSmoke::run()

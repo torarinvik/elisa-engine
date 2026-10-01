@@ -322,6 +322,11 @@ def main(arguments: darray[sview]) -> i64:
     cell_assets_status <- run_visible(cell_assets_binary, [])
     return cell_assets_status if cell_assets_status != 0
     println("Per-cell asset ownership tests passed.")
+    cell_visuals_binary: sview = str(root.joinpath("build/cell-visuals-test"))
+    cell_visuals_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", cell_visuals_binary, str(root.joinpath("test/cell_visuals.elisa"))])
+    return cell_visuals_status if cell_visuals_status != 0
+    cell_visuals_status <- run_visible(cell_visuals_binary, [])
+    return cell_visuals_status if cell_visuals_status != 0
     world_events_binary: sview = str(root.joinpath("build/world-events-test"))
     world_events_status: mutable i64 = run_visible(compiler, ["-emit", "exe", "-o", world_events_binary, str(root.joinpath("test/world_events.elisa"))])
     return world_events_status if world_events_status != 0

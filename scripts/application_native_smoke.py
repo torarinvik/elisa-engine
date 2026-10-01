@@ -162,6 +162,7 @@ def main() -> int:
             ("physics-ccd3d-smoke", ROOT / "test/physics_ccd3d_native_main.elisa"),
             ("world-physics-pose-smoke", ROOT / "test/world_physics_pose_native_main.elisa"),
             ("render-resource-churn-smoke", ROOT / "test/render_resource_churn_native_main.elisa"),
+            ("cell-streaming-smoke", ROOT / "test/cell_streaming_native_main.elisa"),
             ("render-many-instances-smoke", ROOT / "test/render_many_instances_native_main.elisa"),
             ("world-save-physics-smoke", ROOT / "test/world_save_physics_native_main.elisa"),
             ("world-physics-cadence-smoke",

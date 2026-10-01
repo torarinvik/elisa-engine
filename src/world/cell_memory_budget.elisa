@@ -1,0 +1,29 @@
+# Integer rules for measured memory over repeated cell travel, split out so the
+# prover can check them. A sample is within budget when its growth over a warm
+# baseline stays inside the declared allowance; peaks only ever grow.
+module CellMemoryBudget:
+    public:
+        const MAX_BYTES: i64 = 1099511627776
+
+        # Whether `sample` exceeds `baseline` by at most `allowance` bytes.
+        def within(baseline: i64, sample: i64, allowance: i64) -> bool:
+            requires baseline <= MAX_BYTES
+            requires sample <= MAX_BYTES
+            requires allowance <= MAX_BYTES
+            ensure not result or sample >= 0
+            ensure not result or sample <= baseline + allowance
+            return false if baseline < 0 or sample < 0 or allowance < 0
+            sample <= baseline + allowance
+
+        # The larger of a running peak and a new sample.
+        def peak(previous: i64, sample: i64) -> i64:
+            ensure result >= previous
+            ensure result >= sample
+            return sample if sample > previous
+            previous
+
+        # Whether `index` names one of `count` per-cell render rows.
+        def row_in_use(index: i64, count: i64, capacity: i64) -> bool:
+            ensure not result or index >= 0
+            ensure not result or index < capacity
+            index >= 0 and index < count and index < capacity

@@ -212,6 +212,16 @@ module CellAssets:
                 if index < row.count:
                     ok <- false if AssetLoader::state(&ledger.loader, ledger.assets[row.assets[index]].handle) != AssetLoader::RequestState.Resident
 
+        # Whether `cell` lists `key` among the assets it owns.
+        def cell_holds(ledger: Ledger&, cell: WorldStreaming::CellKey, key: AssetLoader::RequestKey) -> bool:
+            slot: usize = find_cell(ledger, cell)
+            return false if slot == Limits::INVALID
+            asset: usize = find_asset(ledger, key)
+            return false if asset == Limits::INVALID
+            row: CellRow = ledger.cells[slot]
+            for index in 0..<Limits::MAX_PER_CELL |held: bool = false| -> held:
+                held <- true if index < row.count and row.assets[index] == asset
+
         # All-or-nothing: either every manifest entry gains this cell as an
         # owner, or nothing changes. Rejects duplicates, budget overruns and
         # loader capacity failures.

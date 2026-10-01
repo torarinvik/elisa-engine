@@ -1,0 +1,38 @@
+# Rebuilds what a streamed cell draws from the stable asset keys it owns. A
+# cell's mesh and material resolve through the VisualShelf only when the cell
+# owns both keys in its CellAssets ledger and both requests are resident, so a
+# renderer row is never built from an asset that is still loading, was
+# cancelled, or belongs to another cell.
+include "../assets/visual_shelf.elisa"
+include "./cell_assets.elisa"
+
+module CellVisuals:
+    private:
+        def missing() -> Visual:
+            Visual{ready: false, shape: -1, red: 0.0, green: 0.0, blue: 0.0}
+
+        def owned_resident(ledger: CellAssets::Ledger&, cell: WorldStreaming::CellKey, key: AssetLoader::RequestKey) -> bool:
+            return false if not CellAssets::cell_holds(ledger, cell, key)
+            CellAssets::asset_state(ledger, key) == AssetLoader::RequestState.Resident
+
+    public:
+        struct Visual:
+            ready: bool
+            shape: i32
+            red: f32
+            green: f32
+            blue: f32
+
+        def resolve(shelf: VisualShelf::Shelf&, ledger: CellAssets::Ledger&, cell: WorldStreaming::CellKey,
+            mesh: AssetLoader::RequestKey, material: AssetLoader::RequestKey) -> Visual:
+            return missing() if not owned_resident(ledger, cell, mesh)
+            return missing() if not owned_resident(ledger, cell, material)
+            shape: i32 = catch VisualShelf::mesh_shape(shelf, mesh.id):
+                value: value
+                error failure: -1
+            return missing() if shape < 0
+            colour: VisualShelf::Colour = catch VisualShelf::material_colour(shelf, material.id):
+                value: value
+                error failure: VisualShelf::Colour{red: -1.0, green: 0.0, blue: 0.0}
+            return missing() if colour.red < 0.0
+            Visual{ready: true, shape: shape, red: colour.red, green: colour.green, blue: colour.blue}

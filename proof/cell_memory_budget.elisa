@@ -1,0 +1,20 @@
+include "../src/world/cell_memory_budget.elisa"
+
+extend CellMemoryBudget:
+    def prove_within_bounds_growth(baseline: i64, sample: i64, allowance: i64) -> bool:
+        requires baseline >= 0 and baseline <= MAX_BYTES
+        requires sample <= MAX_BYTES
+        requires allowance >= 0 and allowance <= MAX_BYTES
+        ensure not result or sample <= baseline + allowance
+        ensure not result or sample >= 0
+        within(baseline, sample, allowance)
+
+    def prove_peak_monotone(previous: i64, sample: i64) -> i64:
+        ensure result >= previous
+        ensure result >= sample
+        peak(previous, sample)
+
+    def prove_row_bound(index: i64, count: i64) -> bool:
+        ensure not result or index < 16
+        ensure not result or index >= 0
+        row_in_use(index, count, 16)

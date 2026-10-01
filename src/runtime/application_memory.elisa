@@ -1,0 +1,28 @@
+# Live memory samples from the initialized native host: GPU bytes allocated by
+# the graphics device with the device's recommended budget, and the process's
+# physical footprint. Budget checks over repeated work compare these samples.
+include "./application.elisa"
+
+module ApplicationMemory:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_memory_usage(gpu_usage: mutable i64&, gpu_budget: mutable i64&,
+            cpu_footprint: mutable i64&) -> i32
+
+    public:
+        error MemoryError:
+            Unavailable
+
+        struct Sample:
+            gpu_usage: i64
+            gpu_budget: i64
+            cpu_footprint: i64
+
+        def sample() -> Sample error[MemoryError]:
+            gpu_usage: i64 = -1
+            gpu_budget: i64 = -1
+            cpu_footprint: i64 = -1
+            status: i32 = elisa_application_v1_memory_usage(&gpu_usage, &gpu_budget, &cpu_footprint)
+            raise MemoryError.Unavailable if status != 0
+            raise MemoryError.Unavailable if gpu_usage < 0 or gpu_budget < 0 or cpu_footprint <= 0
+            Sample{gpu_usage: gpu_usage, gpu_budget: gpu_budget, cpu_footprint: cpu_footprint}

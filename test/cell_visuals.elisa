@@ -1,0 +1,64 @@
+include "../src/world/cell_visuals.elisa"
+using AssetCatalogue
+
+def visual_key(high: u64, low: u64) -> AssetLoader::RequestKey:
+    AssetLoader::RequestKey{id: Assets::AssetId{high: high, low: low}, variant: Assets::ArtifactVariant.Runtime}
+
+def stream_in(ledger: mutable CellAssets::Ledger&, key: AssetLoader::RequestKey, bytes: i64) -> bool:
+    return false if not CellAssets::begin_decode(ledger, key)
+    return false if not CellAssets::complete_decode(ledger, key, bytes)
+    CellAssets::upload_complete(ledger, key)
+
+def main() -> i32:
+    shelf: mutable VisualShelf::Shelf = VisualShelf::Shelf()
+    mesh: AssetLoader::RequestKey = visual_key(7, 1)
+    paint: AssetLoader::RequestKey = visual_key(7, 2)
+    stranger: AssetLoader::RequestKey = visual_key(7, 3)
+    stocked: bool = catch VisualShelf::add_mesh(&shelf, mesh.id, 1):
+        ok: true
+        error failure: false
+    return 1 if not stocked
+    painted: bool = catch VisualShelf::add_material(&shelf, paint.id, VisualShelf::Colour{red: 0.25, green: 0.5, blue: 0.75}):
+        ok: true
+        error failure: false
+    return 2 if not painted
+    ledger: mutable CellAssets::Ledger = CellAssets::Ledger(100)
+    home: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 0, y: 0}
+    away: WorldStreaming::CellKey = WorldStreaming::CellKey{x: 1, y: 0}
+    manifest: mutable CellAssets::Manifest = CellAssets::Manifest()
+    return 3 if not CellAssets::manifest_add(&manifest, mesh, 10) or not CellAssets::manifest_add(&manifest, paint, 20)
+    return 4 if not CellAssets::acquire(&ledger, home, &manifest, 1)
+    return 5 if not CellAssets::cell_holds(&ledger, home, mesh) or CellAssets::cell_holds(&ledger, away, mesh)
+    return 6 if CellAssets::cell_holds(&ledger, home, stranger)
+    # Still queued: nothing to draw yet.
+    queued: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, home, mesh, paint)
+    return 7 if queued.ready
+    return 8 if not stream_in(&ledger, mesh, 10)
+    half: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, home, mesh, paint)
+    return 9 if half.ready
+    return 10 if not stream_in(&ledger, paint, 20)
+    built: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, home, mesh, paint)
+    return 11 if not built.ready or built.shape != 1
+    return 12 if built.red != 0.25 or built.green != 0.5 or built.blue != 0.75
+    # Another cell does not own these keys; swapped kinds do not resolve.
+    foreign: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, away, mesh, paint)
+    return 13 if foreign.ready
+    swapped: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, home, paint, mesh)
+    return 14 if swapped.ready
+    # A neighbour sharing the material but not the mesh, plus an owned,
+    # resident key the shelf does not know.
+    other: mutable CellAssets::Manifest = CellAssets::Manifest()
+    return 18 if not CellAssets::manifest_add(&other, stranger, 10) or not CellAssets::manifest_add(&other, paint, 20)
+    return 19 if not CellAssets::acquire(&ledger, away, &other, 1) or not stream_in(&ledger, stranger, 10)
+    return 20 if CellAssets::refcount(&ledger, paint) != 2
+    borrowed: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, away, mesh, paint)
+    return 21 if borrowed.ready
+    unknown: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, away, stranger, paint)
+    return 22 if unknown.ready
+    return 23 if not CellAssets::release(&ledger, away)
+    # Released: the cell no longer owns the keys.
+    return 15 if not CellAssets::release(&ledger, home)
+    gone: CellVisuals::Visual = CellVisuals::resolve(&shelf, &ledger, home, mesh, paint)
+    return 16 if gone.ready
+    return 17 if not CellAssets::destroy(&ledger)
+    0

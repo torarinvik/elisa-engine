@@ -25,6 +25,22 @@ Mutation check (scratch copies, all killed): forcing the last-owner path, removi
 
 `proof/cell_asset_budget.elisa` proves `CellAssetBudget`: admission implies `committed + extra <= budget`, release never goes negative or grows, a resize stays non-negative, and per-cell slot indices stay below capacity. The prover could not combine three-term sums such as `committed - reserved + decoded`, so `resized` composes the proved `released` and `grown` helpers.
 
+## Native streaming smoke (2026-10-01)
+
+`cell-streaming-smoke` (`test/cell_streaming_native_main.elisa`, run by `scripts/application_native_smoke.py`) streams cells on a live, hidden SDL3/Wicked scene (macOS 27.0, Apple M5, Metal, stage1 with `ELISA_ALLOW_STALE_STAGE1=1`).
+
+- A player walks x = 0..12 and back three times (78 steps). Each step unloads cells outside the hysteresis ring in a fixed order: renderer row, then the `CellWorld` payload, then the `CellAssets` references. It then streams in the player's cell. Its manifest has a mesh key shared by every other cell and a material key unique to the cell. Each stage report (`begin_decode`, `complete_decode`, `upload_complete`) is separated by a real frame pump.
+- `CellVisuals::resolve` (`src/world/cell_visuals.elisa`) rebuilds the cell's renderer row from its stable keys through `VisualShelf` (shape from the mesh, colour from the material). It does this only when the cell owns both keys (new `CellAssets::cell_holds`) and both requests are resident. `test/cell_visuals.elisa` covers queued, half-loaded, foreign-cell, swapped-kind, unknown-to-shelf and released cases. Mutants that drop the ownership check, the residency check, the shape check, or the `cell_holds` slot comparison fail it with codes 13, 7, 22 and 21.
+- After every step: each live row is backed by owned resident assets and still probes in the renderer; the renderer instance count equals baseline plus live cells (at most 3); `CellAssetWorld::valid` holds; committed and resident bytes are within the 100-byte declared asset budget; and there are no loader evictions.
+- Memory: the new `elisa_application_v1_memory_usage` ABI (`ApplicationMemory::sample`) queries the device's live GPU allocation and budget and the process's `phys_footprint` on every call. The first pass (26 steps) records warm peaks, and every later sample must stay within the declared allowances (GPU +8 MiB, CPU +16 MiB, `CellMemoryBudget::within`) and under the device budget. Measured: GPU usage never rose above the warm peak (a zero GPU allowance still passes); CPU growth was under 1 MiB but not zero (a zero CPU allowance fails with 76). The warm footprint was about 640 MiB, and GPU about 200 MiB or more, mostly a 256 MB suballocation block.
+- Controls (all killed): skipping the row destroy on unload exits 67; skipping the material stage exits 62; a zero CPU allowance exits 76. After teardown the instance count returns to baseline, and no assets, committed bytes or resident bytes remain.
+
+`proof/cell_memory_budget.elisa` proves `within` (a passing sample is non-negative and at most baseline plus allowance), that `peak` is monotone, and that `row_in_use` stays below capacity.
+
 ## Remaining
 
-This is the portable ownership contract. The native loader (`native/native_resource_loader.h`) still reports its stages through its own A04 path. Feeding native decode/upload completions into `CellAssets` by stable key, and rebuilding renderer mesh/material resources for a cell's prefab from those keys, are not wired. No shipped game streams cells yet. As a result the W05 Done criterion (a player crossing cell boundaries in a running game, within measured CPU/GPU budgets) is met only at the portable-test level.
+- Stage reports in the smoke come from the Elisa side between real frames. `native/native_resource_loader.h` is still a C++ probe with no Elisa ABI, so real decode/upload completions do not yet reach `CellAssets` by key.
+- Rows are primitives and colours resolved through `VisualShelf`. Cooked mesh and material packages are not yet loaded per key.
+- The traveller is a scripted walker in a native smoke, not a player in a shipped game (for example `examples/character_course`).
+
+W05 stays open until a real game crosses cells with the native loader backing the stages.
