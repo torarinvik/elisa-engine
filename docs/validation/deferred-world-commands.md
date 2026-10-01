@@ -119,3 +119,6 @@ scalar-only affine structs nor tracks phase-borrow lifetimes. The runtime frame
 now fails closed on both (copies cannot double-release; a leaked token keeps
 the phase locked), but the Done wording about borrows is enforced dynamically,
 not by the compiler.
+
+The full `scripts/check.elisascript` gate passed on 2026-10-01 with both slices
+(ending "Validation report written.").
