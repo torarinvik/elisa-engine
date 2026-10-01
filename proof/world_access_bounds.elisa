@@ -1,0 +1,14 @@
+# Live-token table bound: a found slot is usable only below the table size,
+# and the "none" sentinel (the size itself) is never usable.
+include "../src/world/access_bounds.elisa"
+
+extend WorldAccessBounds:
+    def prove_usable_slot_in_table(slot: usize) -> bool:
+        requires slot < MAX_LIVE_TOKENS
+        ensure result
+        return serial_slot_usable(slot)
+
+    def prove_sentinel_refused(slot: usize) -> bool:
+        requires slot >= MAX_LIVE_TOKENS
+        ensure not result
+        return serial_slot_usable(slot)

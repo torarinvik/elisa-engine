@@ -1,0 +1,9 @@
+# Bounded live-token table for access frames: a slot index is usable only below
+# the table size; the search helpers return the size itself for "none".
+module WorldAccessBounds:
+    public:
+        const MAX_LIVE_TOKENS: usize = 16
+
+        def serial_slot_usable(slot: usize) -> bool:
+            ensure result == (slot < MAX_LIVE_TOKENS)
+            slot < MAX_LIVE_TOKENS

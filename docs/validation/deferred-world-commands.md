@@ -96,3 +96,26 @@ Stage1 does not enforce affinity for affine structs with only scalar fields: a
 probe copying a `WorldAccess::Token` (or a cursor) from a reference, and a
 use-after-move of a local, both compile. A copied token can therefore be
 released twice; the next slice makes release reject unknown token serials.
+
+## 2026-10-01: serial-checked token release
+
+Each access frame now keeps a bounded table of live token serials
+(`WorldAccessBounds::MAX_LIVE_TOKENS`, 16). Acquire refuses with
+`TooManyBorrows` when the table is full and stamps the token with a fresh
+serial; release must find and clear that serial or fails with `UnknownToken`.
+A copied token (which Stage1 currently accepts) can therefore release at most
+once: after the original releases, the copy is rejected and the frame's reader
+count and remaining holders are untouched, so another reader's borrow cannot be
+dropped early and a structural commit cannot slip in under it.
+`test/world_access_serials.elisa` copies a read token, releases the original,
+shows the copy is refused while a second reader still blocks structural access
+and phase advance, then fills all 16 slots and checks the 17th is refused.
+Negative control: removing the serial lookup in `release` fails with 7.
+`proof/world_access_bounds.elisa` proves the slot bound and that the
+"none" sentinel is never usable; weakening it fails the prover.
+
+What W03 still lacks is compile-time: Stage1 neither rejects copies of
+scalar-only affine structs nor tracks phase-borrow lifetimes. The runtime frame
+now fails closed on both (copies cannot double-release; a leaked token keeps
+the phase locked), but the Done wording about borrows is enforced dynamically,
+not by the compiler.

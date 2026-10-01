@@ -1,6 +1,8 @@
 # Runtime phase-access boundary for world systems. Tokens are affine and the
 # frame refuses to advance or end while any access is live. Structural access
 # is exclusive and is intentionally unavailable during input and render.
+include "./access_bounds.elisa"
+
 module WorldAccess:
     public:
         enum Phase:
@@ -28,6 +30,7 @@ module WorldAccess:
             WrongFrame
             UnknownToken
             IdentityExhausted
+            TooManyBorrows
 
     private:
         const module Limits:
@@ -51,6 +54,10 @@ module WorldAccess:
                 writer: mutable bool
                 structural: mutable bool
                 identity: mutable i64
+                # Every live token's serial. Release must find and clear its own
+                # serial, so a duplicated token cannot be released twice.
+                live_serials: mutable i64[WorldAccessBounds::MAX_LIVE_TOKENS]
+                next_serial: mutable i64
 
         affine struct Token:
             private:
@@ -58,9 +65,11 @@ module WorldAccess:
                 kind: AccessKind
                 live: mutable bool
                 owner_identity: i64
+                serial: i64
 
         def Frame() -> Frame:
-            Frame{phase: Phase.Input, active: false, readers: 0, writer: false, structural: false, identity: 0}
+            Frame{phase: Phase.Input, active: false, readers: 0, writer: false, structural: false, identity: 0,
+                live_serials: zeroed, next_serial: 0}
 
         def phase_value(phase: Phase) -> usize:
             return 0 if phase == Phase.Input
@@ -69,6 +78,18 @@ module WorldAccess:
             return 3 if phase == Phase.Animation
             return 4 if phase == Phase.Render
             5
+
+        def free_serial_slot(frame: Frame&) -> usize:
+            for slot in 0..<WorldAccessBounds::MAX_LIVE_TOKENS |found: usize = WorldAccessBounds::MAX_LIVE_TOKENS| -> found:
+                found <- slot if found == WorldAccessBounds::MAX_LIVE_TOKENS and frame.live_serials[slot] == 0
+
+        def serial_slot(frame: Frame&, serial: i64) -> usize:
+            for slot in 0..<WorldAccessBounds::MAX_LIVE_TOKENS |found: usize = WorldAccessBounds::MAX_LIVE_TOKENS| -> found:
+                found <- slot if found == WorldAccessBounds::MAX_LIVE_TOKENS and serial != 0 and frame.live_serials[slot] == serial
+
+        def live_token_count(frame: Frame&) -> usize:
+            for slot in 0..<WorldAccessBounds::MAX_LIVE_TOKENS |count: usize = 0| -> count:
+                count <- count + 1 if frame.live_serials[slot] != 0
 
         def current_phase(frame: Frame&) -> Phase:
             frame.phase
@@ -86,6 +107,9 @@ module WorldAccess:
         def acquire(frame: mutable Frame&, phase: Phase, kind: AccessKind) -> Token error[AccessError]:
             raise AccessError.InactiveFrame if not frame.active
             raise AccessError.PhaseRegression if phase_value(phase) != phase_value(frame.phase)
+            open_slot: usize = free_serial_slot(frame)
+            raise AccessError.TooManyBorrows if not WorldAccessBounds::serial_slot_usable(open_slot)
+            raise AccessError.IdentityExhausted if frame.next_serial >= Limits::FRAME_IDENTITY_MAX
             if kind == AccessKind.Read:
                 raise AccessError.ReadConflict if frame.writer or frame.structural
                 frame.readers <- frame.readers + 1
@@ -96,13 +120,19 @@ module WorldAccess:
                 raise AccessError.WrongPhase if phase == Phase.Input or phase == Phase.Render
                 raise AccessError.StructuralConflict if frame.writer or frame.structural or frame.readers != 0
                 frame.structural <- true
-            Token{phase: phase, kind: kind, live: true, owner_identity: frame.identity}
+            frame.next_serial <- frame.next_serial + 1
+            frame.live_serials[open_slot] <- frame.next_serial
+            Token{phase: phase, kind: kind, live: true, owner_identity: frame.identity,
+                serial: frame.next_serial}
 
         def release(frame: mutable Frame&, token: mutable Token&) -> void error[AccessError]:
             raise AccessError.InactiveFrame if not frame.active
             raise AccessError.UnknownToken if not token.live
             raise AccessError.WrongFrame if token.owner_identity != frame.identity
             raise AccessError.PhaseRegression if token.phase != frame.phase
+            held_slot: usize = serial_slot(frame, token.serial)
+            raise AccessError.UnknownToken if not WorldAccessBounds::serial_slot_usable(held_slot)
+            frame.live_serials[held_slot] <- 0
             if token.kind == AccessKind.Read:
                 frame.readers <- frame.readers - 1
             if token.kind == AccessKind.Write:
@@ -130,6 +160,9 @@ module WorldAccess:
 
         def frame_active(frame: Frame&) -> bool:
             frame.active
+
+        def frame_live_tokens(frame: Frame&) -> usize:
+            live_token_count(frame)
 
         def token_live(token: Token&) -> bool:
             token.live
