@@ -20,7 +20,6 @@ module QualityCost:
             Measured
             UnsupportedByRenderer
             NoSamples
-            NotMeasured
 
         enum Fit:
             WithinBudget
@@ -59,14 +58,16 @@ module QualityCost:
                     return Cost{gpu_timing: GpuTiming.Measured, gpu_median_us: 1342, gpu_p95_us: 1392, memory_kib: 414515}
                 return Cost{gpu_timing: GpuTiming.Measured, gpu_median_us: 2777, gpu_p95_us: 2808, memory_kib: 428431}
             timing: GpuTiming = GpuTiming.UnsupportedByRenderer if backend == Backend.GodotCompatibility else GpuTiming.NoSamples
-            if level == Quality::Level.Medium:
-                return Cost{gpu_timing: GpuTiming.NotMeasured, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 0}
-            low: bool = level == Quality::Level.Low
             if backend == Backend.GodotCompatibility:
-                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 7045 if low else 7885}
+                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: godot_memory(level, 7046, 7879, 7879)}
             if backend == Backend.GodotMobile:
-                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 15360 if low else 81582}
-            Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 22221 if low else 97167}
+                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: godot_memory(level, 14784, 31472, 81008)}
+            Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: godot_memory(level, 22224, 39024, 97088)}
+
+        def godot_memory(level: Quality::Level, low: i64, medium: i64, high: i64) -> i64:
+            return low if level == Quality::Level.Low
+            return medium if level == Quality::Level.Medium
+            high
 
         def cost_fits(backend: Backend, level: Quality::Level, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
             measured: Cost = cost(backend, level)

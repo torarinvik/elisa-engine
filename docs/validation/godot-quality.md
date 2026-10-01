@@ -69,3 +69,32 @@ retained allocations; the difference is not an isolated cost for a single
 quality feature. CPU/GPU timings can vary with device state. FSR2 applies on
 Forward+ and falls back on Compatibility and Mobile. GPU-time measurements on a
 supported renderer/driver remain open.
+
+## Medium profile and memory per level (2026-10-02)
+
+`quality_capture.gd` now also measures a Medium profile that mirrors
+`Quality::Profile()`: ACES, bloom and fog on, no SSAO, medium shadows. Medium is
+applied after the Low and High images are saved, so both references are
+unchanged. `godot_quality_visual_smoke.py` validates CPU samples and video
+memory for all three levels. The display-backed run used Godot 4.7.2,
+macOS 27 and an Apple M5 at 320×200. All three renderers passed, and
+Compatibility still matched its references exactly (peak/mean 0.0000).
+
+| Renderer | CPU p50 Low / Medium / High (ms) | Video memory Low / Medium / High (KiB) | GPU timing |
+| --- | --- | ---: | --- |
+| Compatibility | 0.178 / 0.549 / 0.714 | 7,046 / 7,879 / 7,879 | Unsupported by renderer |
+| Mobile | 0.064 / 0.047 / 0.056 | 14,784 / 31,472 / 81,008 | No samples returned |
+| Forward+ | 0.084 / 0.056 / 0.096 | 22,224 / 39,024 / 97,088 | No samples returned |
+
+`QualityCost::cost` carries these memory values. Memory is a renderer-wide
+reading after each profile. Because Medium is measured after High, its reading
+may include allocations retained from High; on Compatibility it equals High.
+Treat it as an upper bound, not a per-feature cost.
+
+GPU time: the capture runs with a display (no `--headless`), enables
+`RenderingServer.viewport_set_measure_render_time` on the root viewport, and
+reads `viewport_get_measured_render_time_gpu` after `frame_post_draw` for 60
+frames after 12 warm-up frames. On Forward+ and Mobile (Metal) every reading
+was zero, as in the 2026-09-27 run. Compatibility has no GPU timer. This is a
+limitation of the backend on this host. The cost records report it explicitly,
+and Wicked/Metal provides the measured GPU times.

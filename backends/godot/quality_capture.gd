@@ -74,7 +74,15 @@ func _capture() -> void:
 	if not _save_frame(arguments[1]):
 		_fail("High profile capture could not be saved")
 		return
-	if not _save_measurements(arguments[2], low_metrics, high_metrics, viewport, measured_frames, high_upscaler, measure_gpu):
+	# Medium runs after both captures so the Low/High images keep their references.
+	var medium: Dictionary = service.apply_profile(_medium_profile(), root, environment, camera_attributes)
+	if medium["error"] != QualityService.Status.OK:
+		_fail("Medium profile application failed")
+		return
+	print("Godot quality capture: measuring Medium profile")
+	var medium_metrics := await _measure_profile(viewport, measured_frames, measure_gpu)
+	print("Godot quality capture: Medium profile measured")
+	if not _save_measurements(arguments[2], low_metrics, medium_metrics, high_metrics, viewport, measured_frames, high_upscaler, measure_gpu):
 		_fail("Godot profile measurements could not be saved")
 		return
 	scene.queue_free()
@@ -98,6 +106,16 @@ func _profile(high_quality: bool, high_upscaler: String = "fsr2") -> Dictionary:
 		"shadow_quality": "high" if high_quality else "low",
 		"sun_shadow_receiver_bias": 0.0,
 	}
+
+# Matches Quality::Profile() defaults: bloom and fog on, no SSAO, medium shadows.
+func _medium_profile() -> Dictionary:
+	var profile := _profile(false)
+	profile["level"] = "medium"
+	profile["tonemap"] = "aces"
+	profile["bloom"] = true
+	profile["fog"] = true
+	profile["shadow_quality"] = "medium"
+	return profile
 
 func _environment() -> Environment:
 	var environment := Environment.new()
@@ -194,12 +212,12 @@ func _percentile(sorted: Array[float], percentile: float) -> float:
 	var index := clampi(int(ceil(percentile * sorted.size())) - 1, 0, sorted.size() - 1)
 	return sorted[index]
 
-func _save_measurements(filename: String, low: Dictionary, high: Dictionary, viewport: Viewport, measured_frames: int, high_upscaler: String, measure_gpu: bool) -> bool:
+func _save_measurements(filename: String, low: Dictionary, medium: Dictionary, high: Dictionary, viewport: Viewport, measured_frames: int, high_upscaler: String, measure_gpu: bool) -> bool:
 	var rendering_method := RenderingServer.get_current_rendering_method()
 	var gpu_status := "unsupported_by_compatibility_renderer" if rendering_method == "gl_compatibility" else "unavailable_no_samples"
 	if not measure_gpu:
 		gpu_status = "disabled_by_configuration"
-	if low["gpu_ms"]["sample_count"] > 0 and high["gpu_ms"]["sample_count"] > 0:
+	if low["gpu_ms"]["sample_count"] > 0 and medium["gpu_ms"]["sample_count"] > 0 and high["gpu_ms"]["sample_count"] > 0:
 		gpu_status = "available"
 	var report := {
 		"schema": 1,
@@ -212,7 +230,7 @@ func _save_measurements(filename: String, low: Dictionary, high: Dictionary, vie
 		"high_upscaler": high_upscaler,
 		"gpu_timing_status": gpu_status,
 		"video_memory_scope": "renderer-wide allocation; includes shared resources and is not attributable to one profile",
-		"profiles": {"low": low, "high": high},
+		"profiles": {"low": low, "medium": medium, "high": high},
 	}
 	var file := FileAccess.open(filename, FileAccess.WRITE)
 	if file == null:

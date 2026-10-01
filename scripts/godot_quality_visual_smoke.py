@@ -120,7 +120,7 @@ def main() -> int:
             raise ValueError("unknown measurements schema")
         if measurements["rendering_method"] != rendering_method:
             raise ValueError("measurement renderer does not match the requested renderer")
-        for name in ("low", "high"):
+        for name in ("low", "medium", "high"):
             profile = profiles[name]
             if profile["cpu_ms"]["sample_count"] == 0:
                 raise ValueError(f"{name} profile has no CPU timing samples")

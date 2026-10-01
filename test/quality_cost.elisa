@@ -9,6 +9,7 @@ def check_backend(backend: QualityCost::Backend, base: i32) -> i32:
     return base + 1 if not QualityCost::cost_valid(low) or not QualityCost::cost_valid(medium) or not QualityCost::cost_valid(high)
     return base + 2 if low.memory_kib <= 0 or high.memory_kib <= 0
     return base + 3 if high.memory_kib <= low.memory_kib
+    return base + 4 if medium.memory_kib < low.memory_kib or medium.memory_kib > high.memory_kib
     0
 
 def main() -> i32:
@@ -27,9 +28,9 @@ def main() -> i32:
     return 50 if low.gpu_timing != QualityCost::GpuTiming.Measured or low.gpu_median_us != 938 or medium.gpu_p95_us != 1392 or high.memory_kib != 428431
     return 51 if not (low.gpu_p95_us < medium.gpu_p95_us and medium.gpu_p95_us < high.gpu_p95_us)
     compat: QualityCost::Cost = QualityCost::cost(QualityCost::Backend.GodotCompatibility, Quality::Level.High)
-    return 52 if compat.gpu_timing != QualityCost::GpuTiming.UnsupportedByRenderer or compat.memory_kib != 7885
+    return 52 if compat.gpu_timing != QualityCost::GpuTiming.UnsupportedByRenderer or compat.memory_kib != 7879
     forward: QualityCost::Cost = QualityCost::cost(QualityCost::Backend.GodotForwardPlus, Quality::Level.Medium)
-    return 53 if forward.gpu_timing != QualityCost::GpuTiming.NotMeasured or forward.memory_kib != 0
+    return 53 if forward.gpu_timing != QualityCost::GpuTiming.NoSamples or forward.memory_kib != 39024
     bad: QualityCost::Cost = QualityCost::Cost{gpu_timing: QualityCost::GpuTiming.NoSamples, gpu_median_us: 5, gpu_p95_us: 5, memory_kib: 1}
     return 54 if QualityCost::cost_valid(bad)
     unordered: QualityCost::Cost = QualityCost::Cost{gpu_timing: QualityCost::GpuTiming.Measured, gpu_median_us: 10, gpu_p95_us: 9, memory_kib: 1}
