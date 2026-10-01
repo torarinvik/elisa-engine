@@ -1,12 +1,15 @@
 # W05 native streaming smoke: a player walks across 13 scene cells and back
 # three times on a live Wicked scene. Each step unloads cells outside the
-# hysteresis ring (render row first, then world payload, then assets), streams
-# in the player's cell through CellAssets stage reports separated by real
-# frames, and rebuilds the cell's renderer row from its owned mesh/material
-# keys via CellVisuals. After the first pass warms caches, every live GPU and
-# process-memory sample must stay within declared growth allowances.
+# hysteresis ring (render row first, then world payload, then assets and their
+# native loads), streams in the player's cell by loading its cooked mesh and
+# material packages through the native resource loader, whose real per-key
+# stage reports drive CellAssets between frames, and builds the renderer row
+# from the cooked mesh package tinted by the loaded material's uploaded texel.
+# After the first pass warms caches, every live GPU and process-memory sample
+# must stay within declared growth allowances.
 include "../src/runtime/public.elisa"
 include "../src/runtime/application_memory.elisa"
+include "../src/runtime/asset_stream.elisa"
 include "../src/world/cell_asset_world.elisa"
 include "../src/world/cell_memory_budget.elisa"
 include "../src/world/cell_visuals.elisa"
@@ -21,9 +24,10 @@ module CellStreamingSmoke:
             CELLS: usize = 13
             STEPS: usize = 78
             WARM_STEPS: usize = 26
-            ASSET_BUDGET: i64 = 100
-            MESH_BYTES: i64 = 10
-            PAINT_BYTES: i64 = 20
+            ASSET_BUDGET: i64 = 4096
+            MESH_BYTES: i64 = 1024
+            PAINT_BYTES: i64 = 48
+            LOAD_FRAMES: usize = 8
             MAX_LIVE_CELLS: i32 = 3
             GPU_ALLOWANCE: i64 = 8388608
             CPU_ALLOWANCE: i64 = 16777216
@@ -61,20 +65,82 @@ module CellStreamingSmoke:
                     error failure: false
                 painted <- painted and added
 
-        def stage(ledger: mutable CellAssets::Ledger&, key: AssetLoader::RequestKey, bytes: i64) -> bool:
-            return true if CellAssets::asset_state(ledger, key) == AssetLoader::RequestState.Resident
-            return false if not CellAssets::begin_decode(ledger, key)
-            return false if not pump(1)
-            return false if not CellAssets::complete_decode(ledger, key, bytes)
-            return false if not pump(1)
-            CellAssets::upload_complete(ledger, key)
+        def mesh_package(x: i64) -> cstr:
+            return "cell-mesh-1.elpk" if x % 2 == 1
+            "cell-mesh-0.elpk"
 
-        def spawn(visual: CellVisuals::Visual, x: i64) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
-            primitive: RenderScene::Primitive = RenderScene::Primitive.Sphere if visual.shape == 1 else RenderScene::Primitive.Box
+        def mesh_path(shape: i32) -> cstr:
+            return "cell-stream/cell-mesh-1.elpk" if shape == 1
+            "cell-stream/cell-mesh-0.elpk"
+
+        def paint_package(x: i64) -> cstr:
+            return "cell-paint-00.elpk" if x == 0
+            return "cell-paint-01.elpk" if x == 1
+            return "cell-paint-02.elpk" if x == 2
+            return "cell-paint-03.elpk" if x == 3
+            return "cell-paint-04.elpk" if x == 4
+            return "cell-paint-05.elpk" if x == 5
+            return "cell-paint-06.elpk" if x == 6
+            return "cell-paint-07.elpk" if x == 7
+            return "cell-paint-08.elpk" if x == 8
+            return "cell-paint-09.elpk" if x == 9
+            return "cell-paint-10.elpk" if x == 10
+            return "cell-paint-11.elpk" if x == 11
+            "cell-paint-12.elpk"
+
+        # The 0xAABBGGRR texel the fixture writes into cell x's material package.
+        def expected_texel(x: i64) -> i64:
+            red: i64 = x * 255 / 12
+            4278190080 + (255 - red) * 65536 + 102 * 256 + red
+
+        def native_load(package: cstr, section: cstr) -> AssetStream::StreamHandle:
+            catch AssetStream::stream_request(package, section):
+                value: value
+                error failure: AssetStream::stream_none()
+
+        def native_report(handle: AssetStream::StreamHandle) -> AssetStream::StreamReport:
+            catch AssetStream::stream_query(handle):
+                value: value
+                error failure: AssetStream::StreamReport{stage: 0, bytes: 0, texel: 0}
+
+        def native_drop(handle: AssetStream::StreamHandle) -> bool:
+            catch AssetStream::stream_drop(handle):
+                ok: true
+                error failure: false
+
+        # Forwards the native stage of `handle` to the ledger for `key`.
+        def forward(ledger: mutable CellAssets::Ledger&, key: AssetLoader::RequestKey, handle: AssetStream::StreamHandle) -> bool:
+            report: AssetStream::StreamReport = native_report(handle)
+            CellAssets::report_native(ledger, key, report.stage, report.bytes)
+
+        # Pumps native I/O and upload one request per frame until the cell's
+        # assets are all resident; 0, or a failure code.
+        def await_cell(ledger: mutable CellAssets::Ledger&, x: i64, mesh: AssetStream::StreamHandle,
+            paint: AssetStream::StreamHandle) -> i32:
+            waited: i32 =
+                for _ in 0..<Tune::LOAD_FRAMES |ledger, code: i32 = 1| -> code:
+                    if code == 1:
+                        uploaded: i32 = catch AssetStream::stream_pump(1, 1):
+                            value: value
+                            error failure: -1
+                        code <- 56 if uploaded < 0 or not pump(1)
+                        code <- 57 if code == 1 and not forward(ledger, mesh_key(x), mesh)
+                        code <- 58 if code == 1 and not forward(ledger, paint_key(x), paint)
+                        code <- 59 if code == 1 and CellAssets::cell_failed(ledger, cell_of(x))
+                        code <- 0 if code == 1 and CellAssets::cell_resident(ledger, cell_of(x))
+            return 49 if waited == 1
+            waited
+
+        # The row draws the cell's cooked mesh package, tinted by the texel the
+        # native loader uploaded from the cell's material package.
+        def spawn(visual: CellVisuals::Visual, x: i64, texel: i64) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
             pose: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(),
                 Geometry::Vec3{x: x.f32() * 2.0 - 12.0, y: 0.0, z: 0.0})
-            try RenderScene::create(primitive, pose,
-                RenderScene::Color{red: visual.red, green: visual.green, blue: visual.blue, alpha: 1.0})
+            red: f32 = (texel % 256).f32() / 255.0
+            green: f32 = ((texel / 256) % 256).f32() / 255.0
+            blue: f32 = ((texel / 65536) % 256).f32() / 255.0
+            try RenderScene::create_mesh(mesh_path(visual.shape), pose,
+                RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0})
 
         def drop_row(handle: RenderScene::InstanceHandle) -> bool:
             catch RenderScene::destroy(handle):
@@ -107,8 +173,6 @@ module CellStreamingSmoke:
             early: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(x), mesh_key(x), paint_key(x))
             fresh_paint: bool = CellAssets::asset_state(ledger, paint_key(x)) != AssetLoader::RequestState.Resident
             return 53 if early.ready and fresh_paint
-            return 54 if not stage(ledger, mesh_key(x), Tune::MESH_BYTES)
-            return 55 if not stage(ledger, paint_key(x), Tune::PAINT_BYTES)
             0
 
         # One walk; 0 or a failure code. Render rows live in local arrays.
@@ -117,27 +181,47 @@ module CellStreamingSmoke:
             empty: RenderScene::InstanceHandle = RenderScene::empty_instance_handle()
             rows: mutable RenderScene::InstanceHandle[Tune::CELLS] = [empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty, empty]
             live: mutable bool[Tune::CELLS] = zeroed
+            none: AssetStream::StreamHandle = AssetStream::stream_none()
+            meshes: mutable AssetStream::StreamHandle[2] = [none, none]
+            paints: mutable AssetStream::StreamHandle[Tune::CELLS] = [none, none, none, none, none, none, none, none, none, none, none, none, none]
             hysteresis: i64 = CellWorld::hysteresis(runtime)
             warm_gpu: mutable i64 = 0
             warm_cpu: mutable i64 = 0
             code: mutable i32 = 0
-            for step in 0..<Tune::STEPS |shelf, runtime, ledger, world, rows, live, hysteresis, warm_gpu, warm_cpu, code, baseline|:
+            for step in 0..<Tune::STEPS |shelf, runtime, ledger, world, rows, live, none, meshes, paints, hysteresis, warm_gpu, warm_cpu, code, baseline|:
                 if code == 0:
                     leg: i64 = step.i64() % 26
                     px: i64 = leg if leg <= 12 else 25 - leg
                     # Unload outside the ring: render row, then world, then assets.
-                    for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, hysteresis, code, px|:
+                    for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, none, meshes, paints, hysteresis, code, px|:
                         if code == 0 and live[x] and CellWorld::outside(cell_of(x.i64()), px, 1, 1, hysteresis):
                             code <- 60 if not drop_row(rows[x])
                             code <- 61 if code == 0 and not CellAssetWorld::deactivate(runtime, ledger, world, cell_of(x.i64()))
                             live[x] <- false
+                            # Native loads follow their last portable owner.
+                            shape: usize = x % 2
+                            if code == 0 and CellAssets::refcount(ledger, mesh_key(x.i64())) == 0 and meshes[shape].token != 0:
+                                code <- 77 if not native_drop(meshes[shape])
+                                meshes[shape] <- none
+                            if code == 0 and paints[x].token != 0:
+                                code <- 78 if not native_drop(paints[x])
+                                paints[x] <- none
                     index: usize = px.usize()
                     if code == 0 and not live[index]:
                         code <- stream_in(shelf, runtime, ledger, world, px, step.i64() + 1)
+                        shape: usize = index % 2
+                        if code == 0 and meshes[shape].token == 0:
+                            meshes[shape] <- native_load(mesh_package(px), "mesh")
+                        if code == 0:
+                            paints[index] <- native_load(paint_package(px), "albedo")
+                        code <- 47 if code == 0 and (meshes[shape].token == 0 or paints[index].token == 0)
+                        code <- await_cell(ledger, px, meshes[shape], paints[index]) if code == 0
+                        texel: i64 = native_report(paints[index]).texel
+                        code <- 48 if code == 0 and texel != expected_texel(px)
                         visual: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(px), mesh_key(px), paint_key(px))
                         code <- 62 if code == 0 and not visual.ready
                         if code == 0:
-                            created: RenderScene::InstanceHandle = catch spawn(visual, px):
+                            created: RenderScene::InstanceHandle = catch spawn(visual, px, texel):
                                 value: value
                                 error failure: rows[index]
                             code <- 63 if not row_alive(created)
@@ -159,6 +243,7 @@ module CellStreamingSmoke:
                     code <- 70 if code == 0 and CellAssets::committed_bytes(ledger) > Tune::ASSET_BUDGET
                     code <- 71 if code == 0 and CellAssets::resident_bytes(ledger).i64() > Tune::ASSET_BUDGET
                     code <- 72 if code == 0 and CellAssets::eviction_count(ledger) != 0
+                    code <- 79 if code == 0 and AssetStream::stream_live() != CellAssets::live_assets(ledger).i32()
                     sample: ApplicationMemory::Sample = memory()
                     code <- 73 if code == 0 and (sample.cpu_footprint <= 0 or sample.gpu_usage <= 0)
                     code <- 74 if code == 0 and sample.gpu_budget > 0 and sample.gpu_usage > sample.gpu_budget
@@ -169,11 +254,21 @@ module CellStreamingSmoke:
                         code <- 75 if not CellMemoryBudget::within(warm_gpu, sample.gpu_usage, Tune::GPU_ALLOWANCE)
                         code <- 76 if code == 0 and not CellMemoryBudget::within(warm_cpu, sample.cpu_footprint, Tune::CPU_ALLOWANCE)
             return code if code != 0
-            # Teardown: rows first, then cells.
-            for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, done: i32 = 0| -> done:
-                if done == 0 and live[x]:
-                    done <- 80 if not drop_row(rows[x])
-                    done <- 81 if done == 0 and not CellAssetWorld::deactivate(runtime, ledger, world, cell_of(x.i64()))
+            # Teardown: rows first, then cells, then their native loads.
+            closed: i32 =
+                for x in 0..<Tune::CELLS |runtime, ledger, world, rows, live, done: i32 = 0| -> done:
+                    if done == 0 and live[x]:
+                        done <- 80 if not drop_row(rows[x])
+                        done <- 81 if done == 0 and not CellAssetWorld::deactivate(runtime, ledger, world, cell_of(x.i64()))
+            return closed if closed != 0
+            shapes: i32 =
+                for x in 0..<2 |meshes, dropped: i32 = 0| -> dropped:
+                    if dropped == 0 and meshes[x].token != 0:
+                        dropped <- 82 if not native_drop(meshes[x])
+            return shapes if shapes != 0
+            for x in 0..<Tune::CELLS |paints, dropped: i32 = 0| -> dropped:
+                if dropped == 0 and paints[x].token != 0:
+                    dropped <- 83 if not native_drop(paints[x])
 
         def exercise() -> i32:
             return 30 if not pump(2)
@@ -187,6 +282,10 @@ module CellStreamingSmoke:
                 error failure: return 34
             runtime: mutable CellWorld::Runtime = CellWorld::Runtime(4, 1)
             ledger: mutable CellAssets::Ledger = CellAssets::Ledger(Tune::ASSET_BUDGET)
+            mounted: bool = catch AssetStream::stream_mount("cell-stream"):
+                ok: true
+                error failure: false
+            return 40 if not mounted
             walked: i32 = travel(&shelf, &runtime, &ledger, &world, baseline)
             return walked if walked != 0
             return 35 if not pump(1)
@@ -194,6 +293,8 @@ module CellStreamingSmoke:
             return 37 if CellAssets::release_count(&ledger) < 30 or CellAssets::live_assets(&ledger) != 0
             return 38 if CellAssets::committed_bytes(&ledger) != 0 or CellAssets::resident_bytes(&ledger) != 0
             return 39 if not CellWorld::destroy(&runtime, &world) or not CellAssets::destroy(&ledger)
+            return 41 if AssetStream::stream_live() != 0
+            AssetStream::stream_reset()
             0
 
         def execute() -> i32:

@@ -1,0 +1,72 @@
+# CellAssets::report_native: native loader stage codes (1 queued .. 4 resident,
+# 5 failed, 6 cancelled, 0 unknown) drive the shared portable requests by key.
+include "../src/world/cell_assets.elisa"
+
+def staged_key(low: u64) -> AssetLoader::RequestKey:
+    AssetLoader::RequestKey{id: Assets::AssetId{high: 40, low: low}, variant: Assets::ArtifactVariant.Runtime}
+
+def staged_cell(x: i64) -> WorldStreaming::CellKey:
+    WorldStreaming::CellKey{x: x, y: 3}
+
+def staged_manifest(first: AssetLoader::RequestKey, second: AssetLoader::RequestKey) -> CellAssets::Manifest:
+    manifest: mutable CellAssets::Manifest = CellAssets::Manifest()
+    _ = CellAssets::manifest_add(&manifest, first, 30)
+    _ = CellAssets::manifest_add(&manifest, second, 30)
+    manifest
+
+def main() -> i32:
+    ledger: mutable CellAssets::Ledger = CellAssets::Ledger(200)
+    mesh: AssetLoader::RequestKey = staged_key(1)
+    paint: AssetLoader::RequestKey = staged_key(2)
+    other: AssetLoader::RequestKey = staged_key(3)
+    first: CellAssets::Manifest = staged_manifest(mesh, paint)
+    return 1 if not CellAssets::acquire(&ledger, staged_cell(0), &first, 1)
+    return 2 if CellAssets::cell_ready_count(&ledger, staged_cell(0)) != 0
+    # Queued report is a no-op; unknown keys are refused.
+    return 3 if not CellAssets::report_native(&ledger, mesh, 1, 0)
+    return 4 if CellAssets::asset_state(&ledger, mesh) != AssetLoader::RequestState.Queued
+    return 5 if CellAssets::report_native(&ledger, other, 4, 30)
+    # A decoding report advances one stage only.
+    return 6 if not CellAssets::report_native(&ledger, mesh, 2, 0)
+    return 7 if CellAssets::asset_state(&ledger, mesh) != AssetLoader::RequestState.Decoding
+    # A resident report after decoding catches up through upload with real bytes.
+    return 8 if not CellAssets::report_native(&ledger, mesh, 4, 25)
+    return 9 if CellAssets::asset_state(&ledger, mesh) != AssetLoader::RequestState.Resident
+    return 10 if CellAssets::resident_bytes(&ledger) != 25
+    return 11 if CellAssets::cell_ready_count(&ledger, staged_cell(0)) != 1
+    return 12 if CellAssets::cell_resident(&ledger, staged_cell(0))
+    # A report behind the portable stage is refused and changes nothing.
+    return 13 if CellAssets::report_native(&ledger, mesh, 2, 0)
+    return 14 if CellAssets::asset_state(&ledger, mesh) != AssetLoader::RequestState.Resident
+    # Straight from queued to resident in one report (all three stages).
+    return 15 if not CellAssets::report_native(&ledger, paint, 4, 40)
+    return 16 if CellAssets::cell_ready_count(&ledger, staged_cell(0)) != 2
+    return 17 if not CellAssets::cell_resident(&ledger, staged_cell(0))
+    return 18 if CellAssets::committed_bytes(&ledger) != 65
+    # Repeating a resident report is harmless.
+    return 19 if not CellAssets::report_native(&ledger, paint, 4, 40)
+    # A decode larger than the declared budget is refused mid catch-up.
+    huge: AssetLoader::RequestKey = staged_key(4)
+    big_cell: CellAssets::Manifest = staged_manifest(huge, other)
+    return 20 if not CellAssets::acquire(&ledger, staged_cell(1), &big_cell, 1)
+    return 21 if CellAssets::report_native(&ledger, huge, 4, 500)
+    return 22 if CellAssets::resident_bytes(&ledger) != 65
+    # Failed and cancelled native requests mark the owning cell failed.
+    return 23 if CellAssets::cell_failed(&ledger, staged_cell(1))
+    return 24 if CellAssets::report_native(&ledger, other, 5, 0)
+    return 25 if not CellAssets::cell_failed(&ledger, staged_cell(1))
+    return 26 if CellAssets::cell_failed(&ledger, staged_cell(0))
+    return 27 if not CellAssets::release(&ledger, staged_cell(1))
+    again: CellAssets::Manifest = staged_manifest(huge, other)
+    return 28 if not CellAssets::acquire(&ledger, staged_cell(2), &again, 1)
+    return 29 if CellAssets::cell_failed(&ledger, staged_cell(2))
+    return 30 if CellAssets::report_native(&ledger, huge, 6, 0)
+    return 31 if not CellAssets::cell_failed(&ledger, staged_cell(2))
+    return 32 if CellAssets::report_native(&ledger, other, 0, 0)
+    return 33 if CellAssets::cell_ready_count(&ledger, staged_cell(2)) != 0
+    # Released keys take no more reports.
+    return 34 if not CellAssets::release(&ledger, staged_cell(2))
+    return 35 if CellAssets::report_native(&ledger, huge, 4, 30)
+    return 36 if CellAssets::cell_ready_count(&ledger, staged_cell(9)) != 0
+    return 37 if not CellAssets::destroy(&ledger)
+    0

@@ -1,0 +1,71 @@
+# Native asset streaming through the initialized application host. One native
+# loader reads package sections from a mounted project directory; reads,
+# decodes and GPU uploads happen only inside `stream_pump`, so `stream_query`
+# reports each request's real stage. Stage codes match the native loader:
+# 1 queued, 2 decoding, 3 uploading, 4 resident, 5 failed, 6 cancelled
+# (0 means the handle is unknown or already dropped).
+include "./application.elisa"
+
+module AssetStream:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_mount(directory: cstr) -> i32
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_request(package: cstr, section: cstr) -> i64
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_pump(io_budget: i32, upload_budget: i32) -> i32
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_query(handle: i64, stage: mutable i32&, bytes: mutable i64&,
+            texel: mutable i64&) -> i32
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_drop(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_live() -> i32
+        @callconv(c)
+        extern elisa_application_v1_asset_stream_reset() -> i32
+
+    public:
+        error StreamError:
+            Refused
+
+        struct StreamHandle:
+            token: i64
+
+        struct StreamReport:
+            stage: i64
+            bytes: i64
+            texel: i64
+
+        def stream_none() -> StreamHandle:
+            StreamHandle{token: 0}
+
+        def stream_mount(directory: cstr) -> void error[StreamError]:
+            raise StreamError.Refused if elisa_application_v1_asset_stream_mount(directory) != 0
+
+        def stream_request(package: cstr, section: cstr) -> StreamHandle error[StreamError]:
+            token: i64 = elisa_application_v1_asset_stream_request(package, section)
+            raise StreamError.Refused if token <= 0
+            StreamHandle{token: token}
+
+        # Returns how many requests finished uploading.
+        def stream_pump(io_budget: i32, upload_budget: i32) -> i32 error[StreamError]:
+            uploaded: i32 = elisa_application_v1_asset_stream_pump(io_budget, upload_budget)
+            raise StreamError.Refused if uploaded < 0
+            uploaded
+
+        def stream_query(handle: StreamHandle) -> StreamReport error[StreamError]:
+            stage: i32 = 0
+            bytes: i64 = 0
+            texel: i64 = 0
+            raise StreamError.Refused if elisa_application_v1_asset_stream_query(handle.token, &stage, &bytes, &texel) != 0
+            StreamReport{stage: stage.i64(), bytes: bytes, texel: texel}
+
+        # Releases a resident request or cancels a queued one.
+        def stream_drop(handle: StreamHandle) -> void error[StreamError]:
+            raise StreamError.Refused if elisa_application_v1_asset_stream_drop(handle.token) != 0
+
+        def stream_live() -> i32:
+            elisa_application_v1_asset_stream_live()
+
+        def stream_reset() -> void:
+            _ = elisa_application_v1_asset_stream_reset()

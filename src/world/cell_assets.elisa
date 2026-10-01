@@ -7,6 +7,7 @@
 # to evict a resource that a resident cell still references.
 include "../assets/loader.elisa"
 include "./cell_asset_budget.elisa"
+include "./cell_asset_stages.elisa"
 include "./cell_streaming.elisa"
 
 module CellAssets:
@@ -23,6 +24,7 @@ module CellAssets:
             refs: i64
             bytes: i64
             live: bool
+            failed: bool
 
         struct CellRow:
             key: WorldStreaming::CellKey
@@ -73,7 +75,7 @@ module CellAssets:
                 value: value
                 error failure: invalid
             return Limits::INVALID if handle.slot == Limits::INVALID
-            ledger.assets[slot] <- SharedAsset{key: key, handle: handle, refs: 1, bytes: bytes, live: true}
+            ledger.assets[slot] <- SharedAsset{key: key, handle: handle, refs: 1, bytes: bytes, live: true, failed: false}
             ledger.committed <- ledger.committed + bytes
             slot
 
@@ -101,6 +103,14 @@ module CellAssets:
             ledger.committed <- CellAssetBudget::released(ledger.committed, ledger.assets[slot].bytes)
             ledger.assets[slot].live <- false
             true
+
+        # Native stage code of a portable request state (0 when not live).
+        def portable_stage_code(state: AssetLoader::RequestState) -> i64:
+            return CellAssetStages::STAGE_QUEUED if state == AssetLoader::RequestState.Queued
+            return CellAssetStages::STAGE_DECODING if state == AssetLoader::RequestState.Decoding
+            return CellAssetStages::STAGE_UPLOADING if state == AssetLoader::RequestState.Uploading
+            return CellAssetStages::STAGE_RESIDENT if state == AssetLoader::RequestState.Resident
+            0
 
     public:
         const MAX_PER_CELL: usize = Limits::MAX_PER_CELL
@@ -290,6 +300,47 @@ module CellAssets:
             catch AssetLoader::upload_complete(&ledger.loader, handle):
                 ok: true
                 error failure: false
+
+        # Applies a native loader stage report (CellAssetStages codes) for
+        # `key`, advancing the shared request through every stage it skipped.
+        # A failed, cancelled or unknown native request marks the asset failed;
+        # a report behind the portable stage is refused.
+        def report_native(ledger: mutable Ledger&, key: AssetLoader::RequestKey, stage: i64, bytes: i64) -> bool:
+            slot: usize = find_asset(ledger, key)
+            return false if slot == Limits::INVALID
+            if CellAssetStages::given_up(stage):
+                ledger.assets[slot].failed <- true
+                return false
+            current: i64 = portable_stage_code(AssetLoader::state(&ledger.loader, ledger.assets[slot].handle))
+            steps: i64 = CellAssetStages::catch_up(stage, current)
+            return false if steps < 0
+            ok: mutable bool = true
+            if current <= CellAssetStages::STAGE_QUEUED and stage >= CellAssetStages::STAGE_DECODING:
+                ok <- begin_decode(ledger, key)
+            if ok and current <= CellAssetStages::STAGE_DECODING and stage >= CellAssetStages::STAGE_UPLOADING:
+                ok <- complete_decode(ledger, key, bytes)
+            if ok and current <= CellAssetStages::STAGE_UPLOADING and stage >= CellAssetStages::STAGE_RESIDENT:
+                ok <- upload_complete(ledger, key)
+            ok
+
+        # How many of a cell's assets are resident (0 for an unknown cell).
+        def cell_ready_count(ledger: Ledger&, cell: WorldStreaming::CellKey) -> usize:
+            slot: usize = find_cell(ledger, cell)
+            return 0 if slot == Limits::INVALID
+            row: CellRow = ledger.cells[slot]
+            for index in 0..<Limits::MAX_PER_CELL |ready: i64 = 0| -> ready.usize():
+                if index < row.count and row.assets[index] < Limits::MAX_ASSETS:
+                    resident: bool = AssetLoader::state(&ledger.loader, ledger.assets[row.assets[index]].handle) == AssetLoader::RequestState.Resident
+                    ready <- CellAssetStages::counted(ready, resident, row.count.i64())
+
+        # Whether the native loader gave up on any asset this cell owns.
+        def cell_failed(ledger: Ledger&, cell: WorldStreaming::CellKey) -> bool:
+            slot: usize = find_cell(ledger, cell)
+            return false if slot == Limits::INVALID
+            row: CellRow = ledger.cells[slot]
+            for index in 0..<Limits::MAX_PER_CELL |failed: bool = false| -> failed:
+                if index < row.count and row.assets[index] < Limits::MAX_ASSETS:
+                    failed <- true if ledger.assets[row.assets[index]].failed
 
         def destroy(ledger: mutable Ledger&) -> bool:
             ok: mutable bool = true

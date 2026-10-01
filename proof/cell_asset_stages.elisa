@@ -1,0 +1,25 @@
+include "../src/world/cell_asset_stages.elisa"
+
+extend CellAssetStages:
+    def prove_catch_up_bounded(native: i64, current: i64) -> i64:
+        ensure result <= 3
+        ensure result >= -1
+        ensure result < 0 or native <= 4
+        ensure result < 0 or current <= native
+        catch_up(native, current)
+
+    def prove_terminal_refused(native: i64, current: i64) -> i64:
+        requires native >= 5
+        ensure result < 0
+        catch_up(native, current)
+
+    def prove_zero_steps_only_when_caught_up(native: i64, current: i64) -> i64:
+        ensure result != 0 or current == native
+        catch_up(native, current)
+
+    def prove_count_within(count: i64, ready: bool) -> i64:
+        requires count >= 0
+        requires count <= 4
+        ensure result <= 4
+        ensure result >= count
+        counted(count, ready, 4)

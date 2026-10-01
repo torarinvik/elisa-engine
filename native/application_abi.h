@@ -94,6 +94,16 @@ int32_t elisa_application_v1_fallback_provider_available(int32_t provider);
 int32_t elisa_application_v1_pump(void);
 // Live GPU usage/budget and process physical footprint in bytes.
 int32_t elisa_application_v1_memory_usage(int64_t* gpu_usage, int64_t* gpu_budget, int64_t* cpu_footprint);
+// Native asset streaming (application_asset_stream_exports.inc): mount a
+// project-relative package directory, request package sections, pump bounded
+// I/O and upload work, query real per-request stages, release or cancel.
+int32_t elisa_application_v1_asset_stream_mount(const char* directory);
+int64_t elisa_application_v1_asset_stream_request(const char* package, const char* section);
+int32_t elisa_application_v1_asset_stream_pump(int32_t io_budget, int32_t upload_budget);
+int32_t elisa_application_v1_asset_stream_query(int64_t handle, int32_t* stage, int64_t* bytes, int64_t* texel);
+int32_t elisa_application_v1_asset_stream_drop(int64_t handle);
+int32_t elisa_application_v1_asset_stream_live(void);
+int32_t elisa_application_v1_asset_stream_reset(void);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE) || defined(ELISA_APPLICATION_TEST_PROBE)
 // Test-only real SDL window lifecycle requests used by native SDL3 smoke tests.
 int32_t elisa_application_v1_test_set_minimized(int32_t minimized);

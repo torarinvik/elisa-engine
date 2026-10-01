@@ -153,6 +153,29 @@ public:
         return item != nullptr && item->state == NativeAssetState::Resident ? &item->texture : nullptr;
     }
 
+    // Decoded byte count of a request past decode, or 0.
+    size_t byte_count(NativeAssetHandle handle) const {
+        const Item* item = find(handle);
+        return item != nullptr && (item->state == NativeAssetState::Uploading ||
+            item->state == NativeAssetState::Resident) ? item->bytes.size() : 0;
+    }
+
+    // The 0xAABBGGRR pixel uploaded for a resident request, or 0.
+    uint32_t texel(NativeAssetHandle handle) const {
+        const Item* item = find(handle);
+        return item != nullptr && item->state == NativeAssetState::Resident ? first_pixel(item->bytes) : 0;
+    }
+
+    // Requests holding a slot: queued, decoding, uploading or resident.
+    uint32_t live_count() const {
+        uint32_t live = 0;
+        for (const Item& item : items_) {
+            if (item.state != NativeAssetState::Empty && item.state != NativeAssetState::Failed &&
+                item.state != NativeAssetState::Cancelled) ++live;
+        }
+        return live;
+    }
+
     const NativeAssetTelemetry& telemetry() const { return telemetry_; }
 
 private:
@@ -176,11 +199,15 @@ private:
         return handle.slot < MAX_ASSETS && items_[handle.slot].generation == handle.generation &&
             handle.generation != 0 ? &items_[handle.slot] : nullptr;
     }
+    static uint32_t first_pixel(const std::vector<uint8_t>& bytes) {
+        if (bytes.empty()) return 0;
+        return static_cast<uint32_t>(bytes[0]) |
+            (static_cast<uint32_t>(bytes[bytes.size() > 1 ? 1 : 0]) << 8) |
+            (static_cast<uint32_t>(bytes[bytes.size() > 2 ? 2 : 0]) << 16) | 0xFF000000u;
+    }
     bool upload(Item& item) {
         if (device_ == nullptr || item.bytes.empty()) return false;
-        const uint32_t pixel = static_cast<uint32_t>(item.bytes[0]) |
-            (static_cast<uint32_t>(item.bytes[item.bytes.size() > 1 ? 1 : 0]) << 8) |
-            (static_cast<uint32_t>(item.bytes[item.bytes.size() > 2 ? 2 : 0]) << 16) | 0xFF000000u;
+        const uint32_t pixel = first_pixel(item.bytes);
         wi::graphics::TextureDesc desc;
         desc.width = desc.height = desc.depth = desc.array_size = desc.mip_levels = desc.sample_count = 1;
         desc.format = wi::graphics::Format::R8G8B8A8_UNORM;

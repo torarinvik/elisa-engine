@@ -18,6 +18,7 @@ import shutil
 from pathlib import Path
 
 import cook_physics_collision
+from elisa_package import write_package
 import native_smoke_artifacts
 
 
@@ -124,6 +125,51 @@ def write_physics_mesh_fixture(project: Path) -> None:
         "triangle_mesh")
 
 
+def cooked_mesh_text(name: str, positions: tuple, indices: tuple) -> bytes:
+    """A minimal elisa-cooked-v2 mesh with flat up normals and zero UVs."""
+    count = len(positions) // 3
+    encode = lambda values, fmt: base64.b64encode(struct.pack(fmt, *values)).decode("ascii")
+    return "\n".join((
+        "format=elisa-cooked-v2",
+        f"source={name}.gltf",
+        "source_sha256=" + "0" * 64,
+        f"triangles={len(indices) // 3}",
+        f"positions={count}",
+        f"indices={len(indices)}",
+        "position_stride=12",
+        "normal_stride=12",
+        "uv_stride=8",
+        "index_stride=4",
+        "positions_b64=" + encode(positions, f"<{len(positions)}f"),
+        "normals_b64=" + encode((0.0, 1.0, 0.0) * count, f"<{count * 3}f"),
+        "uvs_b64=" + encode((0.0,) * (count * 2), f"<{count * 2}f"),
+        "indices_b64=" + encode(indices, f"<{len(indices)}I"),
+        "",
+    )).encode("ascii")
+
+
+def write_cell_stream_fixtures(project: Path) -> None:
+    """Cooked packages for cell-streaming-smoke: two meshes shared by even and
+    odd cells, and one material package per cell whose first texel encodes
+    red = x*255/12, green = 102, blue = 255 - red."""
+    directory = project / "cell-stream"
+    box = (
+        -0.5, -0.5, -0.5, 0.5, -0.5, -0.5, 0.5, 0.5, -0.5, -0.5, 0.5, -0.5,
+        -0.5, -0.5, 0.5, 0.5, -0.5, 0.5, 0.5, 0.5, 0.5, -0.5, 0.5, 0.5,
+    )
+    box_indices = (0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4,
+        2, 3, 7, 2, 7, 6, 1, 2, 6, 1, 6, 5, 0, 4, 7, 0, 7, 3)
+    pyramid = (-0.5, 0.0, -0.5, 0.5, 0.0, -0.5, 0.5, 0.0, 0.5, -0.5, 0.0, 0.5, 0.0, 1.0, 0.0)
+    pyramid_indices = (0, 1, 2, 0, 2, 3, 0, 4, 1, 1, 4, 2, 2, 4, 3, 3, 4, 0)
+    write_package(directory / "cell-mesh-0.elpk", {"mesh": cooked_mesh_text("cell-box", box, box_indices)})
+    write_package(directory / "cell-mesh-1.elpk",
+        {"mesh": cooked_mesh_text("cell-pyramid", pyramid, pyramid_indices)})
+    for x in range(13):
+        red = x * 255 // 12
+        texel = bytes((red, 102, 255 - red, 255))
+        write_package(directory / f"cell-paint-{x:02d}.elpk", {"albedo": texel * 8})
+
+
 def main() -> int:
     only_names = [name for name in os.environ.get("ELISA_NATIVE_SMOKE_ONLY", "").split(",") if name]
     if len(sys.argv) == 3 and sys.argv[1] == "--only":
@@ -139,6 +185,7 @@ def main() -> int:
         fixture = project / "test/fixtures/audio-smoke.wav"
         fixture.parent.mkdir(parents=True, exist_ok=True)
         write_physics_mesh_fixture(project)
+        write_cell_stream_fixtures(project)
         # The course self-test decodes its shipped clips from `sounds/` and
         # animates two instances of `rigs/guide_rig.pkg`; captions come from `text/`, the Arabic fallback font from `fonts/`.
         for resource in ("sounds", "rigs", "text", "fonts"):

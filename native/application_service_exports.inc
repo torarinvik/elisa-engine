@@ -66,3 +66,5 @@ extern "C" int32_t elisa_application_v1_memory_usage(
     *cpu_footprint = static_cast<int64_t>(footprint);
     return ELISA_APPLICATION_OK;
 }
+
+#include "application_asset_stream_exports.inc"

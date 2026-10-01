@@ -37,10 +37,16 @@ Mutation check (scratch copies, all killed): forcing the last-owner path, removi
 
 `proof/cell_memory_budget.elisa` proves `within` (a passing sample is non-negative and at most baseline plus allowance), that `peak` is monotone, and that `row_in_use` stays below capacity.
 
+## Native stages (2026-10-01)
+
+- `native/application_asset_stream_exports.inc` exposes `native/native_resource_loader.h` through the application ABI (mount, request, pump, query, drop, live, reset), wrapped by `src/runtime/asset_stream.elisa`.
+- `CellAssets::report_native` takes a native stage (queued, decoding, uploading, ready, failed, cancelled) and byte count by asset key and catches the portable ledger up. It refuses unknown keys and reports that fall behind the ledger, and it marks the asset failed when the native request gives up. `cell_ready_count` and `cell_failed` let a cell tell when all its assets are ready. The stage arithmetic lives in `src/world/cell_asset_stages.elisa`, is proved in `proof/cell_asset_stages.elisa` and is tested by `test/cell_asset_stages.elisa`.
+- `cell-streaming-smoke` writes cooked mesh packages (box, pyramid; shared by two cells each) and one material package per cell. It requests them natively per key, pumps real decode and upload completions into `CellAssets` and checks each uploaded texel. It drops native requests by refcount on unload and requires the native live count to equal the ledger after every step and to reach zero at teardown.
+
 ## Remaining
 
-- Stage reports in the smoke come from the Elisa side between real frames. `native/native_resource_loader.h` is still a C++ probe with no Elisa ABI, so real decode/upload completions do not yet reach `CellAssets` by key.
-- Rows are primitives and colours resolved through `VisualShelf`. Cooked mesh and material packages are not yet loaded per key.
+- `RenderScene::create_mesh` reloads the mesh package from disk by path. It does not draw from the bytes the loader decoded.
+- The material tint comes from the uploaded texel, not from a bound GPU material.
 - The traveller is a scripted walker in a native smoke, not a player in a shipped game (for example `examples/character_course`).
 
 W05 stays open until a real game crosses cells with the native loader backing the stages.

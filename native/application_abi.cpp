@@ -544,9 +544,9 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
         if (gamepad.handle != nullptr) SDL_CloseGamepad(gamepad.handle);
         gamepad = OpenGamepad{};
     }
-    // A runtime service may own the active path. Detach it before ordered
-    // shutdown hooks release its scene and path objects.
+    // Detach a service-owned active path before shutdown hooks release it; drop streamed textures.
     service.host.wicked().ActivatePath(nullptr);
+    elisa_application_v1_asset_stream_reset();
     elisa_physics_v1_shutdown_from_application();
     elisa_audio_v1_shutdown_from_application();
     flush_application_capture_requests(service);

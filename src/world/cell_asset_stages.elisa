@@ -1,0 +1,41 @@
+# Integer rules for applying native loader stage reports to CellAssets, split
+# out so the prover can check them. Native stage codes: 1 queued, 2 decoding,
+# 3 uploading, 4 resident, 5 failed, 6 cancelled, 0 unknown or dropped.
+module CellAssetStages:
+    public:
+        const STAGE_QUEUED: i64 = 1
+        const STAGE_DECODING: i64 = 2
+        const STAGE_UPLOADING: i64 = 3
+        const STAGE_RESIDENT: i64 = 4
+        const STAGE_FAILED: i64 = 5
+        const STAGE_CANCELLED: i64 = 6
+
+        # A native request that can no longer become resident.
+        def given_up(native: i64) -> bool:
+            native < STAGE_QUEUED or native > STAGE_RESIDENT
+
+        # Transitions the portable request needs to reach the native stage, or
+        # -1 when the native report is terminal or behind the portable stage.
+        def catch_up(native: i64, current: i64) -> i64:
+            ensure result >= -1
+            ensure result <= 3
+            ensure result < 0 or native <= 4
+            ensure result < 0 or current <= native
+            ensure result != 0 or current == native
+            return -1 if native < 1 or native > 4
+            return -1 if current < 1 or current > native
+            return 0 if current == native
+            return 1 if current + 1 == native
+            return 2 if current + 2 == native
+            3
+
+        # A count of ready slots never passes the cell's used slot count.
+        def counted(count: i64, ready: bool, used: i64) -> i64:
+            requires count >= 0
+            requires used >= 0
+            requires used <= 64
+            requires count <= used
+            ensure result >= count
+            ensure result <= used
+            return count + 1 if ready and count < used
+            count
