@@ -208,6 +208,7 @@ module PhysicsRuntime:
         include "./runtime_body_com_types.inc"
         include "./runtime_body_motion_abi.inc"
         include "./runtime_body_material_abi.inc"
+        include "./runtime_body_bounds_abi.inc"
         include "./runtime_body_inertia_abi.inc"
         include "./runtime_body_inertia_limits.inc"
 
@@ -584,6 +585,7 @@ module PhysicsRuntime:
         include "./runtime_body_motion_api.inc"
         include "./runtime_body_pose_api.inc"
         include "./runtime_body_material_api.inc"
+        include "./runtime_body_bounds_api.inc"
         include "./runtime_body_inertia_api.inc"
         include "./runtime_character_api.inc"
         include "./runtime_constraint_api.inc"

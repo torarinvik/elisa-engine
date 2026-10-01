@@ -216,6 +216,7 @@ def main() -> int:
                 ROOT / "test/world_physics_session_cadence_native_main.elisa"),
             ("world-hierarchy-render-smoke", ROOT / "test/world_hierarchy_render_native_main.elisa"),
             ("world-picking-smoke", ROOT / "test/world_picking_native_main.elisa"),
+            ("bounds-view-smoke", ROOT / "test/bounds_view_native_main.elisa"),
             ("world-audio-physics-smoke", ROOT / "test/world_audio_physics_native_main.elisa"),
             ("quality-settings-native-smoke", ROOT / "test/quality_settings_native_main.elisa"),
             ("physics-primitives-smoke", ROOT / "test/physics_primitives_native.elisa"),

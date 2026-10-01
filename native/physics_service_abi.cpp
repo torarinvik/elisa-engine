@@ -189,6 +189,7 @@ extern "C" int32_t elisa_physics_v1_test_is_clean(void) {
 #include "physics_compound_shape_abi.inc"
 #include "physics_body_motion_abi.inc"
 #include "physics_body_material_abi.inc"
+#include "physics_body_bounds_abi.inc"
 #include "physics_body_inertia_abi.inc"
 #include "physics_constraint_abi.inc"
 

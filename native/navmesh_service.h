@@ -164,6 +164,7 @@ public:
 
     bool ready() const { return ready_ && mesh_ != nullptr && query_ != nullptr; }
     const BakeMetadata& metadata() const { return metadata_; }
+    const dtNavMesh* mesh() const { return mesh_; }
     const std::vector<unsigned char>& serialized_tile() const { return tile_data_; }
 
     NearestResult nearest_point(const float position[3], const float extents[3],
@@ -530,6 +531,10 @@ public:
     bool live(TileHandle handle) const {
         return handle.slot < MAX_TILES && tiles_[handle.slot].artifact != nullptr &&
             tiles_[handle.slot].generation == handle.generation;
+    }
+
+    const NavMeshArtifact* artifact(TileHandle handle) const {
+        return live(handle) ? tiles_[handle.slot].artifact.get() : nullptr;
     }
 
     bool unload(TileHandle handle) {

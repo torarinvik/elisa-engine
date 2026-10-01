@@ -118,6 +118,11 @@ module NavMesh:
         extern elisa_navigation_v1_unload(slot: u32, generation: u32) -> i32
 
         @callconv(c)
+        extern elisa_navigation_v1_mesh_bounds(slot: u32, generation: u32,
+            min_x: mutable f32&, min_y: mutable f32&, min_z: mutable f32&,
+            max_x: mutable f32&, max_y: mutable f32&, max_z: mutable f32&) -> i32
+
+        @callconv(c)
         extern elisa_navigation_v1_query_path(slot: u32, generation: u32,
             start_x: f32, start_y: f32, start_z: f32, end_x: f32, end_y: f32, end_z: f32,
             extent_x: f32, extent_y: f32, extent_z: f32,
@@ -219,6 +224,21 @@ module NavMesh:
             flag: mutable i32 = 0
             return false if elisa_navigation_v1_live(handle.slot, handle.generation, &flag) != Status::OK
             flag != 0
+
+        # R06: bounds of the live mesh's ground polygons, in Elisa coordinates.
+        def bounds(handle: Handle) -> Geometry::Bounds3 error[NavMeshError]:
+            min_x: mutable f32 = 0.0
+            min_y: mutable f32 = 0.0
+            min_z: mutable f32 = 0.0
+            max_x: mutable f32 = 0.0
+            max_y: mutable f32 = 0.0
+            max_z: mutable f32 = 0.0
+            try check_status(elisa_navigation_v1_mesh_bounds(handle.slot, handle.generation,
+                &min_x, &min_y, &min_z, &max_x, &max_y, &max_z))
+            Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: min_x, y: min_y, z: min_z},
+                maximum: Geometry::Vec3{x: max_x, y: max_y, z: max_z},
+            }
 
         def unload(handle: Handle) -> void error[NavMeshError]:
             try check_status(elisa_navigation_v1_unload(handle.slot, handle.generation))

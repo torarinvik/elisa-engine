@@ -1,6 +1,7 @@
 #include "navigation_service_abi.h"
 
 #include "navmesh_service.h"
+#include "navmesh_bounds.h"
 
 #include <array>
 #include <cmath>
@@ -223,6 +224,27 @@ int32_t elisa_navigation_v1_live(uint32_t slot, uint32_t generation, int32_t* li
     Service& nav = service();
     std::lock_guard<std::mutex> lock(nav.mutex);
     *live = nav.store.live(probe::nav::TileHandle{slot, generation}) ? 1 : 0;
+    return ELISA_NAVIGATION_OK;
+}
+
+int32_t elisa_navigation_v1_mesh_bounds(uint32_t slot, uint32_t generation,
+    float* min_x, float* min_y, float* min_z, float* max_x, float* max_y, float* max_z) {
+    if (min_x == nullptr || min_y == nullptr || min_z == nullptr ||
+        max_x == nullptr || max_y == nullptr || max_z == nullptr) {
+        return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    }
+    Service& nav = service();
+    std::lock_guard<std::mutex> lock(nav.mutex);
+    const probe::nav::NavMeshArtifact* artifact =
+        nav.store.artifact(probe::nav::TileHandle{slot, generation});
+    if (artifact == nullptr) return ELISA_NAVIGATION_STALE_HANDLE;
+    float minimum[3];
+    float maximum[3];
+    if (!probe::nav::navmesh_bounds(artifact->mesh(), minimum, maximum)) {
+        return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    }
+    *min_x = minimum[0]; *min_y = minimum[1]; *min_z = minimum[2];
+    *max_x = maximum[0]; *max_y = maximum[1]; *max_z = maximum[2];
     return ELISA_NAVIGATION_OK;
 }
 

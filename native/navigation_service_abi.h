@@ -72,6 +72,9 @@ int32_t elisa_navigation_v1_bake(float agent_radius, float agent_height,
     float max_climb, float max_slope_degrees, float cell_size, float cell_height,
     uint32_t* slot, uint32_t* generation);
 int32_t elisa_navigation_v1_live(uint32_t slot, uint32_t generation, int32_t* live);
+// R06: ground-polygon bounds of a live navmesh, in Elisa coordinates (min then max xyz).
+int32_t elisa_navigation_v1_mesh_bounds(uint32_t slot, uint32_t generation,
+    float* min_x, float* min_y, float* min_z, float* max_x, float* max_y, float* max_z);
 int32_t elisa_navigation_v1_unload(uint32_t slot, uint32_t generation);
 // Find a corridor and keep its points for `route_point`. The search extents
 // are how far off the mesh an endpoint may lie.

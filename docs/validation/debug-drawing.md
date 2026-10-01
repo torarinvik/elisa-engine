@@ -131,3 +131,25 @@ SDL3/Wicked box. Cases: 30 hit verdict, 31 hit entity, 32 miss, 33 another
 world not stale, 34 despawned entity not stale, 35 despawn failed, 36 a
 zero-direction ray not reported as an error. Negative control: resolving
 liveness from the hit alone makes the smoke exit 34.
+
+## Bounds in one view (2026-10-01)
+
+`BoundsView` (src/tooling/bounds_view.elisa) gathers three bounds in Elisa
+world coordinates: `RenderScene::instance_bounds` (Wicked object AABBs mapped
+with `from_wicked`), `PhysicsRuntime::body_bounds` (the Jolt shape's local box
+turned and moved by the body pose, then `from_wicked`) and `NavMesh::bounds`
+(the ground polygons of a live mesh; a stale handle is refused). `agree` checks
+every face within a tolerance, `covers_footprint` checks that one box covers
+another in x/z, and `draw` submits all three through `RenderScene::debug_box`
+in blue (render, depth tested), orange (physics) and green (nav). The scalar
+comparisons are `BoundsCompare::within` and `covers`; proof/bounds_compare.elisa
+proves them, 11 of 11 obligations, and dropping the upper guard of `within`
+makes the proof fail. Body bounds support box, sphere, capsule and cylinder
+shapes; other shapes raise InvalidArgument. `Primitive.Box` has half extent 1,
+so a render box matching a 0.5 half-extent body uses scale 0.5.
+
+The `bounds-view-smoke` native application smoke puts a box at x 1.5 on a
+navmesh slab. Cases: 40 gather failed, 41 render and physics disagree, 42 the
+render box is not at +x, 43 nav does not cover the body footprint, 44 the nav
+ground is not at the body's base, 45 a body moved to x 3 still agrees, 46 draw
+failed, 47 pump failed, 48 an unloaded nav handle still reports bounds.

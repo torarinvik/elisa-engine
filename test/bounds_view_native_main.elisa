@@ -1,0 +1,164 @@
+# R06 bounds in one view on a live SDL3/Wicked scene: a box drawn at +x, a
+# physics box body of the same size and a navmesh ground slab must report
+# bounds in one Elisa frame: render and physics agree, the nav ground covers
+# the body's footprint at its base, and all three draw as debug boxes.
+include "../src/runtime/public.elisa"
+include "../src/tooling/bounds_view.elisa"
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+module BoundsViewNative:
+    private:
+        const module Tune:
+            FRAMES: i32 = 3
+            TOLERANCE: f32 = 0.02
+            # Nav ground sits a cell height or so below the slab top.
+            NAV_TOLERANCE: f32 = 0.15
+            HALF: f32 = 0.5
+            BODY_X: f32 = 1.5
+
+        def pump(frames: i32) -> bool:
+            for _ in 0..<frames |ok: bool = true| -> ok:
+                ok <- ok and elisa_application_v1_pump() == 1
+
+        def body_desc(x: f32) -> PhysicsRuntime::BodyDesc:
+            PhysicsRuntime::BodyDesc{
+                kind: PhysicsRuntime::BodyKind.Static,
+                shape: PhysicsRuntime::BodyShape.Box,
+                position: Geometry::Vec3{x: x, y: Tune::HALF, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                dimensions: Geometry::Vec3{x: Tune::HALF, y: Tune::HALF, z: Tune::HALF},
+                mass: 0.0,
+                sensor: false,
+                collision_layer: 0,
+                center_of_mass_offset: Geometry::vec3_zero(),
+            }
+
+        # Primitive.Box has half extent 1, so scale HALF matches the body.
+        def place() -> Geometry::Transform:
+            Geometry::Transform{
+                position: Geometry::Vec3{x: Tune::BODY_X, y: Tune::HALF, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: Tune::HALF, y: Tune::HALF, z: Tune::HALF},
+            }
+
+        def bake_ground() -> NavMesh::Handle error[NavMesh::NavMeshError]:
+            try NavMesh::begin()
+            try NavMesh::add_box(Geometry::Vec3{x: 0.0, y: -0.25, z: 0.0},
+                Geometry::Vec3{x: 4.0, y: 0.25, z: 4.0})
+            try NavMesh::bake(NavMesh::default_profile())
+
+        # 40 gather failed, 41 render/physics disagree, 42 render not at +x,
+        # 43 nav does not cover the footprint, 44 nav ground not at the body
+        # base, 45 a shifted body still agreed, 46 draw failed, 47 pump failed,
+        # 48 a stale nav handle still reported bounds.
+        def compare(instance: RenderScene::InstanceHandle, world: PhysicsRuntime::World&,
+            body: PhysicsRuntime::BodyHandle, shifted: PhysicsRuntime::BodyHandle,
+            mesh: NavMesh::Handle) -> i32:
+            view: BoundsView::ViewBounds = catch BoundsView::gather(instance, world, body, mesh):
+                value: value
+                error failure: return 40
+            return 41 if not BoundsView::agree(view.render, view.physics, Tune::TOLERANCE)
+            return 42 if not (view.render.minimum.x > 0.5)
+            return 43 if not BoundsView::covers_footprint(view.nav, view.physics)
+            return 44 if not BoundsView::face(view.nav.maximum.y, view.physics.minimum.y, Tune::NAV_TOLERANCE)
+            other: BoundsView::ViewBounds = catch BoundsView::gather(instance, world, shifted, mesh):
+                value: value
+                error failure: return 40
+            return 45 if BoundsView::agree(view.render, other.physics, Tune::TOLERANCE)
+            drawn: i32 = catch BoundsView::draw(view):
+                ok: 0
+                error failure: 1
+            return 46 if drawn != 0
+            return 47 if not pump(Tune::FRAMES)
+            0
+
+        def stale_mesh(mesh: NavMesh::Handle) -> i32:
+            unloaded: i32 = catch NavMesh::unload(mesh):
+                ok: 0
+                error failure: 1
+            return 48 if unloaded != 0
+            found: i32 = catch NavMesh::bounds(mesh):
+                value: 1
+                error failure: 0
+            return 48 if found != 0
+            0
+
+        def exercise() -> i32:
+            camera: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 4.0, z: 10.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 2 if camera != 0
+            instance: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box, place(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 3
+            return 5 if not pump(Tune::FRAMES)
+            world: mutable PhysicsRuntime::World = catch PhysicsRuntime::World():
+                value: value
+                error failure: return 6
+            body: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create(world, body_desc(Tune::BODY_X)):
+                value: value
+                error failure: return 7
+            shifted: PhysicsRuntime::BodyHandle = catch PhysicsRuntime::body_create(world, body_desc(3.0)):
+                value: value
+                error failure: return 7
+            mesh: NavMesh::Handle = catch bake_ground():
+                value: value
+                error failure: return 8
+            result: mutable i32 = compare(instance, world, body, shifted, mesh)
+            if result == 0:
+                result <- stale_mesh(mesh)
+            closed: bool = catch PhysicsRuntime::shutdown(&world):
+                ok: true
+                error failure: false
+            return result if result != 0
+            return 9 if not closed
+            0
+
+        def execute() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa Bounds View Smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            startup.services[0] <- Capabilities::BackendFeature.Rendering
+            startup.services[1] <- Capabilities::BackendFeature.NativeWindow
+            startup.service_count <- 2
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if (opened != RuntimeServices::OpenStatus.Ready and
+                opened != RuntimeServices::OpenStatus.FallbackRequired):
+                _ = RuntimeServices::shutdown(&session)
+                return 20
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            result: mutable i32 = 21
+            if init_status == 0:
+                result <- exercise()
+                closed_scene: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                result <- 22 if result == 0 and not closed_scene else result
+            closed: bool = RuntimeServices::shutdown(&session)
+            return result if result != 0
+            return 23 if not closed
+            0
+
+    public:
+        def run() -> i32:
+            BoundsViewNative::execute()
+
+def main() -> i32:
+    BoundsViewNative::run()

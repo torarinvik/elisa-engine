@@ -1,0 +1,77 @@
+# R06 bounds in one view: render, physics and navmesh bounds in Elisa world
+# coordinates, compared face by face (BoundsCompare, proved) and drawn with
+# one colour per kind through RenderScene::debug_box.
+include "../runtime/render_scene_debug.elisa"
+include "../physics/runtime.elisa"
+include "../nav/navmesh.elisa"
+include "./bounds_compare.elisa"
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_instance_bounds(handle: i64,
+            min_x: mutable f32&, min_y: mutable f32&, min_z: mutable f32&,
+            max_x: mutable f32&, max_y: mutable f32&, max_z: mutable f32&) -> i32
+
+    public:
+        # World bounds of an instance's mesh (imported meshes included).
+        def instance_bounds(handle: InstanceHandle) -> Geometry::Bounds3 error[RenderSceneError]:
+            min_x: mutable f32 = 0.0
+            min_y: mutable f32 = 0.0
+            min_z: mutable f32 = 0.0
+            max_x: mutable f32 = 0.0
+            max_y: mutable f32 = 0.0
+            max_z: mutable f32 = 0.0
+            try check_status(elisa_render_scene_v1_instance_bounds(handle.native_value,
+                &min_x, &min_y, &min_z, &max_x, &max_y, &max_z))
+            Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: min_x, y: min_y, z: min_z},
+                maximum: Geometry::Vec3{x: max_x, y: max_y, z: max_z},
+            }
+
+module BoundsView:
+    public:
+        struct ViewBounds:
+            render: Geometry::Bounds3
+            physics: Geometry::Bounds3
+            nav: Geometry::Bounds3
+
+        def render_color() -> RenderScene::Color:
+            RenderScene::Color{red: 0.2, green: 0.6, blue: 1.0, alpha: 1.0}
+
+        def physics_color() -> RenderScene::Color:
+            RenderScene::Color{red: 1.0, green: 0.5, blue: 0.1, alpha: 1.0}
+
+        def nav_color() -> RenderScene::Color:
+            RenderScene::Color{red: 0.2, green: 1.0, blue: 0.3, alpha: 1.0}
+
+        def face(value: f32, reference: f32, tolerance: f32) -> bool:
+            BoundsCompare::within(value, reference - tolerance, reference + tolerance)
+
+        # Every face of `left` lies within `tolerance` of the same face of `right`.
+        def agree(left: Geometry::Bounds3, right: Geometry::Bounds3, tolerance: f32) -> bool:
+            low: bool = (face(left.minimum.x, right.minimum.x, tolerance) and
+                face(left.minimum.y, right.minimum.y, tolerance) and
+                face(left.minimum.z, right.minimum.z, tolerance))
+            high: bool = (face(left.maximum.x, right.maximum.x, tolerance) and
+                face(left.maximum.y, right.maximum.y, tolerance) and
+                face(left.maximum.z, right.maximum.z, tolerance))
+            low and high
+
+        # `outer` covers the x/z footprint of `inner` (ground under a body).
+        def covers_footprint(outer: Geometry::Bounds3, inner: Geometry::Bounds3) -> bool:
+            (BoundsCompare::covers(outer.minimum.x, outer.maximum.x, inner.minimum.x, inner.maximum.x) and
+                BoundsCompare::covers(outer.minimum.z, outer.maximum.z, inner.minimum.z, inner.maximum.z))
+
+        def gather(instance: RenderScene::InstanceHandle, world: PhysicsRuntime::World&,
+            body: PhysicsRuntime::BodyHandle, mesh: NavMesh::Handle) -> ViewBounds error[RenderScene::RenderSceneError, PhysicsRuntime::PhysicsError, NavMesh::NavMeshError]:
+            render: Geometry::Bounds3 = try RenderScene::instance_bounds(instance)
+            physics: Geometry::Bounds3 = try PhysicsRuntime::body_bounds(world, body)
+            nav: Geometry::Bounds3 = try NavMesh::bounds(mesh)
+            ViewBounds{render: render, physics: physics, nav: nav}
+
+        # Render boxes are drawn depth tested; physics and nav on top.
+        def draw(view: ViewBounds) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::debug_box(view.render, render_color(), true)
+            try RenderScene::debug_box(view.physics, physics_color(), false)
+            try RenderScene::debug_box(view.nav, nav_color(), false)
