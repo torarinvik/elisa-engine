@@ -1,0 +1,19 @@
+# KTX2 GPU texture budget: the remainder never exceeds the budget, an upload larger
+# than the whole budget is refused, and a full scene admits nothing.
+include "../src/backend/texture_gpu_budget.elisa"
+
+extend BackendTextureGpuBudget:
+    def prove_remaining_bounded(used: u64, budget: u64) -> bool:
+        ensure result
+        return remaining(used, budget) <= budget
+
+    # No upload larger than the whole budget is ever admitted.
+    def prove_oversized_request_refused(used: u64, budget: u64, request: u64) -> bool:
+        requires request > budget
+        ensure not result
+        return fits(used, budget, request)
+
+    def prove_full_scene_refuses(used: u64, budget: u64, request: u64) -> bool:
+        requires used >= budget
+        ensure not result
+        return fits(used, budget, request)

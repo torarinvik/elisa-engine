@@ -338,4 +338,21 @@ extern "C" uint64_t elisa_render_scene_v1_test_snapshot_bundle_texture_decoded_b
     std::lock_guard<std::mutex> guard(state.mutex);
     return state.snapshot_decoded_texture_bytes;
 }
+
+extern "C" int32_t elisa_render_scene_v1_test_set_snapshot_ktx2_gpu_budget(uint64_t bytes) {
+    if (bytes == 0 || bytes > MAX_SNAPSHOT_KTX2_GPU_BYTES) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (state.snapshot_transaction_active) return ELISA_RENDER_SCENE_BATCH_ACTIVE;
+    state.snapshot_ktx2_gpu_budget = static_cast<size_t>(bytes);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_snapshot_ktx2_gpu_bytes(void) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    return snapshot_ktx2_gpu_bytes(state);
+}
 #endif

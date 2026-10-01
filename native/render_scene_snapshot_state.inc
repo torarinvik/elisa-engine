@@ -10,6 +10,9 @@ constexpr size_t MAX_SNAPSHOT_GEOMETRY_BYTES = 256u * 1024u * 1024u;
 constexpr size_t MAX_SNAPSHOT_ASSET_REQUESTS = elisa::assets::SerialJobWorker<int>::MAX_JOBS;
 constexpr uint32_t MAX_SNAPSHOT_ASSET_ADOPTIONS = MAX_SNAPSHOT_ASSET_REQUESTS;
 constexpr size_t MAX_SNAPSHOT_DECODED_TEXTURE_BYTES = elisa::rendering::textures::MAX_DECODED_IMAGE_BYTES;
+// Scene-wide GPU bytes for uploaded KTX2 snapshot textures, in their selected
+// (usually block-compressed) formats, summed over every role resource.
+constexpr size_t MAX_SNAPSHOT_KTX2_GPU_BYTES = 512u * 1024u * 1024u;
 constexpr float DEFAULT_SNAPSHOT_ALPHA_CUTOFF = 0.5f;
 constexpr float OPAQUE_SNAPSHOT_ALPHA_REF = 1.0f;
 constexpr float DEFAULT_SNAPSHOT_EMISSIVE_STRENGTH = 1.0f;
@@ -99,6 +102,7 @@ struct SnapshotTextureAssetSlot {
     elisa::rendering::textures::DecodedImage decoded;
     std::vector<uint8_t> encoded_ktx2;
     std::array<wi::Resource, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> resources{};
+    std::array<size_t, SNAPSHOT_MATERIAL_TEXTURE_SLOTS> resource_gpu_bytes{};
     size_t source_bytes = 0;
     elisa::assets::EncodedImageFormat format = elisa::assets::EncodedImageFormat::Png;
     const char* extension = nullptr;

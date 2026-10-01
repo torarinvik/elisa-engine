@@ -15,6 +15,7 @@ include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
 include "./render_scene_snapshot_retained_native.elisa"
 include "./render_scene_bundle_texture_native.elisa"
+include "./render_scene_ktx2_budget_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
 include "./render_scene_material_subset_native.elisa"
 include "./render_scene_async_asset_native.elisa"
@@ -359,6 +360,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(195, retained_snapshot_status) if retained_snapshot_status != 0
     bundle_texture_status: i32 = RenderSceneBundleTextureNativeTests::exercise()
     return 160 + bundle_texture_status if bundle_texture_status != 0
+    ktx2_budget_status: i32 = RenderSceneKtx2BudgetNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(234, ktx2_budget_status) if ktx2_budget_status != 0
     bundle_dependency_status: i32 = RenderSceneBundleDependencyNativeTests::exercise()
     return 200 + bundle_dependency_status if bundle_dependency_status != 0
     material_subset_status: i32 = RenderSceneMaterialSubsetNativeTests::exercise()

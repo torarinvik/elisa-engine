@@ -26,6 +26,38 @@ void touch_snapshot_mesh_asset(RenderSceneService& state, size_t slot);
 
 #include "render_scene_snapshot_material_set_internal.inc"
 
+// Live KTX2 GPU bytes across every texture slot and material role.
+size_t snapshot_ktx2_gpu_bytes(const RenderSceneService& state) {
+    size_t total = 0;
+    for (const SnapshotTextureAssetSlot& texture : state.snapshot_texture_assets) {
+        if (!texture.live) continue;
+        for (size_t bytes : texture.resource_gpu_bytes) total += bytes;
+    }
+    return total;
+}
+
+// A new role upload may use only what the scene budget has left; the uploader
+// rejects a larger selected-format payload before allocating GPU memory.
+bool assign_budgeted_snapshot_texture(RenderSceneService& state, SnapshotTextureAssetSlot& texture,
+        size_t slot, wi::scene::MaterialComponent& material) {
+    const size_t used = snapshot_ktx2_gpu_bytes(state);
+    const size_t budget = state.snapshot_ktx2_gpu_budget;
+    const size_t remaining = used < budget ? budget - used : 0;
+    const bool fresh = !texture.resources[slot].IsValid();
+    size_t uploaded = 0;
+    const int32_t slot_code = static_cast<int32_t>(slot);
+    // Loose files take the same path: a .ktx2 is budgeted, other images go
+    // through Wicked's resource manager and report no KTX2 bytes.
+    const bool assigned = texture.section.empty()
+        ? elisa::rendering::textures::assign_resolved_texture(material, slot_code,
+            texture.canonical_path, &texture.resources[slot], remaining, &uploaded)
+        : elisa::rendering::textures::assign_encoded_ktx2_texture(material, slot_code,
+            texture.resources[slot], texture.encoded_ktx2, remaining, uploaded);
+    if (!assigned) return false;
+    if (fresh) texture.resource_gpu_bytes[slot] = uploaded;
+    return true;
+}
+
 bool apply_snapshot_material_textures(RenderSceneService& state,
         const SnapshotMaterialAssetSlot& asset, wi::scene::MaterialComponent& material) {
     try {
@@ -37,13 +69,10 @@ bool apply_snapshot_material_textures(RenderSceneService& state,
             if (texture_slot == MAX_SNAPSHOT_TEXTURE_ASSETS) return false;
             SnapshotTextureAssetSlot& texture = state.snapshot_texture_assets[texture_slot];
             const int32_t slot_code = static_cast<int32_t>(slot);
-            const bool assigned = texture.section.empty()
-                ? elisa::rendering::textures::assign_resolved_texture(material, slot_code,
-                    texture.canonical_path, &texture.resources[slot])
-                : texture.format == elisa::assets::EncodedImageFormat::Ktx2
-                    ? elisa::rendering::textures::assign_encoded_ktx2_texture(material, slot_code,
-                        texture.resources[slot], texture.encoded_ktx2)
-                    : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
+            const bool assigned = texture.section.empty() ||
+                    texture.format == elisa::assets::EncodedImageFormat::Ktx2
+                ? assign_budgeted_snapshot_texture(state, texture, slot, material)
+                : elisa::rendering::textures::assign_decoded_texture(material, slot_code,
                         texture.resources[slot], texture.resource_stem, texture.extension, texture.decoded);
             if (!assigned) return false;
         }

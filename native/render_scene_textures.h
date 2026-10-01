@@ -122,7 +122,8 @@ inline bool assign_resource(wi::scene::MaterialComponent& material, int32_t slot
 
 inline bool assign_resolved_texture(wi::scene::MaterialComponent& material,
         int32_t slot_code, const std::filesystem::path& resolved_path,
-        wi::Resource* cached_resource = nullptr) {
+        wi::Resource* cached_resource = nullptr,
+        size_t ktx2_byte_limit = MAX_KTX2_DECODED_BYTES, size_t* ktx2_gpu_bytes = nullptr) {
     if (!valid_slot(slot_code)) return false;
     if (resolved_path.empty()) return false;
     std::string extension = resolved_path.extension().string();
@@ -135,7 +136,13 @@ inline bool assign_resolved_texture(wi::scene::MaterialComponent& material,
             const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal) ||
                 slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)
                 ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
-            *destination = load_ktx2_texture_resource(resolved_path.string(), usage);
+            std::vector<uint8_t> bytes;
+            if (!ktx2_upload_check(read_bounded_ktx2_container(resolved_path.string(), bytes),
+                "cannot read a nonempty bounded complete container")) return false;
+            size_t uploaded = 0;
+            *destination = load_ktx2_texture_resource(bytes, usage, ktx2_byte_limit, uploaded);
+            if (!destination->IsValid()) return false;
+            if (ktx2_gpu_bytes != nullptr) *ktx2_gpu_bytes = uploaded;
         }
         return assign_resource(material, slot_code, *destination, {});
     }
@@ -266,13 +273,16 @@ inline bool assign_decoded_texture(wi::scene::MaterialComponent& material, int32
 }
 
 inline bool assign_encoded_ktx2_texture(wi::scene::MaterialComponent& material, int32_t slot_code,
-        wi::Resource& cached_resource, const std::vector<uint8_t>& encoded) {
+        wi::Resource& cached_resource, const std::vector<uint8_t>& encoded,
+        size_t byte_limit, size_t& gpu_bytes) {
     if (!valid_slot(slot_code) || encoded.empty()) return false;
     if (!cached_resource.IsValid()) {
+        gpu_bytes = 0;
         const KTX2TextureUsage usage = slot_code == static_cast<int32_t>(Slot::Normal) ||
             slot_code == static_cast<int32_t>(Slot::ClearcoatNormal)
             ? KTX2TextureUsage::NormalData : KTX2TextureUsage::Color;
-        cached_resource = load_ktx2_texture_resource(encoded, usage);
+        cached_resource = load_ktx2_texture_resource(encoded, usage, byte_limit, gpu_bytes);
+        if (!cached_resource.IsValid()) return false;
     }
     return assign_resource(material, slot_code, cached_resource, {});
 }

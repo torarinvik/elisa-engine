@@ -1,0 +1,19 @@
+# Scene-wide GPU texture memory admission, mirrored by RenderScene's KTX2
+# snapshot uploads (native/render_scene_snapshot_internal.inc). A role upload
+# may use only what the budget has left; a used total above the budget (after
+# a budget is lowered) leaves nothing, never a wrapped-around remainder.
+module BackendTextureGpuBudget:
+    public:
+        def remaining(used: u64, budget: u64) -> u64:
+            ensure result <= budget
+            ensure used >= budget or result == budget - used
+            return 0 if used >= budget
+            budget - used
+
+        def fits(used: u64, budget: u64, request: u64) -> bool:
+            ensure result implies used < budget
+            ensure result implies request <= budget - used
+            ensure result implies request <= budget
+            return false if request > budget
+            return false if used >= budget
+            request <= budget - used

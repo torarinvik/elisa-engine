@@ -1,0 +1,105 @@
+# A06 scene-wide GPU memory budget for KTX2 snapshot textures. Uploads are
+# counted in their selected device format, so a 4x4 texture must stay below
+# the 64 bytes an RGBA8 expansion would take. A role upload that would exceed
+# the budget fails before GPU allocation and leaves the resident total intact.
+# Group 234 in render_scene_native_main.elisa; failures are logged by case.
+include "../src/runtime/render_scene_assets.elisa"
+include "../src/backend/texture_gpu_budget.elisa"
+
+module RenderSceneKtx2BudgetNativeTests:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_test_set_snapshot_ktx2_gpu_budget(bytes: u64) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_ktx2_gpu_bytes() -> u64
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_snapshot_material_texture_size(
+            material_high: u64, material_low: u64, slot: i32, width: u32, height: u32) -> i32
+
+        const module Ids:
+            TEXTURES: u64 = 934
+            MATERIALS: u64 = 935
+            RGBA8_4X4_BYTES: u64 = 64
+            MAX_BUDGET: u64 = 536870912
+
+        def texture_id(low: u64) -> Assets::AssetId:
+            Assets::AssetId{high: Ids::TEXTURES, low: low}
+
+        def register_texture(low: u64, path: cstr) -> i32:
+            catch RenderScene::register_snapshot_texture_asset(texture_id(low), path):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 3
+
+        def register_material(low: u64, texture_low: u64) -> i32:
+            material: mutable Material::Material = Material::Material()
+            material.base_color <- texture_id(texture_low)
+            catch RenderScene::register_snapshot_material_asset(
+                Assets::AssetId{high: Ids::MATERIALS, low: low}, &material):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.AssetLoadFailure: 2
+                error failure: 3
+
+        def unregister_texture(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_texture_asset(texture_id(low)):
+                ok: 0
+                error failure: 1
+
+        def unregister_material(low: u64) -> i32:
+            catch RenderScene::unregister_snapshot_material_asset(
+                Assets::AssetId{high: Ids::MATERIALS, low: low}):
+                ok: 0
+                error failure: 1
+
+        def sized(material_low: u64) -> bool:
+            elisa_render_scene_v1_test_snapshot_material_texture_size(
+                Ids::MATERIALS, material_low, 0, 4, 4) == 1
+
+        def gpu_bytes() -> u64:
+            elisa_render_scene_v1_test_snapshot_ktx2_gpu_bytes()
+
+        def set_budget(bytes: u64) -> i32:
+            elisa_render_scene_v1_test_set_snapshot_ktx2_gpu_budget(bytes)
+
+    public:
+        def exercise() -> i32:
+            return 1 if gpu_bytes() != 0
+            return 2 if register_texture(1, "build/cooked/maze_tile_tex.ktx2") != 0
+            return 3 if register_texture(2, "build/cooked/maze_tile_alpha.ktx2") != 0
+            # Registration keeps encoded bytes; GPU memory is spent on first use.
+            return 4 if gpu_bytes() != 0
+            return 5 if register_material(1, 1) != 0 or not sized(1)
+            opaque: u64 = gpu_bytes()
+            return 6 if opaque == 0 or opaque >= Ids::RGBA8_4X4_BYTES
+            return 7 if register_material(2, 2) != 0 or not sized(2)
+            alpha: u64 = gpu_bytes() - opaque
+            return 8 if alpha == 0 or alpha >= Ids::RGBA8_4X4_BYTES
+            # Releasing the material and texture returns the alpha bytes.
+            return 9 if unregister_material(2) != 0 or unregister_texture(2) != 0
+            return 10 if gpu_bytes() != opaque
+            # One byte short of the alpha upload: refused, total unchanged.
+            short_budget: u64 = opaque + alpha - 1
+            return 11 if BackendTextureGpuBudget::fits(opaque, short_budget, alpha)
+            return 12 if set_budget(short_budget) != 0
+            return 13 if register_texture(2, "build/cooked/maze_tile_alpha.ktx2") != 0
+            return 14 if register_material(2, 2) == 0
+            return 15 if gpu_bytes() != opaque
+            return 16 if unregister_material(2) == 0
+            # A full scene refuses even after the budget drops below the total.
+            return 17 if set_budget(1) != 0 or register_material(2, 2) == 0 or gpu_bytes() != opaque
+            # An exact fit is admitted.
+            exact: u64 = opaque + alpha
+            return 18 if not BackendTextureGpuBudget::fits(opaque, exact, alpha)
+            return 19 if set_budget(exact) != 0
+            return 20 if register_material(2, 2) != 0 or not sized(2) or gpu_bytes() != exact
+            # Budgets outside 1..max are invalid and leave the budget alone.
+            return 21 if set_budget(0) == 0 or set_budget(Ids::MAX_BUDGET + 1) == 0
+            return 22 if unregister_material(1) != 0 or unregister_material(2) != 0
+            return 23 if unregister_texture(1) != 0 or unregister_texture(2) != 0
+            return 24 if gpu_bytes() != 0
+            return 25 if set_budget(Ids::MAX_BUDGET) != 0
+            0

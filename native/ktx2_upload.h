@@ -27,6 +27,9 @@ inline bool ktx2_upload_check(bool value, const char* message) {
 }
 
 constexpr uint64_t MAX_KTX2_CONTAINER_BYTES = 64ull * 1024ull * 1024ull;
+// Upper bound on one texture's GPU payload in its selected format (all mips and
+// faces). Callers may pass a smaller remaining scene budget.
+constexpr size_t MAX_KTX2_DECODED_BYTES = 64u * 1024u * 1024u;
 
 inline bool read_bounded_ktx2_container(const std::string& texture_path, std::vector<uint8_t>& bytes) {
     bytes.clear();
@@ -276,8 +279,10 @@ inline bool ktx2_formats_are_subset(const KTX2UploadFormats& requested,
 // device that supports a higher-priority format. Callers may only remove
 // formats the active device actually supports.
 inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
-    KTX2TextureUsage usage, const KTX2UploadFormats* format_mask) {
+    KTX2TextureUsage usage, const KTX2UploadFormats* format_mask,
+    size_t byte_limit = MAX_KTX2_DECODED_BYTES, size_t* gpu_bytes = nullptr) {
     wi::Resource resource;
+    if (gpu_bytes != nullptr) *gpu_bytes = 0;
     if (!ktx2_upload_check(!bytes.empty() && bytes.size() <= MAX_KTX2_CONTAINER_BYTES,
         "container is empty or exceeds its memory budget")) return resource;
     basist::basisu_transcoder_init();
@@ -323,7 +328,7 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
     if (!ktx2_upload_check(encoding != KTX2UploadEncoding::Unsupported,
         "KTX2 upload has a supported native texture format")) return resource;
     if (!ktx2_upload_check(transcoder.start_transcoding(), "KTX2 upload starts transcoding")) return resource;
-    constexpr size_t MAX_DECODED_BYTES = 64u * 1024u * 1024u;
+    const size_t MAX_DECODED_BYTES = std::min(byte_limit, MAX_KTX2_DECODED_BYTES);
     const size_t subresource_count = static_cast<size_t>(levels) * faces;
     std::vector<std::vector<uint8_t>> mip_bytes(subresource_count);
     std::vector<wi::graphics::SubresourceData> init_data(subresource_count);
@@ -352,7 +357,7 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
             const size_t mip_size = output_units * (is_compressed ? block_bytes : pixel_bytes);
             const size_t row_pitch = is_compressed ? blocks_x * block_bytes : mip_width * pixel_bytes;
             if (!ktx2_upload_check(output_units <= UINT32_MAX && mip_size <= MAX_DECODED_BYTES - decoded_bytes,
-                "KTX2 upload decoded budget")) return resource;
+                "KTX2 upload fits its GPU texture memory budget")) return resource;
             mip_bytes[subresource].resize(mip_size);
             if (!ktx2_upload_check(transcoder.transcode_image_level(level, 0, face, mip_bytes[subresource].data(),
                 static_cast<uint32_t>(output_units), basis_format,
@@ -404,10 +409,18 @@ inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes
         uploaded.array_size == faces && uploaded.mip_levels == levels,
         "Wicked texture preserves KTX2 dimensions, faces, and complete mip chain")) return resource;
     resource.SetTexture(texture);
+    if (gpu_bytes != nullptr) *gpu_bytes = decoded_bytes;
     return resource;
 }
 
 } // namespace detail
+
+// Budgeted upload: the selected-format payload of every mip and face must fit
+// byte_limit before any GPU allocation; gpu_bytes reports what was uploaded.
+inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
+    KTX2TextureUsage usage, size_t byte_limit, size_t& gpu_bytes) {
+    return detail::load_ktx2_texture_resource(bytes, usage, nullptr, byte_limit, &gpu_bytes);
+}
 
 inline wi::Resource load_ktx2_texture_resource(const std::vector<uint8_t>& bytes,
     KTX2TextureUsage usage = KTX2TextureUsage::Color) {

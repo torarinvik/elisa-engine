@@ -1,0 +1,16 @@
+include "../src/backend/texture_gpu_budget.elisa"
+
+def main() -> i32:
+    # The remainder is what the KTX2 uploader may still allocate.
+    return 1 if BackendTextureGpuBudget::remaining(0, 64) != 64 or BackendTextureGpuBudget::remaining(40, 64) != 24
+    # A total at or above a lowered budget leaves nothing, not a wrapped value.
+    return 2 if BackendTextureGpuBudget::remaining(64, 64) != 0 or BackendTextureGpuBudget::remaining(100, 64) != 0
+    # An exact fit is admitted; one byte more is refused.
+    return 3 if not BackendTextureGpuBudget::fits(40, 64, 24) or BackendTextureGpuBudget::fits(40, 64, 25)
+    # A full or overfull scene admits nothing, even a zero-byte request.
+    return 4 if BackendTextureGpuBudget::fits(64, 64, 0) or BackendTextureGpuBudget::fits(100, 64, 1)
+    # Requests near u64 max cannot wrap the comparison.
+    huge: u64 = 18446744073709551615
+    return 5 if BackendTextureGpuBudget::fits(1, 64, huge) or BackendTextureGpuBudget::fits(huge, huge, 1)
+    return 6 if BackendTextureGpuBudget::remaining(1, huge) != huge - 1
+    0

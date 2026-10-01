@@ -129,7 +129,7 @@ struct RenderSceneService {
     size_t snapshot_shared_geometry_bytes = 0;
     size_t snapshot_bundle_texture_source_bytes = 0; size_t snapshot_bundle_texture_source_budget = MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES;
     size_t snapshot_decoded_texture_bytes = 0;
-    size_t snapshot_decoded_texture_budget = MAX_SNAPSHOT_DECODED_TEXTURE_BYTES; uint64_t snapshot_texture_use_clock = 0;
+    size_t snapshot_decoded_texture_budget = MAX_SNAPSHOT_DECODED_TEXTURE_BYTES; uint64_t snapshot_texture_use_clock = 0; size_t snapshot_ktx2_gpu_budget = MAX_SNAPSHOT_KTX2_GPU_BYTES;
     SnapshotAssetRequests snapshot_asset_requests;
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
     int64_t arc_depth_test_probe_handle = 0;
@@ -381,7 +381,7 @@ void reset_unlocked(RenderSceneService& state) {
     state.snapshot_shared_geometry_bytes = 0;
     state.snapshot_bundle_texture_source_bytes = 0; state.snapshot_bundle_texture_source_budget = MAX_SNAPSHOT_TEXTURE_SOURCE_BYTES;
     state.snapshot_decoded_texture_bytes = 0;
-    state.snapshot_decoded_texture_budget = MAX_SNAPSHOT_DECODED_TEXTURE_BYTES; state.snapshot_texture_use_clock = 0;
+    state.snapshot_decoded_texture_budget = MAX_SNAPSHOT_DECODED_TEXTURE_BYTES; state.snapshot_texture_use_clock = 0; state.snapshot_ktx2_gpu_budget = MAX_SNAPSHOT_KTX2_GPU_BYTES;
     state.sun_entity = wi::ecs::INVALID_ENTITY;
     for (ElectricArcSlot& arc : state.electric_arcs) {
         arc.halo.Clear();
