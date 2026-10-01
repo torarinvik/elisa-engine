@@ -115,3 +115,19 @@ control), 52 an idle frame failed, 53 idle frames allocated. Negative control:
 a `clear()` that shrinks and re-reserves its line batch every frame makes the
 focused debug smoke exit 53. The claim covers the debug path only; the rest of
 Wicked's frame is not measured here.
+
+## Checked world picking (2026-10-01)
+
+`WorldPicking::pick(world, ray, mask)` (src/runtime/world_picking.elisa)
+returns `Hit` with a `World::EntityRef` only when the render hit carries the
+world's epoch and `world_is_live` still holds the entity. A hit from another
+world or on a despawned entity is `Stale`; no hit is `Miss`; other render
+failures raise `InvalidValue`. `bind_pick_identity` stamps an instance with
+the entity reference. The verdict is `WorldPickCheck::classify`
+(src/world/pick_check.elisa); proof/world_pick_check.elisa proves its truth
+table, 45 of 45 obligations. Removing the "not live" branch makes the proof
+fail. The `world-picking-smoke` native application smoke checks it on a live
+SDL3/Wicked box. Cases: 30 hit verdict, 31 hit entity, 32 miss, 33 another
+world not stale, 34 despawned entity not stale, 35 despawn failed, 36 a
+zero-direction ray not reported as an error. Negative control: resolving
+liveness from the hit alone makes the smoke exit 34.

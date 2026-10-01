@@ -1,0 +1,57 @@
+# R06 checked world picking: render picks resolve to World::EntityRef only after
+# the hit's epoch matches the world and the world still holds the entity.
+include "./render_scene_selection.elisa"
+include "../world/world.elisa"
+include "../world/pick_check.elisa"
+
+module WorldPicking:
+    public:
+        enum PickStatus:
+            Miss
+            Hit
+            Stale
+
+        struct WorldPick:
+            status: PickStatus
+            entity: World::EntityRef
+            distance: f32
+
+    private:
+        def status_of(code: i64) -> PickStatus:
+            return PickStatus.Hit if code == WorldPickCheck::HIT
+            return PickStatus.Stale if code == WorldPickCheck::STALE
+            PickStatus.Miss
+
+        # Distances below zero mark the two non-hit outcomes of a render pick.
+        def marker(distance: f32) -> RenderScene::PickResult:
+            RenderScene::PickResult{gameplay_epoch: 0, gameplay_id: 0, distance: distance}
+
+        # A render miss is not an error here. Any other render failure is
+        # reported as InvalidValue (its precise kind is not kept).
+        def raw_pick(ray: Geometry::Ray3,
+            layer_mask: u32) -> RenderScene::PickResult error[RenderScene::RenderSceneError]:
+            found: RenderScene::PickResult = catch RenderScene::pick(ray, layer_mask):
+                value: value
+                RenderScene::RenderSceneError.NoHit: marker(-1.0)
+                error failure: marker(-2.0)
+            raise RenderScene::RenderSceneError.InvalidValue if found.distance < -1.5
+            found
+
+    public:
+        def bind_pick_identity(handle: RenderScene::InstanceHandle,
+            gameplay: World::EntityRef) -> void error[RenderScene::RenderSceneError]:
+            try RenderScene::set_pick_identity(handle, gameplay.world_epoch, gameplay.id)
+
+        def resolve(world: World::World&, has_hit: bool,
+            raw: RenderScene::PickResult) -> WorldPick:
+            entity: World::EntityRef = World::EntityRef{
+                world_epoch: raw.gameplay_epoch, id: raw.gameplay_id}
+            live: bool = has_hit and World::world_is_live(world, entity)
+            code: i64 = WorldPickCheck::classify(has_hit, World::world_epoch(world),
+                raw.gameplay_epoch, live)
+            WorldPick{status: status_of(code), entity: entity, distance: raw.distance}
+
+        def pick(world: World::World&, ray: Geometry::Ray3,
+            layer_mask: u32) -> WorldPick error[RenderScene::RenderSceneError]:
+            raw: RenderScene::PickResult = try raw_pick(ray, layer_mask)
+            resolve(world, raw.distance >= 0.0, raw)

@@ -1,0 +1,22 @@
+# R06 pick verdicts: a render hit names a world entity only when the hit
+# carries the world's epoch and the world still holds that entity.
+module WorldPickCheck:
+    public:
+        const MISS: i64 = 0
+        const HIT: i64 = 1
+        const STALE: i64 = 2
+
+        def classify(has_hit: bool, world_epoch: i64, hit_epoch: i64, live: bool) -> i64:
+            ensure result >= 0
+            ensure result <= 2
+            ensure has_hit or result == 0
+            ensure not has_hit or result != 0
+            ensure result != 1 or world_epoch == hit_epoch
+            ensure result != 1 or live
+            ensure not has_hit or world_epoch == hit_epoch or result == 2
+            ensure not has_hit or live or result == 2
+            ensure not has_hit or world_epoch != hit_epoch or not live or result == 1
+            return 0 if not has_hit
+            return 2 if world_epoch != hit_epoch
+            return 2 if not live
+            1

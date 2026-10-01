@@ -1,0 +1,134 @@
+# R06 checked world picking on a live SDL3/Wicked scene: a box carries a world
+# entity's pick identity; WorldPicking::pick must report Hit with that entity,
+# Miss for an empty ray, and Stale for another world or a despawned entity.
+include "../src/runtime/public.elisa"
+include "../src/runtime/world_picking.elisa"
+
+@callconv(c)
+extern elisa_application_v1_pump() -> i32
+
+module WorldPickingNative:
+    private:
+        const module Tune:
+            ALL_LAYERS: u32 = 4294967295
+            FRAMES: i32 = 3
+
+        def pump(frames: i32) -> bool:
+            for _ in 0..<frames |ok: bool = true| -> ok:
+                ok <- ok and elisa_application_v1_pump() == 1
+
+        def ray_at(height: f32) -> Geometry::Ray3:
+            Geometry::Ray3{
+                origin: Geometry::Vec3{x: 0.0, y: height, z: 12.0},
+                direction: Geometry::Vec3{x: 0.0, y: 0.0, z: -1.0},
+            }
+
+        # -1 when the pick raised; otherwise the verdict (0 miss, 1 hit, 2 stale).
+        def verdict(world: World::World&, ray: Geometry::Ray3,
+            entity: mutable World::EntityRef&) -> i32:
+            picked: WorldPicking::WorldPick = catch WorldPicking::pick(world, ray, Tune::ALL_LAYERS):
+                value: value
+                error failure: return -1
+            entity <- picked.entity
+            return 1 if picked.status == WorldPicking::PickStatus.Hit
+            return 2 if picked.status == WorldPicking::PickStatus.Stale
+            0
+
+        def same(left: World::EntityRef, right: World::EntityRef) -> bool:
+            left.world_epoch == right.world_epoch and left.id == right.id
+
+        def prepare(gameplay: World::EntityRef) -> i32:
+            camera: i32 = catch RenderScene::set_camera_look_at(
+                Geometry::Vec3{x: 0.0, y: 4.0, z: 12.0}, Geometry::vec3_zero(),
+                Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}):
+                ok: 0
+                error failure: 1
+            return 2 if camera != 0
+            created: RenderScene::InstanceHandle = catch RenderScene::create(
+                RenderScene::Primitive.Box, Geometry::transform_identity(),
+                RenderScene::Color{red: 0.2, green: 0.8, blue: 1.0, alpha: 1.0}):
+                value: value
+                error failure: return 3
+            bound: i32 = catch WorldPicking::bind_pick_identity(created, gameplay):
+                ok: 0
+                error failure: 1
+            return 4 if bound != 0
+            return 5 if not pump(Tune::FRAMES)
+            ready: i32 = catch RenderScene::wait_for_pipelines(30000):
+                ok: 0
+                error failure: 1
+            return 6 if ready != 0 or not pump(Tune::FRAMES)
+            0
+
+        # 30 hit verdict, 31 hit entity, 32 miss, 33 other world not stale,
+        # 34 despawned entity not stale, 35 despawn failed, 36 an invalid ray
+        # was not reported as an error.
+        def exercise() -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 1
+            other: World::World = catch World::World():
+                value: value
+                error failure: return 1
+            gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+                value: value
+                error failure: return 1
+            prepared: i32 = prepare(gameplay)
+            return prepared if prepared != 0
+            entity: mutable World::EntityRef = World::EntityRef{world_epoch: 0, id: 0}
+            return 30 if verdict(world, ray_at(0.0), &entity) != 1
+            return 31 if not same(entity, gameplay)
+            return 32 if verdict(world, ray_at(50.0), &entity) != 0
+            return 33 if verdict(other, ray_at(0.0), &entity) != 2
+            flat: Geometry::Ray3 = Geometry::Ray3{
+                origin: Geometry::Vec3{x: 0.0, y: 0.0, z: 12.0}, direction: Geometry::vec3_zero()}
+            return 36 if verdict(world, flat, &entity) != -1
+            despawned: i32 = catch World::world_despawn(&world, gameplay):
+                ok: 0
+                error failure: 1
+            return 35 if despawned != 0
+            return 34 if verdict(world, ray_at(0.0), &entity) != 2
+            0
+
+        def execute() -> i32:
+            config: Application::Config = Application::Config{
+                title: "Elisa World Picking Smoke",
+                width: 320,
+                height: 200,
+                hidden: true,
+            }
+            startup: mutable BackendRequirements::BackendStartupRequirements = zeroed
+            startup.services[0] <- Capabilities::BackendFeature.Rendering
+            startup.services[1] <- Capabilities::BackendFeature.NativeWindow
+            startup.service_count <- 2
+            report: mutable BackendRequirements::BackendRequirementsReport =
+                BackendRequirements::backend_requirements_invalid_report()
+            session: mutable RuntimeServices::Session = RuntimeServices::Session()
+            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                config, &startup, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                AudioRuntime::MIN_CHANNEL_COUNT, &report)
+            if (opened != RuntimeServices::OpenStatus.Ready and
+                opened != RuntimeServices::OpenStatus.FallbackRequired):
+                _ = RuntimeServices::shutdown(&session)
+                return 20
+            init_status: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            result: mutable i32 = 21
+            if init_status == 0:
+                result <- exercise()
+                closed_scene: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                result <- 22 if result == 0 and not closed_scene else result
+            closed: bool = RuntimeServices::shutdown(&session)
+            return result if result != 0
+            return 23 if not closed
+            0
+
+    public:
+        def run() -> i32:
+            WorldPickingNative::execute()
+
+def main() -> i32:
+    WorldPickingNative::run()

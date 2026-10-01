@@ -1,0 +1,20 @@
+# R06 pick verdicts. classify's own contracts carry the full truth table
+# (no hit is a miss; a hit is reported only for a matching epoch and a live
+# entity; any other hit is stale). The wrappers below check that callers can
+# rely on the hit and miss guarantees through its summary.
+include "../src/world/pick_check.elisa"
+
+extend WorldPickCheck:
+    def prove_hit_is_checked(has_hit: bool, world_epoch: i64, hit_epoch: i64, live: bool) -> i64:
+        ensure result != 1 or world_epoch == hit_epoch
+        ensure result != 1 or live
+        classify(has_hit, world_epoch, hit_epoch, live)
+
+    def prove_no_hit_is_miss(world_epoch: i64, hit_epoch: i64, live: bool) -> i64:
+        ensure result == 0
+        classify(false, world_epoch, hit_epoch, live)
+
+    def prove_verdict_in_range(has_hit: bool, world_epoch: i64, hit_epoch: i64, live: bool) -> i64:
+        ensure result >= 0
+        ensure result <= 2
+        classify(has_hit, world_epoch, hit_epoch, live)
