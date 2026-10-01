@@ -151,3 +151,32 @@ This verifies profile changes reach Wicked's runtime state and rendered output,
 and records one Apple M5 GPU/VRAM reference sample. Cross-backend cost
 validation and settings persistence beyond the game setting remain open R07
 work.
+
+## Profile cost records (2026-10-02)
+
+`src/backend/quality_cost.elisa` makes each quality level carry its measured
+cost. `QualityCost::cost(backend, level)` returns GPU median/p95 (μs) and
+renderer-wide memory (KiB) for Wicked on Metal (the Apple M5 sample above:
+Low 938/945 μs and 407,132 KiB, Medium 1,342/1,392 μs and 414,515 KiB, High
+2,777/2,808 μs and 428,431 KiB). It also returns memory for Godot
+Compatibility, Mobile and Forward+ Low/High from
+[`Godot quality validation`](godot-quality.md). Godot GPU time is reported as
+`UnsupportedByRenderer` (Compatibility) or `NoSamples` (Metal Mobile and
+Forward+), never as zero. The Godot capture does not run a Medium profile, so
+Godot Medium is `NotMeasured`.
+
+`QualityCost::choose` picks the highest level whose measured p95 GPU time and
+memory fit a budget. If nothing fits, it returns Low with `BudgetFallback`. If
+the backend has no GPU time, it returns `CostUnknown`. The integer rule is in
+`QualityBudget::fits`. `proof/quality_cost.elisa` proves that a fit implies
+measured GPU time, positive memory and both values within budget, and that an
+unmeasured cost never fits (19/19 obligations).
+
+`test/quality_cost.elisa` runs in the shared gate. Negative controls, each
+built from a scratch copy, failed as expected:
+- An unmeasured cost that fits exits 56.
+- A p95 bound with an off-by-one panics on the `fits` postcondition.
+- Dropping the p95 ≥ median check exits 55.
+- Reporting `BudgetFallback` for unknown GPU time exits 64.
+- A weakened memory postcondition exits 57.
+- Letting zero-memory costs fit makes the prover fail 9 obligations.

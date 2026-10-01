@@ -1,0 +1,83 @@
+# Measured cost records carried by each quality profile level. Values come from
+# the recorded runs in docs/validation/postprocess-quality.md (Wicked on Metal)
+# and docs/validation/godot-quality.md (Godot renderers). Memory is the
+# renderer-wide allocation after applying the profile, in KiB; it includes
+# shared allocations and is not a per-effect delta. A renderer that cannot time
+# the GPU reports that as a fallback instead of a number.
+
+module QualityCost:
+    public:
+        const MAX_GPU_US: i64 = 1000000
+        const MAX_MEMORY_KIB: i64 = 67108864
+
+        enum Backend:
+            WickedMetal
+            GodotCompatibility
+            GodotMobile
+            GodotForwardPlus
+
+        enum GpuTiming:
+            Measured
+            UnsupportedByRenderer
+            NoSamples
+            NotMeasured
+
+        enum Fit:
+            WithinBudget
+            BudgetFallback
+            CostUnknown
+
+        struct Cost:
+            gpu_timing: GpuTiming
+            gpu_median_us: i64
+            gpu_p95_us: i64
+            memory_kib: i64
+
+        struct Choice:
+            level: Quality::Level
+            fit: Fit
+
+        # A cost is usable when GPU numbers exist only if measured, are ordered
+        # and bounded, and memory is either recorded (positive) or zero.
+        def cost_valid(cost: Cost) -> bool:
+            measured: bool = cost.gpu_timing == GpuTiming.Measured
+            return false if cost.memory_kib < 0 or cost.memory_kib > MAX_MEMORY_KIB
+            return false if not measured and (cost.gpu_median_us != 0 or cost.gpu_p95_us != 0)
+            return false if measured and (cost.gpu_median_us <= 0 or cost.gpu_p95_us < cost.gpu_median_us)
+            cost.gpu_p95_us <= MAX_GPU_US
+
+        # Whether a measured cost fits both budgets. Unknown GPU time or memory
+        # never fits, so callers cannot treat a missing number as free.
+        def fits(gpu_timing: GpuTiming, gpu_p95_us: i64, memory_kib: i64, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
+            QualityBudget::fits(gpu_timing == GpuTiming.Measured, gpu_p95_us, memory_kib, gpu_budget_us, memory_budget_kib)
+
+        def cost(backend: Backend, level: Quality::Level) -> Cost:
+            if backend == Backend.WickedMetal:
+                if level == Quality::Level.Low:
+                    return Cost{gpu_timing: GpuTiming.Measured, gpu_median_us: 938, gpu_p95_us: 945, memory_kib: 407132}
+                if level == Quality::Level.Medium:
+                    return Cost{gpu_timing: GpuTiming.Measured, gpu_median_us: 1342, gpu_p95_us: 1392, memory_kib: 414515}
+                return Cost{gpu_timing: GpuTiming.Measured, gpu_median_us: 2777, gpu_p95_us: 2808, memory_kib: 428431}
+            timing: GpuTiming = GpuTiming.UnsupportedByRenderer if backend == Backend.GodotCompatibility else GpuTiming.NoSamples
+            if level == Quality::Level.Medium:
+                return Cost{gpu_timing: GpuTiming.NotMeasured, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 0}
+            low: bool = level == Quality::Level.Low
+            if backend == Backend.GodotCompatibility:
+                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 7045 if low else 7885}
+            if backend == Backend.GodotMobile:
+                return Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 15360 if low else 81582}
+            Cost{gpu_timing: timing, gpu_median_us: 0, gpu_p95_us: 0, memory_kib: 22221 if low else 97167}
+
+        def cost_fits(backend: Backend, level: Quality::Level, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
+            measured: Cost = cost(backend, level)
+            fits(measured.gpu_timing, measured.gpu_p95_us, measured.memory_kib, gpu_budget_us, memory_budget_kib)
+
+        # The highest level whose measured cost fits. When Low does not fit,
+        # Low is returned with BudgetFallback; when the backend has no GPU time
+        # for Low, CostUnknown reports that the budget could not be checked.
+        def choose(backend: Backend, gpu_budget_us: i64, memory_budget_kib: i64) -> Choice:
+            return Choice{level: Quality::Level.High, fit: Fit.WithinBudget} if cost_fits(backend, Quality::Level.High, gpu_budget_us, memory_budget_kib)
+            return Choice{level: Quality::Level.Medium, fit: Fit.WithinBudget} if cost_fits(backend, Quality::Level.Medium, gpu_budget_us, memory_budget_kib)
+            return Choice{level: Quality::Level.Low, fit: Fit.WithinBudget} if cost_fits(backend, Quality::Level.Low, gpu_budget_us, memory_budget_kib)
+            return Choice{level: Quality::Level.Low, fit: Fit.CostUnknown} if cost(backend, Quality::Level.Low).gpu_timing != GpuTiming.Measured
+            Choice{level: Quality::Level.Low, fit: Fit.BudgetFallback}

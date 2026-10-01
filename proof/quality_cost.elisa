@@ -1,0 +1,14 @@
+# R07 quality costs: a profile level only fits a budget when its GPU time was
+# measured, its memory was recorded, and both stay within the budgets.
+include "../src/backend/quality_budget.elisa"
+
+extend QualityBudget:
+    def prove_fit_within(gpu_p95_us: i64, memory_kib: i64, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
+        ensure not result or gpu_p95_us <= gpu_budget_us
+        ensure not result or memory_kib <= memory_budget_kib
+        ensure not result or memory_kib > 0
+        fits(true, gpu_p95_us, memory_kib, gpu_budget_us, memory_budget_kib)
+
+    def prove_unmeasured_never_fits(memory_kib: i64, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
+        ensure not result
+        fits(false, 0, memory_kib, gpu_budget_us, memory_budget_kib)

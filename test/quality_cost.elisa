@@ -1,0 +1,51 @@
+include "../src/backend/quality.elisa"
+include "../src/backend/quality_budget.elisa"
+include "../src/backend/quality_cost.elisa"
+
+def check_backend(backend: QualityCost::Backend, base: i32) -> i32:
+    low: QualityCost::Cost = QualityCost::cost(backend, Quality::Level.Low)
+    medium: QualityCost::Cost = QualityCost::cost(backend, Quality::Level.Medium)
+    high: QualityCost::Cost = QualityCost::cost(backend, Quality::Level.High)
+    return base + 1 if not QualityCost::cost_valid(low) or not QualityCost::cost_valid(medium) or not QualityCost::cost_valid(high)
+    return base + 2 if low.memory_kib <= 0 or high.memory_kib <= 0
+    return base + 3 if high.memory_kib <= low.memory_kib
+    0
+
+def main() -> i32:
+    wicked: QualityCost::Backend = QualityCost::Backend.WickedMetal
+    status: i32 = check_backend(wicked, 10)
+    return status if status != 0
+    status2: i32 = check_backend(QualityCost::Backend.GodotCompatibility, 20)
+    return status2 if status2 != 0
+    status3: i32 = check_backend(QualityCost::Backend.GodotMobile, 30)
+    return status3 if status3 != 0
+    status4: i32 = check_backend(QualityCost::Backend.GodotForwardPlus, 40)
+    return status4 if status4 != 0
+    low: QualityCost::Cost = QualityCost::cost(wicked, Quality::Level.Low)
+    medium: QualityCost::Cost = QualityCost::cost(wicked, Quality::Level.Medium)
+    high: QualityCost::Cost = QualityCost::cost(wicked, Quality::Level.High)
+    return 50 if low.gpu_timing != QualityCost::GpuTiming.Measured or low.gpu_median_us != 938 or medium.gpu_p95_us != 1392 or high.memory_kib != 428431
+    return 51 if not (low.gpu_p95_us < medium.gpu_p95_us and medium.gpu_p95_us < high.gpu_p95_us)
+    compat: QualityCost::Cost = QualityCost::cost(QualityCost::Backend.GodotCompatibility, Quality::Level.High)
+    return 52 if compat.gpu_timing != QualityCost::GpuTiming.UnsupportedByRenderer or compat.memory_kib != 7885
+    forward: QualityCost::Cost = QualityCost::cost(QualityCost::Backend.GodotForwardPlus, Quality::Level.Medium)
+    return 53 if forward.gpu_timing != QualityCost::GpuTiming.NotMeasured or forward.memory_kib != 0
+    bad: QualityCost::Cost = QualityCost::Cost{gpu_timing: QualityCost::GpuTiming.NoSamples, gpu_median_us: 5, gpu_p95_us: 5, memory_kib: 1}
+    return 54 if QualityCost::cost_valid(bad)
+    unordered: QualityCost::Cost = QualityCost::Cost{gpu_timing: QualityCost::GpuTiming.Measured, gpu_median_us: 10, gpu_p95_us: 9, memory_kib: 1}
+    return 55 if QualityCost::cost_valid(unordered)
+    return 56 if QualityCost::fits(QualityCost::GpuTiming.NoSamples, 0, 100, 1000, 1000)
+    return 57 if QualityCost::fits(QualityCost::GpuTiming.Measured, 10, 0, 1000, 1000)
+    return 58 if not QualityCost::fits(QualityCost::GpuTiming.Measured, 1000, 1000, 1000, 1000)
+    return 59 if QualityCost::fits(QualityCost::GpuTiming.Measured, 1001, 1000, 1000, 1000)
+    roomy: QualityCost::Choice = QualityCost::choose(wicked, 3000, 500000)
+    return 60 if roomy.level != Quality::Level.High or roomy.fit != QualityCost::Fit.WithinBudget
+    mid: QualityCost::Choice = QualityCost::choose(wicked, 2000, 500000)
+    return 61 if mid.level != Quality::Level.Medium or mid.fit != QualityCost::Fit.WithinBudget
+    memory_bound: QualityCost::Choice = QualityCost::choose(wicked, 3000, 410000)
+    return 62 if memory_bound.level != Quality::Level.Low or memory_bound.fit != QualityCost::Fit.WithinBudget
+    tight: QualityCost::Choice = QualityCost::choose(wicked, 900, 500000)
+    return 63 if tight.level != Quality::Level.Low or tight.fit != QualityCost::Fit.BudgetFallback
+    godot: QualityCost::Choice = QualityCost::choose(QualityCost::Backend.GodotMobile, 1000000, 1000000)
+    return 64 if godot.level != Quality::Level.Low or godot.fit != QualityCost::Fit.CostUnknown
+    0

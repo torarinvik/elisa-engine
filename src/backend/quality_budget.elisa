@@ -1,0 +1,13 @@
+# Integer budget rule for measured quality costs, split from QualityCost so the
+# prover can check it without enum or profile terms. A cost fits only when its
+# GPU time was measured, its memory was recorded, and both stay in budget.
+module QualityBudget:
+    public:
+        def fits(gpu_measured: bool, gpu_p95_us: i64, memory_kib: i64, gpu_budget_us: i64, memory_budget_kib: i64) -> bool:
+            ensure not result or gpu_measured
+            ensure not result or gpu_p95_us <= gpu_budget_us
+            ensure not result or memory_kib <= memory_budget_kib
+            ensure not result or memory_kib > 0
+            return false if not gpu_measured
+            return false if memory_kib <= 0
+            gpu_p95_us <= gpu_budget_us and memory_kib <= memory_budget_kib
