@@ -1,0 +1,130 @@
+# Scene and snapshot diagnostics. `scene_valid` and `snapshot_valid` answer
+# yes or no; these name the first problem they find, the link or definition
+# it is in (`subject`) and the offending ID (`detail`), so an authoring tool
+# or a refused load can say what is wrong. `Problem.None` exactly when the
+# matching validity check passes.
+include "./prefab_scene.elisa"
+
+extend PrefabScene:
+    public:
+        enum Problem:
+            None
+            NoDefinitions
+            NoLinks
+            InvalidPrefabId
+            DuplicateDefinition
+            # Definition nodes: subject is the prefab, detail the node.
+            EmptyDefinition
+            InvalidNode
+            DuplicateNode
+            NodeMissingParent
+            NodeCycle
+            InvalidNodeVisual
+            # Links: subject is the link.
+            InvalidLink
+            DuplicateLink
+            DuplicateInstance
+            MissingDefinition
+            MissingParentLink
+            LinkCycle
+            ParentAfterChild
+            MissingRootNode
+            MissingParentNode
+            # Snapshots: subject is the saved link.
+            WrongScene
+            LinkCountMismatch
+            InvalidOverrides
+            UnknownLink
+            DuplicateSavedLink
+            InstanceMismatch
+            NodeCountMismatch
+            UnknownNode
+
+        struct Diagnostic:
+            problem: Problem
+            subject: i64
+            detail: i64
+
+        def no_problem() -> Diagnostic:
+            Diagnostic{problem: Problem.None, subject: 0, detail: 0}
+
+        def diagnose_definition(prefab_id: i64, definition: Prefab::Definition&) -> Diagnostic:
+            return Diagnostic{problem: Problem.InvalidPrefabId, subject: prefab_id, detail: 0} if prefab_id <= 0
+            empty: bool = definition.version <= 0 or definition.node_count == 0 or definition.node_count > Prefab::MAX_NODES
+            return Diagnostic{problem: Problem.EmptyDefinition, subject: prefab_id, detail: definition.node_count.i64()} if empty
+            for index in 0..<definition.node_count:
+                node: Prefab::Node = definition.nodes[index]
+                return Diagnostic{problem: Problem.InvalidNode, subject: prefab_id, detail: node.authoring_id} if node.authoring_id <= 0 or node.parent_id < 0
+                return Diagnostic{problem: Problem.NodeMissingParent, subject: prefab_id, detail: node.authoring_id} if not Prefab::parent_exists(definition, node.parent_id)
+                return Diagnostic{problem: Problem.InvalidNodeVisual, subject: prefab_id, detail: node.authoring_id} if node.has_visual and not Assets::visual_asset_valid(node.visual)
+                for earlier in 0..<index:
+                    return Diagnostic{problem: Problem.DuplicateNode, subject: prefab_id, detail: node.authoring_id} if definition.nodes[earlier].authoring_id == node.authoring_id
+                return Diagnostic{problem: Problem.NodeCycle, subject: prefab_id, detail: node.authoring_id} if Prefab::would_cycle(definition, node.authoring_id, node.parent_id)
+            no_problem()
+
+        def diagnose_link(scene: Scene&, index: usize) -> Diagnostic:
+            link: Link = scene.links[index]
+            here: i64 = link.link_id
+            bad: bool = link.link_id <= 0 or link.prefab_id <= 0 or link.instance_id <= 0 or link.root_authoring_id <= 0
+            return Diagnostic{problem: Problem.InvalidLink, subject: here, detail: 0} if bad or link.parent_link_id < PrefabScene::ROOT or not Geometry::transform_is_valid(link.local)
+            for earlier in 0..<index:
+                return Diagnostic{problem: Problem.DuplicateLink, subject: here, detail: here} if scene.links[earlier].link_id == here
+                return Diagnostic{problem: Problem.DuplicateInstance, subject: here, detail: link.instance_id} if scene.links[earlier].instance_id == link.instance_id
+            prefab_slot: usize = definition_slot(scene, link.prefab_id)
+            return Diagnostic{problem: Problem.MissingDefinition, subject: here, detail: link.prefab_id} if prefab_slot == PrefabScene::MAX_DEFINITIONS
+            if link.parent_link_id != PrefabScene::ROOT:
+                parent_slot: usize = link_slot(scene, link.parent_link_id)
+                return Diagnostic{problem: Problem.MissingParentLink, subject: here, detail: link.parent_link_id} if parent_slot == PrefabScene::MAX_LINKS
+                return Diagnostic{problem: Problem.LinkCycle, subject: here, detail: link.parent_link_id} if link_would_cycle(scene, here, link.parent_link_id)
+                return Diagnostic{problem: Problem.ParentAfterChild, subject: here, detail: link.parent_link_id} if parent_slot >= index
+            definition: Prefab::Definition = scene.definitions[prefab_slot].definition
+            return Diagnostic{problem: Problem.MissingRootNode, subject: here, detail: link.root_authoring_id} if not definition_root_exists(definition, link.root_authoring_id)
+            if link.parent_link_id != PrefabScene::ROOT:
+                parent_link: Link = scene.links[link_slot(scene, link.parent_link_id)]
+                parent_definition: Prefab::Definition = scene.definitions[definition_slot(scene, parent_link.prefab_id)].definition
+                return Diagnostic{problem: Problem.MissingParentNode, subject: here, detail: link.parent_authoring_id} if not definition_root_exists(parent_definition, link.parent_authoring_id)
+            no_problem()
+
+        def diagnose(scene: Scene&) -> Diagnostic:
+            return Diagnostic{problem: Problem.NoDefinitions, subject: 0, detail: 0} if scene.definition_count == 0 or scene.definition_count > PrefabScene::MAX_DEFINITIONS
+            return Diagnostic{problem: Problem.NoLinks, subject: 0, detail: 0} if scene.link_count == 0 or scene.link_count > PrefabScene::MAX_LINKS
+            for index in 0..<scene.definition_count:
+                entry: DefinitionEntry = scene.definitions[index]
+                for earlier in 0..<index:
+                    return Diagnostic{problem: Problem.DuplicateDefinition, subject: entry.prefab_id, detail: entry.prefab_id} if scene.definitions[earlier].prefab_id == entry.prefab_id
+                found: Diagnostic = diagnose_definition(entry.prefab_id, &entry.definition)
+                return found if found.problem != Problem.None
+            for index in 0..<scene.link_count:
+                found: Diagnostic = diagnose_link(scene, index)
+                return found if found.problem != Problem.None
+            no_problem()
+
+        def diagnose_saved_link(snapshot: SceneSnapshot&, scene: Scene&, index: usize) -> Diagnostic:
+            row: LinkSnapshot = snapshot.links[index]
+            here: i64 = row.link_id
+            return Diagnostic{problem: Problem.InvalidOverrides, subject: here, detail: 0} if here <= 0 or not PrefabPersistence::snapshot_valid(&row.overrides)
+            scene_slot: usize = link_slot(scene, here)
+            return Diagnostic{problem: Problem.UnknownLink, subject: here, detail: here} if scene_slot == PrefabScene::MAX_LINKS
+            link: Link = scene.links[scene_slot]
+            mismatch: bool = row.overrides.prefab_id != link.prefab_id or row.overrides.instance_id != link.instance_id
+            return Diagnostic{problem: Problem.InstanceMismatch, subject: here, detail: row.overrides.instance_id} if mismatch
+            definition: Prefab::Definition = scene.definitions[definition_slot(scene, link.prefab_id)].definition
+            return Diagnostic{problem: Problem.NodeCountMismatch, subject: here, detail: row.overrides.count.i64()} if row.overrides.count != definition.node_count
+            for record_index in 0..<row.overrides.count:
+                authored: i64 = row.overrides.records[record_index].authoring_id
+                return Diagnostic{problem: Problem.UnknownNode, subject: here, detail: authored} if Prefab::node_slot(definition, authored) == Prefab::MAX_NODES
+            for earlier in 0..<index:
+                return Diagnostic{problem: Problem.DuplicateSavedLink, subject: here, detail: here} if snapshot.links[earlier].link_id == here
+            no_problem()
+
+        # The scene's own problems come first: a snapshot cannot be checked
+        # against an invalid scene.
+        def diagnose_snapshot(snapshot: SceneSnapshot&, scene: Scene&, scene_id: i64) -> Diagnostic:
+            authored: Diagnostic = diagnose(scene)
+            return authored if authored.problem != Problem.None
+            return Diagnostic{problem: Problem.WrongScene, subject: 0, detail: snapshot.scene_id} if scene_id <= 0 or snapshot.scene_id != scene_id
+            return Diagnostic{problem: Problem.LinkCountMismatch, subject: 0, detail: snapshot.link_count.i64()} if snapshot.link_count != scene.link_count
+            for index in 0..<snapshot.link_count:
+                found: Diagnostic = diagnose_saved_link(snapshot, scene, index)
+                return found if found.problem != Problem.None
+            no_problem()

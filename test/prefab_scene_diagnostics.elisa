@@ -1,0 +1,116 @@
+include "../src/world/prefab_scene_diagnostics.elisa"
+
+def diag_node(id: i64, parent: i64) -> Prefab::Node:
+    Prefab::Node{authoring_id: id, parent_id: parent, local: Geometry::transform_identity(),
+        has_visual: false, visual: zeroed}
+
+def diag_definition() -> Prefab::Definition:
+    definition: mutable Prefab::Definition = Prefab::Definition()
+    _ = Prefab::definition_add(&definition, diag_node(10, 0))
+    _ = Prefab::definition_add(&definition, diag_node(20, 10))
+    definition
+
+def diag_link(link_id: i64, prefab_id: i64, instance_id: i64, parent_link: i64, parent_node: i64) -> PrefabScene::Link:
+    PrefabScene::Link{link_id: link_id, prefab_id: prefab_id, instance_id: instance_id,
+        root_authoring_id: 10, parent_link_id: parent_link, parent_authoring_id: parent_node,
+        local: Geometry::transform_identity()}
+
+def diag_is(found: PrefabScene::Diagnostic, problem: PrefabScene::Problem, subject: i64, detail: i64) -> bool:
+    found.problem == problem and found.subject == subject and found.detail == detail
+
+# A scene with the given second link; the first is always a valid root link.
+def diag_scene_with(second: PrefabScene::Link) -> PrefabScene::Scene:
+    scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+    _ = PrefabScene::add_definition(&scene, 7, diag_definition())
+    _ = PrefabScene::add_link(&scene, diag_link(100, 7, 1000, PrefabScene::ROOT, 0))
+    _ = PrefabScene::add_link(&scene, second)
+    scene
+
+# Diagnostics agree with scene_valid: a problem exactly when it is invalid.
+def diag_scene_case(second: PrefabScene::Link, problem: PrefabScene::Problem, subject: i64, detail: i64) -> bool:
+    scene: PrefabScene::Scene = diag_scene_with(second)
+    found: PrefabScene::Diagnostic = PrefabScene::diagnose(&scene)
+    agrees: bool = PrefabScene::scene_valid(&scene) == (found.problem == PrefabScene::Problem.None)
+    agrees and diag_is(found, problem, subject, detail)
+
+def diag_definition_case(definition: Prefab::Definition, problem: PrefabScene::Problem, detail: i64) -> bool:
+    found: PrefabScene::Diagnostic = PrefabScene::diagnose_definition(7, &definition)
+    agrees: bool = Prefab::definition_valid(&definition) == (found.problem == PrefabScene::Problem.None)
+    agrees and diag_is(found, problem, 7, detail)
+
+def diag_snapshot_case(snapshot: PrefabScene::SceneSnapshot&, scene: PrefabScene::Scene&, problem: PrefabScene::Problem, subject: i64, detail: i64) -> bool:
+    found: PrefabScene::Diagnostic = PrefabScene::diagnose_snapshot(snapshot, scene, 55)
+    agrees: bool = PrefabScene::snapshot_valid(snapshot, scene, 55) == (found.problem == PrefabScene::Problem.None)
+    agrees and diag_is(found, problem, subject, detail)
+
+def main() -> i32:
+    # Node-level cycles and missing parents inside one definition.
+    cyclic: mutable Prefab::Definition = Prefab::Definition()
+    _ = Prefab::definition_add(&cyclic, diag_node(10, 0))
+    _ = Prefab::definition_add(&cyclic, diag_node(30, 40))
+    _ = Prefab::definition_add(&cyclic, diag_node(40, 30))
+    return 1 if not diag_definition_case(cyclic, PrefabScene::Problem.NodeCycle, 30)
+    orphan: mutable Prefab::Definition = Prefab::Definition()
+    _ = Prefab::definition_add(&orphan, diag_node(10, 0))
+    _ = Prefab::definition_add(&orphan, diag_node(20, 99))
+    return 2 if not diag_definition_case(orphan, PrefabScene::Problem.NodeMissingParent, 20)
+    return 3 if not diag_definition_case(Prefab::Definition(), PrefabScene::Problem.EmptyDefinition, 0)
+    valid: Prefab::Definition = diag_definition()
+    valid_found: PrefabScene::Diagnostic = PrefabScene::diagnose_definition(7, &valid)
+    return 4 if not Prefab::definition_valid(&valid) or not diag_is(valid_found, PrefabScene::Problem.None, 0, 0)
+
+    # Link-level references, in the order a reader would fix them.
+    return 10 if not diag_scene_case(diag_link(200, 7, 2000, 100, 10), PrefabScene::Problem.None, 0, 0)
+    return 11 if not diag_scene_case(diag_link(200, 8, 2000, PrefabScene::ROOT, 0), PrefabScene::Problem.MissingDefinition, 200, 8)
+    return 12 if not diag_scene_case(diag_link(200, 7, 2000, 300, 10), PrefabScene::Problem.MissingParentLink, 200, 300)
+    return 13 if not diag_scene_case(diag_link(200, 7, 2000, 200, 10), PrefabScene::Problem.LinkCycle, 200, 200)
+    return 14 if not diag_scene_case(diag_link(200, 7, 1000, PrefabScene::ROOT, 0), PrefabScene::Problem.DuplicateInstance, 200, 1000)
+    return 15 if not diag_scene_case(diag_link(200, 7, 2000, 100, 77), PrefabScene::Problem.MissingParentNode, 200, 77)
+    missing_root: PrefabScene::Link = PrefabScene::Link{link_id: 200, prefab_id: 7, instance_id: 2000,
+        root_authoring_id: 55, parent_link_id: PrefabScene::ROOT, parent_authoring_id: 0,
+        local: Geometry::transform_identity()}
+    return 16 if not diag_scene_case(missing_root, PrefabScene::Problem.MissingRootNode, 200, 55)
+
+    # Two links that parent each other.
+    looped: mutable PrefabScene::Scene = PrefabScene::Scene()
+    _ = PrefabScene::add_definition(&looped, 7, diag_definition())
+    _ = PrefabScene::add_link(&looped, diag_link(100, 7, 1000, 200, 10))
+    _ = PrefabScene::add_link(&looped, diag_link(200, 7, 2000, 100, 10))
+    looped_found: PrefabScene::Diagnostic = PrefabScene::diagnose(&looped)
+    return 17 if not diag_is(looped_found, PrefabScene::Problem.LinkCycle, 100, 200) or PrefabScene::scene_valid(&looped)
+    later: mutable PrefabScene::Scene = PrefabScene::Scene()
+    _ = PrefabScene::add_definition(&later, 7, diag_definition())
+    _ = PrefabScene::add_link(&later, diag_link(200, 7, 2000, 100, 10))
+    _ = PrefabScene::add_link(&later, diag_link(100, 7, 1000, PrefabScene::ROOT, 0))
+    return 18 if not diag_is(PrefabScene::diagnose(&later), PrefabScene::Problem.ParentAfterChild, 200, 100)
+    return 19 if not diag_is(PrefabScene::diagnose(&PrefabScene::Scene()), PrefabScene::Problem.NoDefinitions, 0, 0)
+
+    # Snapshots: captured from a live spawn, then damaged one field at a time.
+    scene: PrefabScene::Scene = diag_scene_with(diag_link(200, 7, 2000, 100, 10))
+    world: mutable World::World = catch World::World():
+        value: value
+        error failure: return 30
+    instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+    return 31 if not PrefabScene::spawn(&instance, &world, scene, 55)
+    good: PrefabScene::SceneSnapshot = PrefabScene::capture(&instance, &world, scene)
+    return 32 if not diag_snapshot_case(&good, &scene, PrefabScene::Problem.None, 0, 0)
+    foreign: mutable PrefabScene::SceneSnapshot = good
+    foreign.scene_id <- 41
+    return 33 if not diag_snapshot_case(&foreign, &scene, PrefabScene::Problem.WrongScene, 0, 41)
+    unknown_link: mutable PrefabScene::SceneSnapshot = good
+    unknown_link.links[1].link_id <- 900
+    return 34 if not diag_snapshot_case(&unknown_link, &scene, PrefabScene::Problem.UnknownLink, 900, 900)
+    unknown_node: mutable PrefabScene::SceneSnapshot = good
+    unknown_node.links[1].overrides.records[1].authoring_id <- 66
+    return 35 if not diag_snapshot_case(&unknown_node, &scene, PrefabScene::Problem.UnknownNode, 200, 66)
+    swapped: mutable PrefabScene::SceneSnapshot = good
+    swapped.links[0].overrides.instance_id <- 2000
+    return 36 if not diag_snapshot_case(&swapped, &scene, PrefabScene::Problem.InstanceMismatch, 100, 2000)
+    short: mutable PrefabScene::SceneSnapshot = good
+    short.link_count <- 1
+    return 37 if not diag_snapshot_case(&short, &scene, PrefabScene::Problem.LinkCountMismatch, 0, 1)
+    twice: mutable PrefabScene::SceneSnapshot = good
+    twice.links[1] <- good.links[0]
+    return 38 if not diag_snapshot_case(&twice, &scene, PrefabScene::Problem.DuplicateSavedLink, 100, 100)
+    return 39 if not PrefabScene::destroy(&instance, &world)
+    0

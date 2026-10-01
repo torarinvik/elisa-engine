@@ -25,3 +25,16 @@ This persists one nested-scene snapshot; it does not yet encode a whole `World`,
 reconstruct runtime scene definitions from `scripts/scene_file.py` JSON, or
 rehydrate native mesh/material resources from stable IDs. Atomic snapshot writes
 therefore do not yet amount to crash-recoverable whole-world saves.
+
+## Diagnostics (2026-10-01)
+
+`src/world/prefab_scene_diagnostics.elisa` adds `PrefabScene::diagnose`,
+`diagnose_definition` and `diagnose_snapshot`. Each returns a `Diagnostic`
+naming the first `Problem` found (for example `NodeCycle`, `LinkCycle`,
+`MissingDefinition`, `MissingParentLink`, `ParentAfterChild`, `UnknownNode`,
+`WrongScene`), the definition or link it is in (`subject`) and the offending ID
+(`detail`). The checks mirror `definition_valid`, `scene_valid` and
+`snapshot_valid`. `test/prefab_scene_diagnostics.elisa` (in the gate) checks
+node cycles, orphans, empty definitions, every link-reference failure, a
+two-link cycle and damaged snapshots. For each case it also asserts that the
+diagnostic is `None` exactly when the bool validator accepts.
