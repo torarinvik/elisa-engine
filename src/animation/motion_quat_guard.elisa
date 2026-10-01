@@ -1,0 +1,21 @@
+# The one division by a vector length in MotionQuat (plan M08), kept float-only
+# and free of structs so the prover can check it (proof/motion_quat_guard.elisa).
+# Guards use `not (length > EPSILON)`: NaN fails every comparison, so a `<=`
+# guard would let a NaN length through to the division.
+module MotionQuatGuard:
+    public:
+        const EPSILON: f64 = 0.000000001
+
+        # x / length for a length the caller has shown to be a real positive.
+        def scale(x: f64, length: f64) -> f64:
+            requires length > EPSILON
+            x / length
+
+        # x / length, or 0 when length is zero, tiny, negative or NaN.
+        def unit(x: f64, length: f64) -> f64:
+            return 0.0 if not (length > EPSILON)
+            scale(x, length)
+
+        # True when `normalize` divides; false sends it to the identity.
+        def divides(length: f64) -> bool:
+            length > EPSILON

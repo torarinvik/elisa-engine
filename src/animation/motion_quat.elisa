@@ -4,11 +4,11 @@
 # pose code keeps Geometry's f32 types; convert at the edges.
 include "../math/geometry.elisa"
 include "../vendor/elisa_math.elisa"
+include "./motion_quat_guard.elisa"
 
 module MotionQuat:
     private:
         const module Tune:
-            EPSILON: f64 = 0.000000001
             NEAR_ONE: f64 = 0.9995
 
     public:
@@ -39,10 +39,12 @@ module MotionQuat:
         def dot(a: Q, b: Q) -> f64:
             a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
 
+        # `not (length > EPSILON)` also catches NaN, where `length <= EPSILON`
+        # is false; a NaN or zero quaternion becomes the identity, never NaN.
         def normalize(q: Q) -> Q:
             length: f64 = ElisaMath::sqrt(dot(q, q))
-            return identity() if length <= Tune::EPSILON
-            Q{x: q.x / length, y: q.y / length, z: q.z / length, w: q.w / length}
+            return identity() if not (length > MotionQuatGuard::EPSILON)
+            Q{x: MotionQuatGuard::unit(q.x, length), y: MotionQuatGuard::unit(q.y, length), z: MotionQuatGuard::unit(q.z, length), w: MotionQuatGuard::unit(q.w, length)}
 
         def mul(a: Q, b: Q) -> Q:
             Q{
@@ -63,8 +65,8 @@ module MotionQuat:
 
         def vnormalize(v: V) -> V:
             length: f64 = ElisaMath::sqrt(vdot(v, v))
-            return V{x: 0.0, y: 0.0, z: 0.0} if length <= Tune::EPSILON
-            V{x: v.x / length, y: v.y / length, z: v.z / length}
+            return V{x: 0.0, y: 0.0, z: 0.0} if not (length > MotionQuatGuard::EPSILON)
+            V{x: MotionQuatGuard::unit(v.x, length), y: MotionQuatGuard::unit(v.y, length), z: MotionQuatGuard::unit(v.z, length)}
 
         def rotate(q: Q, v: V) -> V:
             p: Q = mul(mul(q, Q{x: v.x, y: v.y, z: v.z, w: 0.0}), conjugate(q))
@@ -81,7 +83,8 @@ module MotionQuat:
             raw: f64 = dot(a, b)
             sign: f64 = -1.0 if raw < 0.0 else 1.0
             c: f64 = raw * sign
-            if c > Tune::NEAR_ONE:
+            # `not (<=)` sends NaN to the normalized lerp, which returns identity.
+            if not (c <= Tune::NEAR_ONE):
                 return normalize(Q{x: a.x + (b.x * sign - a.x) * t, y: a.y + (b.y * sign - a.y) * t, z: a.z + (b.z * sign - a.z) * t, w: a.w + (b.w * sign - a.w) * t})
             theta: f64 = ElisaMath::acos(c)
             s: f64 = ElisaMath::sin(theta)
@@ -96,7 +99,7 @@ module MotionQuat:
             a: V = vnormalize(axis)
             along: f64 = q.x * a.x + q.y * a.y + q.z * a.z
             raw: Q = Q{x: a.x * along, y: a.y * along, z: a.z * along, w: q.w}
-            degenerate: bool = dot(raw, raw) <= Tune::EPSILON
+            degenerate: bool = dot(raw, raw) <= MotionQuatGuard::EPSILON
             twist: Q = identity() if degenerate else normalize(raw)
             SwingTwist{swing: mul(q, conjugate(twist)), twist: twist}
 

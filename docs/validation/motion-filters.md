@@ -53,3 +53,25 @@ obligations are proved and replayed.
   cannot range-check is on the path. `(index % n) < 0` used to block
   `0 < n`; such premises are now set aside. This fix is committed on
   `../elisa-engine-proof`.
+
+## Quaternion normalisation proof (2026-10-01)
+
+`MotionQuat::normalize` and `vnormalize` used `return ... if length <= EPSILON`. NaN fails every
+comparison, so a NaN quaternion slipped past that guard and was divided by a NaN length. Both now
+use `not (length > EPSILON)`, and the division goes through `MotionQuatGuard::unit` /
+`MotionQuatGuard::scale` (src/animation/motion_quat_guard.elisa). `scale` declares
+`requires length > EPSILON`. `slerp` likewise sends a NaN cosine to the normalized-lerp branch
+(`not (c <= NEAR_ONE)`), which returns the identity.
+
+Proof: `proof/motion_quat_guard.elisa` proves 8/8 obligations with 8 certificates replayed and 0
+gaps. It uses the prover's new float mode (elisa-engine-proof, AUDIT "Floating-point functions are
+checked by syntactic containment"). Functions with float parameters are checked by syntactic fact
+containment only, assuming no IEEE arithmetic, so NaN, rounding and signed zeros cannot make a
+claim true that is false at run time. The prover on elisa-proof main still refuses the file
+(`unsupported`). Mutant: changing `unit`'s guard to `length <= EPSILON` fails the proof with
+`call-requires-unproven`.
+
+Tests: `test/animation_motion_quat.elisa` checks 13–18. NaN and zero quaternions normalize to the
+identity, a NaN vector to zero, `slerp` towards a NaN quaternion gives the identity, and `unit` /
+`divides` return the fallback for NaN, zero and negative lengths. With the old `<=` guard
+restored, the test fails at check 13.

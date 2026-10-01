@@ -1,0 +1,18 @@
+include "../src/animation/motion_quat_guard.elisa"
+
+extend MotionQuatGuard:
+    # Plan M08: quaternion and vector normalisation never divide by a zero,
+    # tiny, negative or NaN length. The prover runs float functions in its
+    # syntactic float mode (no IEEE arithmetic assumed): `unit`'s guard
+    # `not (length > EPSILON)` hands `scale` exactly its requires on fall-through.
+    # A `length <= EPSILON` guard would fail here, since NaN passes it.
+    def prove_guard_then_scale(x: f64, length: f64) -> f64:
+        return 0.0 if not divides(length)
+        return 0.0 if not (length > EPSILON)
+        scale(x, length)
+
+    # A conjunctive guard projects the length fact for the division.
+    def prove_conjunct_guard(x: f64, length: f64, ready: bool) -> f64:
+        if ready and length > EPSILON:
+            return scale(x, length)
+        0.0

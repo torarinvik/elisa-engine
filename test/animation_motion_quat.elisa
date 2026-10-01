@@ -42,4 +42,18 @@ def main() -> i32:
     # f32 round trip for the runtime pose.
     back: MotionQuat::Q = MotionQuat::from_geometry(MotionQuat::to_geometry(b))
     return 11 if MotionQuat::dot(back, b) < 0.999999
+    # NaN and zero lengths take the fallback; a `<=` guard would divide by NaN.
+    zero: f64 = 0.0
+    nan: f64 = zero / zero
+    return 12 if nan == nan
+    nq: MotionQuat::Q = MotionQuat::normalize(MotionQuat::Q{x: nan, y: 0.0, z: 0.0, w: 1.0})
+    return 13 if not (nq.x == 0.0 and nq.y == 0.0 and nq.z == 0.0 and nq.w == 1.0)
+    zq: MotionQuat::Q = MotionQuat::normalize(MotionQuat::Q{x: 0.0, y: 0.0, z: 0.0, w: 0.0})
+    return 14 if not (zq.w == 1.0 and zq.x == 0.0)
+    nv: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: 1.0, y: nan, z: 0.0})
+    return 15 if not (nv.x == 0.0 and nv.y == 0.0 and nv.z == 0.0)
+    ns: MotionQuat::Q = MotionQuat::slerp(a, MotionQuat::Q{x: nan, y: nan, z: nan, w: nan}, 0.5)
+    return 16 if not (ns.w == 1.0 and ns.x == 0.0)
+    return 17 if MotionQuatGuard::unit(1.0, nan) != 0.0 or MotionQuatGuard::unit(1.0, -2.0) != 0.0 or MotionQuatGuard::unit(3.0, 2.0) != 1.5
+    return 18 if MotionQuatGuard::divides(nan) or MotionQuatGuard::divides(0.0) or not MotionQuatGuard::divides(1.0)
     return 0
