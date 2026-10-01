@@ -38,3 +38,29 @@ submits it through Wicked, and checks that an out-of-range tick maps to
 The scheduler currently advances Wicked clip players already loaded by a
 rendered instance. Feeding freshly sampled Elisa poses from the scheduler each
 frame, and sharing one source asset among animated clones, remain open work.
+
+## Sampled Elisa poses each frame (2026-10-02)
+
+`RenderScene::SampledPoseSchedule` (`src/runtime/render_scene_pose_schedule.elisa`)
+feeds poses sampled in Elisa to up to 16 animated instances (the native
+bridge's limit). The instances share one Elisa skeleton and clip, which suits
+clones from `create_animated_mesh_instance`, and each keeps its own tick.
+`sampled_pose_advance(schedule, skeleton, clip, delta)` advances every tick
+with a looping wrap at the clip length, samples the clip with
+`animation_pose_from_clip`, applies the schedule's morph weights and submits.
+An instance whose last pose no frame has read yet is deferred rather than
+overwritten; a pose a frame has read is completed first (waiting for that
+frame if it is still running). `sampled_pose_settle` retires the remaining
+poses before cleanup. The tick wrap and slot choice live in
+`src/runtime/pose_schedule_index.elisa` and are proved in
+`proof/pose_schedule_index.elisa` (28 obligations, zero findings).
+`AnimationAssets::clip_duration_ticks` exposes the clip length.
+
+Evidence: render smoke group 237 tracks a cooked source and its clone at ticks
+10 and 5, rejects a negative start tick and delta, submits both, defers both
+when no frame has run, then after a pump finds bones at x 2.0 and 1.0. Five
+ticks later the source wraps to tick 5 and the clone reaches 10, and the
+bones swap to 1.0 and 2.0. Settling leaves nothing pending and cleanup
+returns the instance count. Negative controls: submitting without deferral
+fails case 11, dropping the tick write-back fails case 17, and removing the
+spelled-out wrap bound leaves 4 obligations unproven.

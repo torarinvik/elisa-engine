@@ -184,6 +184,10 @@ module AnimationAssets:
         def clip_compatible(skeleton: SkeletonAsset&, clip: AnimationClip&) -> bool:
             clip_asset_valid(skeleton, clip)
 
+        # The last sampleable tick; looping schedules wrap at this length.
+        def clip_duration_ticks(clip: AnimationClip&) -> i64:
+            clip.duration_ticks
+
         def sample_clip_pose(skeleton: SkeletonAsset&, clip: AnimationClip&,
             tick: i64) -> Pose::Pose error[AnimationAssetError]:
             raise AnimationAssetError.InvalidSkeleton if not skeleton_asset_valid(skeleton)

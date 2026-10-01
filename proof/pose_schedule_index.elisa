@@ -1,0 +1,21 @@
+include "../src/runtime/pose_schedule_index.elisa"
+
+extend PoseScheduleIndex:
+    # A valid tick advanced by a valid delta stays inside the clip.
+    def prove_wrapped_tick(tick: i64, delta: i64, duration: i64) -> i64:
+        requires duration > 0
+        requires duration <= 1000000000
+        requires tick >= 0
+        requires tick <= duration
+        requires delta >= 0
+        requires delta <= 1000000
+        ensure result >= 0
+        ensure result <= duration
+        wrapped_tick(tick, delta, duration)
+
+    # A tracked entry always lands inside the bridge-sized tables.
+    def prove_next_slot(count: usize) -> usize:
+        requires count < 16
+        ensure result < 16
+        ensure result == count
+        next_slot(count)

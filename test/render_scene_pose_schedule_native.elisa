@@ -1,0 +1,122 @@
+# Native coverage for the sampled pose schedule (group 237): two animated
+# clones sharing one cooked asset are fed freshly sampled Elisa clip poses each
+# frame at different ticks; a frame that has not been read defers both; the
+# tick wraps at the clip length; settling retires every pose before cleanup.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_pose_schedule.elisa"
+
+module RenderScenePoseScheduleNativeTests:
+    private:
+        const SHIFT_X: f32 = 2.0
+        const HALF_SHIFT_X: f32 = 1.0
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_instances(
+            first_handle: i64, first_x: f32,
+            second_handle: i64, second_x: f32,
+            expected_pending: i32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animated_asset_shared(first: i64,
+            second: i64, expected_owners: i32) -> i32
+
+        def tint() -> RenderScene::Color:
+            RenderScene::Color{red: 0.7, green: 0.8, blue: 0.9, alpha: 1.0}
+
+        def destroy_code(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::destroy(handle):
+                ok: 0
+                error failure: 1
+
+        def track_code(schedule: mutable RenderScene::SampledPoseSchedule&,
+            handle: RenderScene::InstanceHandle, tick: i64) -> i32:
+            catch RenderScene::sampled_pose_track(schedule, handle, tick):
+                ok: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                RenderScene::RenderSceneError.Capacity: 2
+                error failure: 3
+
+    public:
+        def exercise() -> i32:
+            instances_before: u64 = RenderScene::instance_count()
+            # Two root joints match the cooked rig: joint 0 moves from rest at
+            # tick 0 to SHIFT_X at tick 10, joint 1 stays at rest.
+            skeleton: mutable AnimationAssets::SkeletonAsset = AnimationAssets::SkeletonAsset(
+                AnimationAssets::RigId{value: 9})
+            rest: Geometry::Transform = Geometry::transform_identity()
+            inverse_bind: f32[Geometry::MATRIX_ELEMENTS] = Geometry::transform_to_matrix(rest)
+            first_joint: bool = AnimationAssets::skeleton_add_joint(&skeleton,
+                AnimationAssets::JointId{value: 1}, -1, rest, inverse_bind)
+            second_joint: bool = AnimationAssets::skeleton_add_joint(&skeleton,
+                AnimationAssets::JointId{value: 2}, -1, rest, inverse_bind)
+            return 1 if not first_joint or not second_joint
+            shifted: Geometry::Transform = Geometry::Transform{
+                position: Geometry::Vec3{x: SHIFT_X, y: 0.0, z: 0.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }
+            clip: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(
+                AnimationAssets::ClipId{value: 13}, skeleton.rig_id, 10, 10)
+            first_key: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 0, 0, rest)
+            last_key: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 0, 10, shifted)
+            rest_first: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 1, 0, rest)
+            rest_last: bool = AnimationAssets::clip_add_key(&clip, &skeleton, 1, 10, rest)
+            return 2 if not first_key or not last_key or not rest_first or not rest_last
+            source: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 3
+            clone: RenderScene::InstanceHandle = catch RenderScene::create_animated_mesh_instance(
+                source, Geometry::transform_identity(), tint()):
+                value: value
+                error failure: return 4
+            raw_source: i64 = RenderScene::native_smoke_handle(source)
+            raw_clone: i64 = RenderScene::native_smoke_handle(clone)
+            return 5 if elisa_render_scene_v1_test_animated_asset_shared(raw_source, raw_clone, 2) != 1
+            schedule: mutable RenderScene::SampledPoseSchedule = RenderScene::SampledPoseSchedule()
+            return 6 if track_code(&schedule, source, -1) != 1
+            morph_set: i32 = catch RenderScene::sampled_pose_set_morph_weight(&schedule, 0, 0.0):
+                ok: 0
+                error failure: 1
+            return 27 if morph_set != 0
+            return 7 if track_code(&schedule, source, 10) != 0 or track_code(&schedule, clone, 5) != 0
+            invalid_delta: i32 = catch RenderScene::sampled_pose_advance(&schedule, &skeleton, &clip, -1):
+                value: 0
+                RenderScene::RenderSceneError.InvalidValue: 1
+                error failure: 2
+            return 8 if invalid_delta != 1
+            first: RenderScene::SampledPoseReport = catch RenderScene::sampled_pose_advance(
+                &schedule, &skeleton, &clip, 0):
+                value: value
+                error failure: return 9
+            return 10 if first.submitted != 2 or first.deferred != 0
+            # No frame has read those poses: the next frame's poses wait.
+            held: RenderScene::SampledPoseReport = catch RenderScene::sampled_pose_advance(
+                &schedule, &skeleton, &clip, 0):
+                value: value
+                error failure: return 11
+            return 12 if held.submitted != 0 or held.deferred != 2
+            return 13 if Application::pump() != Application::PumpStatus.Running
+            return 14 if elisa_render_scene_v1_test_animation_instances(raw_source, SHIFT_X,
+                raw_clone, HALF_SHIFT_X, 1) != 1
+            # Five ticks later the source wraps 15 -> 5 and the clone reaches 10.
+            second: RenderScene::SampledPoseReport = catch RenderScene::sampled_pose_advance(
+                &schedule, &skeleton, &clip, 5):
+                value: value
+                error failure: return 15
+            return 16 if second.submitted != 2 or second.deferred != 0
+            return 17 if RenderScene::sampled_pose_tick(&schedule, 0) != 5
+            return 18 if RenderScene::sampled_pose_tick(&schedule, 1) != 10
+            return 19 if RenderScene::sampled_pose_tick(&schedule, 2) != -1
+            return 20 if Application::pump() != Application::PumpStatus.Running
+            return 21 if elisa_render_scene_v1_test_animation_instances(raw_source, HALF_SHIFT_X,
+                raw_clone, SHIFT_X, 1) != 1
+            remaining: usize = catch RenderScene::sampled_pose_settle(&schedule):
+                value: value
+                error failure: return 22
+            return 23 if remaining != 0
+            return 24 if elisa_render_scene_v1_test_animation_instances(raw_source, HALF_SHIFT_X,
+                raw_clone, SHIFT_X, 0) != 1
+            return 25 if destroy_code(clone) != 0 or destroy_code(source) != 0
+            return 26 if RenderScene::instance_count() != instances_before
+            0

@@ -1,0 +1,137 @@
+# Feeds freshly sampled Elisa poses to animated instances once per frame. Many
+# instances (typically clones sharing one cooked asset) share one Elisa
+# skeleton and clip but keep their own clip tick. An instance whose previous
+# pose has not been read by a device frame yet is deferred, never overwritten;
+# a pose a frame has read is completed before the next one is submitted.
+include "./render_scene_animation_assets.elisa"
+include "./pose_schedule_index.elisa"
+
+extend RenderScene:
+    private:
+        # 0 idle, 1 in flight, 2 consumed, -1 on a handle or backend error.
+        def sampled_pose_state_code(handle: InstanceHandle) -> i32:
+            state: AnimationPoseState = catch animation_pose_state(handle):
+                value: value
+                error failure: return -1
+            return 1 if state == AnimationPoseState.InFlight
+            return 2 if state == AnimationPoseState.Consumed
+            0
+
+        # 0 retired, 1 still unread by any frame, -2 on failure.
+        def sampled_pose_complete_code(handle: InstanceHandle) -> i32:
+            catch complete_animation_pose(handle):
+                ok: 0
+                RenderSceneError.AssetPending: 1
+                error failure: -2
+
+        # 1 submitted, 0 deferred because no frame has read the last pose yet,
+        # negative when retiring, sampling or submitting failed. A pose a frame
+        # has read is retired first (waiting for that frame if it is running).
+        def sampled_pose_step(handle: InstanceHandle, skeleton: AnimationAssets::SkeletonAsset&,
+            clip: AnimationAssets::AnimationClip&, tick: i64,
+            morphs: f32[AnimationPoseIndex::MORPHS], morph_count: usize) -> i32:
+            state: i32 = sampled_pose_state_code(handle)
+            return -1 if state < 0
+            completed: i32 = sampled_pose_complete_code(handle) if state != 0 else 0
+            return 0 if completed == 1
+            return completed if completed < 0
+            pose: mutable AnimationPose = catch RenderSceneAnimationAssets::pose_from_clip(skeleton, clip, tick):
+                value: value
+                error failure: return -3
+            # Weights were validated when stored, so these writes cannot fail.
+            for index in 0..<morph_count |pose, morphs|:
+                _ = catch set_morph_weight(&pose, index, morphs[index]):
+                    ok: 0
+                    error failure: 1
+            catch submit_animation_pose(handle, &pose):
+                ok: 1
+                error failure: -4
+
+        # 1 still unread by any frame, 0 idle or retired here, negative on failure.
+        def sampled_pose_settle_step(handle: InstanceHandle) -> i32:
+            state: i32 = sampled_pose_state_code(handle)
+            return -1 if state < 0
+            return 0 if state == 0
+            sampled_pose_complete_code(handle)
+
+    public:
+        struct SampledPoseSchedule:
+            private:
+                handles: mutable InstanceHandle[PoseScheduleIndex::MAX_POSES]
+                ticks: mutable i64[PoseScheduleIndex::MAX_POSES]
+                count: mutable usize
+                morphs: mutable f32[AnimationPoseIndex::MORPHS]
+                morph_count: mutable usize
+
+        struct SampledPoseReport:
+            submitted: usize
+            deferred: usize
+
+        def SampledPoseSchedule() -> SampledPoseSchedule:
+            SampledPoseSchedule{handles: zeroed, ticks: zeroed, count: 0,
+                morphs: zeroed, morph_count: 0}
+
+        def sampled_pose_count(schedule: SampledPoseSchedule&) -> usize:
+            schedule.count
+
+        # The clip tick last sampled for an entry, or -1 past the end.
+        def sampled_pose_tick(schedule: SampledPoseSchedule&, index: usize) -> i64:
+            return -1 if index >= schedule.count or index >= PoseScheduleIndex::MAX_POSES
+            schedule.ticks[index]
+
+        # Morph weight sent with every sampled pose. The cooked mesh fixes how
+        # many weights a submission carries, so set each of its targets.
+        def sampled_pose_set_morph_weight(schedule: mutable SampledPoseSchedule&,
+            index: usize, weight: f32) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if index >= AnimationPoseIndex::MORPHS
+            raise RenderSceneError.InvalidValue if weight != weight or weight < 0.0 or weight > 1.0
+            schedule.morphs[index] <- weight
+            schedule.morph_count <- AnimationPoseIndex::grown_morph_count(schedule.morph_count, index)
+
+        # Track an animated instance starting at `start_tick` of the clip.
+        def sampled_pose_track(schedule: mutable SampledPoseSchedule&,
+            handle: InstanceHandle, start_tick: i64) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if start_tick < 0 or start_tick > PoseScheduleIndex::MAX_DURATION_TICKS
+            slot: usize = PoseScheduleIndex::next_slot(schedule.count)
+            raise RenderSceneError.Capacity if slot >= PoseScheduleIndex::MAX_POSES
+            schedule.handles[slot] <- handle
+            schedule.ticks[slot] <- start_tick
+            schedule.count <- slot + 1
+
+        # Advance every entry's tick by `delta`, sample the clip in Elisa and
+        # submit the pose. Entries whose previous pose no frame has read yet
+        # keep their clock running but are deferred to a later frame.
+        def sampled_pose_advance(schedule: mutable SampledPoseSchedule&,
+            skeleton: AnimationAssets::SkeletonAsset&, clip: AnimationAssets::AnimationClip&,
+            delta: i64) -> SampledPoseReport error[RenderSceneError]:
+            duration: i64 = AnimationAssets::clip_duration_ticks(clip)
+            raise RenderSceneError.InvalidValue if delta < 0 or delta > PoseScheduleIndex::MAX_DELTA_TICKS
+            raise RenderSceneError.InvalidValue if duration <= 0 or duration > PoseScheduleIndex::MAX_DURATION_TICKS
+            next_ticks: mutable i64[PoseScheduleIndex::MAX_POSES] = schedule.ticks
+            morphs: f32[AnimationPoseIndex::MORPHS] = schedule.morphs
+            morph_count: usize = schedule.morph_count
+            submitted: mutable usize = 0
+            deferred: mutable usize = 0
+            failed: mutable bool = false
+            for index in 0..<schedule.count |next_ticks, submitted, deferred, failed, schedule, skeleton, clip, delta, duration, morphs, morph_count|:
+                tick: i64 = PoseScheduleIndex::wrapped_tick(next_ticks[index], delta, duration)
+                next_ticks[index] <- tick
+                step: i32 = sampled_pose_step(schedule.handles[index], skeleton, clip, tick, morphs, morph_count)
+                submitted <- submitted + 1 if step == 1 else submitted
+                deferred <- deferred + 1 if step == 0 else deferred
+                failed <- true if step < 0
+            schedule.ticks <- next_ticks
+            raise RenderSceneError.BackendFailure if failed
+            SampledPoseReport{submitted: submitted, deferred: deferred}
+
+        # Retire every pose a frame has read. Returns how many no frame has
+        # read yet; pump a frame and settle again before destroying instances.
+        def sampled_pose_settle(schedule: mutable SampledPoseSchedule&) -> usize error[RenderSceneError]:
+            in_flight: mutable usize = 0
+            failed: mutable bool = false
+            for index in 0..<schedule.count |in_flight, failed, schedule|:
+                step: i32 = sampled_pose_settle_step(schedule.handles[index])
+                in_flight <- in_flight + 1 if step == 1 else in_flight
+                failed <- true if step < 0
+            raise RenderSceneError.BackendFailure if failed
+            in_flight

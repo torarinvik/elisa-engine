@@ -3,6 +3,7 @@
 include "./render_scene_clearcoat_native.elisa"
 include "./render_scene_mirrored_normal_native.elisa"
 include "./render_scene_animation_clone_native.elisa"
+include "./render_scene_pose_schedule_native.elisa"
 
 module RenderSceneLateGroupsNativeTests:
     private:
@@ -17,4 +18,6 @@ module RenderSceneLateGroupsNativeTests:
             return elisa_render_scene_v1_test_failed_case(231, mirrored_normal_status) if mirrored_normal_status != 0
             clone_status: i32 = RenderSceneAnimationCloneNativeTests::exercise()
             return elisa_render_scene_v1_test_failed_case(236, clone_status) if clone_status != 0
+            pose_schedule_status: i32 = RenderScenePoseScheduleNativeTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(237, pose_schedule_status) if pose_schedule_status != 0
             0

@@ -1,0 +1,34 @@
+# Float-free tick and slot arithmetic for the sampled pose schedule, kept apart
+# so the prover can bound it (proof/pose_schedule_index.elisa). The capacity
+# mirrors the native animation submission bridge's instance limit.
+module PoseScheduleIndex:
+    public:
+        const MAX_POSES: usize = 16
+        const MAX_DELTA_TICKS: i64 = 1000000
+        const MAX_DURATION_TICKS: i64 = 1000000000
+
+        # The looping clip tick after advancing by `delta`. Inputs outside the
+        # accepted ranges map to 0; callers reject them first.
+        def wrapped_tick(tick: i64, delta: i64, duration: i64) -> i64:
+            ensure result >= 0
+            ensure result <= duration or duration <= 0
+            return 0 if duration <= 0 or duration > MAX_DURATION_TICKS
+            return 0 if tick < 0 or tick > duration
+            return 0 if delta < 0 or delta > MAX_DELTA_TICKS
+            next: i64 = tick + delta
+            return next if next <= duration
+            # The range check holds for any remainder; it is spelled out so
+            # the bound does not rest on the prover modelling `%`.
+            folded: i64 = next % duration
+            return 0 if folded < 0
+            return 0 if folded > duration
+            folded
+
+        # The slot a new entry takes: the current count while there is room,
+        # otherwise MAX_POSES as the full marker.
+        def next_slot(count: usize) -> usize:
+            ensure result <= MAX_POSES
+            ensure result < MAX_POSES or count >= MAX_POSES
+            ensure result == count or count >= MAX_POSES
+            return MAX_POSES if count >= MAX_POSES
+            count
