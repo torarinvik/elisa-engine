@@ -128,6 +128,7 @@ extern "C" int32_t elisa_render_scene_v1_debug_flush(void) {
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    ELISA_DEBUG_ALLOC_SCOPE;
     return int32_t(state.debug_draw.flush());
 }
 
@@ -136,6 +137,7 @@ extern "C" int32_t elisa_render_scene_v1_debug_clear(void) {
     std::lock_guard<std::mutex> guard(state.mutex);
     if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    ELISA_DEBUG_ALLOC_SCOPE;
     state.debug_draw.clear();
     return ELISA_RENDER_SCENE_OK;
 }

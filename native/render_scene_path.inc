@@ -94,8 +94,11 @@ public:
                 }
             }
         }
-        if (debug_draw_ != nullptr && debug_draw_->pending() > 0) {
-            debug_draw_->flush();
+        {
+            ELISA_DEBUG_ALLOC_SCOPE;
+            if (debug_draw_ != nullptr && debug_draw_->pending() > 0) {
+                debug_draw_->flush();
+            }
         }
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         render_path_gpu_timing_begin_render();

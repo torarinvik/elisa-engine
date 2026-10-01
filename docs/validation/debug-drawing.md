@@ -101,3 +101,17 @@ unchanged, 50 left side changed. Negative control: passing the unconverted
 chunk to `line_batch` again makes the focused debug smoke exit 49. The
 skeleton display test, which had placed its skeleton at negative x to
 compensate, now uses the panel's real Elisa x.
+
+## Disabled debug drawing allocates nothing (2026-10-01)
+
+Test builds (`ELISA_RENDER_SCENE_TEST_PROBE`) replace the global
+`operator new` with a malloc forwarder that counts allocations made while a
+thread-local debug scope is armed (native/render_scene_debug_alloc_probe.inc).
+The render path arms it around its debug flush step, and `debug_flush` and
+`debug_clear` arm it too. Group 231 then runs 60 frames with nothing queued,
+calling `debug_flush` and `debug_clear` each frame, and requires the count to
+stay unchanged. Cases: 51 the counter missed a known heap string (sanity
+control), 52 an idle frame failed, 53 idle frames allocated. Negative control:
+a `clear()` that shrinks and re-reserves its line batch every frame makes the
+focused debug smoke exit 53. The claim covers the debug path only; the rest of
+Wicked's frame is not measured here.

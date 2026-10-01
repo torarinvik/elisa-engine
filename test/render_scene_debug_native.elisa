@@ -6,6 +6,30 @@ include "../src/animation/overlay_lines.elisa"
 module RenderSceneDebugNativeTests:
     private:
         extern elisa_render_scene_v1_test_last_frame_luminance(x_permille: u32, y_permille: u32) -> f32
+        extern elisa_render_scene_v1_test_debug_draw_allocations() -> u64
+        extern elisa_render_scene_v1_test_debug_alloc_sanity() -> u64
+
+        # One frame with debug drawing disabled: nothing queued, the caller
+        # still flushes and clears, and the render path runs its debug step.
+        def idle_frame() -> bool:
+            flushed: i64 = catch RenderScene::debug_flush():
+                value: value.i64()
+                error failure: -1
+            cleared: i32 = catch RenderScene::debug_clear():
+                ok: 0
+                error failure: 1
+            flushed == 0 and cleared == 0 and Application::pump() == Application::PumpStatus.Running
+
+        # Case 51: the counter missed a known allocation; 52: an idle frame
+        # failed; 53: idle frames allocated in the debug path.
+        def exercise_idle_allocations() -> i32:
+            return 51 if elisa_render_scene_v1_test_debug_alloc_sanity() == 0
+            before: u64 = elisa_render_scene_v1_test_debug_draw_allocations()
+            ok: bool = for _ in 0..<60 |ok: bool = true| -> ok:
+                ok <- ok and idle_frame()
+            return 52 if not ok
+            return 53 if elisa_render_scene_v1_test_debug_draw_allocations() != before
+            0
 
         # A dense magenta patch of lines over x 1..3, z -1..1 at height 0.05:
         # Elisa world +X must land on the right of the smoke camera's frame.
@@ -282,4 +306,6 @@ module RenderSceneDebugNativeTests:
                 ok: 0
                 error failure: 1
             return 13 if cleared_after_flush != 0
-            exercise_handedness()
+            handed: i32 = exercise_handedness()
+            return handed if handed != 0
+            exercise_idle_allocations()

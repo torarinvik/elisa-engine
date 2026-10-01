@@ -48,6 +48,8 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include "render_scene_debug_alloc_probe.inc"
+
 namespace {
 constexpr size_t MAX_INSTANCES = 4096;
 // An instance or snapshot row without a shared snapshot mesh.
