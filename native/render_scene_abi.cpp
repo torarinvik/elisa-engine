@@ -535,6 +535,7 @@ extern "C" int32_t elisa_render_scene_v1_update_transform(
 #include "render_scene_snapshot_tint_abi.inc"
 #include "render_scene_snapshot_bundle_texture_abi.inc"
 #include "render_scene_snapshot_asset_request_abi.inc"
+#include "render_scene_asset_watch_abi.inc"
 #include "render_scene_animation_abi.inc"
 #include "render_scene_animation_submission_abi.inc"
 #include "render_scene_effects_abi.inc"

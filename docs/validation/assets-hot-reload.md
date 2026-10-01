@@ -51,6 +51,34 @@ Negative controls: letting `may_swap` ignore the retired generation trips
 its runtime postcondition (exit 134) and fails the proof; keeping a retired
 generation when there are no consumers makes the test exit 17.
 
+## Live renderer path (2026-10-01)
+
+`src/runtime/render_scene_hot_reload.elisa` drives the table against the
+native snapshot assets. Each slot owns an ID namespace, and generation g is
+registered as `AssetId{high, low: g}`, so a row that names
+`current(slot)` moves to the new generation on its next presenter sync,
+which replaces the instance. `poll_mesh` and `poll_texture` compare the
+file's size and write time (`elisa_render_scene_v1_asset_file_stamp`,
+`native/render_scene_asset_watch_abi.inc`) and import an edited file as the
+next generation. A texture edit restages every material that samples it,
+and a material that fails to load marks the texture broken. `edit_material`
+stages an edited descriptor. A broken import records `last_error` and
+leaves the live generation drawn. `frame_boundary` unregisters released
+generations (the native side refuses while anything still draws one), then
+swaps.
+
+`test/render_scene_hot_reload_native.elisa` (render smoke group 235) edits a
+KTX2 texture, a mesh and a material, breaks the texture and the mesh, and
+fixes both, checking the drawn mesh, material colour, sampled texture
+generation and that swapped-out generations are unregistered. Negative
+control: skipping the dependant restage on a texture edit fails group 235
+at case 17.
+
+Limits: the watcher reads mtime and size only; non-KTX2 loose images go
+through Wicked's path-keyed resource cache, so only KTX2 textures reload
+fresh; a texture with no dependent material is not validated before it
+swaps; material edits are descriptors, not files.
+
 ## Gaps
 
-There is no file watcher, and nothing reaches the renderer or audio yet, so A10 stays open.
+Audio resources have no hot-reload path.

@@ -40,6 +40,13 @@ module AssetsHotReload:
             t.staged[slot] <- t.live[slot] + 1
             Stage.Staged
 
+        # Drops a staged generation, for a caller that discards it before
+        # the frame boundary.
+        def unstage(t: mutable Table&, slot: i64) -> bool:
+            return false if not AssetsHotReloadPolicy::in_slot(slot, t.count)
+            t.staged[slot] <- 0
+            true
+
         # An asset may swap only when no ancestor in its dependency chain is
         # broken. The walk is bounded by the slot count, so a cyclic table
         # is treated as not ready instead of looping.

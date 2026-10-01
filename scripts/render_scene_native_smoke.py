@@ -434,6 +434,13 @@ def main() -> int:
             coarse_lod_capture.unlink(missing_ok=True)
             runtime_env["ELISA_LOD_FINE_CAPTURE"] = str(fine_lod_capture)
             runtime_env["ELISA_LOD_COARSE_CAPTURE"] = str(coarse_lod_capture)
+    # The hot-reload test (group 235) edits these working copies in place;
+    # every run starts from the original mesh and texture.
+    if not profile_cost_only:
+        hot_reload = build / "cooked/hot-reload"
+        hot_reload.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(build / "cooked/render-scene-triangle.elpk", hot_reload / "mesh.elpk")
+        shutil.copyfile(build / "cooked/maze_tile_tex.ktx2", hot_reload / "texture.ktx2")
     with tempfile.TemporaryDirectory(prefix="Elisa render scene smoke ") as working_directory:
         if render_only:
             if profile_cost_only:

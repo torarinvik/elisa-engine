@@ -1,0 +1,287 @@
+# A10 live hot reload for snapshot meshes, textures and materials. Each slot
+# owns one ID namespace (`high`); generation g of the slot is registered as
+# AssetId{high, low: g}. A watcher poll compares the file's size and write
+# time, imports an edited file as the next generation, and records a broken
+# import without touching the live one. `frame_boundary` frees generations
+# their consumers released, then swaps every ready staged generation at once.
+# Rows that name `current(slot)` move to the new generation on the next
+# presenter sync, which retires the old instances; the generation after is
+# unregistered at the following boundary, once nothing draws it.
+#
+# A texture is validated through the materials that sample it: a texture
+# edit restages each dependent material slot (`parent`) with the new
+# texture, and a material that fails to load marks the texture broken.
+include "../assets/hot_reload.elisa"
+include "./render_scene_assets.elisa"
+
+module RenderSceneHotReload:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_asset_file_stamp(path: cstr, size: mutable u64&,
+            modified_ns: mutable i64&) -> i32
+
+        const NATIVE_OK: i32 = 0
+        # Frames that draw a swapped-out generation: the next presenter sync.
+        const CONSUMERS: i64 = 1
+
+    public:
+        const module Kind:
+            UNUSED: i64 = 0
+            MESH: i64 = 1
+            TEXTURE: i64 = 2
+            MATERIAL: i64 = 3
+
+        # Import error codes, as `last_error` reports them.
+        const module ImportError:
+            NONE: i64 = 0
+            LOAD_FAILED: i64 = 1
+            INVALID: i64 = 2
+            OTHER: i64 = 3
+            MISSING: i64 = 4
+
+        enum Poll:
+            Unchanged
+            Staged
+            Broken
+            BadSlot
+
+        struct Reloader:
+            table: AssetsHotReload::Table
+            kind: i64[8]
+            high: u64[8]
+            size: mutable u64[8]
+            modified: mutable i64[8]
+            material: mutable Material::Material[8]
+            last_error_slot: mutable i64
+            last_error: mutable i64
+
+        # `parent[i]` is the texture slot material i samples as base color,
+        # or -1. Only material slots may name a parent.
+        def reloader(kind: i64[8], high: u64[8], parent: i64[8], count: i64) -> Reloader:
+            Reloader{table: AssetsHotReload::table(parent, count), kind: kind, high: high,
+                size: zeroed, modified: zeroed, material: zeroed,
+                last_error_slot: 0 - 1, last_error: ImportError::NONE}
+
+        def id(r: Reloader&, slot: i64, generation: i64) -> Assets::AssetId:
+            Assets::AssetId{high: r.high[slot], low: u64(generation)}
+
+        # The generation rows should draw.
+        def current(r: Reloader&, slot: i64) -> Assets::AssetId:
+            id(r, slot, r.table.live[slot])
+
+        def errors(r: Reloader&) -> i64:
+            r.table.errors
+
+        def slot_valid(r: Reloader&, slot: i64, kind: i64) -> bool:
+            return false if not AssetsHotReloadPolicy::in_slot(slot, r.table.count)
+            r.kind[slot] == kind
+
+        # Register generation 1 of a slot. Load textures before the
+        # materials that sample them.
+        def load_mesh(r: mutable Reloader&, slot: i64, path: cstr) -> i64:
+            return ImportError::INVALID if not slot_valid(r, slot, Kind::MESH)
+            remember(r, slot, path)
+            register_file(r, slot, 1, path)
+
+        def load_texture(r: mutable Reloader&, slot: i64, path: cstr) -> i64:
+            return ImportError::INVALID if not slot_valid(r, slot, Kind::TEXTURE)
+            remember(r, slot, path)
+            register_file(r, slot, 1, path)
+
+        def load_material(r: mutable Reloader&, slot: i64, material: Material::Material&) -> i64:
+            return ImportError::INVALID if not slot_valid(r, slot, Kind::MATERIAL)
+            copied: Material::Material = material
+            r.material[slot] <- copied
+            texture: Assets::AssetId = parent_texture(r, slot)
+            register_material(r, slot, 1, texture)
+
+        # Watches a mesh file; an edit imports the next generation.
+        def poll_mesh(r: mutable Reloader&, slot: i64, path: cstr) -> Poll:
+            return Poll.BadSlot if not slot_valid(r, slot, Kind::MESH)
+            return Poll.Unchanged if not changed(r, slot, path)
+            drop_staged(r, slot)
+            return broken(r, slot, ImportError::MISSING) if r.size[slot] == 0
+            generation: i64 = r.table.live[slot] + 1
+            code: i64 = register_file(r, slot, generation, path)
+            return broken(r, slot, code) if code != ImportError::NONE
+            staged(r, slot)
+
+        # Watches a texture file; an edit imports the next generation and
+        # restages every material that samples it.
+        def poll_texture(r: mutable Reloader&, slot: i64, path: cstr) -> Poll:
+            return Poll.BadSlot if not slot_valid(r, slot, Kind::TEXTURE)
+            return Poll.Unchanged if not changed(r, slot, path)
+            drop_dependants(r, slot)
+            drop_staged(r, slot)
+            return broken(r, slot, ImportError::MISSING) if r.size[slot] == 0
+            generation: i64 = r.table.live[slot] + 1
+            code: i64 = register_file(r, slot, generation, path)
+            return broken(r, slot, code) if code != ImportError::NONE
+            stage: AssetsHotReload::Stage = AssetsHotReload::stage(&r.table, slot, true)
+            return broken(r, slot, ImportError::INVALID) if stage != AssetsHotReload::Stage.Staged
+            failed: i64 = restage_dependants(r, slot)
+            if failed != ImportError::NONE:
+                drop_dependants(r, slot)
+                drop_staged(r, slot)
+                return broken(r, slot, failed)
+            Poll.Staged
+
+        # An edited material descriptor becomes the next generation.
+        def edit_material(r: mutable Reloader&, slot: i64, material: Material::Material&) -> Poll:
+            return Poll.BadSlot if not slot_valid(r, slot, Kind::MATERIAL)
+            drop_staged(r, slot)
+            copied: Material::Material = material
+            r.material[slot] <- copied
+            code: i64 = stage_material(r, slot)
+            return broken(r, slot, code) if code != ImportError::NONE
+            Poll.Staged
+
+        # The safe frame boundary: frees released generations, then swaps.
+        # Returns how many slots swapped.
+        def frame_boundary(r: mutable Reloader&) -> i64:
+            free_retired(r, Kind::MATERIAL)
+            free_retired(r, Kind::MESH)
+            free_retired(r, Kind::TEXTURE)
+            AssetsHotReload::commit(&r.table, CONSUMERS)
+
+        # Unregisters every generation; rows must no longer draw them.
+        # Returns how many unregistrations failed.
+        def unload(r: mutable Reloader&) -> i64:
+            failed: i64 = unload_kind(r, Kind::MATERIAL)
+            meshes: i64 = unload_kind(r, Kind::MESH)
+            textures: i64 = unload_kind(r, Kind::TEXTURE)
+            failed + meshes + textures
+
+    private:
+        def remember(r: mutable Reloader&, slot: i64, path: cstr) -> bool:
+            size: mutable u64 = 0
+            modified: mutable i64 = 0
+            status: i32 = elisa_render_scene_v1_asset_file_stamp(path, &size, &modified)
+            r.size[slot] <- size if status == NATIVE_OK else 0
+            r.modified[slot] <- modified if status == NATIVE_OK else 0
+            status == NATIVE_OK
+
+        # True when the file's stamp differs from the last one seen; a
+        # missing file reads as size 0, so it reports once.
+        def changed(r: mutable Reloader&, slot: i64, path: cstr) -> bool:
+            size: u64 = r.size[slot]
+            modified: i64 = r.modified[slot]
+            _ = remember(r, slot, path)
+            r.size[slot] != size or r.modified[slot] != modified
+
+        def broken(r: mutable Reloader&, slot: i64, code: i64) -> Poll:
+            _ = AssetsHotReload::stage(&r.table, slot, false)
+            r.last_error_slot <- slot
+            r.last_error <- code
+            Poll.Broken
+
+        def staged(r: mutable Reloader&, slot: i64) -> Poll:
+            stage: AssetsHotReload::Stage = AssetsHotReload::stage(&r.table, slot, true)
+            if stage != AssetsHotReload::Stage.Staged:
+                _ = unregister(r, slot, r.table.live[slot] + 1)
+                return broken(r, slot, ImportError::INVALID)
+            Poll.Staged
+
+        def register_file(r: Reloader&, slot: i64, generation: i64, path: cstr) -> i64:
+            asset: Assets::AssetId = id(r, slot, generation)
+            return register_mesh(asset, path) if r.kind[slot] == Kind::MESH
+            register_texture(asset, path)
+
+        def register_mesh(asset: Assets::AssetId, path: cstr) -> i64:
+            catch RenderScene::register_snapshot_mesh_asset(asset, path):
+                ok: ImportError::NONE
+                RenderScene::RenderSceneError.AssetLoadFailure: ImportError::LOAD_FAILED
+                RenderScene::RenderSceneError.InvalidValue: ImportError::INVALID
+                error failure: ImportError::OTHER
+
+        def register_texture(asset: Assets::AssetId, path: cstr) -> i64:
+            catch RenderScene::register_snapshot_texture_asset(asset, path):
+                ok: ImportError::NONE
+                RenderScene::RenderSceneError.AssetLoadFailure: ImportError::LOAD_FAILED
+                RenderScene::RenderSceneError.InvalidValue: ImportError::INVALID
+                error failure: ImportError::OTHER
+
+        # The texture a material slot samples: its parent's staged
+        # generation when one waits, else the live one.
+        def parent_texture(r: Reloader&, slot: i64) -> Assets::AssetId:
+            parent: i64 = r.table.parent[slot]
+            return Assets::AssetId{high: 0, low: 0} if not slot_valid(r, parent, Kind::TEXTURE)
+            generation: i64 = r.table.staged[parent] if r.table.staged[parent] > 0 else r.table.live[parent]
+            id(r, parent, generation)
+
+        def register_material(r: Reloader&, slot: i64, generation: i64, texture: Assets::AssetId) -> i64:
+            material: mutable Material::Material = r.material[slot]
+            material.base_color <- texture if texture.high != 0 else material.base_color
+            catch RenderScene::register_snapshot_material_asset(id(r, slot, generation), &material):
+                ok: ImportError::NONE
+                RenderScene::RenderSceneError.AssetLoadFailure: ImportError::LOAD_FAILED
+                RenderScene::RenderSceneError.InvalidValue: ImportError::INVALID
+                error failure: ImportError::OTHER
+
+        def stage_material(r: mutable Reloader&, slot: i64) -> i64:
+            generation: i64 = r.table.live[slot] + 1
+            texture: Assets::AssetId = parent_texture(r, slot)
+            code: i64 = register_material(r, slot, generation, texture)
+            return code if code != ImportError::NONE
+            stage: AssetsHotReload::Stage = AssetsHotReload::stage(&r.table, slot, true)
+            return ImportError::NONE if stage == AssetsHotReload::Stage.Staged
+            _ = unregister(r, slot, generation)
+            ImportError::INVALID
+
+        # Restages each material that samples texture `slot`; returns the
+        # first failure, leaving the caller to drop what did stage.
+        def restage_dependants(r: mutable Reloader&, slot: i64) -> i64:
+            for material in 0..<r.table.count:
+                if r.table.parent[material] == slot and r.kind[material] == Kind::MATERIAL:
+                    drop_staged(r, material)
+                    code: i64 = stage_material(r, material)
+                    return code if code != ImportError::NONE
+            ImportError::NONE
+
+        def drop_dependants(r: mutable Reloader&, slot: i64) -> bool:
+            for material in 0..<r.table.count:
+                if r.table.parent[material] == slot and r.kind[material] == Kind::MATERIAL:
+                    drop_staged(r, material)
+            true
+
+        def drop_staged(r: mutable Reloader&, slot: i64) -> bool:
+            generation: i64 = r.table.staged[slot]
+            return false if generation <= 0
+            _ = unregister(r, slot, generation)
+            AssetsHotReload::unstage(&r.table, slot)
+
+        def unregister(r: Reloader&, slot: i64, generation: i64) -> bool:
+            asset: Assets::AssetId = id(r, slot, generation)
+            kind: i64 = r.kind[slot]
+            if kind == Kind::MESH:
+                return catch RenderScene::unregister_snapshot_mesh_asset(asset):
+                    ok: true
+                    error failure: false
+            if kind == Kind::TEXTURE:
+                return catch RenderScene::unregister_snapshot_texture_asset(asset):
+                    ok: true
+                    error failure: false
+            catch RenderScene::unregister_snapshot_material_asset(asset):
+                ok: true
+                error failure: false
+
+        # A retired generation is unregistered once its last consumer lets
+        # go; the native side refuses while an instance or material still
+        # uses it, and the slot then keeps waiting.
+        def free_retired(r: mutable Reloader&, kind: i64) -> bool:
+            for slot in 0..<r.table.count:
+                if r.kind[slot] == kind and r.table.retired[slot] != 0:
+                    last: bool = r.table.retired_refs[slot] <= 1
+                    freed: bool = unregister(r, slot, r.table.retired[slot]) if last else true
+                    _ = AssetsHotReload::release(&r.table, slot) if freed else false
+            true
+
+        def unload_kind(r: mutable Reloader&, kind: i64) -> i64:
+            mutable failed: i64 = 0
+            for slot in 0..<r.table.count:
+                if r.kind[slot] == kind:
+                    _ = drop_staged(r, slot)
+                    retired: i64 = r.table.retired[slot]
+                    failed <- failed + 1 if retired != 0 and not unregister(r, slot, retired) else failed
+                    failed <- failed + 1 if not unregister(r, slot, r.table.live[slot]) else failed
+            failed

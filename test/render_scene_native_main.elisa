@@ -7,13 +7,13 @@ include "../src/runtime/render_scene_animation_assets.elisa"
 include "../src/runtime/render_scene_animation_schedule.elisa"
 include "../src/runtime/render_scene_effects.elisa"
 include "../src/runtime/render_scene_text.elisa"
-include "../src/runtime/render_snapshot_scene.elisa"
 include "../src/runtime/world_rendering.elisa"
 include "../src/world/world.elisa"
 include "../src/math/geometry.elisa"
 include "./maze_rendering_native.elisa"
 include "./render_scene_snapshot_native.elisa"
 include "./render_scene_snapshot_retained_native.elisa"
+include "./render_scene_hot_reload_native.elisa"
 include "./render_scene_bundle_texture_native.elisa"
 include "./render_scene_ktx2_budget_native.elisa"
 include "./render_scene_bundle_dependency_native.elisa"
@@ -358,6 +358,8 @@ def exercise_render_scene() -> i32:
     return elisa_render_scene_v1_test_failed_case(227, snapshot_test_status) if snapshot_test_status != 0
     retained_snapshot_status: i32 = RenderSceneSnapshotRetainedNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(195, retained_snapshot_status) if retained_snapshot_status != 0
+    hot_reload_status: i32 = RenderSceneHotReloadNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(235, hot_reload_status) if hot_reload_status != 0
     bundle_texture_status: i32 = RenderSceneBundleTextureNativeTests::exercise()
     return 160 + bundle_texture_status if bundle_texture_status != 0
     ktx2_budget_status: i32 = RenderSceneKtx2BudgetNativeTests::exercise()
