@@ -1,0 +1,35 @@
+# Render instances built from assets the native asset stream already holds.
+# The mesh comes from the cooked bytes the stream decoded (no disk reread) and
+# the material samples the GPU texture the stream uploaded, with a white base
+# colour, so the visible colour is the real bound texture, not a tint.
+include "./render_scene.elisa"
+include "./asset_stream.elisa"
+
+extend RenderScene:
+    private:
+        @callconv(c)
+        extern elisa_render_scene_v1_create_streamed_mesh(mesh_stream: i64, material_stream: i64,
+            px: f32, py: f32, pz: f32, qx: f32, qy: f32, qz: f32, qw: f32,
+            sx: f32, sy: f32, sz: f32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_streamed_material_bound(handle: i64, material_stream: i64) -> i32
+
+    public:
+        # Both stream handles must be resident. The instance keeps its own
+        # reference to the texture, so dropping the stream request afterwards
+        # never leaves the instance sampling a freed resource.
+        def create_streamed_mesh(mesh: AssetStream::StreamHandle, material: AssetStream::StreamHandle,
+            transform: Geometry::Transform) -> InstanceHandle error[RenderSceneError]:
+            native_value: i64 = elisa_render_scene_v1_create_streamed_mesh(mesh.token, material.token,
+                transform.position.x, transform.position.y, transform.position.z,
+                transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
+                transform.scale.x, transform.scale.y, transform.scale.z)
+            if native_value <= 0:
+                try check_status(native_value.i32())
+                raise RenderSceneError.BackendFailure
+            InstanceHandle{native_value: native_value}
+
+        # True when the instance's base-colour map is exactly the texture the
+        # stream keeps resident for `material` and its base colour is white.
+        def streamed_material_bound(handle: InstanceHandle, material: AssetStream::StreamHandle) -> bool:
+            elisa_render_scene_v1_streamed_material_bound(handle.native_value, material.token) == 1

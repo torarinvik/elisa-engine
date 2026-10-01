@@ -1,16 +1,13 @@
 // Private implementation fragment: cooked mesh loading and instance creation.
-extern "C" int64_t elisa_render_scene_v1_create_mesh(
-    const char* package_path,
+// Builds a live instance from already decoded cooked geometry. A non-null
+// `base_map` becomes the material's base-colour texture, so the GPU resource
+// it names stays referenced until the instance is destroyed.
+int64_t install_cooked_mesh(RenderSceneService& state, elisa::assets::CookedGeometry& geometry,
     float px, float py, float pz,
     float qx, float qy, float qz, float qw,
     float sx, float sy, float sz,
-    float red, float green, float blue, float alpha) {
-    if (!valid_transform(px, py, pz, qx, qy, qz, qw, sx, sy, sz) ||
-        !valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
-    RenderSceneService& state = service();
-    std::lock_guard<std::mutex> guard(state.mutex);
-    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
-    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    float red, float green, float blue, float alpha,
+    const wi::graphics::Texture* base_map) {
     const size_t slot = find_free_slot(state);
     if (slot == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
     InstanceSlot& instance = state.instances[slot];
@@ -32,24 +29,6 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.morph_default_weights.clear();
     instance.animation_submission = {};
     clear_animation_state(instance);
-    std::filesystem::path resolved_path;
-    elisa::assets::CookedGeometry geometry;
-    std::string load_error;
-    try {
-        if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-        if (!elisa::assets::verify_bundle_dependencies(resolved_path, load_error) ||
-            !elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
-            std::fprintf(stderr, "Elisa cooked mesh load failed: %s\n", load_error.c_str());
-            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-        }
-    } catch (const std::exception& error) {
-        std::fprintf(stderr, "Elisa cooked mesh load exception: %s\n", error.what());
-        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    } catch (...) {
-        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
-    }
     const uint64_t generation = instance.generation + 1;
     const std::string name = "elisa_cooked_mesh_" + std::to_string(slot) + "_" + std::to_string(generation);
 
@@ -72,6 +51,15 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
         if (!configured) {
             state.scene->Entity_Remove(entity);
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        }
+        if (base_map != nullptr) {
+            wi::scene::MaterialComponent* material = state.scene->materials.GetComponent(entity);
+            if (material == nullptr || !base_map->IsValid()) {
+                state.scene->Entity_Remove(entity);
+                return ELISA_RENDER_SCENE_BACKEND_FAILED;
+            }
+            material->textures[wi::scene::MaterialComponent::BASECOLORMAP].resource.SetTexture(*base_map);
+            material->SetDirty();
         }
         if (has_placement_metadata) {
             placement_entities.reserve(geometry.mesh_placements.size() - 1);
@@ -134,6 +122,42 @@ extern "C" int64_t elisa_render_scene_v1_create_mesh(
     instance.generation = generation;
     instance.live = true;
     return int64_t(encode_handle(slot, generation));
+}
+
+
+extern "C" int64_t elisa_render_scene_v1_create_mesh(
+    const char* package_path,
+    float px, float py, float pz,
+    float qx, float qy, float qz, float qw,
+    float sx, float sy, float sz,
+    float red, float green, float blue, float alpha) {
+    if (!valid_transform(px, py, pz, qx, qy, qz, qw, sx, sy, sz) ||
+        !valid_color(red, green, blue, alpha)) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    if (find_free_slot(state) == MAX_INSTANCES) return ELISA_RENDER_SCENE_CAPACITY;
+    std::filesystem::path resolved_path;
+    elisa::assets::CookedGeometry geometry;
+    std::string load_error;
+    try {
+        if (!elisa::assets::resolve_project_asset_path(package_path, resolved_path)) {
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+        if (!elisa::assets::verify_bundle_dependencies(resolved_path, load_error) ||
+            !elisa::assets::load_cooked_geometry_asset(resolved_path.string(), geometry, load_error)) {
+            std::fprintf(stderr, "Elisa cooked mesh load failed: %s\n", load_error.c_str());
+            return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+        }
+    } catch (const std::exception& error) {
+        std::fprintf(stderr, "Elisa cooked mesh load exception: %s\n", error.what());
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    } catch (...) {
+        return ELISA_RENDER_SCENE_ASSET_LOAD_FAILED;
+    }
+    return install_cooked_mesh(state, geometry, px, py, pz, qx, qy, qz, qw, sx, sy, sz,
+        red, green, blue, alpha, nullptr);
 }
 
 // Shared-mesh instances. Wicked draws every ObjectComponent naming one mesh

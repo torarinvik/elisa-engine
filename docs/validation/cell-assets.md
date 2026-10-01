@@ -43,10 +43,13 @@ Mutation check (scratch copies, all killed): forcing the last-owner path, removi
 - `CellAssets::report_native` takes a native stage (queued, decoding, uploading, ready, failed, cancelled) and byte count by asset key and catches the portable ledger up. It refuses unknown keys and reports that fall behind the ledger, and it marks the asset failed when the native request gives up. `cell_ready_count` and `cell_failed` let a cell tell when all its assets are ready. The stage arithmetic lives in `src/world/cell_asset_stages.elisa`, is proved in `proof/cell_asset_stages.elisa` and is tested by `test/cell_asset_stages.elisa`.
 - `cell-streaming-smoke` writes cooked mesh packages (box, pyramid; shared by two cells each) and one material package per cell. It requests them natively per key, pumps real decode and upload completions into `CellAssets` and checks each uploaded texel. It drops native requests by refcount on unload and requires the native live count to equal the ledger after every step and to reach zero at teardown.
 
+## Streamed meshes and bound materials (2026-10-01)
+
+- `RenderScene::create_streamed_mesh` (`src/runtime/render_scene_streamed.elisa`, `native/render_scene_streamed_mesh_abi.inc`) builds a row from the cooked mesh bytes the native stream already decoded (copied out under the loader lock by `elisa_asset_stream_copy_bytes`, `native/asset_stream_borrow.h`); nothing is reread from disk. The material stream's uploaded texture is shared into the row's Wicked material as its base-colour map, with a white base colour.
+- `RenderScene::streamed_material_bound` checks that the row's base map is the very texture the stream keeps resident. `cell-streaming-smoke` requires it for every live row after every step (code 84) and passes.
+
 ## Remaining
 
-- `RenderScene::create_mesh` reloads the mesh package from disk by path. It does not draw from the bytes the loader decoded.
-- The material tint comes from the uploaded texel, not from a bound GPU material.
 - The traveller is a scripted walker in a native smoke, not a player in a shipped game (for example `examples/character_course`).
 
 W05 stays open until a real game crosses cells with the native loader backing the stages.

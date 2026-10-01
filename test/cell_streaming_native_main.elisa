@@ -4,12 +4,14 @@
 # native loads), streams in the player's cell by loading its cooked mesh and
 # material packages through the native resource loader, whose real per-key
 # stage reports drive CellAssets between frames, and builds the renderer row
-# from the cooked mesh package tinted by the loaded material's uploaded texel.
+# from the mesh bytes the stream decoded with the stream's uploaded material
+# texture bound as a real GPU base-colour map (checked by identity).
 # After the first pass warms caches, every live GPU and process-memory sample
 # must stay within declared growth allowances.
 include "../src/runtime/public.elisa"
 include "../src/runtime/application_memory.elisa"
 include "../src/runtime/asset_stream.elisa"
+include "../src/runtime/render_scene_streamed.elisa"
 include "../src/world/cell_asset_world.elisa"
 include "../src/world/cell_memory_budget.elisa"
 include "../src/world/cell_visuals.elisa"
@@ -69,10 +71,6 @@ module CellStreamingSmoke:
             return "cell-mesh-1.elpk" if x % 2 == 1
             "cell-mesh-0.elpk"
 
-        def mesh_path(shape: i32) -> cstr:
-            return "cell-stream/cell-mesh-1.elpk" if shape == 1
-            "cell-stream/cell-mesh-0.elpk"
-
         def paint_package(x: i64) -> cstr:
             return "cell-paint-00.elpk" if x == 0
             return "cell-paint-01.elpk" if x == 1
@@ -131,16 +129,12 @@ module CellStreamingSmoke:
             return 49 if waited == 1
             waited
 
-        # The row draws the cell's cooked mesh package, tinted by the texel the
-        # native loader uploaded from the cell's material package.
-        def spawn(visual: CellVisuals::Visual, x: i64, texel: i64) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+        # The row draws the cooked mesh bytes the native stream decoded, with
+        # the stream's uploaded material texture bound as its base-colour map.
+        def spawn(mesh: AssetStream::StreamHandle, paint: AssetStream::StreamHandle, x: i64) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
             pose: Geometry::Transform = Geometry::transform_translate(Geometry::transform_identity(),
                 Geometry::Vec3{x: x.f32() * 2.0 - 12.0, y: 0.0, z: 0.0})
-            red: f32 = (texel % 256).f32() / 255.0
-            green: f32 = ((texel / 256) % 256).f32() / 255.0
-            blue: f32 = ((texel / 65536) % 256).f32() / 255.0
-            try RenderScene::create_mesh(mesh_path(visual.shape), pose,
-                RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0})
+            try RenderScene::create_streamed_mesh(mesh, paint, pose)
 
         def drop_row(handle: RenderScene::InstanceHandle) -> bool:
             catch RenderScene::destroy(handle):
@@ -221,7 +215,7 @@ module CellStreamingSmoke:
                         visual: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(px), mesh_key(px), paint_key(px))
                         code <- 62 if code == 0 and not visual.ready
                         if code == 0:
-                            created: RenderScene::InstanceHandle = catch spawn(visual, px, texel):
+                            created: RenderScene::InstanceHandle = catch spawn(meshes[shape], paints[index], px):
                                 value: value
                                 error failure: rows[index]
                             code <- 63 if not row_alive(created)
@@ -229,11 +223,12 @@ module CellStreamingSmoke:
                             live[index] <- code == 0
                     code <- 64 if code == 0 and not pump(1)
                     # Every live row is backed by owned, resident assets.
-                    for x in 0..<Tune::CELLS |shelf, ledger, rows, live, code|:
+                    for x in 0..<Tune::CELLS |shelf, ledger, rows, live, paints, code|:
                         if live[x]:
                             backed: CellVisuals::Visual = CellVisuals::resolve(shelf, ledger, cell_of(x.i64()), mesh_key(x.i64()), paint_key(x.i64()))
                             code <- 65 if code == 0 and not backed.ready
                             code <- 66 if code == 0 and not row_alive(rows[x])
+                            code <- 84 if code == 0 and not RenderScene::streamed_material_bound(rows[x], paints[x])
                     live_count: i32 =
                         for x in 0..<Tune::CELLS |live, count: i32 = 0| -> count:
                             count <- count + 1 if live[x]

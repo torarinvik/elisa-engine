@@ -160,6 +160,12 @@ public:
             item->state == NativeAssetState::Resident) ? item->bytes.size() : 0;
     }
 
+    // The decoded bytes a resident request keeps, or null.
+    const std::vector<uint8_t>* resident_bytes(NativeAssetHandle handle) const {
+        const Item* item = find(handle);
+        return item != nullptr && item->state == NativeAssetState::Resident ? &item->bytes : nullptr;
+    }
+
     // The 0xAABBGGRR pixel uploaded for a resident request, or 0.
     uint32_t texel(NativeAssetHandle handle) const {
         const Item* item = find(handle);

@@ -5,6 +5,7 @@
 // stages per request. Handles pack generation * 32 + slot and are always > 0.
 #include "bundle_dependencies.h"
 #include "native_resource_loader.h"
+#include "asset_stream_borrow.h"
 
 #include <memory>
 
@@ -174,4 +175,26 @@ extern "C" int32_t elisa_application_v1_asset_stream_reset(void) {
     std::lock_guard<std::mutex> lock(state.mutex);
     state.loader.reset();
     return ELISA_APPLICATION_OK;
+}
+
+bool elisa_asset_stream_copy_bytes(int64_t handle, std::vector<uint8_t>& bytes) {
+    if (asset_stream_ready() != ELISA_APPLICATION_OK) return false;
+    AssetStreamState& state = asset_stream_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.loader) return false;
+    const std::vector<uint8_t>* resident = state.loader->resident_bytes(unpack_asset_stream_handle(handle));
+    if (resident == nullptr || resident->empty()) return false;
+    bytes = *resident;
+    return true;
+}
+
+bool elisa_asset_stream_share_texture(int64_t handle, wi::graphics::Texture& texture) {
+    if (asset_stream_ready() != ELISA_APPLICATION_OK) return false;
+    AssetStreamState& state = asset_stream_state();
+    std::lock_guard<std::mutex> lock(state.mutex);
+    if (!state.loader) return false;
+    const wi::graphics::Texture* resident = state.loader->texture(unpack_asset_stream_handle(handle));
+    if (resident == nullptr || !resident->IsValid()) return false;
+    texture = *resident;
+    return true;
 }
