@@ -1,0 +1,89 @@
+# Render smoke group 238: owner despawn plus a RenderScene restart must return
+# effect counts and process memory to baseline. One warm-up cycle settles
+# allocator pools and pipelines; later cycles must stay within the tolerance.
+module RenderSceneEffectMemoryNativeTests:
+    private:
+        const MEASURED_CYCLES: i32 = 6
+        # 8 MiB covers allocator and driver noise; one leaked Wicked scene or
+        # emitter buffer set per cycle would exceed it within six cycles.
+        const TOLERANCE_KIB: i64 = 8192
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_footprint_kib(cycle: i32) -> i64
+
+        def effect_memory_cycle(world: mutable World::World&, effects: mutable WorldEffects::Effects&) -> i32:
+            entity: World::EntityRef = catch World::world_spawn(world, World::Actor.Player):
+                value: value
+                error failure: return 1
+            placed: i32 = catch World::world_set_transform(world, entity, Geometry::Transform{
+                position: Geometry::Vec3{x: 1.0, y: 0.5, z: -2.0},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::vec3_one(),
+            }):
+                ok: 0
+                error failure: 1
+            return 2 if placed != 0
+            emitter_status: i32 = catch WorldEffects::spawn_emitter(world, effects, entity,
+                RenderScene::Emitter(Geometry::vec3_zero(), 128, 24.0, 1.5, 0.5,
+                    Geometry::Vec3{x: 0.0, y: 2.0, z: 0.0})):
+                ok: 0
+                error failure: 1
+            return 3 if emitter_status != 0
+            decal_status: i32 = catch WorldEffects::spawn_decal(world, effects, entity,
+                RenderScene::Decal(Geometry::vec3_zero(), Geometry::quat_identity(),
+                    RenderScene::Color{red: 0.2, green: 0.2, blue: 0.2, alpha: 0.8}, 2.0, 0.25)):
+                ok: 0
+                error failure: 1
+            return 4 if decal_status != 0
+            return 5 if not RenderSceneEffectsNativeTests::native_effect_counts_are(1, 1)
+            ticked: mutable i32 = 0
+            for _ in 0..<4 |world, effects, ticked|:
+                step: i32 = catch WorldEffects::update(world, effects, 0.25):
+                    value: 0
+                    error failure: 1
+                ticked <- ticked + step
+            return 6 if ticked != 0
+            despawned: i32 = catch World::world_despawn(world, entity):
+                ok: 0
+                error failure: 1
+            return 7 if despawned != 0
+            cleaned: usize = catch WorldEffects::update(world, effects, 0.1):
+                value: value.detached_despawned
+                error failure: return 8
+            return 9 if cleaned != 1 or WorldEffects::binding_count(effects) != 0
+            return 10 if not RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
+            stopped: i32 = catch RenderScene::shutdown():
+                ok: 0
+                error failure: 1
+            return 11 if stopped != 0
+            restarted: i32 = catch RenderScene::initialize(320, 200, 10.0):
+                ok: 0
+                error failure: 1
+            return 12 if restarted != 0
+            return 13 if not RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
+            0
+
+    public:
+        # Returns 0, a cycle failure as 20 * cycle + case, or 15/16 for memory.
+        def exercise() -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 14
+            effects: mutable WorldEffects::Effects = WorldEffects::Effects()
+            warm_up: i32 = effect_memory_cycle(&world, &effects)
+            return warm_up if warm_up != 0
+            baseline: i64 = elisa_render_scene_v1_test_footprint_kib(0)
+            return 15 if baseline <= 0
+            failed: mutable i32 = 0
+            peak: mutable i64 = baseline
+            for index in 0..<MEASURED_CYCLES |world, effects, failed, peak|:
+                cycle: i32 = index + 1
+                status: i32 = effect_memory_cycle(&world, &effects)
+                if status != 0 and failed == 0:
+                    failed <- 20 * cycle + status
+                sample: i64 = elisa_render_scene_v1_test_footprint_kib(cycle)
+                if sample > peak:
+                    peak <- sample
+            return failed if failed != 0
+            return 16 if peak - baseline > TOLERANCE_KIB
+            0

@@ -88,5 +88,16 @@ python3 scripts/environmental_effects_smoke.py
 
 On macOS 27.0 / Apple M5 the latest run changed 8,084 pixels in the 2,304,000-
 pixel capture. The separate native event smoke still checks emitter/decal
-component counts before and after a RenderScene restart. Heap-memory baselines
-across restarts remain open for R09.
+component counts before and after a RenderScene restart.
+
+Render smoke group 238 (`test/render_scene_effect_memory_native.elisa`) checks
+memory as well as counts. Each cycle attaches an emitter and a decal to a World
+owner through `WorldEffects`, ticks four updates, despawns the owner, and checks
+that the binding count and the Wicked emitter/decal counts are zero. It then
+shuts the RenderScene down and initializes it again, and checks the counts again.
+After one warm-up cycle, the test hook `elisa_render_scene_v1_test_footprint_kib`
+reads Mach `TASK_VM_INFO` `phys_footprint`, which includes Metal allocations
+charged to the process. Six measured cycles must stay within 8 MiB of the
+post-warm-up sample. On 2026-10-02 (macOS 27.0, Apple M5), the post-warm-up
+sample was 1,149,921 KiB and all six cycles read 1,149,873 KiB, so memory did
+not grow. Setting the tolerance to -1 makes the smoke exit 238, as expected.

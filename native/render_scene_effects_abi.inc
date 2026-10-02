@@ -246,4 +246,26 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_component_count(int32_t kin
     return -1;
 }
 
+// Physical footprint in KiB, as Activity Monitor reports it: resident and
+// compressed pages plus device allocations charged to this task. The effect
+// memory smoke compares it across scene restarts; -1 means unavailable.
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#endif
+extern "C" int64_t elisa_render_scene_v1_test_footprint_kib(int32_t cycle) {
+#if defined(__APPLE__)
+    task_vm_info_data_t info{};
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, reinterpret_cast<task_info_t>(&info), &count) != KERN_SUCCESS) {
+        return -1;
+    }
+    const int64_t kib = static_cast<int64_t>(info.phys_footprint / 1024);
+    std::fprintf(stderr, "effect memory cycle %d: phys_footprint %lld KiB\n", cycle, static_cast<long long>(kib));
+    return kib;
+#else
+    (void)cycle;
+    return -1;
+#endif
+}
+
 #endif

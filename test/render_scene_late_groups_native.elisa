@@ -4,6 +4,7 @@ include "./render_scene_clearcoat_native.elisa"
 include "./render_scene_mirrored_normal_native.elisa"
 include "./render_scene_animation_clone_native.elisa"
 include "./render_scene_pose_schedule_native.elisa"
+include "./render_scene_effect_memory_native.elisa"
 
 module RenderSceneLateGroupsNativeTests:
     private:

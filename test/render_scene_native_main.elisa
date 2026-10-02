@@ -582,6 +582,8 @@ def exercise_render_scene() -> i32:
     return 28 if RenderScene::instance_count() != 1
     debug_updates: i32 = RenderSceneDebugNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(231, debug_updates) if debug_updates != 0
+    effect_memory: i32 = RenderSceneEffectMemoryNativeTests::exercise()
+    return elisa_render_scene_v1_test_failed_case(238, effect_memory) if effect_memory != 0
     application_shutdown: bool = Application::shutdown()
     return 29 if not application_shutdown
     return 30 if RenderScene::is_initialized() or RenderScene::instance_count() != 0
