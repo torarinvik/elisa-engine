@@ -42,6 +42,14 @@ module UiClip:
             y0: i64 = UiClipMath::overlap_start(a.y, b.y)
             box(x0, y0, UiClipMath::overlap(a.x, a.w, b.x, b.w), UiClipMath::overlap(a.y, a.h, b.y, b.h))
 
+        def empty(b: Box) -> bool:
+            b.w <= 0 or b.h <= 0
+
+        # Whether `inner` lies entirely inside `outer`; renderers without a
+        # scissor hide text that would otherwise spill past the clip.
+        def inside(outer: Box, inner: Box) -> bool:
+            inner.x >= outer.x and inner.y >= outer.y and inner.x + inner.w <= outer.x + outer.w and inner.y + inner.h <= outer.y + outer.h
+
         def current(s: Stack&) -> Box:
             return box(0, 0, 0, 0) if s.depth < 1 or s.depth > 8
             s.boxes[s.depth - 1]

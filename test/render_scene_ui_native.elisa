@@ -88,6 +88,18 @@ module RenderSceneUiNativeTests:
                 ok: 0
                 error failure: 8
             return 9 if full_page != 0
+            # A clip that cuts the page keeps only whole rows and hides the
+            # panels entirely when nothing of the menu is inside.
+            clipped: i32 = catch UiRenderer::sync_menu_clipped(&fixture.canvas,
+                &fixture.menu, &fixture.theme, 280, 14, UiClip::box(0, 100, 400, 50)):
+                ok: 0
+                error failure: 30
+            return 31 if clipped != 0
+            outside: i32 = catch UiRenderer::sync_menu_clipped(&fixture.canvas,
+                &fixture.menu, &fixture.theme, 280, 14, UiClip::box(2000, 2000, 10, 10)):
+                ok: 0
+                error failure: 32
+            return 33 if outside != 0
             for frame in 0..<3:
                 return 12 if Application::pump() != Application::PumpStatus.Running
             invalid: i32 = catch UiRenderer::sync_menu(&fixture.canvas,

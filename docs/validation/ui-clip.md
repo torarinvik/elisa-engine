@@ -27,8 +27,12 @@ Validated on 2026-10-02 with the pinned Stage1 compiler
 
 ## Gaps
 
-- No Wicked draw path uses the clip yet: no scissor rectangles, and neither
-  the menu renderer nor the HUD pushes panels.
+- `UiRenderer::sync_menu_clipped` draws a menu inside a clip box: panels are
+  trimmed (hidden when empty) and a label shows only when its whole row is
+  inside. The native smoke exercises a cutting clip and an off-screen clip,
+  but it cannot read the overlay state back, so it only shows these calls
+  are accepted. Overlays have no GPU scissor, so text that crosses the clip
+  is hidden rather than cut, and the HUD does not push panels yet.
 - Focus traversal lives in ui-focus-nav.md. I02 stays open.
 
 ## Proof

@@ -38,4 +38,9 @@ def main() -> i32:
     # Content shorter than the viewport never scrolls.
     mutable short: UiClip::Scroll = UiClip::new_scroll(100, 60)
     return 22 if UiClip::scroll_by(&short, 50) != 0 or UiClip::reveal(&short, 40, 20) != 0
+    # Renderer helpers: emptiness and full containment.
+    outer: UiClip::Box = UiClip::box(10, 10, 100, 50)
+    return 23 if not UiClip::empty(UiClip::box(0, 0, 0, 5)) or UiClip::empty(outer)
+    return 24 if not UiClip::inside(outer, UiClip::box(10, 10, 100, 50)) or UiClip::inside(outer, UiClip::box(50, 40, 20, 21))
+    return 25 if UiClip::inside(outer, UiClip::box(9, 20, 5, 5))
     return 0

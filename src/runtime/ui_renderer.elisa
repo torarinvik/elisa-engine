@@ -3,6 +3,7 @@
 # focus without asking a game-specific native layer to draw interface elements.
 include "./render_scene.elisa"
 include "./render_scene_text.elisa"
+include "../ui/clip.elisa"
 include "../ui/layout.elisa"
 include "../ui/menu.elisa"
 include "../ui/style.elisa"
@@ -83,6 +84,14 @@ module UiRenderer:
         # logical screen pixels. Layout is computed from Elisa's menu and
         # layout models; hidden scrolled rows keep their text handles alive.
         def sync_menu(canvas: mutable MenuCanvas&, menu: Ui::Menu&, theme: UiStyle::Theme&, width: i64, font_size: i32) -> void error[RenderScene::RenderSceneError]:
+            try sync_menu_clipped(canvas, menu, theme, width, font_size,
+                UiClip::box(-Bounds::MAX_COORDINATE, -Bounds::MAX_COORDINATE,
+                    2 * Bounds::MAX_COORDINATE, 2 * Bounds::MAX_COORDINATE))
+
+        # As sync_menu, drawn inside `clip` (normally UiClip::current of the
+        # caller's stack): panels are trimmed to the clip and a label shows
+        # only when its whole row is inside, since overlays have no scissor.
+        def sync_menu_clipped(canvas: mutable MenuCanvas&, menu: Ui::Menu&, theme: UiStyle::Theme&, width: i64, font_size: i32, clip: UiClip::Box) -> void error[RenderScene::RenderSceneError]:
             raise RenderScene::RenderSceneError.InvalidValue if not Ui::menu_valid(menu)
             raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(theme)
             raise RenderScene::RenderSceneError.InvalidValue if not menu_canvas_valid(canvas, menu)
@@ -101,34 +110,47 @@ module UiRenderer:
                 raise RenderScene::RenderSceneError.InvalidValue if row_node < 0
             height: i64 = Ui::visible_rows(menu).i64() * Ui::menu_row_height(menu)
             UiLayout::layout_compute(&rows, menu.x, menu.y, width, height)
-            panel: UiLayout::Rect = UiLayout::node_rect(&rows, 0)
-            try RenderScene::set_overlay_panel_position(canvas.background,
-                panel.x.f32(), panel.y.f32())
-            try RenderScene::set_overlay_panel_size(canvas.background,
-                panel.width.f32(), panel.height.f32())
+            panel_rect: UiLayout::Rect = UiLayout::node_rect(&rows, 0)
+            panel: UiClip::Box = UiClip::clip_intersect(clip,
+                UiClip::box(panel_rect.x, panel_rect.y, panel_rect.width, panel_rect.height))
+            # The backend rejects zero sizes, so an empty panel is only hidden.
+            if not UiClip::empty(panel):
+                try RenderScene::set_overlay_panel_position(canvas.background,
+                    panel.x.f32(), panel.y.f32())
+                try RenderScene::set_overlay_panel_size(canvas.background,
+                    panel.w.f32(), panel.h.f32())
             try RenderScene::set_overlay_panel_color(canvas.background,
                 render_color(theme.background))
-            try RenderScene::set_overlay_panel_visible(canvas.background, true)
+            try RenderScene::set_overlay_panel_visible(canvas.background,
+                not UiClip::empty(panel))
 
             focus_row: i64 = menu.focus - menu.scroll
-            focused: bool = focus_row >= 0 and focus_row < Ui::visible_rows(menu).i64()
-            if focused:
-                focus_rect: UiLayout::Rect = UiLayout::node_rect(&rows,
+            mutable focus_rect: UiClip::Box = UiClip::box(0, 0, 0, 0)
+            if focus_row >= 0 and focus_row < Ui::visible_rows(menu).i64():
+                band_rect: UiLayout::Rect = UiLayout::node_rect(&rows,
                     (focus_row + 1).usize())
+                focus_rect <- UiClip::clip_intersect(clip,
+                    UiClip::box(band_rect.x, band_rect.y, band_rect.width, band_rect.height))
+            focused: bool = not UiClip::empty(focus_rect)
+            if focused:
                 focus_color: mutable UiStyle::Color = theme.focus
                 focus_color.a <- focus_color.a / 5
                 try RenderScene::set_overlay_panel_position(canvas.focus_band,
                     focus_rect.x.f32(), focus_rect.y.f32())
                 try RenderScene::set_overlay_panel_size(canvas.focus_band,
-                    focus_rect.width.f32(), focus_rect.height.f32())
+                    focus_rect.w.f32(), focus_rect.h.f32())
                 try RenderScene::set_overlay_panel_color(canvas.focus_band,
                     render_color(&focus_color))
             try RenderScene::set_overlay_panel_visible(canvas.focus_band, focused)
 
-            for index in 0..<canvas.label_count |canvas, menu, rows, theme, font_size|:
+            for index in 0..<canvas.label_count |canvas, menu, rows, theme, font_size, clip|:
                 item_index: i64 = index.i64()
                 on_screen: bool = (item_index >= menu.scroll) and (item_index < menu.scroll + Ui::visible_rows(menu).i64())
-                shown: bool = (index < Ui::item_count(menu)) and on_screen
+                mutable shown: bool = (index < Ui::item_count(menu)) and on_screen
+                if shown:
+                    row_box: UiLayout::Rect = UiLayout::node_rect(&rows,
+                        (item_index - menu.scroll + 1).usize())
+                    shown <- UiClip::inside(clip, UiClip::box(row_box.x, row_box.y, row_box.width, row_box.height))
                 label: RenderScene::OverlayTextHandle = canvas.labels[index]
                 if shown:
                     row: i64 = item_index - menu.scroll
