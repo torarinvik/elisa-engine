@@ -1,0 +1,26 @@
+include "../src/ui/slider.elisa"
+
+def main() -> i32:
+    s: UiSlider::Slider = UiSlider::make(0, 100, 10, 50)
+    return 1 if not s.valid or s.value != 50 or UiSlider::permille(s) != 500
+    # Off-grid and out-of-range input is snapped and clamped.
+    return 2 if UiSlider::set(s, 44).value != 40 or UiSlider::set(s, 45).value != 50
+    return 3 if UiSlider::set(s, -7).value != 0 or UiSlider::set(s, 900).value != 100
+    # Nudges move one step and stop at the ends; other directions do nothing.
+    return 4 if UiSlider::nudge(s, 1).value != 60 or UiSlider::nudge(s, -1).value != 40
+    top: UiSlider::Slider = UiSlider::nudge(UiSlider::set(s, 100), 1)
+    return 5 if top.value != 100 or UiSlider::nudge(s, 3).value != 50
+    # A range that is not a multiple of the step still reaches its top.
+    odd: UiSlider::Slider = UiSlider::make(0, 25, 10, 0)
+    return 6 if UiSlider::nudge(UiSlider::set(odd, 20), 1).value != 25 or UiSlider::set(odd, 24).value != 25
+    # Saved values: in range is snapped, out of range falls back and is flagged.
+    good: UiSlider::Slider = UiSlider::load(s, 73)
+    return 7 if good.value != 70 or good.recovered
+    bad: UiSlider::Slider = UiSlider::load(s, 4000)
+    return 8 if bad.value != 50 or not bad.recovered
+    return 9 if UiSlider::set(bad, 30).recovered
+    # Invalid configurations are refused and stay put.
+    broken: UiSlider::Slider = UiSlider::make(10, 10, 1, 10)
+    return 10 if broken.valid or UiSlider::set(broken, 5).value != 10 or UiSlider::permille(broken) != 0
+    return 11 if UiSlider::make(0, 10, 0, 5).valid or UiSlider::make(0, 10, 1, 11).valid
+    return 0

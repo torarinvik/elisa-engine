@@ -1,0 +1,55 @@
+# Bounded integer slider model for settings and inspectors. A slider holds a
+# range, a step and a default; every value it reports lies in the range and on
+# the step grid. Out-of-range or off-grid input is snapped, and a stored value
+# that cannot be trusted (outside the range) falls back to the default and is
+# flagged so the UI can show a validation state instead of silently using it.
+module UiSlider:
+    public:
+        struct Slider:
+            low: i64
+            high: i64
+            step: i64
+            default: i64
+            value: i64
+            valid: bool
+            recovered: bool
+
+        # A slider needs low < high, a positive step and a default in range;
+        # otherwise it is invalid and pinned to `low`.
+        def make(low: i64, high: i64, step: i64, default: i64) -> Slider:
+            ok: bool = low < high and step > 0 and default >= low and default <= high
+            start: i64 = snap_value(low, high, step, default) if ok else low
+            Slider{low: low, high: high, step: step if step > 0 else 1, default: start, value: start, valid: ok, recovered: false}
+
+        # Clamps to the range, then rounds to the nearest grid point from `low`
+        # (halves round up); the top of the range is a grid point as well.
+        def snap_value(low: i64, high: i64, step: i64, v: i64) -> i64:
+            return low if v <= low
+            return high if v >= high
+            k: i64 = (v - low + step / 2) / step
+            snapped: i64 = low + k * step
+            return high if snapped >= high
+            # The top is a grid point too: prefer it when it is nearer.
+            high if high - v < v - snapped else snapped
+
+        def set(s: Slider, v: i64) -> Slider:
+            return s if not s.valid
+            Slider{low: s.low, high: s.high, step: s.step, default: s.default, value: snap_value(s.low, s.high, s.step, v), valid: true, recovered: false}
+
+        # One keyboard/D-pad step; `direction` is -1 or +1, anything else is
+        # ignored. Steps stop at the ends.
+        def nudge(s: Slider, direction: i64) -> Slider:
+            return s if direction != 1 and direction != -1
+            set(s, s.value + direction * s.step)
+
+        # Loads a saved value. A value outside the range is not trusted: the
+        # default is used and `recovered` is set. In-range values are snapped.
+        def load(s: Slider, saved: i64) -> Slider:
+            return s if not s.valid
+            bad: bool = saved < s.low or saved > s.high
+            v: i64 = s.default if bad else snap_value(s.low, s.high, s.step, saved)
+            Slider{low: s.low, high: s.high, step: s.step, default: s.default, value: v, valid: true, recovered: bad}
+
+        # Position of the value in permille of the range, for drawing a thumb.
+        def permille(s: Slider) -> i64:
+            (s.value - s.low) * 1000 / (s.high - s.low) if s.valid else 0
