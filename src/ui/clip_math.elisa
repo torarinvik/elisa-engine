@@ -1,0 +1,60 @@
+# Integer helpers for UI clipping and scrolling, struct-free so their contracts
+# are proved (proof/ui_clip.elisa). Coordinates are bounded to ±1e9 so every
+# sum fits in i64.
+module UiClipMath:
+    public:
+        def coord_ok(v: i64) -> bool:
+            v > 0 - 1000000000 and v < 1000000000
+
+        # The overlap length of [a0, a0 + al) and [b0, b0 + bl); never negative.
+        def overlap(a0: i64, al: i64, b0: i64, bl: i64) -> i64:
+            requires a0 > 0 - 1000000000
+            requires a0 < 1000000000
+            requires b0 > 0 - 1000000000
+            requires b0 < 1000000000
+            requires al >= 0
+            requires al < 1000000000
+            requires bl >= 0
+            requires bl < 1000000000
+            ensure result >= 0
+            a1: i64 = a0 + al
+            b1: i64 = b0 + bl
+            # Overlap is min(ends) - max(starts), clamped at zero.
+            if a1 <= b1:
+                if a0 >= b0:
+                    return al
+                return gap(a1, b0)
+            if a0 >= b0:
+                return gap(b1, a0)
+            bl
+
+        # hi - lo, or 0 when hi <= lo.
+        def gap(hi: i64, lo: i64) -> i64:
+            requires hi > 0 - 3000000000
+            requires hi < 3000000000
+            requires lo > 0 - 3000000000
+            requires lo < 3000000000
+            ensure result >= 0
+            return 0 if hi <= lo
+            hi - lo
+
+        def overlap_start(a0: i64, b0: i64) -> i64:
+            a0 if a0 > b0 else b0
+
+        def max_scroll(viewport: i64, content: i64) -> i64:
+            requires viewport >= 0
+            requires viewport < 1000000000
+            requires content >= 0
+            requires content < 1000000000
+            ensure result >= 0
+            return 0 if content <= viewport
+            content - viewport
+
+        # Clamps an offset to [0, top].
+        def clamp_scroll(offset: i64, top: i64) -> i64:
+            requires top >= 0
+            ensure result >= 0
+            ensure result <= top
+            return 0 if offset < 0
+            return top if offset > top
+            offset

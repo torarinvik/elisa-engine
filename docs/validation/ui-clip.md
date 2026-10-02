@@ -29,4 +29,12 @@ Validated on 2026-10-02 with the pinned Stage1 compiler
 
 - No Wicked draw path uses the clip yet: no scissor rectangles, and neither
   the menu renderer nor the HUD pushes panels.
-- No focus traversal between widgets, and no proof harness. I02 stays open.
+- Focus traversal lives in ui-focus-nav.md. I02 stays open.
+
+## Proof
+
+`proof/ui_clip.elisa` checks the pure arithmetic in `src/ui/clip_math.elisa`
+with 0 findings: overlap widths are never negative for coordinates within
+±1e9, and scroll offsets stay within [0, max scroll]. `clip_intersect` and
+`new_scroll` reject inputs outside those bounds, so the proven range covers
+every value they pass in.

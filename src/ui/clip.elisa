@@ -2,7 +2,9 @@
 # rectangle; the active clip is the intersection of everything pushed, so a
 # child can never draw or take a pointer outside any ancestor. A scroll view
 # clamps its offset to the content, maps content rows to screen rows and
-# scrolls a focused rectangle into view.
+# scrolls a focused rectangle into view. Arithmetic lives in clip_math.
+include "./clip_math.elisa"
+
 module UiClip:
     public:
         const module Tune:
@@ -32,18 +34,13 @@ module UiClip:
             s.boxes[0] <- box(0, 0, screen_w, screen_h)
             s
 
+        # Out-of-range coordinates or negative sizes clip to nothing.
         def clip_intersect(a: Box, b: Box) -> Box:
-            x0: i64 = a.x if a.x > b.x else b.x
-            y0: i64 = a.y if a.y > b.y else b.y
-            ax1: i64 = a.x + a.w
-            bx1: i64 = b.x + b.w
-            ay1: i64 = a.y + a.h
-            by1: i64 = b.y + b.h
-            x1: i64 = ax1 if ax1 < bx1 else bx1
-            y1: i64 = ay1 if ay1 < by1 else by1
-            w: i64 = x1 - x0 if x1 > x0 else 0
-            h: i64 = y1 - y0 if y1 > y0 else 0
-            box(x0, y0, w, h)
+            ok: bool = UiClipMath::coord_ok(a.x) and UiClipMath::coord_ok(a.y) and UiClipMath::coord_ok(b.x) and UiClipMath::coord_ok(b.y) and a.w >= 0 and a.h >= 0 and b.w >= 0 and b.h >= 0 and a.w < 1000000000 and a.h < 1000000000 and b.w < 1000000000 and b.h < 1000000000
+            return box(0, 0, 0, 0) if not ok
+            x0: i64 = UiClipMath::overlap_start(a.x, b.x)
+            y0: i64 = UiClipMath::overlap_start(a.y, b.y)
+            box(x0, y0, UiClipMath::overlap(a.x, a.w, b.x, b.w), UiClipMath::overlap(a.y, a.h, b.y, b.h))
 
         def current(s: Stack&) -> Box:
             return box(0, 0, 0, 0) if s.depth < 1 or s.depth > 8
@@ -71,17 +68,16 @@ module UiClip:
             contains(b, px, py) and contains(current(s), px, py)
 
         def new_scroll(viewport: i64, content: i64) -> Scroll:
-            v: i64 = viewport if viewport > 0 else 0
-            c: i64 = content if content > 0 else 0
+            v: i64 = viewport if viewport > 0 and viewport < 1000000000 else 0
+            c: i64 = content if content > 0 and content < 1000000000 else 0
             Scroll{viewport: v, content: c, offset: 0}
 
         def max_offset(sc: Scroll&) -> i64:
-            sc.content - sc.viewport if sc.content > sc.viewport else 0
+            return 0 if sc.viewport < 0 or sc.viewport >= 1000000000 or sc.content < 0 or sc.content >= 1000000000
+            UiClipMath::max_scroll(sc.viewport, sc.content)
 
         def scroll_to(sc: mutable Scroll&, offset: i64) -> i64:
-            top: i64 = max_offset(sc)
-            o: i64 = offset if offset > 0 else 0
-            sc.offset <- o if o < top else top
+            sc.offset <- UiClipMath::clamp_scroll(offset, max_offset(sc))
             sc.offset
 
         def scroll_by(sc: mutable Scroll&, delta: i64) -> i64:

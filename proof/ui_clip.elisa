@@ -1,0 +1,17 @@
+include "../src/ui/clip_math.elisa"
+
+extend UiClipMath:
+    # Plan I02: an intersected clip never has a negative size, so a pushed
+    # panel can only shrink what its ancestors show.
+    def prove_overlap_bounded(a0: i64, al: i64, b0: i64, bl: i64) -> i64:
+        ensure result >= 0
+        if a0 > 0 - 1000000000 and a0 < 1000000000 and b0 > 0 - 1000000000 and b0 < 1000000000 and al >= 0 and al < 1000000000 and bl >= 0 and bl < 1000000000:
+            return overlap(a0, al, b0, bl)
+        0
+
+    # A scroll offset always stays within [0, content - viewport].
+    def prove_scroll_clamped(viewport: i64, content: i64, offset: i64) -> i64:
+        ensure result >= 0
+        if viewport >= 0 and viewport < 1000000000 and content >= 0 and content < 1000000000:
+            return clamp_scroll(offset, max_scroll(viewport, content))
+        0
