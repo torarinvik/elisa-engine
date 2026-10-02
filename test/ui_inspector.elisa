@@ -1,0 +1,53 @@
+include "../src/ui/inspector.elisa"
+
+def typed(a: i64, b: i64, c: i64, n: i64) -> UiEditField::Field:
+    f: mutable UiEditField::Field = UiEditField::make(false)
+    _ = UiEditField::insert(&f, a) if n > 0 else false
+    _ = UiEditField::insert(&f, b) if n > 1 else false
+    _ = UiEditField::insert(&f, c) if n > 2 else false
+    f
+
+def main() -> i32:
+    # An editor inspector: row 0 edits a light's range (0..500 step 10),
+    # row 1 its priority (-5..5 step 1).
+    p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+    p <- UiSettingsPage::add_row(p, 0, 501, 0, 500, 10, 100)
+    p <- UiSettingsPage::add_row(p, 1, 502, 0 - 5, 5, 1, 0)
+    ins: mutable UiInspector::Inspector = UiInspector::wrap(p)
+    # "250" is accepted.
+    a: UiEditField::Field = typed(50, 53, 48, 3)
+    ins <- UiInspector::commit(ins, 0, &a)
+    return 1 if ins.page.value[0] != 250 or UiInspector::error_of(&ins, 0) != UiInspector::OK
+    # "2x" is not a number; the value stays 250.
+    b: UiEditField::Field = typed(50, 120, 0, 2)
+    ins <- UiInspector::commit(ins, 0, &b)
+    return 2 if ins.page.value[0] != 250 or UiInspector::error_of(&ins, 0) != UiInspector::NOT_NUMBER
+    # "999" is out of range, "255" is off the step grid.
+    c: UiEditField::Field = typed(57, 57, 57, 3)
+    ins <- UiInspector::commit(ins, 0, &c)
+    return 3 if ins.page.value[0] != 250 or UiInspector::error_of(&ins, 0) != UiInspector::OUT_OF_RANGE
+    d: UiEditField::Field = typed(50, 53, 53, 3)
+    ins <- UiInspector::commit(ins, 0, &d)
+    return 4 if ins.page.value[0] != 250 or UiInspector::error_of(&ins, 0) != UiInspector::OFF_GRID
+    # "-3" on row 1 is accepted; empty text and a lone "-" are not numbers.
+    e: UiEditField::Field = typed(45, 51, 0, 2)
+    ins <- UiInspector::commit(ins, 1, &e)
+    return 5 if ins.page.value[1] != 0 - 3 or UiInspector::error_of(&ins, 1) != UiInspector::OK
+    blank: UiEditField::Field = typed(0, 0, 0, 0)
+    dash: UiEditField::Field = typed(45, 0, 0, 1)
+    return 6 if UiInspector::parse_int(&blank).code != UiInspector::NOT_NUMBER or UiInspector::parse_int(&dash).code != UiInspector::NOT_NUMBER
+    # A good entry clears row 0's error; errors are per row.
+    g: UiEditField::Field = typed(51, 48, 48, 3)
+    ins <- UiInspector::commit(ins, 0, &g)
+    return 7 if ins.page.value[0] != 300 or UiInspector::error_of(&ins, 0) != UiInspector::OK
+    # The edit reaches its bound field through the row's handle.
+    h: UiBinding::Handle = UiSettingsPage::handle_of(&ins.page, 0)
+    ed: UiSettingsPage::Edit = UiSettingsPage::fire(&ins.page, h, 0)
+    return 8 if ed.field != 501 or ed.value != 300
+    # Removing a row drops its error and stales its handle; commits to it are ignored.
+    ins <- UiInspector::commit(ins, 0, &b)
+    ins <- UiInspector::remove_row(ins, 0)
+    return 9 if UiInspector::error_of(&ins, 0) != UiInspector::OK or UiSettingsPage::fire(&ins.page, h, 0).field != 0 - 1
+    ins <- UiInspector::commit(ins, 0, &g)
+    return 10 if UiInspector::error_of(&ins, 0) != UiInspector::OK or UiListModel::index_of(&ins.page.list, 0) >= 0
+    return 0

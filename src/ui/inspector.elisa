@@ -1,0 +1,68 @@
+# A property inspector: a UiSettingsPage whose rows also accept typed values
+# from a UiEditField, with a per-row validation error state. A rejected entry
+# keeps the row's last good value and records why (not a number, out of
+# range, off the step grid); the next accepted entry clears the error. The
+# editor's inspector and the game's settings pages share the same rows.
+include "./settings_page.elisa"
+include "./edit_field.elisa"
+
+module UiInspector:
+    public:
+        const OK: i64 = 0
+        const NOT_NUMBER: i64 = 1
+        const OUT_OF_RANGE: i64 = 2
+        const OFF_GRID: i64 = 3
+
+        struct Inspector:
+            page: UiSettingsPage::Page
+            fault: i64[16]
+
+        struct Parsed:
+            value: i64
+            code: i64
+
+        def wrap(p: UiSettingsPage::Page) -> Inspector:
+            Inspector{page: p, fault: zeroed}
+
+        # ASCII decimal with an optional leading '-', at most 18 digits, so
+        # the value cannot overflow i64. Anything else is NOT_NUMBER.
+        def parse_int(f: UiEditField::Field&) -> Parsed:
+            neg: bool = f.len > 0 and f.text[0] == 45
+            first: i64 = 1 if neg else 0
+            digits: i64 = f.len - first
+            ok: mutable bool = digits > 0 and digits <= 18
+            v: mutable i64 = 0
+            for k in 0..<32:
+                if ok and k.i64() >= first and k.i64() < f.len:
+                    c: i64 = f.text[k]
+                    ok <- c >= 48 and c <= 57
+                    v <- v * 10 + (c - 48) if ok else v
+            Parsed{value: 0 - v if neg else v, code: OK if ok else NOT_NUMBER}
+
+        def check(p: UiSettingsPage::Page&, row: i64, v: i64) -> i64:
+            return OUT_OF_RANGE if v < p.low[row] or v > p.high[row]
+            return OFF_GRID if (v - p.low[row]) % p.step[row] != 0 and v != p.high[row]
+            OK
+
+        # Commits typed text into `row`. Unknown rows are ignored.
+        def commit(ins: Inspector, row: i64, f: UiEditField::Field&) -> Inspector:
+            return ins if row < 0 or row >= UiSettingsPage::ROWS or UiListModel::index_of(&ins.page.list, row) < 0
+            parsed: Parsed = parse_int(f)
+            code: i64 = parsed.code if parsed.code != OK else check(&ins.page, row, parsed.value)
+            errors: mutable i64[16] = ins.fault
+            errors[row] <- code
+            return Inspector{page: ins.page, fault: errors} if code != OK
+            old: UiSlider::Slider = UiSettingsPage::slider_of(&ins.page, row)
+            s: UiSlider::Slider = UiSlider::Slider{low: old.low, high: old.high, step: old.step, default: old.default, value: parsed.value, valid: old.valid, recovered: false}
+            Inspector{page: UiSettingsPage::with_value(ins.page, row, s), fault: errors}
+
+        def error_of(ins: Inspector&, row: i64) -> i64:
+            return OK if row < 0 or row >= UiSettingsPage::ROWS
+            ins.fault[row]
+
+        # Removing a row drops its error with it, so a reused row starts clean.
+        def remove_row(ins: Inspector, row: i64) -> Inspector:
+            errors: mutable i64[16] = ins.fault
+            if row >= 0 and row < UiSettingsPage::ROWS:
+                errors[row] <- OK
+            Inspector{page: UiSettingsPage::remove_row(ins.page, row), fault: errors}
