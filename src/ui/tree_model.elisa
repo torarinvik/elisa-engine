@@ -66,3 +66,38 @@ module UiTreeModel:
             for k in 0..<64:
                 f <- next.parent[f] if f >= 0 and not visible_at(&next, f) else f
             Tree{ids: next.ids, parent: next.parent, open: opens, count: next.count, focus: next.ids[f] if f >= 0 else 0 - 1}
+
+        # True when `at` is `root` or lies under it.
+        def within(t: Tree&, at: i64, root: i64) -> bool:
+            hit: mutable bool = at == root
+            cur: mutable i64 = t.parent[at] if at >= 0 else 0 - 1
+            for k in 0..<64:
+                hit <- true if cur == root and cur >= 0
+                cur <- t.parent[cur] if cur >= 0 else cur
+            hit
+
+        # Removes `id` and its whole subtree, compacting the rest in order.
+        # Focus inside the removed subtree moves to the removed node's parent,
+        # or to the first remaining root when it had none.
+        def remove(t: Tree, id: i64) -> Tree:
+            root: i64 = index_of(&t, id)
+            return t if root < 0
+            f: i64 = index_of(&t, t.focus)
+            lost: bool = f >= 0 and within(&t, f, root)
+            heir: i64 = t.parent[root]
+            ids: mutable i64[64] = zeroed
+            parents: mutable i64[64] = zeroed
+            opens: mutable bool[64] = zeroed
+            remap: mutable i64[64] = zeroed
+            n: mutable i64 = 0
+            for k in 0..<64:
+                keep: bool = k.i64() < t.count and not within(&t, k.i64(), root)
+                remap[k] <- n if keep else 0 - 1
+                if keep:
+                    p: i64 = t.parent[k]
+                    ids[n] <- t.ids[k]
+                    parents[n] <- remap[p] if p >= 0 else 0 - 1
+                    opens[n] <- t.open[k]
+                    n <- n + 1
+            fallback: i64 = t.ids[heir] if heir >= 0 else (ids[0] if n > 0 else 0 - 1)
+            Tree{ids: ids, parent: parents, open: opens, count: n, focus: fallback if lost else t.focus}
