@@ -173,6 +173,33 @@ The graph checks run in the ordinary Elisa application entry, not a standalone
 native probe. High/Low rendered references also pass after the documented
 macOS 27 High-reference refresh.
 
+## Authored multi-pass scene (2026-10-02)
+
+`test/render_graph_authored_scene_native.elisa` (render group 239, run at the
+end of the graph group) builds one Elisa graph over the live smoke scene:
+copy imported scene color, `AdjustSaturation` to zero, clear a transient 4x
+target, resolve it, and blend the resolved image at half opacity over the
+saturated output. The same builder with an extra `50 -> 10` dependency must
+fail `compile` with `DependencyCycle`, and without the `20 -> 30` link (so the
+saturation write and the blend's read-write of resource 3 are unordered) with
+`UnorderedHazard`. The compiled plan uses three transient slots: the copy and
+resolve targets share one, and the output and 4x target keep their own.
+
+Frames are not bit-stable between pumps, so aliasing safety is judged by
+image. The test captures the same graph with a dedicated persistent resolve
+target, then the aliased graph before resize, after resizing to 320x200, after
+a real SDL3 minimize/restore (suspended pump, unchanged frame and graph
+counts), and after an injected failure of the clear pass (backend failure,
+fallback kept, recovery on the next frame). `scripts/compare_render_graph_references.py`,
+run by the render smoke, requires the aliased capture to match the dedicated
+one and each capture to match `docs/validation/references/render-graph/*.png`
+at the lighting tolerances (160x100, peak/mean 0.35/0.025;
+`ELISA_UPDATE_RENDER_GRAPH_REFERENCES=1` refreshes them). On macOS 27 / Apple
+M5 a rerun matched all five at 0/0, aliased vs dedicated at peak 0.0118. An
+unsaturated post-process capture against the base reference fails at mean
+0.241. Arbitrary shader passes and captures on other backends are non-goals of
+R15.
+
 Run the focused planner test with:
 
 ```sh

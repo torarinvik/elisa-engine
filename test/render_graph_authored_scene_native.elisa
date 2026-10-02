@@ -1,0 +1,214 @@
+# Authored multi-pass render graph scene (render group 239). One Elisa graph
+# chains scene copy -> AdjustSaturation -> transient 4x clear -> resolve ->
+# half-opacity blend. The test proves cycle and unordered-hazard rejection,
+# transient slot reuse (copy and resolve targets share one slot without
+# changing the rendered frame), and saves reference captures before and after
+# resize, after a real minimize/restore and after an injected pass failure.
+# Frames are not bit-stable between pumps, so aliasing safety is judged by
+# comparing the aliased capture with the dedicated-target capture in Python.
+include "render_graph_native_harness.elisa"
+using RenderGraphNativeHarness
+
+module RenderGraphAuthoredSceneTests:
+    private:
+        const OK: i32 = RenderGraphRuntime::CONFIGURE_OK
+        const SCENE_SATURATION: f32 = 0.0
+        const SCENE_DIM_OPACITY: f32 = 0.5
+        # Plan position of the transient clear pass (pass 30).
+        const CLEAR_PASS_POSITION: u32 = 2
+
+        def authored_color(id: u32, lifetime: RenderGraph::Lifetime,
+                samples: u32) -> RenderGraph::ResourceDescriptor:
+            RenderGraph::ResourceDescriptor{
+                id: id,
+                size_mode: RenderGraph::SizeMode.PrimaryInternal,
+                width: 0,
+                height: 0,
+                format: RenderGraph::Format.R11G11B10Float,
+                samples: samples,
+                lifetime: lifetime,
+                initialized: lifetime == RenderGraph::Lifetime.Imported,
+                import_source: RenderGraph::ImportSource.SceneColor if lifetime == RenderGraph::Lifetime.Imported else RenderGraph::ImportSource.None,
+            }
+
+        def authored_add_access(graph: mutable RenderGraph::Graph&, pass_id: u32,
+                resource_id: u32, writes: bool) -> bool:
+            if writes:
+                wrote: bool = catch RenderGraph::write(graph, pass_id, resource_id):
+                    ok: true
+                    error failure: false
+                return wrote
+            read_ok: bool = catch RenderGraph::read(graph, pass_id, resource_id):
+                ok: true
+                error failure: false
+            read_ok
+
+        def authored_add_dependency(graph: mutable RenderGraph::Graph&,
+                before_id: u32, after_id: u32) -> bool:
+            linked: bool = catch RenderGraph::add_dependency(graph, before_id, after_id):
+                ok: true
+                error failure: false
+            linked
+
+        # Resources: 1 imported scene color, 2 copy target, 3 saturated output,
+        # 4 four-sample clear target, 5 resolve target (transient or persistent).
+        def authored_build(graph: mutable RenderGraph::Graph&, resolve_lifetime: RenderGraph::Lifetime,
+                link_branches: bool, close_cycle: bool) -> i32:
+            for id in 1..<6:
+                lifetime: RenderGraph::Lifetime = RenderGraph::Lifetime.Imported if id == 1 else RenderGraph::Lifetime.Transient
+                chosen: RenderGraph::Lifetime = resolve_lifetime if id == 5 else lifetime
+                samples: u32 = 4 if id == 4 else 1
+                added: bool = catch RenderGraph::add_resource(graph, authored_color(u32(id), chosen, samples)):
+                    ok: true
+                    error failure: false
+                return 1 if not added
+            for index in 1..<6:
+                added_pass: bool = catch RenderGraph::add_pass(graph, u32(index * 10)):
+                    ok: true
+                    error failure: false
+                return 2 if not added_pass
+            return 3 if not authored_add_access(graph, 10, 1, false) or not authored_add_access(graph, 10, 2, true)
+            return 4 if not authored_add_access(graph, 20, 2, false) or not authored_add_access(graph, 20, 3, true)
+            return 5 if not authored_add_access(graph, 30, 4, true)
+            return 6 if not authored_add_access(graph, 40, 4, false) or not authored_add_access(graph, 40, 5, true)
+            return 7 if not authored_add_access(graph, 50, 5, false) or not authored_add_access(graph, 50, 3, false)
+            return 8 if not authored_add_access(graph, 50, 3, true)
+            return 9 if not authored_add_dependency(graph, 10, 20) or not authored_add_dependency(graph, 30, 40)
+            return 10 if not authored_add_dependency(graph, 40, 50)
+            return 11 if link_branches and not authored_add_dependency(graph, 20, 30)
+            return 12 if close_cycle and not authored_add_dependency(graph, 50, 10)
+            0
+
+        # 0 when compile fails with exactly the expected error.
+        def authored_compile_error(graph: RenderGraph::Graph&, cycle_expected: bool) -> i32:
+            observed: i32 = catch RenderGraph::compile(graph):
+                value: 1
+                RenderGraph::GraphError.DependencyCycle: 2
+                RenderGraph::GraphError.UnorderedHazard: 3
+                error failure: 4
+            expected: i32 = 2 if cycle_expected else 3
+            0 if observed == expected else observed
+
+        def authored_operation(pass_id: u32, kind: RenderGraphRuntime::OperationKind,
+                source_id: u32, destination_id: u32) -> RenderGraphRuntime::PassOperation:
+            RenderGraphRuntime::PassOperation{
+                pass_id: pass_id,
+                kind: kind,
+                source_resource_id: source_id,
+                destination_resource_id: destination_id,
+                value: RenderGraphRuntime::FULL_OPACITY,
+                tint_red: 1.0,
+                tint_green: 1.0,
+                tint_blue: 1.0,
+                tint_alpha: 1.0,
+            }
+
+        def authored_configure(resolve_lifetime: RenderGraph::Lifetime) -> i32:
+            graph: mutable RenderGraph::Graph = RenderGraph::Graph()
+            built: i32 = authored_build(&graph, resolve_lifetime, true, false)
+            return 20 + built if built != 0
+            plan: RenderGraph::Plan = catch RenderGraph::compile(&graph):
+                value: value
+                error failure: return 40
+            return 41 if plan.pass_ids[0] != 10 or plan.pass_ids[2] != 30 or plan.pass_ids[4] != 50
+            transient_resolve: bool = resolve_lifetime == RenderGraph::Lifetime.Transient
+            # Copy (2) and resolve (5) targets never overlap, so they share one
+            # transient slot; the output (3) and the 4x target (4) keep their own.
+            if transient_resolve:
+                return 42 if plan.transient_slot_count != 3 or plan.alias_slots[1] != plan.alias_slots[4]
+            else:
+                return 43 if plan.transient_slot_count != 3 or plan.alias_slots[4] != RenderGraph::NO_TRANSIENT_ALIAS_SLOT
+            return 44 if plan.alias_slots[2] == plan.alias_slots[1] or plan.alias_slots[3] == plan.alias_slots[1]
+            configuration: mutable RenderGraphRuntime::Configuration = RenderGraphRuntime::Configuration()
+            configuration.output_resource_id <- 3
+            configuration.operation_count <- 5
+            configuration.operations[0] <- RenderGraphRuntime::copy_operation(10, 1, 2)
+            configuration.operations[1] <- RenderGraphRuntime::saturation_operation(20, 2, 3, SCENE_SATURATION)
+            configuration.operations[2] <- authored_operation(30, RenderGraphRuntime::OperationKind.ClearColor, 0, 4)
+            configuration.operations[3] <- authored_operation(40, RenderGraphRuntime::OperationKind.ResolveColor, 4, 5)
+            configuration.operations[4] <- RenderGraphRuntime::blend_operation(50, 5, 3, SCENE_DIM_OPACITY)
+            return 45 if RenderGraphRuntime::configure(graph, plan, configuration) != OK
+            0
+
+        def authored_frame_ok() -> bool:
+            running: bool = Application::pump() == Application::PumpStatus.Running
+            running and RenderGraphRuntime::last_execution_status() == RenderGraphRuntime::EXECUTION_OK
+
+        def authored_capture(variable: cstr) -> bool:
+            path: cstr = Application::environment_value(variable)
+            path == "" or Application::save_screenshot(path)
+
+        def authored_resize(width: i32, height: i32, clear_viewport: bool) -> bool:
+            resized: bool = catch RenderScene::resize(width, height):
+                ok: true
+                error failure: false
+            return false if not resized
+            if clear_viewport:
+                cleared: bool = catch RenderScene::clear_primary_viewport():
+                    ok: true
+                    error failure: false
+                return cleared
+            viewport: bool = catch RenderScene::set_primary_viewport(0, 0, width, height):
+                ok: true
+                error failure: false
+            viewport
+
+    public:
+        def exercise() -> i32:
+            cyclic: mutable RenderGraph::Graph = RenderGraph::Graph()
+            cyclic_built: i32 = authored_build(&cyclic, RenderGraph::Lifetime.Transient, true, true)
+            return 1 if cyclic_built != 0
+            cycle_status: i32 = authored_compile_error(cyclic, true)
+            return 2 if cycle_status != 0
+            unordered: mutable RenderGraph::Graph = RenderGraph::Graph()
+            unordered_built: i32 = authored_build(&unordered, RenderGraph::Lifetime.Transient, false, false)
+            return 3 if unordered_built != 0
+            hazard_status: i32 = authored_compile_error(unordered, false)
+            return 4 if hazard_status != 0
+            return 5 if configure_clear_copy_graph(3) != OK
+            return 6 if not authored_frame_ok()
+            plain_hash: u64 = elisa_render_scene_v1_last_frame_hash()
+            # Persistent resolve target: no aliasing, the frame to match.
+            dedicated: i32 = authored_configure(RenderGraph::Lifetime.Persistent)
+            return 100 + dedicated if dedicated != 0
+            for attempt in 0..<2:
+                return 7 if not authored_frame_ok()
+            dedicated_hash: u64 = elisa_render_scene_v1_last_frame_hash()
+            return 8 if dedicated_hash == plain_hash or elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+            return 37 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_DEDICATED_CAPTURE")
+            aliased: i32 = authored_configure(RenderGraph::Lifetime.Transient)
+            return 150 + aliased if aliased != 0
+            for attempt in 0..<2:
+                return 9 if not authored_frame_ok()
+            return 10 if elisa_render_scene_v1_last_frame_center_differs_from_corner() == 0
+            return 11 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_BASE_CAPTURE")
+            return 12 if not authored_resize(320, 200, false)
+            for attempt in 0..<3:
+                return 13 if not authored_frame_ok()
+            return 14 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_RESIZED_CAPTURE")
+            return 15 if not authored_resize(640, 400, true)
+            for attempt in 0..<3:
+                return 16 if not authored_frame_ok()
+            frames_before_minimize: u64 = Application::frame_count()
+            graph_before_minimize: u64 = RenderGraphRuntime::execution_count()
+            return 18 if elisa_application_v1_test_set_minimized(1) != 0
+            return 19 if Application::pump() != Application::PumpStatus.Suspended
+            return 20 if Application::frame_count() != frames_before_minimize or RenderGraphRuntime::execution_count() != graph_before_minimize
+            return 21 if elisa_application_v1_test_set_minimized(0) != 0
+            for attempt in 0..<2:
+                return 22 if not authored_frame_ok()
+            return 23 if RenderGraphRuntime::execution_count() <= graph_before_minimize
+            return 25 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_RESTORED_CAPTURE")
+            return 26 if elisa_render_scene_v1_render_graph_test_fail_pass(CLEAR_PASS_POSITION) != OK
+            graph_before_failure: u64 = RenderGraphRuntime::execution_count()
+            return 27 if Application::pump() != Application::PumpStatus.Running
+            return 28 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_BACKEND_FAILED
+            return 29 if RenderGraphRuntime::execution_count() != graph_before_failure
+            return 30 if elisa_render_scene_v1_render_graph_test_fallback_preserved() != 1
+            for attempt in 0..<2:
+                return 31 if not authored_frame_ok()
+            return 32 if RenderGraphRuntime::execution_count() <= graph_before_failure
+            return 34 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_RECOVERED_CAPTURE")
+            return 35 if configure_clear_copy_graph(3) != OK
+            return 36 if not authored_frame_ok()
+            0

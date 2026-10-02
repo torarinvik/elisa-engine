@@ -1,4 +1,5 @@
 include "render_graph_native_harness.elisa"
+include "render_graph_authored_scene_native.elisa"
 using RenderGraphNativeHarness
 
 module RenderGraphNativeTests:
@@ -7,6 +8,8 @@ module RenderGraphNativeTests:
         const INVALID_BLEND_OPACITY: f32 = 1.01
         const TRANSPARENT_BLEND_OPACITY: f32 = 0.0
         const HALF_BLEND_OPACITY: f32 = 0.5
+        @callconv(c)
+        extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 
     public:
         def exercise() -> i32:
@@ -154,4 +157,6 @@ module RenderGraphNativeTests:
             return sharpen_status if sharpen_status != 0
             aberration_status: i32 = exercise_chromatic_aberration()
             return aberration_status if aberration_status != 0
+            authored_status: i32 = RenderGraphAuthoredSceneTests::exercise()
+            return elisa_render_scene_v1_test_failed_case(239, authored_status) if authored_status != 0
             0

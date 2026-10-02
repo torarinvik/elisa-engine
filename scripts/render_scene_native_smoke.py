@@ -24,6 +24,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
 import compare_renders
+import compare_render_graph_references
 import gltf_texture_self_test
 import gltf_clearcoat_self_test
 import gltf_mirrored_normal_fixture
@@ -432,6 +433,7 @@ def main() -> int:
         runtime_env["ELISA_POSTPROCESS_LOW_CAPTURE"] = str(postprocess_low_capture)
         runtime_env["ELISA_DEBUG_DRAW_BASELINE_CAPTURE"] = str(debug_baseline_capture)
         runtime_env["ELISA_DEBUG_DRAW_VISIBLE_CAPTURE"] = str(debug_visible_capture)
+        compare_render_graph_references.prepare(build, runtime_env)
         lod_fixture_available = (build / "cooked/subsets/runtime_lod.lod.json").is_file()
         capture_lod_quality = not render_only or lod_fixture_available
         if capture_lod_quality:
@@ -547,9 +549,10 @@ def main() -> int:
             "--capture-dir", str(build)]
         if os.environ.get("ELISA_UPDATE_LIGHTING_REFERENCES") == "1":
             lighting_command.append("--update")
-        lighting_status = run(lighting_command)
+        lighting_status = run(lighting_command) or run([sys.executable,
+            str(ROOT / "scripts/compare_render_graph_references.py"), "--capture-dir", str(build)])
         if lighting_status != 0:
-            print("Lighting reference comparison failed.", file=sys.stderr)
+            print("Lighting or render-graph reference comparison failed.", file=sys.stderr)
             return lighting_status
     if status == 0:
         postprocess_command = [sys.executable,
