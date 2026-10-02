@@ -391,3 +391,4 @@ uint32_t elisa_navigation_v1_live_count() {
 }
 
 #include "navigation_cook_abi.inc"
+#include "navigation_stream_abi.inc"

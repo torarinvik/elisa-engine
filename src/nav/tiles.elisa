@@ -1,0 +1,48 @@
+# N02: stream the tiles of a cooked navmesh out and back in. A tile is named
+# by its column and row in the cook grid (`NavCook::info`). Unloading a tile
+# cuts every route through it; loading it again re-links its neighbours from
+# the blob the mesh was cooked from. Only cooked meshes stream: a plain bake,
+# a stale handle or an unloaded mesh raises `Stale`; a tile outside the grid,
+# one the cook left empty, or a load/unload that would not change anything
+# raises `NoTile`.
+include "./cook.elisa"
+
+module NavTiles:
+    public:
+        error NavTileError:
+            Stale
+            NoTile
+            TileFailed
+
+    private:
+        const module TileStatus:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = 1
+            STALE_HANDLE: i32 = 4
+
+        @callconv(c)
+        extern elisa_navigation_v1_tile_loaded(slot: u32, generation: u32, tx: u32, tz: u32,
+            loaded: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_tile_unload(slot: u32, generation: u32, tx: u32, tz: u32) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_tile_load(slot: u32, generation: u32, tx: u32, tz: u32) -> i32
+
+        def tile_check(status: i32) -> void error[NavTileError]:
+            raise NavTileError.Stale if status == TileStatus::STALE_HANDLE
+            raise NavTileError.NoTile if status == TileStatus::INVALID_ARGUMENT
+            raise NavTileError.TileFailed if status != TileStatus::OK
+
+    public:
+        def loaded(handle: NavMesh::Handle, tx: u32, tz: u32) -> bool error[NavTileError]:
+            flag: mutable i32 = 0
+            try tile_check(elisa_navigation_v1_tile_loaded(handle.slot, handle.generation, tx, tz, &flag))
+            flag != 0
+
+        def unload_tile(handle: NavMesh::Handle, tx: u32, tz: u32) -> void error[NavTileError]:
+            try tile_check(elisa_navigation_v1_tile_unload(handle.slot, handle.generation, tx, tz))
+
+        def load_tile(handle: NavMesh::Handle, tx: u32, tz: u32) -> void error[NavTileError]:
+            try tile_check(elisa_navigation_v1_tile_load(handle.slot, handle.generation, tx, tz))

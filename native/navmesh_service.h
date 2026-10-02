@@ -165,6 +165,7 @@ public:
     bool ready() const { return ready_ && mesh_ != nullptr && query_ != nullptr; }
     const BakeMetadata& metadata() const { return metadata_; }
     const dtNavMesh* mesh() const { return mesh_; }
+    dtNavMesh* streamed_mesh() { return ready() ? mesh_ : nullptr; }
     const std::vector<unsigned char>& serialized_tile() const { return tile_data_; }
     // Take ownership of a mesh and its query built elsewhere, such as a cooked multi-tile load.
     void adopt(dtNavMesh* mesh, dtNavMeshQuery* query, const BakeMetadata& metadata) {
@@ -545,6 +546,7 @@ public:
         return live(handle) ? tiles_[handle.slot].artifact.get() : nullptr;
     }
 
+    NavMeshArtifact* streamed(TileHandle handle) { return live(handle) ? tiles_[handle.slot].artifact.get() : nullptr; }
     bool unload(TileHandle handle) {
         if (!live(handle)) return false;
         tiles_[handle.slot].artifact.reset();

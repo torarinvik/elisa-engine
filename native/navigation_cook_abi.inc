@@ -12,6 +12,9 @@ struct CookState {
     probe::nav::cook::BlobHeader header{};
     uint64_t digest = 0;
     uint32_t bytes = 0;
+    // The blob each cooked store slot was built from, for tile streaming.
+    std::array<std::vector<unsigned char>, probe::nav::NavMeshTileStore::MAX_TILES> blobs;
+    std::array<uint32_t, probe::nav::NavMeshTileStore::MAX_TILES> blob_generation{};
 };
 
 CookState& cook_state() {
@@ -91,6 +94,8 @@ int32_t elisa_navigation_v1_cook(float agent_radius, float agent_height, float m
     const probe::nav::TileHandle handle = nav.store.publish(std::move(artifact));
     if (handle.slot == probe::nav::TileHandle::INVALID_SLOT) return ELISA_NAVIGATION_CAPACITY;
     nav.filters[handle.slot] = probe::nav::QueryFilter();
+    state.blobs[handle.slot] = blob;
+    state.blob_generation[handle.slot] = handle.generation;
     state.digest = blob_digest(blob);
     state.bytes = static_cast<uint32_t>(blob.size());
     *slot = handle.slot;

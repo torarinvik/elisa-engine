@@ -121,5 +121,10 @@ uint32_t elisa_navigation_v1_cache_size();
 int32_t elisa_navigation_v1_cache_clear();
 int32_t elisa_navigation_v1_cache_save(const char* path);
 int32_t elisa_navigation_v1_cache_load(const char* path);
+// N02 tile streaming on cooked meshes; see navigation_stream_abi.inc.
+int32_t elisa_navigation_v1_tile_loaded(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz,
+    int32_t* loaded);
+int32_t elisa_navigation_v1_tile_unload(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz);
+int32_t elisa_navigation_v1_tile_load(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz);
 
 }
