@@ -22,7 +22,7 @@ module GlbResize:
             for k in 0..<text.len.usize():
                 out.push(text[k.i64()].u8())
 
-        def push_count(out: mutable darray[u8]&, value: usize):
+        def resize_count(out: mutable darray[u8]&, value: usize):
             digits: mutable u8[24] = zeroed
             mutable n: usize = 0
             mutable rest: usize = value
@@ -69,7 +69,7 @@ module GlbResize:
             if exponent < 0:
                 out.push(45)
                 exponent <- -exponent
-            push_count(out, exponent.usize())
+            resize_count(out, exponent.usize())
 
         def put_u32(bytes: mutable darray[u8]&, value: u32):
             bytes.push((value & 255).u8())
@@ -187,17 +187,17 @@ module GlbResize:
                             ref: i64 = GltfJson::member(&bytes, &tokens, sampler, "input" if side == 0 else "output")
                             if ref >= 0 and GltfJson::index_value(&bytes, &tokens, ref) == held.accessor.i64():
                                 before_ref: usize = text.count
-                                push_count(&text, accessor_count + s)
+                                resize_count(&text, accessor_count + s)
                                 add_splice(&splices, &text, tokens[ref.usize()].start, tokens[ref.usize()].stop, before_ref)
                     continue
                 count_at: i64 = GltfJson::member(&bytes, &tokens, accessor, "count")
                 view_at: i64 = GltfJson::member(&bytes, &tokens, accessor, "bufferView")
                 raise GlbDocument::GlbError.MissingField if count_at < 0 or view_at < 0
                 mutable before: usize = text.count
-                push_count(&text, count)
+                resize_count(&text, count)
                 add_splice(&splices, &text, tokens[count_at.usize()].start, tokens[count_at.usize()].stop, before)
                 before <- text.count
-                push_count(&text, view_count + s)
+                resize_count(&text, view_count + s)
                 add_splice(&splices, &text, tokens[view_at.usize()].start, tokens[view_at.usize()].stop, before)
                 offset_at: i64 = GltfJson::member(&bytes, &tokens, accessor, "byteOffset")
                 if offset_at >= 0:
@@ -222,9 +222,9 @@ module GlbResize:
                     text.push(44) if s > 0 or view_count > 0
                     length: usize = (starts[s + 1] - starts[s]) * 4
                     push_text(&text, "{\"buffer\":0,\"byteOffset\":")
-                    push_count(&text, at)
+                    resize_count(&text, at)
                     push_text(&text, ",\"byteLength\":")
-                    push_count(&text, length)
+                    resize_count(&text, length)
                     text.push(125)
                     at <- at + length
                 close: usize = tokens[views.usize()].stop - 1
@@ -235,9 +235,9 @@ module GlbResize:
                     components: usize = GlbDocument::track(doc, slots[s]).components
                     text.push(44) if s > 0 or accessor_count > 0
                     push_text(&text, "{\"bufferView\":")
-                    push_count(&text, view_count + s)
+                    resize_count(&text, view_count + s)
                     push_text(&text, ",\"componentType\":5126,\"count\":")
-                    push_count(&text, (starts[s + 1] - starts[s]) / components)
+                    resize_count(&text, (starts[s + 1] - starts[s]) / components)
                     push_text(&text, ",\"type\":\"")
                     push_text(&text, type_name(components))
                     push_text(&text, "\",\"min\":")
@@ -249,7 +249,7 @@ module GlbResize:
                 add_splice(&splices, &text, close, close, before)
             total_bin: usize = base + appended.count
             before_length: usize = text.count
-            push_count(&text, total_bin)
+            resize_count(&text, total_bin)
             add_splice(&splices, &text, tokens[buffer_length.usize()].start, tokens[buffer_length.usize()].stop, before_length)
             # Apply the splices in file order; none overlap (each replaces a
             # distinct value token, the insertion is at a closing bracket).
