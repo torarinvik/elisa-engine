@@ -3,6 +3,8 @@
 # small radius unloads every far tile within a per-step budget (the route
 # then ends off the mesh); widening the radius brings them all back and the
 # route is found; a focus at the far end keeps only the goal side loaded.
+# A wall staged on a tile seam is rebuilt into exactly the two tiles its
+# box touches (cutting the route) and clearing it restores the route.
 # A stale handle is refused. Linked by scripts/build_nav_native_test.sh.
 include "../src/nav/tile_stream.elisa"
 
@@ -18,6 +20,20 @@ def floor_code() -> i32:
     catch NavMesh::add_box(v(20.0, -0.1, 0.0), v(20.0, 0.1, 1.5)):
         value: 0
         error failure: 1
+
+# The floor plus a wall across the corridor centred on x=`seam`.
+def wall_code(seam: f32) -> i32:
+    return 1 if stage_code() != 0
+    catch NavMesh::add_box(v(seam, 1.0, 0.0), v(0.5, 1.0, 2.5)):
+        value: 0
+        error failure: 1
+
+# Tiles rebuilt, or -1 stale, -2 other.
+def area_code(handle: NavMesh::Handle, min_x: f32, max_x: f32) -> i64:
+    catch NavTileStream::rebuild_area(handle, min_x, -2.5, max_x, 2.5, 0.5):
+        value: value
+        NavTiles::NavTileError.Stale: -1
+        error failure: -2
 
 def cooked() -> NavMesh::Handle:
     catch NavCook::cook(NavMesh::default_profile(), 64, 7001):
@@ -97,5 +113,11 @@ def main() -> i32:
     # Focus at the far end: tiles 5 and 6 stay, the start leaves the mesh.
     far: NavTileStream::Step = step_at(mesh, 39.0, 4.0, 16)
     return 10 if far.unloaded != 5 or loaded_code(mesh, 4) != 1 or loaded_code(mesh, 5) != 0 or route_code(mesh) != 2
-    return 11 if drop_code(mesh) != 0 or stale_code(mesh) != 0 or NavMesh::live_count() != 0
+    seam: f32 = g.origin_x + 3.0 * g.size
+    # A wall on the seam of tiles 2 and 3 rebuilds exactly those two.
+    return 12 if step_at(mesh, 20.0, 30.0, 16).loaded != 5 or wall_code(seam) != 0
+    return 13 if area_code(mesh, seam - 0.5, seam + 0.5) != 2 or route_code(mesh) != 1
+    return 14 if area_code(mesh, 60.0, 70.0) != 0 or area_code(mesh, 30.0, 20.0) != -2
+    return 15 if stage_code() != 0 or area_code(mesh, seam - 0.5, seam + 0.5) != 2 or route_code(mesh) != 0
+    return 11 if drop_code(mesh) != 0 or stale_code(mesh) != 0 or area_code(mesh, 0.0, 1.0) != -1 or NavMesh::live_count() != 0
     0

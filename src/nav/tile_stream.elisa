@@ -59,6 +59,22 @@ module NavTileStream:
                 value: 0
                 error failure: 1
 
+        # 1 rebuilt, 0 empty tile, -1 stale, -2 failed.
+        def rebuild_one(handle: NavMesh::Handle, tx: u32, tz: u32) -> i64:
+            catch NavTiles::rebuild_tile(handle, tx, tz):
+                value: 1
+                NavTiles::NavTileError.Stale: -1
+                NavTiles::NavTileError.NoTile: 0
+                error failure: -2
+
+        # First tile index along one axis touched by `at`, clamped to the grid.
+        def tile_floor(origin: f32, size: f32, at: f32, count: u32) -> i64:
+            index: mutable i64 = ((at - origin) / size).i64()
+            index <- index - 1 if at < origin + index.f32() * size
+            return 0 if index < 0
+            return count.i64() - 1 if index >= count.i64()
+            index
+
         def apply_load(handle: NavMesh::Handle, tx: u32, tz: u32) -> i64:
             catch NavTiles::load_tile(handle, tx, tz):
                 value: 0
@@ -101,3 +117,36 @@ module NavTileStream:
                                 unloads <- unloads + 1
             raise NavTiles::NavTileError.Stale if stale
             Step{loaded: loads, unloaded: unloads, pending: pending}
+
+        # Rebuilds, from the staged scene, every tile whose rectangle meets the
+        # x/z box [min, max] grown by `margin` (use at least the agent radius,
+        # since walkable area shrinks by it near an edit). Returns the number
+        # of non-empty tiles rebuilt; boxes outside the grid rebuild nothing.
+        def rebuild_area(handle: NavMesh::Handle, min_x: f32, min_z: f32, max_x: f32, max_z: f32, margin: f32) -> i64 error[NavTiles::NavTileError]:
+            g: Grid = try grid(handle)
+            low_x: f32 = min_x - margin
+            low_z: f32 = min_z - margin
+            high_x: f32 = max_x + margin
+            high_z: f32 = max_z + margin
+            raise NavTiles::NavTileError.NoTile if high_x < low_x or high_z < low_z
+            end_x: f32 = g.origin_x + g.tiles_x.f32() * g.size
+            end_z: f32 = g.origin_z + g.tiles_z.f32() * g.size
+            return 0 if high_x < g.origin_x or high_z < g.origin_z or low_x > end_x or low_z > end_z
+            x0: i64 = tile_floor(g.origin_x, g.size, low_x, g.tiles_x)
+            x1: i64 = tile_floor(g.origin_x, g.size, high_x, g.tiles_x)
+            z0: i64 = tile_floor(g.origin_z, g.size, low_z, g.tiles_z)
+            z1: i64 = tile_floor(g.origin_z, g.size, high_z, g.tiles_z)
+            rebuilt: mutable i64 = 0
+            failed: mutable i64 = 0
+            for k in 0..<64:
+                width: i64 = x1 - x0 + 1
+                index: i64 = k.i64()
+                if index < width * (z1 - z0 + 1):
+                    code: i64 = rebuild_one(handle, (x0 + index % width).u32(), (z0 + index / width).u32())
+                    if code > 0:
+                        rebuilt <- rebuilt + 1
+                    elif code < 0 and failed == 0:
+                        failed <- code
+            raise NavTiles::NavTileError.Stale if failed == -1
+            raise NavTiles::NavTileError.TileFailed if failed == -2
+            rebuilt

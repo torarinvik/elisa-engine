@@ -71,10 +71,21 @@ at most `budget` changes per call and reports loaded, unloaded and still-pending
 As a negative control, expecting pending 3 after the first step fails with 4. The test
 passes under `-fsanitize=address,undefined` (by hand).
 
+## Rebuilding the tiles an edit touches
+
+`NavTileStream::rebuild_area(handle, min_x, min_z, max_x, max_z, margin)` maps an edited
+x/z box, grown by `margin` (at least the agent radius), to the tiles it meets and rebuilds
+each non-empty one from the staged scene, returning how many it rebuilt. In the test a wall
+staged on the seam of tiles 2 and 3 (from the cooked grid's origin) rebuilds exactly two
+tiles and cuts the route; restaging the bare floor and rebuilding the same box restores
+`Found` (codes 12–15). A box beyond the grid rebuilds nothing, an inverted box is refused,
+and a stale mesh raises `Stale`. As a negative control, a box inside tile 3 alone fails
+with 13.
+
 ## Gaps
 
-- A rebuild re-rasterises the whole staged scene clipped to one tile; nothing tracks which
-  tiles changed geometry touches, so the caller names them. Rebuilds are not cached on disk.
+- A rebuild re-rasterises the whole staged scene clipped to one tile; the caller supplies the
+  edited box (nothing diffs scenes). Rebuilds are not cached on disk.
 - `NavTileStream` visits tiles in grid order, not nearest-first, and handles at most 64
   tiles per mesh. The older abstract `NavStream` model is not wired to it.
 - No agent or crowd test runs across a tile that is unloaded mid-route.
