@@ -535,50 +535,7 @@ int32_t elisa_render_scene_v1_set_overlay_panel_visible(int64_t handle, int32_t 
 int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle);
 int32_t elisa_render_scene_v1_set_overlay_panel_camera(int64_t handle, int64_t camera_handle);
 int32_t elisa_render_scene_v1_clear_overlay_panel_camera(int64_t handle);
-int32_t elisa_render_scene_v1_debug_box(
-    float min_x, float min_y, float min_z,
-    float max_x, float max_y, float max_z,
-    float red, float green, float blue, float alpha,
-    int32_t depth_tested);
-int32_t elisa_render_scene_v1_debug_line(
-    float start_x, float start_y, float start_z,
-    float end_x, float end_y, float end_z,
-    float red, float green, float blue, float alpha,
-    int32_t depth_tested);
-int32_t elisa_render_scene_v1_debug_text(
-    const char* text, float x, float y, float z,
-    float red, float green, float blue, float alpha,
-    int32_t depth_tested);
-enum {
-    ELISA_RENDER_SCENE_DEBUG_LINE_CHUNK = 256u,
-    ELISA_RENDER_SCENE_DEBUG_LINE_VALUES = 10u,
-    ELISA_RENDER_SCENE_DEBUG_MAX_BATCH_LINES = 16384u,
-};
-/* Start xyz, end xyz and rgba per line; returns the lines queued. */
-typedef struct ElisaRenderSceneDebugLineChunk {
-    float values[ELISA_RENDER_SCENE_DEBUG_LINE_CHUNK * ELISA_RENDER_SCENE_DEBUG_LINE_VALUES];
-    uint32_t count;
-    int32_t depth_tested;
-} ElisaRenderSceneDebugLineChunk;
-int32_t elisa_render_scene_v1_debug_line_chunk(const ElisaRenderSceneDebugLineChunk* chunk);
-enum {
-    ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK = 64u,
-    ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES = 7u,
-    ELISA_RENDER_SCENE_DEBUG_TEXT_STRIDE = 64u,
-    ELISA_RENDER_SCENE_DEBUG_MAX_BATCH_TEXTS = 1024u,
-};
-/* Position xyz and rgba per label, then `lengths[i]` UTF-8 bytes (1..63, no
-   zero byte) at `bytes + i * 64`; returns the labels queued. */
-typedef struct ElisaRenderSceneDebugTextChunk {
-    float values[ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK * ELISA_RENDER_SCENE_DEBUG_TEXT_VALUES];
-    uint8_t bytes[ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK * ELISA_RENDER_SCENE_DEBUG_TEXT_STRIDE];
-    uint32_t lengths[ELISA_RENDER_SCENE_DEBUG_TEXT_CHUNK];
-    uint32_t count;
-    int32_t depth_tested;
-} ElisaRenderSceneDebugTextChunk;
-int32_t elisa_render_scene_v1_debug_text_chunk(const ElisaRenderSceneDebugTextChunk* chunk);
-int32_t elisa_render_scene_v1_debug_flush(void);
-int32_t elisa_render_scene_v1_debug_clear(void);
+#include "render_scene_debug_abi.h"
 int64_t elisa_render_scene_v1_create_overlay_image(const char* asset_path,
     float x, float y, float width, float height);
 int32_t elisa_render_scene_v1_set_overlay_image_position(int64_t handle, float x, float y);

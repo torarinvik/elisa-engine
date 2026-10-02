@@ -15,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 SDL_INCLUDE_CANDIDATES = ("/opt/homebrew/include", "/usr/local/include", "/usr/include")
 
 
+def elisa_input_source() -> str:
+    """application_input.elisa plus the KeyboardKeyCode enum it includes."""
+    runtime = ROOT / "src/runtime"
+    return "".join((runtime / name).read_text(encoding="utf-8") for name in
+        ("application_input.elisa", "application_input_key_codes.inc"))
+
+
 def elisa_codes(text: str) -> dict[str, int]:
     return {name: int(value) for name, value in
         re.findall(r"^\s+((?:KEY|GAMEPAD)_[A-Z0-9_]+): i64 = (\d+)$", text, re.M)}
@@ -56,7 +63,7 @@ def table_problems(elisa_text: str, native_text: str) -> list[str]:
 
 
 def self_test() -> list[str]:
-    elisa = (ROOT / "src/runtime/application_input.elisa").read_text(encoding="utf-8")
+    elisa = elisa_input_source()
     native = (ROOT / "native/application_input_codes.h").read_text(encoding="utf-8")
     if not table_problems(elisa.replace("KEY_SLASH: i64 = ", "KEY_SLASH: i64 = 9"), native):
         return ["a changed Elisa code was not reported"]
@@ -66,7 +73,7 @@ def self_test() -> list[str]:
 
 
 def main() -> int:
-    elisa = (ROOT / "src/runtime/application_input.elisa").read_text(encoding="utf-8")
+    elisa = elisa_input_source()
     native = (ROOT / "native/application_input_codes.h").read_text(encoding="utf-8")
     problems = table_problems(elisa, native) + self_test()
     if problems:
