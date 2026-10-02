@@ -37,6 +37,7 @@ timing checks deterministic and countable.
   square wave through `SpatialAudio::spatial_gain` and asserts mix stats:
   peaks of 18000 at 10 units and 10000 at 50 units (range 100), silence past
   range, 2500 behind the cone (outer gain 0.25) and 5000 at half occlusion.
+  Moving source and listener together by 15 units leaves the mix unchanged.
   Gain uses the portable model, not the native mixer's output.
 - A proof of `absolute` and `limit` was tried and dropped: the prover could not
   establish the clamp helper's ensures (returns of `32767` and `0 - 32767` after
