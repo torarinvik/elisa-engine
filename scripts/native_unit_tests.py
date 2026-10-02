@@ -51,7 +51,35 @@ def main() -> int:
         if test_result.returncode != 0:
             print("Native gamepad mapping test failed.", file=sys.stderr)
             return test_result.returncode
-    return 0
+    return run_ozz_service_test(compiler)
+
+
+def run_ozz_service_test(compiler: list[str]) -> int:
+    """C02: the ozz animation service loads the cooked rig and samples many
+    characters without heap allocation per tick."""
+    ozz = ROOT / "dependencies/ozz"
+    libraries = [ozz / "build/src" / name for name in (
+        "animation/offline/libozz_animation_offline_r.a",
+        "animation/runtime/libozz_animation_r.a",
+        "base/libozz_base_r.a")]
+    if not all(library.is_file() for library in libraries):
+        print("Missing ozz; run python3 scripts/fetch_ozz.py first.", file=sys.stderr)
+        return 2
+    with tempfile.TemporaryDirectory(prefix="elisa-ozz-service-") as temporary_directory:
+        executable = Path(temporary_directory) / "ozz-animation-service-test"
+        compile_result = subprocess.run(
+            [*compiler, "-std=c++17", "-O1", "-I", str(ozz / "include"),
+             str(ROOT / "test/ozz_animation_service_test.cpp"), *(str(library) for library in libraries),
+             "-o", str(executable)],
+            check=False)
+        if compile_result.returncode != 0:
+            print("Native ozz animation service test did not compile.", file=sys.stderr)
+            return compile_result.returncode
+        test_result = subprocess.run(
+            [str(executable), str(ROOT / "examples/character_course/rigs/guide_rig.anim")], check=False)
+        if test_result.returncode != 0:
+            print("Native ozz animation service test failed.", file=sys.stderr)
+        return test_result.returncode
 
 
 if __name__ == "__main__":

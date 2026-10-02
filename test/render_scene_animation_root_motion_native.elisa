@@ -1,6 +1,7 @@
 # Root-motion extraction leaves vertical animation in the root joint, removes
 # horizontal translation from the pose, and reports the matching planar delta.
 include "../src/runtime/render_scene.elisa"
+include "./render_scene_animation_crowd_native.elisa"
 
 module RenderSceneAnimationRootMotionNativeTests:
     private:
@@ -215,4 +216,7 @@ module RenderSceneAnimationRootMotionNativeTests:
                 ok: true
                 error failure: false
             return 64 if not other_destroyed
+            # C02 crowd: independent clips with zero steady-state allocations.
+            crowd_status: i32 = RenderSceneAnimationCrowdNativeTests::exercise()
+            return 70 + crowd_status if crowd_status != 0
             0

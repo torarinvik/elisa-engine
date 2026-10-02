@@ -179,7 +179,7 @@ class BuildRunCliTests(unittest.TestCase):
         runner = __import__("elisa_build_run")
         paths = {key: Path("/opt/fake") for key in (
             "wicked_source", "libraries", "sdl_include", "sdl_library", "brew_include",
-            "brew_library", "miniaudio_include", "basisu_transcoder", "recast")}
+            "brew_library", "miniaudio_include", "basisu_transcoder", "recast", "ozz")}
         arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
         default = runner.native_link_command("clang++", *arguments)
         optimized = runner.native_link_command("clang++", *arguments, optimize=True)

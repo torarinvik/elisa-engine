@@ -30,6 +30,11 @@ extern "C" uint64_t elisa_render_scene_v1_test_debug_draw_allocations(void) {
     return debug_alloc_probe::allocations.load();
 }
 
+// C02 shares the counter: advance_animation arms the same scope.
+extern "C" uint64_t elisa_render_scene_v1_test_animation_allocations(void) {
+    return debug_alloc_probe::allocations.load();
+}
+
 // Sanity control: one heap string built inside an armed scope must count.
 extern "C" uint64_t elisa_render_scene_v1_test_debug_alloc_sanity(void) {
     const uint64_t before = debug_alloc_probe::allocations.load();

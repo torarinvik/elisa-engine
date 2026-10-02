@@ -95,11 +95,19 @@ def resolve_native_paths(args: argparse.Namespace) -> dict[str, Path]:
         "miniaudio_include": ENGINE_ROOT / "dependencies/miniaudio",
         "basisu_transcoder": ENGINE_ROOT / "dependencies/basisu/transcoder",
         "recast": ENGINE_ROOT / "dependencies/recast",
+        "ozz": ENGINE_ROOT / "dependencies/ozz",
         "sdl_include": sdl_include,
         "sdl_library": sdl_library,
         "brew_include": brew_include,
         "brew_library": brew_library,
     }
+
+
+def ozz_libraries(ozz: Path) -> list[Path]:
+    """ozz-animation static libraries in link order (offline, runtime, base)."""
+    return [ozz / f"build/src/{name}" for name in (
+        "animation/offline/libozz_animation_offline_r.a", "animation/runtime/libozz_animation_r.a",
+        "base/libozz_base_r.a")]
 
 
 def required_native_files(paths: dict[str, Path]) -> list[Path]:
@@ -124,6 +132,7 @@ def required_native_files(paths: dict[str, Path]) -> list[Path]:
         paths["basisu_transcoder"] / "basisu_transcoder.cpp",
         paths["recast"] / "build/Recast/libRecast.a",
         paths["recast"] / "build/Detour/libDetour.a",
+        *ozz_libraries(paths["ozz"]),
     ] + [
         paths["brew_library"] / f"lib{name}.{suffix}"
         for name in ("freetype", "harfbuzz", "zstd")
@@ -393,6 +402,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-I", str(paths["miniaudio_include"]),
         "-I", str(paths["basisu_transcoder"]),
         "-I", str(paths["recast"] / "Recast/Include"), "-I", str(paths["recast"] / "Detour/Include"),
+        "-I", str(paths["ozz"] / "include"),
         str(ENGINE_ROOT / "native/application_abi.cpp"),
         str(ENGINE_ROOT / "native/application_test_probe.cpp"),
         str(ENGINE_ROOT / "native/render_scene_abi.cpp"),
@@ -418,6 +428,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         str(libraries / "LUA/libLUA.a"),
         str(paths["recast"] / "build/Recast/libRecast.a"),
         str(paths["recast"] / "build/Detour/libDetour.a"),
+        *map(str, ozz_libraries(paths["ozz"])),
         "-L", str(sdl_library), "-lSDL3", "-L", str(brew_library),
         "-lfreetype", "-lharfbuzz", "-lzstd", "-Wl,-rpath,@executable_path",
         "-Wl,-rpath," + str(wicked_source),
@@ -454,6 +465,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         utility_dir / "libUtility.a", utility_dir / "FAudio/libFAudio.a",
         library_dir / "LUA/libLUA.a", paths["recast"] / "build/Recast/libRecast.a",
         paths["recast"] / "build/Detour/libDetour.a",
+        *ozz_libraries(paths["ozz"]),
         paths["sdl_library"] / "libSDL3.dylib",
         *brew_link_inputs,
         runtime_object,

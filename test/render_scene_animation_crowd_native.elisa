@@ -1,0 +1,99 @@
+# C02: a crowd of skinned instances plays independent clips, speeds and
+# crossfades through the public RenderScene API. After one warm-up tick per
+# instance, every advance_animation tick runs ozz sampling into instance-owned
+# scratch and must add zero heap allocations (counted by the test probe).
+include "../src/runtime/render_scene.elisa"
+
+module RenderSceneAnimationCrowdNativeTests:
+    private:
+        const MORPHED: cstr = "build/cooked/subsets/morphed-skinned.pkg"
+        const ROOTED: cstr = "build/cooked/subsets/root-motion-skinned.pkg"
+        const TICKS: i32 = 120
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_allocations() -> u64
+
+        def spawn(path: cstr) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+            try RenderScene::create_mesh(path, Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0})
+
+        def start(handle: RenderScene::InstanceHandle, clip: cstr, speed: f32) -> i32:
+            catch RenderScene::play_animation(handle, clip, true, speed, 0.25):
+                ok: 0
+                error failure: 1
+
+        def step(handle: RenderScene::InstanceHandle, delta: f32) -> i32:
+            catch RenderScene::advance_animation(handle, delta):
+                ok: 0
+                error failure: 1
+
+        def progress(handle: RenderScene::InstanceHandle) -> f32:
+            catch RenderScene::animation_progress(handle):
+                value: value
+                error failure: -1.0
+
+        def remove(handle: RenderScene::InstanceHandle) -> i32:
+            catch RenderScene::destroy(handle):
+                ok: 0
+                error failure: 1
+
+        # One tick for the whole group with per-instance, per-tick deltas.
+        def tick_group(a: RenderScene::InstanceHandle, b: RenderScene::InstanceHandle,
+            c: RenderScene::InstanceHandle, d: RenderScene::InstanceHandle,
+            e: RenderScene::InstanceHandle, f: RenderScene::InstanceHandle,
+            g: RenderScene::InstanceHandle, h: RenderScene::InstanceHandle, tick: i32) -> i32:
+            wobble: f32 = (tick % 7).f32() * 0.001
+            first: i32 = step(a, 0.016 + wobble) + step(b, 0.017) + step(c, 0.011 + wobble) + step(d, 0.023)
+            second: i32 = step(e, 0.016) + step(f, 0.019 + wobble) + step(g, 0.013) + step(h, 0.021 + wobble)
+            first + second
+
+    public:
+        def exercise() -> i32:
+            a: RenderScene::InstanceHandle = catch spawn(MORPHED):
+                value: value
+                error failure: return 1
+            b: RenderScene::InstanceHandle = catch spawn(MORPHED):
+                value: value
+                error failure: return 1
+            c: RenderScene::InstanceHandle = catch spawn(MORPHED):
+                value: value
+                error failure: return 1
+            d: RenderScene::InstanceHandle = catch spawn(MORPHED):
+                value: value
+                error failure: return 1
+            e: RenderScene::InstanceHandle = catch spawn(ROOTED):
+                value: value
+                error failure: return 1
+            f: RenderScene::InstanceHandle = catch spawn(ROOTED):
+                value: value
+                error failure: return 1
+            g: RenderScene::InstanceHandle = catch spawn(ROOTED):
+                value: value
+                error failure: return 1
+            h: RenderScene::InstanceHandle = catch spawn(ROOTED):
+                value: value
+                error failure: return 1
+            morphed: i32 = start(a, "lift", 1.0) + start(b, "drop", 0.5) + start(c, "lift", 1.7) + start(d, "drop", 1.2)
+            rooted: i32 = start(e, "root-motion", 1.0) + start(f, "root-motion", 0.6) + start(g, "root-motion", 1.4)
+            return 2 if morphed + rooted + start(h, "root-motion", 0.8) != 0
+            # Warm-up: binds each shared ozz library and prepares both contexts.
+            return 3 if tick_group(a, b, c, d, e, f, g, h, 0) != 0
+            before: u64 = elisa_render_scene_v1_test_animation_allocations()
+            mutable tick: i32 = 1
+            mutable misses: i32 = 0
+            while tick < TICKS:
+                misses <- misses + tick_group(a, b, c, d, e, f, g, h, tick)
+                tick <- tick + 1
+            return 4 if misses != 0
+            after: u64 = elisa_render_scene_v1_test_animation_allocations()
+            return 5 if after != before
+            # Independent clocks: different speeds give different phases.
+            pa: f32 = progress(a)
+            pc: f32 = progress(c)
+            pe: f32 = progress(e)
+            pf: f32 = progress(f)
+            distinct: bool = pa >= 0.0 and pc >= 0.0 and pa != pc and pe >= 0.0 and pe != pf
+            return 6 if not distinct
+            removed: i32 = remove(a) + remove(b) + remove(c) + remove(d)
+            return 7 if removed + remove(e) + remove(f) + remove(g) + remove(h) != 0
+            0

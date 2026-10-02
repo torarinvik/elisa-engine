@@ -81,7 +81,7 @@ def main() -> int:
         utility / "FAudio/libFAudio.a", libraries / "LUA/libLUA.a",
         sdl_include / "SDL3/SDL.h", sdl_library / "libSDL3.dylib",
         basisu_transcoder / "basisu_transcoder.h", basisu_transcoder / "basisu_transcoder.cpp",
-    ]
+    ] + elisa_build_run.ozz_libraries(ROOT / "dependencies/ozz")
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         print("Missing render scene smoke dependency:\n  " + "\n  ".join(missing), file=sys.stderr)
@@ -339,7 +339,7 @@ def main() -> int:
         "-I", str(sdl_include), "-I", str(sdl_include / "SDL3"),
         "-I", str(brew_include), "-I", str(brew_include / "freetype2"),
         "-I", str(brew_include / "harfbuzz"), "-I", str(ROOT / "dependencies/miniaudio"),
-        "-I", str(basisu_transcoder),
+        "-I", str(basisu_transcoder), "-I", str(ROOT / "dependencies/ozz/include"),
         str(ROOT / "native/application_abi.cpp"),
         str(ROOT / "native/render_scene_abi.cpp"),
         str(ROOT / "native/meshopt_stream_codec.cpp"),
@@ -357,7 +357,7 @@ def main() -> int:
         *[extra for extra in os.environ.get("ELISA_RENDER_SCENE_EXTRA_OBJECTS", "").split(os.pathsep) if extra],
         str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),
         str(utility / "libUtility.a"), str(utility / "FAudio/libFAudio.a"),
-        str(libraries / "LUA/libLUA.a"),
+        str(libraries / "LUA/libLUA.a"), *map(str, elisa_build_run.ozz_libraries(ROOT / "dependencies/ozz")),
         "-L", str(sdl_library), "-lSDL3", "-L", str(brew_library),
         "-lfreetype", "-lharfbuzz", "-lzstd", "-Wl,-rpath,@executable_path",
         "-Wl,-rpath," + str(wicked_source),

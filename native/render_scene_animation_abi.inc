@@ -173,6 +173,9 @@ extern "C" int32_t elisa_render_scene_v1_advance_animation(int64_t handle, float
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_INSTANCES;
     if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    // C02: a steady-state tick (ozz sampling, blending, root motion, joint
+    // writes) is counted by the test allocation probe and must add nothing.
+    ELISA_DEBUG_ALLOC_SCOPE;
     InstanceSlot& instance = state.instances[slot];
     if ((instance.animation_clip >= int32_t(instance.animation_clips.size())) ||
         (instance.animation_clip < 0 && instance.previous_animation_clip < 0)) {

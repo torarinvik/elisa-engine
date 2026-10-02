@@ -30,6 +30,7 @@
 #include "lod_selection.h"
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
+#include "ozz_animation_service.h"
 #include <DirectXMath.h>
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE) && defined(TRACY_ENABLE)
 #include <tracy/Tracy.hpp> // file scope: the probe header sits in namespace {}
@@ -308,6 +309,7 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
     instance.animation_submission = {};
 }
 #include "render_scene_imported_scene_internal.inc"
+#include "render_scene_ozz_animation.inc"
 #include "render_scene_animation_internal.inc"
 #include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {

@@ -28,6 +28,7 @@ void clear_animation_state(InstanceSlot& instance) {
     instance.root_motion_wrap_correction_z = 0.0f;
     instance.root_motion_previous_valid = false;
     instance.root_motion_exit_pending = false;
+    reset_ozz_animation(instance);
 }
 
 // Capture the actual displayed mixture before replacing its destination.
@@ -105,25 +106,6 @@ void interpolate_transform(const float* first, const float* second, float weight
     }
 }
 
-void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, float time,
-    bool loop, size_t joint_index, float* output) {
-    if (clip_index < 0) {
-        const auto& rest = instance.skin_joints[joint_index].rest_local;
-        std::copy(rest.begin(), rest.end(), output);
-        return;
-    }
-    const auto& clip = instance.animation_clips[size_t(clip_index)];
-    const float clamped_time = animation_time(clip, time, loop);
-    const float frame_position = std::min(clamped_time * float(clip.sample_rate), float(clip.frame_count - 1));
-    const uint32_t first_frame = uint32_t(std::floor(frame_position));
-    const uint32_t second_frame = std::min(first_frame + 1, clip.frame_count - 1);
-    const float weight = frame_position - float(first_frame);
-    const size_t joint_count = instance.skin_joints.size();
-    const float* first = clip.local_transforms.data() + (size_t(first_frame) * joint_count + joint_index) * 10;
-    const float* second = clip.local_transforms.data() + (size_t(second_frame) * joint_count + joint_index) * 10;
-    interpolate_transform(first, second, weight, output);
-}
-
 // Root tracks are local to their joint. Resolve their linear transform through
 // the current ancestor pose so root motion uses the instance's scale and axes.
 XMMATRIX root_motion_parent_linear_transform(const InstanceSlot& instance, size_t root_joint) {
@@ -155,11 +137,14 @@ bool animation_root_cycle_delta(const InstanceSlot& instance, int32_t clip_index
     int32_t joint_index, float& delta_x, float& delta_z) {
     if (clip_index < 0 || clip_index >= int32_t(instance.animation_clips.size()) ||
         joint_index < 0 || size_t(joint_index) >= instance.skin_joints.size()) return false;
-    const auto& clip = instance.animation_clips[size_t(clip_index)];
-    float first[10]{};
-    float last[10]{};
-    sample_animation_pose(instance, clip_index, 0.0f, false, size_t(joint_index), first);
-    sample_animation_pose(instance, clip_index, clip.duration_seconds, false, size_t(joint_index), last);
+    // The ozz library samples each clip's endpoints once when it is built.
+    if (instance.ozz_library == nullptr ||
+        size_t(clip_index) >= instance.ozz_library->clips.size()) return false;
+    const size_t pose_floats = instance.skin_joints.size() * 10;
+    const float* first = instance.ozz_library->clip_start_poses.data() +
+        size_t(clip_index) * pose_floats + size_t(joint_index) * 10;
+    const float* last = instance.ozz_library->clip_end_poses.data() +
+        size_t(clip_index) * pose_floats + size_t(joint_index) * 10;
     const XMFLOAT3 cycle = root_motion_instance_delta(instance, size_t(joint_index),
         last[0] - first[0], last[1] - first[1], last[2] - first[2]);
     delta_x = cycle.x;
@@ -207,22 +192,25 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
         if (instance.blend_eased) blend = blend * blend * (3.0f - 2.0f * blend);
     }
     instance.displayed_joint_pose.resize(instance.joint_entities.size() * 10);
+    const bool interrupted = instance.interrupted_joint_pose.size() == instance.joint_entities.size() * 10;
+    if (has_joints) {
+        if (!ensure_ozz_animation(instance)) return false;
+        if (!sample_ozz_full_pose(instance, instance.ozz_current, instance.animation_clip,
+            instance.animation_time, instance.animation_loop, instance.ozz_current_pose.data())) return false;
+        if (blend < 1.0f && !interrupted && !sample_ozz_full_pose(instance, instance.ozz_previous,
+            instance.previous_animation_clip, instance.previous_animation_time,
+            instance.previous_animation_loop, instance.ozz_previous_pose.data())) return false;
+    }
     for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
-        float current[10]{};
-        float previous[10]{};
         float pose[10]{};
-        sample_animation_pose(instance, instance.animation_clip, instance.animation_time,
-            instance.animation_loop, joint_index, current);
+        const float* current = instance.ozz_current_pose.data() + joint_index * 10;
         if (blend < 1.0f) {
-            if (instance.interrupted_joint_pose.size() == instance.joint_entities.size() * 10) {
-                std::copy_n(instance.interrupted_joint_pose.data() + joint_index * 10, 10, previous);
-            } else {
-                sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
-                    instance.previous_animation_loop, joint_index, previous);
-            }
+            const float* previous = interrupted
+                ? instance.interrupted_joint_pose.data() + joint_index * 10
+                : instance.ozz_previous_pose.data() + joint_index * 10;
             interpolate_transform(previous, current, blend, pose);
         } else {
-            std::copy(std::begin(current), std::end(current), pose);
+            std::copy_n(current, 10, pose);
         }
         if (instance.root_motion_mode == 1 && int32_t(joint_index) == instance.root_motion_joint) {
             if (!instance.root_motion_previous_valid) {

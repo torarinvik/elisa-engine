@@ -1,3 +1,4 @@
+struct OzzAnimationLibrary;  // render_scene_ozz_animation.inc
 struct InstanceSlot {
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
@@ -63,5 +64,12 @@ struct InstanceSlot {
     // The extracted pose becomes the source of the next fade when root
     // extraction is disabled at the end of an authored action.
     bool root_motion_exit_pending = false;
+    // C02 ozz sampling: the asset's shared rig/clips, this instance's own
+    // contexts and full-pose scratch (current and fading-out clip).
+    std::shared_ptr<const OzzAnimationLibrary> ozz_library;
+    elisa::animation::OzzContextSlot ozz_current;
+    elisa::animation::OzzContextSlot ozz_previous;
+    std::vector<float> ozz_current_pose;
+    std::vector<float> ozz_previous_pose;
     bool live = false;
 };
