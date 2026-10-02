@@ -1,0 +1,7 @@
+# Finite hidden entry point for the packaged-shader smoke (R13): one host
+# lifetime per process, so a cold launch and a warm relaunch are separate
+# processes and each reports its own startup hitches.
+include "./native_client.elisa"
+
+def main() -> i32:
+    MazeNativeClient::run(true, true)

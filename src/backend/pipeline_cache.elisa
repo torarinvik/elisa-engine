@@ -5,6 +5,8 @@
 # pipelines are queued for warm-up (deduplicated) and compiled at a bounded
 # count per frame; a pipeline needed before it is warm is a cold hit and is
 # counted separately from warm hits so hitches can be attributed.
+include "./pipeline_archive_key.elisa"
+
 module BackendPipelineCache:
     private:
         const module Tune:
@@ -43,6 +45,11 @@ module BackendPipelineCache:
 
         def key_ok(k: Key&) -> bool:
             k.version > 0 and k.permutation >= 0 and k.backend >= 0 and k.driver >= 0
+
+        # A persisted pipeline archive (R13) is reusable only under an
+        # identical valid key; see BackendPipelineArchiveKey.
+        def persisted_reusable(stored: Key&, current: Key&) -> bool:
+            BackendPipelineArchiveKey::archive_fields_reusable(stored.version, stored.permutation, stored.backend, stored.driver, current.version, current.permutation, current.backend, current.driver)
 
         def find(c: Cache&, k: Key&) -> i64:
             found: mutable i64 = -1

@@ -75,10 +75,14 @@ int main() {
     const char* prior_key_value = std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
     const bool had_prior_key = prior_key_value != nullptr;
     const std::string prior_key = had_prior_key ? prior_key_value : std::string();
-    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), manifest.string().c_str());
+    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), manifest.string().c_str(), 7);
     const char* configured_key = std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
-    if (configured_key == nullptr || configured_key != expected_manifest_digest) return 9;
-    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), nullptr);
+    const std::string expected_key = elisa::shader::pipeline_archive_key(expected_manifest_digest, "metal", 7);
+    if (configured_key == nullptr || configured_key != expected_key || expected_key.size() != 64) return 9;
+    // A new engine build or another backend must never reuse the same archive key.
+    if (elisa::shader::pipeline_archive_key(expected_manifest_digest, "metal", 8) == expected_key ||
+        elisa::shader::pipeline_archive_key(expected_manifest_digest, "spirv", 7) == expected_key) return 13;
+    elisa::shader::configure_metal_pipeline_archive_shader_key(root.string().c_str(), nullptr, 7);
     if (std::getenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY") != nullptr) return 10;
     if (had_prior_key) setenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY", prior_key.c_str(), 1);
     else unsetenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");

@@ -178,3 +178,88 @@ archive was 60,258,320 bytes. As before, this validates persistence and
 invalidation, not a startup speedup over Metal's own cache. The native manifest
 test also verifies that the application host derives the key from the
 validated manifest bytes.
+
+## Packaged-shader startup, invalidation and cold/warm hitches (2026-10-02)
+
+`scripts/packaged_shader_smoke.py` closes R13. The render smoke runs it after
+the packaged maze. It builds `examples/maze/packaged_smoke_main.elisa`, which
+runs one host lifetime per process. It then stages that executable, the
+maze's two ELPK bundles and a packaged Metal library outside the checkout.
+The library holds the 398 compiled `.cso` files of the Wicked revision the
+smoke links against, without `.wishadermeta`, plus a schema 2 manifest.
+
+Every launch runs under `sandbox-exec`. The sandbox denies reads and writes
+to the whole projects directory, which covers this checkout, the Wicked
+sources and every sibling. It also denies writes to the packaged shader
+directory. HOME and TMPDIR point at fresh temporary directories.
+
+A control `cat` of a Wicked `.hlsl` source must fail inside the sandbox.
+Wicked prints `shader compile FAILED` and the app still exits 0 when it
+requests a shader that isn't packaged, so exit 0 alone proves nothing. Each
+launch must therefore also print no `shader compile` line and leave the
+staged shader tree byte-identical. That is how the smoke shows startup used
+packaged inputs only.
+
+**Cache invalidation.** The application host now derives the Metal pipeline
+archive key from three inputs, hashed together: the verified manifest bytes,
+the backend and the engine build identity (`pipeline_archive_key` in
+`native/shader_path_validation.h`). Before this change it used only the
+manifest bytes.
+
+- The smoke recomputes the expected key from the manifest and the
+  executable's provenance `build_identity`, and requires it in the archive
+  identity.
+- Adding one permutation to the package and regenerating its manifest makes
+  the warm launch reject the archive ("identity does not match") and still
+  start.
+- Flipping one byte of a packaged shader in place stops startup with
+  `Elisa shader manifest rejected`, exit 1, before Wicked starts. Nothing
+  falls back to sources.
+- The restored package loads its archive again.
+
+The native manifest test checks that a different build or backend changes
+the key. `BackendPipelineArchiveKey::archive_fields_reusable` states the
+same reuse rule in Elisa. `test/backend_pipeline_cache.elisa` tests it and
+`proof/pipeline_archive_key.elisa` proves it.
+
+**Hitch measurement.** With `ELISA_FRAME_HITCH_REPORT=1`, the application
+host prints a line at shutdown with these fields:
+
+- `pipelines_us`: synchronous Wicked initialization, where every shader is
+  loaded and its pipeline states are created.
+- `first_frame_us`: the first pumped frame.
+- `later_max_us`: the slowest later pumped frame.
+
+Here "cold" means an empty pipeline archive, captured on that launch. "Warm"
+means the second launch, which loads the archive. In the packaged case the
+Wicked shader cache is the read-only packaged library, so nothing is ever
+compiled at runtime. Three trials on macOS 27.0 / Apple M5 (milliseconds):
+
+| Trial | Cold pipelines | Cold first frame | Cold later max | Cold launch | Warm pipelines | Warm first frame | Warm later max | Warm launch |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1 | 279.1 | 20.2 | 67.6 | 5,658 | 209.6 | 15.1 | 74.3 | 1,890 |
+| 2 | 215.4 | 15.6 | 53.6 | 4,909 | 187.9 | 12.6 | 26.6 | 1,748 |
+| 3 | 185.7 | 12.4 | 63.8 | 4,720 | 185.8 | 19.4 | 23.4 | 1,531 |
+
+Cold launch time includes serializing the roughly 60 MB archive at
+shutdown. That cost, not a startup hitch, makes up most of the gap between
+cold and warm launches. Pipeline creation is 9–25% faster warm in trials 1
+and 2 and equal in trial 3. First frames are 12–20 ms either way.
+
+macOS keeps its own per-user Metal driver cache, which is shared and cannot
+be cleared without touching other applications. Each trial uses a uniquely
+named executable, but driver-level reuse cannot be ruled out. For a cold
+start that compiles shaders from source, the same day's
+`shader_warmup_benchmark.py` run reported:
+
+- Cold, empty Wicked shader cache: 12,450 ms launch with 392 binaries
+  compiled; first frame 3,351 ms.
+- Shader-cache launch: 825 ms; first frame 87.9 ms.
+- Archive launch: 762 ms; first frame 38.1 ms.
+- Later frames were about 8.6 ms median in all three.
+
+Known Wicked limitation: in a process that starts a second host after
+archive capture published at the first shutdown, Metal command submission
+fails (`MTL4CommandQueueErrorDomain error 1`) and the process hangs. That is
+why the smoke uses a single-lifetime entry point. Archive capture remains a
+development opt-in, and normal launches leave it unset.

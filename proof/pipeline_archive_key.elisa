@@ -1,0 +1,14 @@
+# R13 pipeline-archive invalidation: a persisted archive is reusable only when
+# every key field matches, so a new engine build, a changed shader manifest, a
+# different backend or another device identity always forces a rebuild.
+include "../src/backend/pipeline_archive_key.elisa"
+
+extend BackendPipelineArchiveKey:
+    def prove_reuse_needs_same_key(sv: i64, sp: i64, sb: i64, sd: i64, v: i64, p: i64, b: i64, d: i64) -> bool:
+        ensure not result or sv == v
+        ensure not result or sp == p
+        ensure not result or sb == b
+        ensure not result or sd == d
+        ensure not result or sv > 0
+        archive_fields_reusable(sv, sp, sb, sd, v, p, b, d)
+

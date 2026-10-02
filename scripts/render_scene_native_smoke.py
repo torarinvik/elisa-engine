@@ -31,6 +31,7 @@ import gltf_skin_self_test
 import gltf_morph_self_test
 import gltf_scene_self_test
 import packaged_maze_smoke
+import packaged_shader_smoke
 import geometry_subset_cases
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -581,6 +582,14 @@ def main() -> int:
             print("Packaged maze smoke outside the checkout failed.", file=sys.stderr)
             return packaged_status
         print("Packaged maze ran outside the checkout; bad bundles failed asset registration.")
+        shader_status = run([sys.executable, str(ROOT / "scripts/elisa_build_run.py"), "build",
+            "--project", str(ROOT / "examples/maze"), "--main", "packaged_smoke_main.elisa",
+            "--output", str(build / "maze-packaged-smoke")], cwd=ROOT) or packaged_shader_smoke.run(
+            build / "maze-packaged-smoke", ROOT / "examples/maze", wicked_source / "shaders" / "metal")
+        if shader_status != 0:
+            print("Packaged-shader startup smoke failed.", file=sys.stderr)
+            return shader_status
+        print("Packaged maze started from packaged shaders only; archive invalidation passed.")
     return status
 
 

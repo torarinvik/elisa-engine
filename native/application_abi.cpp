@@ -7,6 +7,7 @@
 #include "native_application.h"
 #include "physics_service_abi.h"
 #include "shader_path_validation.h"
+#include "frame_hitch_timing.h"
 #include "wiHelper.h"
 #include "wiRenderer.h"
 
@@ -95,6 +96,7 @@ struct ApplicationService {
     bool pointer_overflow_reported = false;
     ElisaBackendProfile backend_profile{};
     bool backend_profile_valid = false;
+    elisa::hitch::FrameHitchTiming hitches{};
     bool initialized = false;
 };
 
@@ -271,8 +273,11 @@ extern "C" int32_t elisa_application_v1_initialize(
     config.height = height;
     config.hidden = hidden != 0;
     configure_shader_root();
-    elisa::shader::configure_metal_pipeline_archive_shader_key(shader_path, shader_manifest);
+    elisa::shader::configure_metal_pipeline_archive_shader_key(shader_path, shader_manifest,
+        int64_t(ELISA_APPLICATION_BUILD_ID));
+    elisa::hitch::begin(service.hitches);
     if (!service.host.initialize(config)) return ELISA_APPLICATION_INITIALIZATION_FAILED;
+    elisa::hitch::initialized(service.hitches);
 
     service.backend_profile_valid = probe::query_live_backend_profile(service.backend_profile);
 
@@ -495,7 +500,9 @@ extern "C" int32_t elisa_application_v1_pump(void) {
         }
     }
     if (service.host.simulation_suspended()) return ELISA_APPLICATION_SUSPENDED;
+    const auto frame_start = std::chrono::steady_clock::now();
     if (!service.host.run_frame()) return ELISA_APPLICATION_FRAME_FAILED;
+    elisa::hitch::frame(service.hitches, frame_start);
     note_application_capture_submission(service);
     ++service.frame_count;
     return ELISA_APPLICATION_RUNNING;

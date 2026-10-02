@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
@@ -76,17 +77,33 @@ inline bool manifest_content_digest(const char* configured_root, const char* con
     return true;
 }
 
-inline void configure_metal_pipeline_archive_shader_key(const char* shader_root, const char* manifest_path) {
+// The archive key binds a captured pipeline archive to everything that changes
+// the pipelines it holds: the exact verified manifest bytes (so any shader
+// change, addition or removal), the active shader backend, and the engine
+// build identity (so a new engine binary never reuses an older capture).
+inline std::string pipeline_archive_key(const std::string& manifest_digest,
+    const std::string& backend, int64_t engine_build) {
+    const std::string material = "elisa-pipeline-archive-v1\n" + manifest_digest + "\n" +
+        backend + "\n" + std::to_string(engine_build);
+    elisa::assets::Sha256 hash;
+    hash.update(reinterpret_cast<const uint8_t*>(material.data()), material.size());
+    return hash.finish();
+}
+
+inline void configure_metal_pipeline_archive_shader_key(const char* shader_root, const char* manifest_path,
+    int64_t engine_build) {
 #if defined(__APPLE__)
     std::string digest;
     if (manifest_content_digest(shader_root, manifest_path, digest)) {
-        setenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY", digest.c_str(), 1);
+        const std::string key = pipeline_archive_key(digest, "metal", engine_build);
+        setenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY", key.c_str(), 1);
     } else {
         unsetenv("WICKED_METAL_PIPELINE_ARCHIVE_SHADER_KEY");
     }
 #else
     (void)shader_root;
     (void)manifest_path;
+    (void)engine_build;
 #endif
 }
 

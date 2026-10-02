@@ -1,0 +1,19 @@
+# Persisted pipeline-archive reuse rule (R13), kept in its own index-free
+# module so the prover reads it alone. A stored archive is reusable only when
+# its key is valid and agrees with the current key on every field: engine
+# build, shader-manifest fingerprint, backend and device identity. The native
+# host hashes the same fields into the Metal archive key
+# (`native/shader_path_validation.h`).
+module BackendPipelineArchiveKey:
+    public:
+        def archive_fields_reusable(stored_version: i64, stored_permutation: i64, stored_backend: i64, stored_driver: i64, version: i64, permutation: i64, backend: i64, driver: i64) -> bool:
+            ensure not result or stored_version == version
+            ensure not result or stored_permutation == permutation
+            ensure not result or stored_backend == backend
+            ensure not result or stored_driver == driver
+            ensure not result or stored_version > 0
+            return false if stored_version <= 0 or stored_permutation < 0
+            return false if stored_backend < 0 or stored_driver < 0
+            return false if stored_version != version or stored_permutation != permutation
+            return false if stored_backend != backend or stored_driver != driver
+            true
