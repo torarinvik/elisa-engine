@@ -1,0 +1,55 @@
+include "../src/animation/package_index.elisa"
+
+# Soundness of the cooked elisa-anim-v1 layout rules: whatever the loader
+# accepts stays inside the image and the format bounds.
+extend AnimationPackageIndex:
+    def prove_span_inside(offset: i64, span: i64, total: i64) -> i64:
+        ensure result <= total or result < 0
+        ensure result >= offset or result < 0
+        span_end(offset, span, total)
+
+    def prove_span_exact(offset: i64, span: i64, total: i64) -> i64:
+        ensure result == offset + span or result < 0
+        span_end(offset, span, total)
+
+    def prove_counts_bounded(joint_count: i64, clip_count: i64) -> bool:
+        ensure joint_count >= 1 or not result
+        ensure joint_count <= 64 or not result
+        ensure clip_count >= 0 or not result
+        ensure clip_count <= 24 or not result
+        counts_valid(joint_count, clip_count)
+
+    def prove_parent_earlier(parent: i64, index: i64) -> bool:
+        ensure parent < index or not result
+        ensure parent >= -1 or not result
+        parent_valid(parent, index)
+
+    def prove_track_verdict(track_count: i64, joint_count: i64) -> i64:
+        ensure result != 0 or track_count == joint_count
+        ensure result != 1 or track_count < joint_count
+        ensure result != 2 or track_count > joint_count
+        track_count_verdict(track_count, joint_count)
+
+    def prove_track_in_order(joint_index: i64, slot: i64, joint_count: i64) -> bool:
+        ensure joint_index == slot or not result
+        ensure joint_index < joint_count or not result
+        track_joint_valid(joint_index, slot, joint_count)
+
+    def prove_track_has_keys(key_count: i64, keys_so_far: i64) -> bool:
+        requires keys_so_far >= 0
+        requires keys_so_far <= 262144
+        ensure key_count >= 1 or not result
+        ensure keys_so_far + key_count <= 262144 or not result
+        keys_fit(key_count, keys_so_far)
+
+    def prove_events_bounded(event_count: i64) -> bool:
+        ensure event_count >= 0 or not result
+        ensure event_count <= 32 or not result
+        events_fit(event_count)
+
+    def prove_signed_word_range(value: i64) -> i64:
+        requires value >= 0
+        requires value <= 4294967295
+        ensure result >= -2147483648
+        ensure result <= 2147483647
+        signed_word(value)

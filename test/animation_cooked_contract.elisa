@@ -1,0 +1,225 @@
+# Loads the course rig's cooked elisa-anim-v1 contract (make_rigs.py) and checks
+# that malformed cooked bytes fail in AnimationPackage before any sampling.
+include "../src/animation/package.elisa"
+
+const RIG: cstr = "examples/character_course/rigs/guide_rig.anim"
+const JOINT_ZERO: i64 = 32
+const JOINT_BYTES: i64 = 112
+
+def put(bytes: mutable darray[u8]&, at: i64, value: i64) -> void:
+    word: u64 = value.u64() & 4294967295
+    i: usize = at.usize()
+    bytes[i] <- (word & 255).u8()
+    bytes[i + 1] <- ((word >> 8) & 255).u8()
+    bytes[i + 2] <- ((word >> 16) & 255).u8()
+    bytes[i + 3] <- ((word >> 24) & 255).u8()
+
+def word_at(bytes: darray[u8]&, at: i64) -> i64:
+    i: usize = at.usize()
+    (bytes[i].u64() | (bytes[i + 1].u64() << 8) | (bytes[i + 2].u64() << 16) | (bytes[i + 3].u64() << 24)).i64()
+
+# Rewrites the length and checksum so a semantic defect reaches the checks
+# behind the integrity checks.
+def reseal(bytes: mutable darray[u8]&) -> void:
+    put(bytes, 8, bytes.count.i64())
+    put(bytes, 12, AnimationPackage::checksum(bytes).i64())
+
+# Also recomputes the rig id, for edits inside the joint records.
+def reseal_rig(bytes: mutable darray[u8]&) -> void:
+    put(bytes, 16, AnimationPackage::rig_identity(bytes, word_at(bytes, 20)))
+    reseal(bytes)
+
+def copy(bytes: darray[u8]&) -> darray[u8]:
+    out: mutable darray[u8] = []
+    for i in 0..<bytes.count |out, bytes|:
+        out.push(bytes[i])
+    return move out
+
+def prefix(bytes: darray[u8]&, count: usize) -> darray[u8]:
+    out: mutable darray[u8] = []
+    for i in 0..<count |out, bytes|:
+        out.push(bytes[i])
+    return move out
+
+def clip_zero(bytes: darray[u8]&) -> i64:
+    JOINT_ZERO + word_at(bytes, 20) * JOINT_BYTES
+
+def skeleton_code(bytes: darray[u8]&) -> i32:
+    catch AnimationPackage::decode_skeleton(bytes):
+        value: 0
+        AnimationPackage::AnimationPackageError.OpenFailed: 1
+        AnimationPackage::AnimationPackageError.Truncated: 2
+        AnimationPackage::AnimationPackageError.BadMagic: 3
+        AnimationPackage::AnimationPackageError.UnsupportedVersion: 4
+        AnimationPackage::AnimationPackageError.LengthMismatch: 5
+        AnimationPackage::AnimationPackageError.ChecksumMismatch: 6
+        AnimationPackage::AnimationPackageError.OutOfBounds: 7
+        AnimationPackage::AnimationPackageError.TrailingBytes: 8
+        AnimationPackage::AnimationPackageError.InvalidParent: 9
+        AnimationPackage::AnimationPackageError.DuplicateJoint: 10
+        AnimationPackage::AnimationPackageError.InvalidSkeleton: 11
+        error failure: 99
+
+def code(bytes: darray[u8]&) -> i32:
+    decoded: i32 = skeleton_code(bytes)
+    return decoded if decoded != 0
+    skeleton: AnimationAssets::SkeletonAsset = catch AnimationPackage::decode_skeleton(bytes):
+        value: value
+        error failure: return 99
+    clip_code(bytes, &skeleton)
+
+def clip_code(bytes: darray[u8]&, skeleton: AnimationAssets::SkeletonAsset&) -> i32:
+    catch AnimationPackage::decode_clip(bytes, skeleton, 0):
+        value: 0
+        AnimationPackage::AnimationPackageError.MissingTrack: 12
+        AnimationPackage::AnimationPackageError.IncompatibleClip: 13
+        AnimationPackage::AnimationPackageError.InvalidClip: 14
+        AnimationPackage::AnimationPackageError.InvalidSkeleton: 11
+        AnimationPackage::AnimationPackageError.OutOfBounds: 7
+        error failure: 98
+
+def valid_sampling(bytes: darray[u8]&) -> i32:
+    skeleton: AnimationAssets::SkeletonAsset = catch AnimationPackage::decode_skeleton(bytes):
+        value: value
+        error failure: return 20
+    return 21 if skeleton.joint_count != 4
+    clips: usize = catch AnimationPackage::clip_count(bytes):
+        value: value
+        error failure: return 22
+    return 23 if clips != 1
+    clip: AnimationAssets::AnimationClip = catch AnimationPackage::decode_clip(bytes, &skeleton, 0):
+        value: value
+        error failure: return 24
+    return 25 if AnimationAssets::clip_duration_ticks(&clip) != 30
+    pose: Pose::Pose = catch AnimationAssets::sample_clip_pose(&skeleton, &clip, 15):
+        value: value
+        error failure: return 26
+    return 27 if pose.count != 4
+    0
+
+def structure_cases(base: darray[u8]&) -> i32:
+    self_parent: mutable darray[u8] = copy(base)
+    put(&self_parent, JOINT_ZERO + JOINT_BYTES + 4, 1)
+    reseal_rig(&self_parent)
+    return 30 if code(&self_parent) != 9
+    forward_parent: mutable darray[u8] = copy(base)
+    put(&forward_parent, JOINT_ZERO + 2 * JOINT_BYTES + 4, 3)
+    reseal_rig(&forward_parent)
+    return 31 if code(&forward_parent) != 9
+    below_root: mutable darray[u8] = copy(base)
+    put(&below_root, JOINT_ZERO + 4, 0 - 2)
+    reseal_rig(&below_root)
+    return 32 if code(&below_root) != 9
+    duplicate: mutable darray[u8] = copy(base)
+    put(&duplicate, JOINT_ZERO + 2 * JOINT_BYTES, word_at(base, JOINT_ZERO + JOINT_BYTES))
+    reseal_rig(&duplicate)
+    return 33 if code(&duplicate) != 10
+    bad_bind: mutable darray[u8] = copy(base)
+    put(&bad_bind, JOINT_ZERO + 3 * JOINT_BYTES + 48 + 48, 0)
+    reseal_rig(&bad_bind)
+    return 34 if code(&bad_bind) != 11
+    stale_rig: mutable darray[u8] = copy(base)
+    put(&stale_rig, JOINT_ZERO + 3 * JOINT_BYTES, 77)
+    reseal(&stale_rig)
+    return 35 if code(&stale_rig) != 11
+    0
+
+def track_cases(base: darray[u8]&) -> i32:
+    clip: i64 = clip_zero(base)
+    # Drop the last joint's track and declare one track fewer.
+    keys: i64 = word_at(base, clip + 24 + 4)
+    track_bytes: i64 = 8 + keys * 44
+    missing: mutable darray[u8] = prefix(base, (base.count.i64() - track_bytes).usize())
+    put(&missing, clip + 16, 3)
+    reseal(&missing)
+    return 40 if code(&missing) != 12
+    skipped: mutable darray[u8] = copy(base)
+    put(&skipped, clip + 24 + track_bytes, 2)
+    reseal(&skipped)
+    return 41 if code(&skipped) != 12
+    # A keyless track is refused by the layout walk (keys_fit) before decode.
+    keyless: mutable darray[u8] = prefix(base, (base.count.i64() - keys * 44).usize())
+    put(&keyless, base.count.i64() - track_bytes + 4, 0)
+    reseal(&keyless)
+    return 48 if code(&keyless) != 2
+    empty_track: mutable darray[u8] = copy(base)
+    put(&empty_track, clip + 16, 5)
+    reseal(&empty_track)
+    return 42 if code(&empty_track) == 0
+    other_rig: mutable darray[u8] = copy(base)
+    put(&other_rig, clip + 4, word_at(base, 16) + 1)
+    reseal(&other_rig)
+    return 43 if code(&other_rig) != 13
+    # A clip decoded against a different rig is refused even when both parse.
+    renamed: mutable darray[u8] = copy(base)
+    put(&renamed, JOINT_ZERO + 3 * JOINT_BYTES, 77)
+    reseal_rig(&renamed)
+    foreign: AnimationAssets::SkeletonAsset = catch AnimationPackage::decode_skeleton(&renamed):
+        value: value
+        error failure: return 44
+    return 45 if clip_code(base, &foreign) != 13
+    late_key: mutable darray[u8] = copy(base)
+    put(&late_key, clip + 24 + 8, 31)
+    reseal(&late_key)
+    return 46 if code(&late_key) != 14
+    bad_rotation: mutable darray[u8] = copy(base)
+    put(&bad_rotation, clip + 24 + 8 + 4 + 24, 1073741824)
+    reseal(&bad_rotation)
+    return 47 if code(&bad_rotation) != 14
+    0
+
+def integrity_cases(base: darray[u8]&) -> i32:
+    lengths: usize[6] = [0, 16, 31, 32, base.count / 2, base.count - 1]
+    for i in 0..<6 |lengths, base|:
+        cut: darray[u8] = prefix(base, lengths[i])
+        return 50 if code(&cut) == 0
+    sealed_cut: mutable darray[u8] = prefix(base, base.count - 4)
+    reseal(&sealed_cut)
+    return 51 if code(&sealed_cut) != 2
+    trailing: mutable darray[u8] = copy(base)
+    trailing.push(0)
+    reseal(&trailing)
+    return 52 if code(&trailing) != 8
+    flipped: mutable darray[u8] = copy(base)
+    flipped[flipped.count - 3] <- flipped[flipped.count - 3] ^ 16
+    return 53 if code(&flipped) != 6
+    magic: mutable darray[u8] = copy(base)
+    magic[0] <- 0
+    return 54 if code(&magic) != 3
+    version: mutable darray[u8] = copy(base)
+    put(&version, 4, 2)
+    return 55 if code(&version) != 4
+    length: mutable darray[u8] = copy(base)
+    put(&length, 8, base.count.i64() + 4)
+    return 56 if code(&length) != 5
+    joints: mutable darray[u8] = copy(base)
+    put(&joints, 20, 65)
+    reseal(&joints)
+    return 57 if code(&joints) != 7
+    clips: mutable darray[u8] = copy(base)
+    put(&clips, 24, 2)
+    reseal(&clips)
+    return 58 if code(&clips) != 2
+    metres: mutable darray[u8] = copy(base)
+    put(&metres, 28, 1008981770)
+    reseal(&metres)
+    return 59 if code(&metres) != 11
+    0
+
+def main() -> i32:
+    base: darray[u8] = catch AnimationPackage::read_file(RIG):
+        value: value
+        error failure: return 10
+    return 11 if code(&base) != 0
+    missing_file: i32 = catch AnimationPackage::read_file("build/no-such-rig.anim"):
+        value: 0
+        AnimationPackage::AnimationPackageError.OpenFailed: 1
+        error failure: 2
+    return 12 if missing_file != 1
+    sampled: i32 = valid_sampling(&base)
+    return sampled if sampled != 0
+    structure: i32 = structure_cases(&base)
+    return structure if structure != 0
+    tracks: i32 = track_cases(&base)
+    return tracks if tracks != 0
+    integrity_cases(&base)

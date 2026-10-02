@@ -1,0 +1,108 @@
+# Integer layout and identity rules for the cooked `elisa-anim-v1` contract
+# (AnimationPackage), split out so the prover can check them. Offsets and
+# lengths are byte counts inside one cooked contract image.
+module AnimationPackageIndex:
+    public:
+        const HEADER_BYTES: i64 = 32
+        const JOINT_BYTES: i64 = 112
+        const CLIP_HEADER_BYTES: i64 = 24
+        const TRACK_HEADER_BYTES: i64 = 8
+        const KEY_BYTES: i64 = 44
+        const EVENT_BYTES: i64 = 8
+        const MAX_BYTES: i64 = 67108864
+        const MAX_JOINTS: i64 = 64
+        const MAX_CLIPS: i64 = 24
+        const MAX_KEYS: i64 = 262144
+        const MAX_EVENTS: i64 = 32
+        const MAX_STRIDE: i64 = 112
+
+        # Track-count verdicts for one clip against its skeleton.
+        const TRACKS_MATCH: i64 = 0
+        const TRACKS_MISSING: i64 = 1
+        const TRACKS_EXTRA: i64 = 2
+
+        # Where `span` bytes starting at `offset` end, or -1 when they would
+        # run past `total` bytes or past the format's byte bound.
+        def span_end(offset: i64, span: i64, total: i64) -> i64:
+            ensure result <= total or result < 0
+            ensure result >= offset or result < 0
+            ensure result == offset + span or result < 0
+            return -1 if offset < 0
+            return -1 if offset > MAX_BYTES
+            return -1 if span < 0
+            return -1 if span > MAX_BYTES
+            return -1 if total > MAX_BYTES
+            return -1 if offset + span > total
+            offset + span
+
+        # Where `count` records of `stride` bytes starting at `offset` end, or
+        # -1 when they would run past `total` bytes.
+        def records_end(offset: i64, count: i64, stride: i64, total: i64) -> i64:
+            return -1 if count < 0
+            return -1 if count > MAX_KEYS
+            return -1 if stride < 0
+            return -1 if stride > MAX_STRIDE
+            span_end(offset, count * stride, total)
+
+        # The header's joint and clip counts are inside the runtime bounds.
+        def counts_valid(joint_count: i64, clip_count: i64) -> bool:
+            ensure joint_count >= 1 or not result
+            ensure joint_count <= MAX_JOINTS or not result
+            ensure clip_count >= 0 or not result
+            ensure clip_count <= MAX_CLIPS or not result
+            return false if joint_count < 1
+            return false if joint_count > MAX_JOINTS
+            return false if clip_count < 0
+            clip_count <= MAX_CLIPS
+
+        # Joints are stored parents first: a root names -1 and every other
+        # joint names an earlier joint, so the hierarchy has no cycle.
+        def parent_valid(parent: i64, index: i64) -> bool:
+            ensure parent >= -1 or not result
+            ensure parent < index or not result
+            return false if parent < -1
+            parent < index
+
+        # Every joint needs exactly one track; fewer tracks is a missing track
+        # and more tracks than joints names joints the skeleton does not have.
+        def track_count_verdict(track_count: i64, joint_count: i64) -> i64:
+            ensure result != TRACKS_MATCH or track_count == joint_count
+            ensure result != TRACKS_MISSING or track_count < joint_count
+            ensure result != TRACKS_EXTRA or track_count > joint_count
+            return TRACKS_MISSING if track_count < joint_count
+            return TRACKS_EXTRA if track_count > joint_count
+            TRACKS_MATCH
+
+        # Track `slot` must animate joint `slot`: tracks are stored in joint
+        # order, one per joint.
+        def track_joint_valid(joint_index: i64, slot: i64, joint_count: i64) -> bool:
+            ensure joint_index == slot or not result
+            ensure joint_index < joint_count or not result
+            return false if joint_index >= joint_count
+            joint_index == slot
+
+        # A track holds at least one key, and the clip's keys stay inside the
+        # per-clip key bound.
+        def keys_fit(key_count: i64, keys_so_far: i64) -> bool:
+            requires keys_so_far >= 0
+            requires keys_so_far <= MAX_KEYS
+            ensure key_count >= 1 or not result
+            ensure keys_so_far + key_count <= MAX_KEYS or not result
+            return false if key_count < 1
+            return false if key_count > MAX_KEYS
+            keys_so_far + key_count <= MAX_KEYS
+
+        def events_fit(event_count: i64) -> bool:
+            ensure event_count >= 0 or not result
+            ensure event_count <= MAX_EVENTS or not result
+            return false if event_count < 0
+            event_count <= MAX_EVENTS
+
+        # A u32 field read as a signed parent index (two's complement).
+        def signed_word(value: i64) -> i64:
+            requires value >= 0
+            requires value <= 4294967295
+            ensure result >= -2147483648
+            ensure result <= 2147483647
+            return value - 4294967296 if value > 2147483647
+            value

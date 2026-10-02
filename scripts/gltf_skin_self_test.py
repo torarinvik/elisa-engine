@@ -135,12 +135,12 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
 
 def write_package(output: Path,
         inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES,
-        second_animation: bool = False) -> tuple[Path, dict]:
+        second_animation: bool = False, animation_contract: Path | None = None) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-skin-") as temporary:
         source = Path(temporary) / "multi_material_skinned_panel.gltf"
         source.write_text(json.dumps(generated_document(inverse_bind_matrices, second_animation), separators=(",", ":")),
             encoding="utf-8")
-        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output)
+        return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output, animation_contract_path=animation_contract)
 
 
 def write_root_motion_package(output: Path) -> tuple[Path, dict]:

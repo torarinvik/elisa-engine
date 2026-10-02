@@ -1,0 +1,240 @@
+# Load path for the cooked `elisa-anim-v1` skeleton/clip contract written by
+# scripts/cook_animation_contract.py. Every byte is checked here before a
+# SkeletonAsset or AnimationClip exists: version, length, checksum, counts and
+# record bounds first, then joint identity and parent order, then per-clip rig
+# identity and track coverage, and finally the full AnimationAssets contract
+# (bind pose, key ranges, events). Nothing malformed reaches sampling.
+include "./assets.elisa"
+include "./package_index.elisa"
+
+module AnimationPackage:
+    private:
+        const module Format:
+            MAGIC: u64 = 1296974149
+            VERSION: u64 = 1
+            FNV_OFFSET: u64 = 2166136261
+            FNV_PRIME: u64 = 16777619
+            WORD_MASK: u64 = 4294967295
+            READ_CHUNK: usize = 65536
+
+        @link_name("fopen")
+        extern anim_pkg_fopen(path: u8&, mode: u8&) -> mutable heap void&? can[Blocking.IO, Memory.Allocate]
+        @link_name("fclose")
+        extern anim_pkg_fclose(stream: heap void&) -> i32 can[Blocking.IO, Memory.Release]
+        @link_name("fread")
+        extern anim_pkg_fread(buffer: mutable void&, size: usize, count: usize, stream: void&) -> usize can[Blocking.IO]
+
+        struct Header:
+            rig_id: i64
+            joint_count: i64
+            clip_count: i64
+            meters_per_unit: f32
+
+        def anim_pkg_f32_ref(value: f32&) -> f32:
+            value
+
+        def anim_pkg_bits_float(value: u32) -> f32:
+            anim_pkg_f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
+
+        # Callers bound-check `at + 4 <= bytes.count` through the layout pass.
+        def anim_pkg_fnv(bytes: darray[u8]&, start: usize, end: usize) -> u64:
+            mutable hash: u64 = Format::FNV_OFFSET
+            mutable at: usize = start
+            while at < end and at < bytes.count:
+                hash <- ((hash ^ bytes[at].u64()) * Format::FNV_PRIME) & Format::WORD_MASK
+                at <- at + 1
+            hash
+
+        def anim_pkg_word(bytes: darray[u8]&, at: i64) -> i64:
+            return 0 if at < 0 or at + 4 > bytes.count.i64()
+            i: usize = at.usize()
+            (bytes[i].u64() | (bytes[i + 1].u64() << 8) | (bytes[i + 2].u64() << 16) | (bytes[i + 3].u64() << 24)).i64()
+
+        def anim_pkg_float(bytes: darray[u8]&, at: i64) -> f32:
+            anim_pkg_bits_float(anim_pkg_word(bytes, at).u64().u32())
+
+        def anim_pkg_transform(bytes: darray[u8]&, at: i64) -> Geometry::Transform:
+            position: Geometry::Vec3 = Geometry::Vec3{x: anim_pkg_float(bytes, at), y: anim_pkg_float(bytes, at + 4), z: anim_pkg_float(bytes, at + 8)}
+            rotation: Geometry::Quat = Geometry::Quat{x: anim_pkg_float(bytes, at + 12), y: anim_pkg_float(bytes, at + 16), z: anim_pkg_float(bytes, at + 20), w: anim_pkg_float(bytes, at + 24)}
+            scale: Geometry::Vec3 = Geometry::Vec3{x: anim_pkg_float(bytes, at + 28), y: anim_pkg_float(bytes, at + 32), z: anim_pkg_float(bytes, at + 36)}
+            Geometry::Transform{position: position, rotation: rotation, scale: scale}
+
+        def anim_pkg_matrix(bytes: darray[u8]&, at: i64) -> f32[Geometry::MATRIX_ELEMENTS]:
+            matrix: mutable f32[Geometry::MATRIX_ELEMENTS] = zeroed
+            mutable slot: usize = 0
+            while slot < Geometry::MATRIX_ELEMENTS:
+                matrix[slot] <- anim_pkg_float(bytes, at + slot.i64() * 4)
+                slot <- slot + 1
+            matrix
+
+        # The byte offset one past clip record `offset`, or -1 when its tracks
+        # or events would run past the image or past the format bounds.
+        def anim_pkg_clip_end(bytes: darray[u8]&, offset: i64, total: i64) -> i64:
+            header_end: i64 = AnimationPackageIndex::records_end(offset, 1, AnimationPackageIndex::CLIP_HEADER_BYTES, total)
+            return -1 if header_end < 0
+            track_count: i64 = anim_pkg_word(bytes, offset + 16)
+            event_count: i64 = anim_pkg_word(bytes, offset + 20)
+            return -1 if track_count > AnimationPackageIndex::MAX_JOINTS or not AnimationPackageIndex::events_fit(event_count)
+            mutable at: i64 = header_end
+            mutable keys: i64 = 0
+            mutable slot: i64 = 0
+            while slot < track_count and at >= 0:
+                track_end: i64 = AnimationPackageIndex::records_end(at, 1, AnimationPackageIndex::TRACK_HEADER_BYTES, total)
+                key_count: i64 = anim_pkg_word(bytes, at + 4) if track_end >= 0 else 0
+                fits: bool = track_end >= 0 and AnimationPackageIndex::keys_fit(key_count, keys)
+                at <- AnimationPackageIndex::records_end(track_end, key_count, AnimationPackageIndex::KEY_BYTES, total) if fits else -1
+                keys <- keys + key_count if fits else keys
+                slot <- slot + 1
+            return -1 if at < 0
+            AnimationPackageIndex::records_end(at, event_count, AnimationPackageIndex::EVENT_BYTES, total)
+
+    public:
+        error AnimationPackageError:
+            OpenFailed
+            Truncated
+            BadMagic
+            UnsupportedVersion
+            LengthMismatch
+            ChecksumMismatch
+            OutOfBounds
+            TrailingBytes
+            InvalidParent
+            DuplicateJoint
+            InvalidSkeleton
+            MissingTrack
+            IncompatibleClip
+            InvalidClip
+
+        # FNV-1a over bytes [16, count): everything after the checksum field.
+        def checksum(bytes: darray[u8]&) -> u64:
+            anim_pkg_fnv(bytes, 16, bytes.count)
+
+        # The rig id a contract must carry: FNV-1a over its joint records
+        # (identities, parents, rest and bind poses), never zero.
+        def rig_identity(bytes: darray[u8]&, joint_count: i64) -> i64:
+            end: i64 = AnimationPackageIndex::HEADER_BYTES + joint_count * AnimationPackageIndex::JOINT_BYTES
+            return 0 if joint_count < 1 or joint_count > AnimationPackageIndex::MAX_JOINTS or end > bytes.count.i64()
+            hash: u64 = anim_pkg_fnv(bytes, AnimationPackageIndex::HEADER_BYTES.usize(), end.usize())
+            1 if hash == 0 else hash.i64()
+
+        # Reads a cooked contract file, bounded by the 64 MiB format limit.
+        def read_file(path: cstr) -> darray[u8] error[AnimationPackageError]:
+            mutable bytes: darray[u8] = []
+            can Blocking.IO, Memory.Allocate, Memory.Release:
+                handle: mutable heap void&? = anim_pkg_fopen(path.cast[u8&], "rb".cast[u8&])
+                raise AnimationPackageError.OpenFailed if handle == null
+                stream: mutable heap void& = handle
+                chunk: mutable u8[Format::READ_CHUNK] = zeroed
+                mutable more: bool = true
+                while more:
+                    got: usize = anim_pkg_fread((&chunk[0]).cast[mutable void&], 1, Format::READ_CHUNK, stream)
+                    for k in 0..<got:
+                        bytes.push(chunk[k])
+                    more <- got == Format::READ_CHUNK and bytes.count.i64() <= AnimationPackageIndex::MAX_BYTES
+                _ = anim_pkg_fclose(stream)
+            raise AnimationPackageError.OutOfBounds if bytes.count.i64() > AnimationPackageIndex::MAX_BYTES
+            return move bytes
+
+        # Checks the header and walks every record so a truncated, padded or
+        # tampered image is refused before any field is trusted.
+        def layout(bytes: darray[u8]&) -> Header error[AnimationPackageError]:
+            total: i64 = bytes.count.i64()
+            raise AnimationPackageError.Truncated if total < AnimationPackageIndex::HEADER_BYTES
+            raise AnimationPackageError.OutOfBounds if total > AnimationPackageIndex::MAX_BYTES
+            raise AnimationPackageError.BadMagic if anim_pkg_word(bytes, 0).u64() != Format::MAGIC
+            raise AnimationPackageError.UnsupportedVersion if anim_pkg_word(bytes, 4).u64() != Format::VERSION
+            raise AnimationPackageError.LengthMismatch if anim_pkg_word(bytes, 8) != total
+            raise AnimationPackageError.ChecksumMismatch if anim_pkg_word(bytes, 12).u64() != checksum(bytes)
+            header: Header = Header{
+                rig_id: anim_pkg_word(bytes, 16),
+                joint_count: anim_pkg_word(bytes, 20),
+                clip_count: anim_pkg_word(bytes, 24),
+                meters_per_unit: anim_pkg_float(bytes, 28),
+            }
+            raise AnimationPackageError.OutOfBounds if not AnimationPackageIndex::counts_valid(header.joint_count, header.clip_count)
+            mutable at: i64 = AnimationPackageIndex::records_end(AnimationPackageIndex::HEADER_BYTES, header.joint_count, AnimationPackageIndex::JOINT_BYTES, total)
+            raise AnimationPackageError.Truncated if at < 0
+            raise AnimationPackageError.InvalidSkeleton if header.rig_id != rig_identity(bytes, header.joint_count)
+            mutable clip: i64 = 0
+            while clip < header.clip_count and at >= 0:
+                at <- anim_pkg_clip_end(bytes, at, total)
+                clip <- clip + 1
+            raise AnimationPackageError.Truncated if at < 0
+            raise AnimationPackageError.TrailingBytes if at != total
+            header
+
+        def clip_count(bytes: darray[u8]&) -> usize error[AnimationPackageError]:
+            header: Header = try layout(bytes)
+            header.clip_count.usize()
+
+        # Decodes and validates the skeleton. A rig whose parents, identities
+        # or bind pose break the contract never becomes a SkeletonAsset.
+        def decode_skeleton(bytes: darray[u8]&) -> AnimationAssets::SkeletonAsset error[AnimationPackageError]:
+            header: Header = try layout(bytes)
+            skeleton: mutable AnimationAssets::SkeletonAsset = AnimationAssets::SkeletonAsset(AnimationAssets::RigId{value: header.rig_id})
+            skeleton.meters_per_unit <- header.meters_per_unit
+            mutable index: i64 = 0
+            while index < header.joint_count:
+                at: i64 = AnimationPackageIndex::HEADER_BYTES + index * AnimationPackageIndex::JOINT_BYTES
+                id: i64 = anim_pkg_word(bytes, at)
+                parent: i64 = AnimationPackageIndex::signed_word(anim_pkg_word(bytes, at + 4))
+                raise AnimationPackageError.InvalidParent if not AnimationPackageIndex::parent_valid(parent, index)
+                mutable prior: i64 = 0
+                while prior < index:
+                    raise AnimationPackageError.DuplicateJoint if anim_pkg_word(bytes, AnimationPackageIndex::HEADER_BYTES + prior * AnimationPackageIndex::JOINT_BYTES) == id
+                    prior <- prior + 1
+                rest: Geometry::Transform = anim_pkg_transform(bytes, at + 8)
+                inverse_bind: f32[Geometry::MATRIX_ELEMENTS] = anim_pkg_matrix(bytes, at + 48)
+                added: bool = AnimationAssets::skeleton_add_joint(&skeleton, AnimationAssets::JointId{value: id}, parent, rest, inverse_bind)
+                raise AnimationPackageError.InvalidSkeleton if not added
+                index <- index + 1
+            raise AnimationPackageError.InvalidSkeleton if not AnimationAssets::skeleton_asset_valid(&skeleton)
+            skeleton
+
+        # Decodes clip `index` against `skeleton` and validates it as a whole.
+        def decode_clip(bytes: darray[u8]&, skeleton: AnimationAssets::SkeletonAsset&,
+            index: usize) -> AnimationAssets::AnimationClip error[AnimationPackageError]:
+            header: Header = try layout(bytes)
+            raise AnimationPackageError.OutOfBounds if index.i64() >= header.clip_count
+            raise AnimationPackageError.InvalidSkeleton if not AnimationAssets::skeleton_asset_valid(skeleton)
+            total: i64 = bytes.count.i64()
+            mutable at: i64 = AnimationPackageIndex::HEADER_BYTES + header.joint_count * AnimationPackageIndex::JOINT_BYTES
+            mutable skipped: i64 = 0
+            while skipped < index.i64():
+                at <- anim_pkg_clip_end(bytes, at, total)
+                skipped <- skipped + 1
+            joint_count: i64 = skeleton.joint_count.i64()
+            raise AnimationPackageError.IncompatibleClip if anim_pkg_word(bytes, at + 4) != skeleton.rig_id.value
+            verdict: i64 = AnimationPackageIndex::track_count_verdict(anim_pkg_word(bytes, at + 16), joint_count)
+            raise AnimationPackageError.MissingTrack if verdict == AnimationPackageIndex::TRACKS_MISSING
+            raise AnimationPackageError.IncompatibleClip if verdict != AnimationPackageIndex::TRACKS_MATCH
+            clip: mutable AnimationAssets::AnimationClip = AnimationAssets::AnimationClip(
+                AnimationAssets::ClipId{value: anim_pkg_word(bytes, at)}, skeleton.rig_id,
+                anim_pkg_word(bytes, at + 8), anim_pkg_word(bytes, at + 12))
+            event_count: i64 = anim_pkg_word(bytes, at + 20)
+            at <- at + AnimationPackageIndex::CLIP_HEADER_BYTES
+            mutable slot: i64 = 0
+            while slot < joint_count:
+                joint_index: i64 = anim_pkg_word(bytes, at)
+                raise AnimationPackageError.IncompatibleClip if joint_index >= joint_count
+                raise AnimationPackageError.MissingTrack if not AnimationPackageIndex::track_joint_valid(joint_index, slot, joint_count)
+                key_count: i64 = anim_pkg_word(bytes, at + 4)
+                raise AnimationPackageError.MissingTrack if key_count < 1
+                at <- at + AnimationPackageIndex::TRACK_HEADER_BYTES
+                mutable key: i64 = 0
+                while key < key_count:
+                    tick: i64 = anim_pkg_word(bytes, at)
+                    local: Geometry::Transform = anim_pkg_transform(bytes, at + 4)
+                    added: bool = AnimationAssets::clip_add_key(&clip, skeleton, slot.usize(), tick, local)
+                    raise AnimationPackageError.InvalidClip if not added
+                    at <- at + AnimationPackageIndex::KEY_BYTES
+                    key <- key + 1
+                slot <- slot + 1
+            mutable event: i64 = 0
+            while event < event_count:
+                added: bool = AnimationAssets::clip_add_event(&clip, AnimationAssets::EventId{value: anim_pkg_word(bytes, at)}, anim_pkg_word(bytes, at + 4))
+                raise AnimationPackageError.InvalidClip if not added
+                at <- at + AnimationPackageIndex::EVENT_BYTES
+                event <- event + 1
+            raise AnimationPackageError.InvalidClip if not AnimationAssets::clip_asset_valid(skeleton, &clip)
+            return move clip

@@ -8,6 +8,7 @@ import math
 from pathlib import Path
 import struct
 
+import cook_animation_contract
 import cook_assets
 import cook_gltf_animation
 import cook_gltf_geometry as geometry_cooker
@@ -32,8 +33,13 @@ def position_extent(positions: bytes) -> float:
 def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         allow_textures: bool = False, simplify_ratio: float | None = None,
         generate_lightmap_uv: bool = False, lightmap_resolution: int = 1024,
-        lightmap_padding: int = 4, *, godot_output_path: Path | None = None) -> tuple[Path, dict]:
-    """Write a geometry package; textured sources require a containing bundle."""
+        lightmap_padding: int = 4, *, godot_output_path: Path | None = None,
+        animation_contract_path: Path | None = None) -> tuple[Path, dict]:
+    """Write a geometry package; textured sources require a containing bundle.
+
+    With ``animation_contract_path`` the rig and clips are also written in the
+    validated ``elisa-anim-v1`` contract (``cook_animation_contract``).
+    """
     asset_path = geometry_cooker.safe_asset_path(asset_path)
     source_path = source_path.expanduser().resolve(strict=True)
     if (not source_path.is_file() or source_path.stat().st_size == 0 or
@@ -137,7 +143,14 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         raw_package_bytes = ("\n".join(raw_lines) + "\n").encode("utf-8")
         if len(raw_package_bytes) > 64 * 1024 * 1024:
             raise ValueError("Godot cooked geometry package exceeds the 64 MiB runtime limit")
+    contract_bytes = None
+    if animation_contract_path is not None:
+        contract_bytes = cook_animation_contract.encode(geometry["skin"], geometry["animation_clips"])
     output_path.write_bytes(package_bytes)
+    if contract_bytes is not None:
+        animation_contract_path = animation_contract_path.expanduser().resolve()
+        animation_contract_path.parent.mkdir(parents=True, exist_ok=True)
+        animation_contract_path.write_bytes(contract_bytes)
     if godot_output_path is not None:
         godot_output_path.parent.mkdir(parents=True, exist_ok=True)
         godot_output_path.write_bytes(raw_package_bytes)
