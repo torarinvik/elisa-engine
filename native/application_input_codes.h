@@ -5,8 +5,29 @@
 #include <SDL3/SDL_keycode.h>
 
 #include <cstdint>
+#include <cstddef>
 
 namespace probe {
+
+// Gamepad slots are connection-scoped: the slot index stays fixed while a
+// device remains open, even if a lower-numbered slot becomes vacant.
+template <typename GamepadSlots>
+inline int32_t first_open_gamepad_slot(const GamepadSlots& slots) {
+    for (size_t index = 0; index < slots.size(); ++index) {
+        if (slots[index].handle == nullptr) return static_cast<int32_t>(index + 1);
+    }
+    return 0;
+}
+
+template <typename GamepadSlots>
+inline int32_t gamepad_connection_slot(const GamepadSlots& slots, SDL_JoystickID id) {
+    for (size_t index = 0; index < slots.size(); ++index) {
+        if (slots[index].handle != nullptr && slots[index].id == id) {
+            return static_cast<int32_t>(index + 1);
+        }
+    }
+    return 0;
+}
 
 enum ElisaInputDeviceCode : int32_t {
     INPUT_DEVICE_GLOBAL = -1,
@@ -427,6 +448,41 @@ constexpr int32_t gamepad_button_code(SDL_GamepadButton button) {
     case SDL_GAMEPAD_BUTTON_DPAD_LEFT: return GAMEPAD_BUTTON_DPAD_LEFT;
     case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: return GAMEPAD_BUTTON_DPAD_RIGHT;
     default: return 0;
+    }
+}
+
+constexpr SDL_GamepadButton gamepad_button_from_code(int32_t code) {
+    switch (code) {
+    case GAMEPAD_BUTTON_SOUTH: return SDL_GAMEPAD_BUTTON_SOUTH;
+    case GAMEPAD_BUTTON_EAST: return SDL_GAMEPAD_BUTTON_EAST;
+    case GAMEPAD_BUTTON_WEST: return SDL_GAMEPAD_BUTTON_WEST;
+    case GAMEPAD_BUTTON_NORTH: return SDL_GAMEPAD_BUTTON_NORTH;
+    case GAMEPAD_BUTTON_BACK: return SDL_GAMEPAD_BUTTON_BACK;
+    case GAMEPAD_BUTTON_GUIDE: return SDL_GAMEPAD_BUTTON_GUIDE;
+    case GAMEPAD_BUTTON_START: return SDL_GAMEPAD_BUTTON_START;
+    case GAMEPAD_BUTTON_LEFT_STICK: return SDL_GAMEPAD_BUTTON_LEFT_STICK;
+    case GAMEPAD_BUTTON_RIGHT_STICK: return SDL_GAMEPAD_BUTTON_RIGHT_STICK;
+    case GAMEPAD_BUTTON_LEFT_SHOULDER: return SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
+    case GAMEPAD_BUTTON_RIGHT_SHOULDER: return SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+    case GAMEPAD_BUTTON_DPAD_UP: return SDL_GAMEPAD_BUTTON_DPAD_UP;
+    case GAMEPAD_BUTTON_DPAD_DOWN: return SDL_GAMEPAD_BUTTON_DPAD_DOWN;
+    case GAMEPAD_BUTTON_DPAD_LEFT: return SDL_GAMEPAD_BUTTON_DPAD_LEFT;
+    case GAMEPAD_BUTTON_DPAD_RIGHT: return SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
+    default: return static_cast<SDL_GamepadButton>(-1);
+    }
+}
+
+constexpr int32_t gamepad_button_label_code(SDL_GamepadButtonLabel label) {
+    switch (label) {
+    case SDL_GAMEPAD_BUTTON_LABEL_A: return ELISA_APPLICATION_GAMEPAD_LABEL_A;
+    case SDL_GAMEPAD_BUTTON_LABEL_B: return ELISA_APPLICATION_GAMEPAD_LABEL_B;
+    case SDL_GAMEPAD_BUTTON_LABEL_X: return ELISA_APPLICATION_GAMEPAD_LABEL_X;
+    case SDL_GAMEPAD_BUTTON_LABEL_Y: return ELISA_APPLICATION_GAMEPAD_LABEL_Y;
+    case SDL_GAMEPAD_BUTTON_LABEL_CROSS: return ELISA_APPLICATION_GAMEPAD_LABEL_CROSS;
+    case SDL_GAMEPAD_BUTTON_LABEL_CIRCLE: return ELISA_APPLICATION_GAMEPAD_LABEL_CIRCLE;
+    case SDL_GAMEPAD_BUTTON_LABEL_SQUARE: return ELISA_APPLICATION_GAMEPAD_LABEL_SQUARE;
+    case SDL_GAMEPAD_BUTTON_LABEL_TRIANGLE: return ELISA_APPLICATION_GAMEPAD_LABEL_TRIANGLE;
+    default: return ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN;
     }
 }
 

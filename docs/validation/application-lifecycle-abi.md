@@ -36,8 +36,9 @@ that the backend profile is no longer available.
 `scripts/test_elisa_build_run.py` uses fake tools under temporary paths with
 spaces to check CLI help, manifest defaults and overrides, runtime setting
 delivery, input validation, argv preservation, project working directory, and
-that a failed compile never runs an old output executable. The native build
-stage runs these runner tests before its lifecycle and render-scene smokes.
+that a failed compile never runs an old output executable. It also verifies the
+build identity is passed into the native link. The native build stage runs these
+runner tests before its lifecycle and render-scene smokes.
 
 The native link recipe currently supports macOS with SDL3/Metal. Configure
 `WICKED_ROOT` and `WICKED_BUILD` for the engine backend; configure `SDL3_ROOT`
@@ -62,6 +63,15 @@ initialization and returns zero while the host is stopped. Games can sample it
 around scene construction to report startup/load cost without a native timer
 shim or wall-clock assumptions.
 
+`Application::rumble_gamepad(slot, low, high, duration_ms)` sends optional
+whole-gamepad rumble to a stable one-based connection slot. Motor intensities
+are normalized to `[0, 1]`; durations are limited to 1–60000 ms. Elisa reports
+Started, Unavailable, InvalidArgument, NotInitialized, WrongThread or
+Unsupported, so missing devices and unsupported motors do not fail gameplay.
+The native application smoke checks validation and lifecycle results without
+activating a physical motor. Hardware-specific effect quality still requires a
+controller review.
+
 Review and automation code can read validated `ELISA_*` environment names with
 `Application::environment_value` and parse whole decimal values with
 `Application::environment_integer`, which returns a caller-provided fallback
@@ -70,6 +80,13 @@ for missing, malformed, or unsafe names. After a successful frame,
 encodes the most recently presented Wicked back buffer as an RGBA PNG. Empty,
 overlong, wrong-thread, pre-frame, and failed-encode cases return a typed false
 or status rather than touching the filesystem arbitrarily.
+
+`Application::build_identity()` returns the nonzero 63-bit identifier embedded
+by `scripts/elisa_build_run.py`. The matching 16-character hexadecimal value is
+in the build sidecar's `build_identity` field. Session and crash reports can
+store the compact value while the sidecar retains source, compiler, asset and
+linked-library detail. Direct native builds that bypass the project runner
+return zero, which means the identity is unavailable.
 
 The lifecycle layer queues ordered keyboard, mouse-button, gamepad-button,
 gamepad-axis, and gamepad connect/disconnect events for Elisa through

@@ -190,6 +190,10 @@ module RenderScene:
                 x, y, width, height))
         def clear_primary_viewport() -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_clear_primary_viewport())
+        # Restrict the primary render path to instances whose visibility
+        # policy intersects this mask. Secondary camera masks are independent.
+        def set_primary_camera_visibility_mask(layer_mask: u32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_primary_camera_visibility_mask(layer_mask))
         def set_camera_render_target(width: i32, height: i32, update_interval: f32) -> void error[RenderSceneError]:
             try check_status(elisa_render_scene_v1_set_camera_render_target(width, height, update_interval))
         def clear_camera_render_target() -> void error[RenderSceneError]:
@@ -233,6 +237,12 @@ module RenderScene:
             projection_code: i32 = 0 if projection == CameraProjection.Orthographic else 1
             try check_status(elisa_render_scene_v1_update_camera(handle.id, projection_code,
                 width, height, projection_value, near_clip, far_clip))
+        # Filter instances rendered by this owned camera's viewport. The mask
+        # is preserved when the viewport is resized or recreated.
+        def set_camera_visibility_mask(handle: CameraHandle,
+            layer_mask: u32) -> void error[RenderSceneError]:
+            try check_status(elisa_render_scene_v1_set_camera_visibility_mask(
+                handle.id, layer_mask))
         # Update any owned camera directly, including one already composing a
         # viewport. Games can therefore drive split-screen cameras every frame
         # without activating them or disturbing the primary camera.
@@ -319,6 +329,13 @@ module RenderScene:
                 transform.position.x, transform.position.y, transform.position.z,
                 transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w,
                 transform.scale.x, transform.scale.y, transform.scale.z))
+        # Checks the loaded cooked asset without changing its current animation.
+        # Namespaced source names accept their final segment, like playback.
+        def has_animation_clip(handle: InstanceHandle, clip_name: cstr) -> bool error[RenderSceneError]:
+            found: mutable i32 = 0
+            try check_status(elisa_render_scene_v1_has_animation_clip(
+                handle.native_value, clip_name, &found))
+            found != 0
         # Negative speed plays a clip backward; looping playback wraps in either direction.
         def play_animation(handle: InstanceHandle, clip_name: cstr, loop: bool,
             speed: f32, blend_seconds: f32) -> void error[RenderSceneError]:

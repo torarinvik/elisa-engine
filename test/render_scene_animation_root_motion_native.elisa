@@ -32,6 +32,18 @@ module RenderSceneAnimationRootMotionNativeTests:
                 ok: true
                 error failure: false
             return 3 if not enabled
+            other: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/root-motion-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 53
+            other_started: bool = catch RenderScene::play_animation(other,
+                "root-motion", true, 1.0, 0.0):
+                ok: true
+                error failure: false
+            return 54 if not other_started
+            # Player Two has the same clip but no extraction enabled yet.
+            # Advancing Player One must not enqueue root motion for Player Two.
             advanced: bool = catch RenderScene::advance_animation(rig, 0.5):
                 ok: true
                 error failure: false
@@ -43,6 +55,28 @@ module RenderSceneAnimationRootMotionNativeTests:
                 value: value
                 error failure: return 6
             return 7 if not near(delta.x, 0.01) or not near(delta.y, 0.0) or not near(delta.z, -0.025)
+            return 55 if not near(progress(other), 0.0)
+            other_empty: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(other):
+                value: value
+                error failure: return 56
+            return 57 if not near(other_empty.x, 0.0) or not near(other_empty.z, 0.0)
+            other_enabled: bool = catch RenderScene::set_animation_root_motion(other,
+                RenderScene::AnimationRootMotionMode.Horizontal, "root"):
+                ok: true
+                error failure: false
+            return 58 if not other_enabled
+            other_advanced: bool = catch RenderScene::advance_animation(other, 0.25):
+                ok: true
+                error failure: false
+            return 59 if not other_advanced
+            other_delta: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(other):
+                value: value
+                error failure: return 60
+            return 61 if not near(other_delta.x, 0.005) or not near(other_delta.z, -0.0125)
+            source_empty: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
+                value: value
+                error failure: return 62
+            return 63 if not near(source_empty.x, 0.0) or not near(source_empty.z, 0.0)
             empty: Geometry::Vec3 = catch RenderScene::consume_animation_root_motion(rig):
                 value: value
                 error failure: return 8
@@ -177,4 +211,8 @@ module RenderSceneAnimationRootMotionNativeTests:
                 ok: true
                 error failure: false
             return 52 if not exit_destroyed
+            other_destroyed: bool = catch RenderScene::destroy(other):
+                ok: true
+                error failure: false
+            return 64 if not other_destroyed
             0

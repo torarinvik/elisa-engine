@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
+from contextlib import contextmanager
 
 
 SCRIPT = Path(__file__).resolve().with_name("elisa_build_run.py")
@@ -19,6 +21,33 @@ SCRIPT = Path(__file__).resolve().with_name("elisa_build_run.py")
 def touch(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.touch()
+
+
+def fake_cook_command(command: list[str], *, cwd: Path) -> int:
+    """Materialize staged cooker outputs for runner contract checks."""
+    for option in ("--output", "--texture-output"):
+        if option not in command:
+            continue
+        output = Path(command[command.index(option) + 1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(("cooked:" + output.suffix).encode("ascii"))
+    return 0
+
+
+@contextmanager
+def mocked_asset_cooker(runner):
+    with mock.patch.object(runner, "run_command", side_effect=fake_cook_command) as run, \
+            mock.patch.object(runner.asset_cooks, "_external_tool_identity",
+                return_value={"toolchain": "fake"}):
+        yield run
+
+
+def assert_staged_output(test: unittest.TestCase, command: list[str], option: str,
+    final_output: Path) -> None:
+    staged = Path(command[command.index(option) + 1])
+    test.assertEqual(staged.parent, final_output.parent.resolve())
+    test.assertEqual(staged.suffix, final_output.suffix)
+    test.assertIn(".elisa-cook-", staged.name)
 
 
 def fake_native_paths(root: Path) -> tuple[Path, Path, Path, Path]:
@@ -140,6 +169,13 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertTrue(abi_check.called)
             self.assertTrue(output.is_file())
+            provenance_path = output.with_name(output.name + ".provenance.json")
+            self.assertTrue(provenance_path.is_file())
+            provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+            self.assertEqual(provenance["binary"]["sha256"],
+                hashlib.sha256(output.read_bytes()).hexdigest())
+            self.assertEqual(provenance["main_source_sha256"],
+                hashlib.sha256(main_source.read_bytes()).hexdigest())
             run_info = json.loads((log_dir / "ran.json").read_text())
             self.assertEqual(run_info["cwd"], str(project.resolve()))
             self.assertEqual(run_info["settings"], {
@@ -231,6 +267,7 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertFalse((log_dir / "compiler.json").exists())
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse(output.exists())
+            self.assertFalse(output.with_name(output.name + ".provenance.json").exists())
 
     def test_native_link_optimizes_only_on_request(self) -> None:
         runner = __import__("elisa_build_run")
@@ -240,10 +277,12 @@ class BuildRunCliTests(unittest.TestCase):
         arguments = (Path("/tmp/entry.a"), Path("/tmp/application"), Path("/tmp/build"), paths)
         default = runner.native_link_command("clang++", *arguments)
         optimized = runner.native_link_command("clang++", *arguments, optimize=True)
+        identified = runner.native_link_command("clang++", *arguments, build_identity=0x12345)
         self.assertIn("-O0", default)
         self.assertNotIn("-O2", default)
         self.assertIn("-O2", optimized)
         self.assertNotIn("-O0", optimized)
+        self.assertIn("-DELISA_APPLICATION_BUILD_ID=74565", identified)
 
     def test_command_line_paths_override_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa manifest overrides ") as temporary_directory:
@@ -292,13 +331,13 @@ class BuildRunCliTests(unittest.TestCase):
                 "max_triangles": 120000,
             }]}
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
             command = run.call_args.args[0]
             self.assertEqual(command[0], sys.executable)
             self.assertEqual(command[1], str(SCRIPT.parent / "cook_fbx_asset.py"))
             self.assertEqual(command[2], str(source.resolve()))
-            self.assertEqual(command[command.index("--output") + 1], str((project / "build/cooked/walk.pkg").resolve()))
+            assert_staged_output(self, command, "--output", project / "build/cooked/walk.pkg")
             self.assertEqual(command[command.index("--max-triangles") + 1], "120000")
             self.assertEqual(run.call_args.kwargs["cwd"], project.resolve())
             config["asset_cooks"][0]["output"] = "../outside.pkg"
@@ -310,12 +349,12 @@ class BuildRunCliTests(unittest.TestCase):
                 runner.cook_declared_assets(project.resolve(), config)
             config["asset_cooks"][0]["max_triangles"] = 120000
             config["asset_cooks"][0]["ignore_material_textures"] = True
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
             self.assertIn("--ignore-material-textures", run.call_args.args[0])
             config["asset_cooks"][0]["ignore_material_textures"] = False
             config["asset_cooks"][0]["all_meshes"] = True
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
             self.assertIn("--all-meshes", run.call_args.args[0])
             config["asset_cooks"][0]["all_meshes"] = "true"
@@ -325,6 +364,183 @@ class BuildRunCliTests(unittest.TestCase):
             config["asset_cooks"][0]["ignore_material_textures"] = "true"
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), config)
+
+    def test_asset_cook_cache_hits_invalidates_repairs_and_forces(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa cook cache ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            source = project / "assets" / "walk.fbx"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"source version 1")
+            output = project / "build/cooked/walk.pkg"
+            config = {"asset_cooks": [{
+                "source": "assets/walk.fbx", "asset_path": "assets/walk.fbx",
+                "output": "build/cooked/walk.pkg",
+            }]}
+            runner = __import__("elisa_build_run")
+            with mocked_asset_cooker(runner) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 1)
+
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 1, "unchanged inputs should use the verified cook cache")
+
+                source.write_bytes(b"source version 2")
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2, "source content changes must invalidate the cache")
+
+                output.unlink()
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 3, "missing outputs must be recooked")
+
+                output.write_bytes(b"modified output")
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 4, "modified outputs must be recooked")
+
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config, force=True), 0)
+                self.assertEqual(len(run.call_args_list), 5, "forced cooks must bypass valid cache entries")
+                self.assertNotEqual(output.read_bytes(), b"modified output")
+
+            record = json.loads((project / "build/.elisa-asset-cook-cache.json").read_text())
+            self.assertEqual(record["format"], 1)
+            cached_outputs = record["entries"]["build/cooked/walk.pkg"]["outputs"]
+            self.assertEqual([item["path"] for item in cached_outputs], ["build/cooked/walk.pkg"])
+
+    def test_asset_cook_cache_recooks_only_changed_source(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa selective asset cooks ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            assets = project / "assets"
+            assets.mkdir(parents=True)
+            first_source = assets / "first.fbx"
+            second_source = assets / "second.fbx"
+            first_source.write_bytes(b"first version 1")
+            second_source.write_bytes(b"second version 1")
+            config = {"asset_cooks": [
+                {"source": "assets/first.fbx", "asset_path": "assets/first.fbx",
+                    "output": "build/first.pkg"},
+                {"source": "assets/second.fbx", "asset_path": "assets/second.fbx",
+                    "output": "build/second.pkg"},
+            ]}
+            runner = __import__("elisa_build_run")
+            with mocked_asset_cooker(runner) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2)
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2)
+
+                first_source.write_bytes(b"first version 2")
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 3,
+                    "editing one source should leave the other cook cached")
+                changed_command = run.call_args_list[-1].args[0]
+                self.assertEqual(changed_command[2], str(first_source.resolve()))
+
+    def test_gltf_external_resources_and_glb_extracted_texture_invalidate_cache(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa cook input dependencies ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            assets = project / "assets"
+            assets.mkdir(parents=True)
+            gltf = assets / "tile.gltf"
+            texture = assets / "wall.png"
+            gltf.write_text(json.dumps({"images": [{"uri": "wall.png"}]}), encoding="utf-8")
+            texture.write_bytes(b"texture 1")
+            glb = assets / "cyborg.glb"
+            glb.write_bytes(b"glb")
+            runner = __import__("elisa_build_run")
+            config = {"asset_cooks": [{
+                "importer": "gltf", "source": "assets/tile.gltf",
+                "asset_path": "assets/tile.gltf", "output": "build/tile.pkg",
+            }]}
+            with mocked_asset_cooker(runner) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 1)
+                texture.write_bytes(b"texture 2")
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2,
+                    "a glTF external image edit must invalidate its package")
+
+                glb_config = {"asset_cooks": [{
+                    "importer": "glb", "source": "assets/cyborg.glb",
+                    "asset_path": "assets/cyborg.glb", "output": "build/cyborg.pkg",
+                    "texture_output": "build/cyborg.png",
+                }]}
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), glb_config), 0)
+                self.assertEqual(len(run.call_args_list), 3)
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), glb_config), 0)
+                self.assertEqual(len(run.call_args_list), 3)
+
+                texture_output = project / "build/cyborg.png"
+                texture_output.unlink()
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), glb_config), 0)
+                self.assertEqual(len(run.call_args_list), 4,
+                    "a missing extracted texture must recook the GLB package")
+
+    def test_native_cooker_source_edits_invalidate_asset_cache(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa native cook inputs ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            source = project / "assets/wall.fbx"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"fbx")
+            config = {"asset_cooks": [{
+                "source": "assets/wall.fbx", "asset_path": "assets/wall.fbx",
+                "output": "build/wall.pkg",
+            }]}
+            runner = __import__("elisa_build_run")
+            native_dependency = runner.asset_cooks.ENGINE_ROOT / "native/fbx_asset_cooker.cpp"
+            native_revision = ["cooker source revision 1"]
+            real_hash = runner.asset_cooks.sha256_file
+
+            def hash_with_native_revision(path: Path) -> str:
+                if path == native_dependency:
+                    return native_revision[0]
+                return real_hash(path)
+
+            with mock.patch.object(runner.asset_cooks, "_external_tool_identity",
+                    return_value={"toolchain": "fake"}), \
+                    mock.patch.object(runner.asset_cooks, "local_source_closure",
+                        return_value=[native_dependency]), \
+                    mock.patch.object(runner.asset_cooks, "sha256_file",
+                        side_effect=hash_with_native_revision), \
+                    mock.patch.object(runner, "run_command", side_effect=fake_cook_command) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 1)
+                native_revision[0] = "cooker source revision 2"
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 2,
+                    "native cooker source edits must invalidate cooked assets")
+
+    def test_failed_asset_cook_keeps_last_good_outputs(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa failed cook ") as temporary_directory:
+            project = Path(temporary_directory) / "Project"
+            source = project / "assets/wall.fbx"
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"source")
+            output = project / "build/wall.pkg"
+            output.parent.mkdir(parents=True)
+            output.write_bytes(b"last good package")
+            config = {"asset_cooks": [{
+                "source": "assets/wall.fbx", "asset_path": "assets/wall.fbx",
+                "output": "build/wall.pkg",
+            }]}
+            runner = __import__("elisa_build_run")
+            with mock.patch.object(runner.asset_cooks, "_external_tool_identity",
+                    return_value={"toolchain": "fake"}), \
+                    mock.patch.object(runner, "run_command", side_effect=fake_cook_command) as run:
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                # Start with a real cache and then fail after changing the source.
+                output.write_bytes(b"last good package")
+                source.write_bytes(b"changed source")
+
+                def failing_cook(command: list[str], *, cwd: Path) -> int:
+                    fake_cook_command(command, cwd=cwd)
+                    return 1
+
+                run.side_effect = failing_cook
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 1)
+            self.assertEqual(output.read_bytes(), b"last good package")
+            staged_files = list(output.parent.glob(f".{output.stem}.elisa-cook-*{output.suffix}"))
+            self.assertEqual(staged_files, [])
 
     def test_declared_gltf_cook_uses_runtime_geometry_cooker(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa glTF asset cook ") as temporary_directory:
@@ -339,14 +555,13 @@ class BuildRunCliTests(unittest.TestCase):
                 "output": "assets/tile.pkg",
             }
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [declaration]}), 0)
             command = run.call_args.args[0]
             self.assertEqual(command[1], str(SCRIPT.parent / "cook_gltf_asset.py"))
             self.assertEqual(command[2], str(source.resolve()))
-            self.assertEqual(command[command.index("--output") + 1],
-                str((project / "assets/tile.pkg").resolve()))
+            assert_staged_output(self, command, "--output", project / "assets/tile.pkg")
             declaration["source"] = "assets/tile.glb"
             (project / "assets" / "tile.glb").write_bytes(b"glb")
             with self.assertRaises(runner.BuildConfigurationError):
@@ -369,7 +584,7 @@ class BuildRunCliTests(unittest.TestCase):
                 "texture_output": "build/cooked/cyborg-basecolor.png",
             }
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [declaration]}), 0)
             command = run.call_args.args[0]
@@ -377,7 +592,7 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(command[2], str(source.resolve()))
             self.assertEqual(command[command.index("--animation-source") + 1], str(animation.resolve()))
             declaration["texture_max_size"] = 2048
-            with mock.patch.object(runner, "run_command", return_value=0) as bounded:
+            with mocked_asset_cooker(runner) as bounded:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [declaration]}), 0)
             bounded_command = bounded.call_args.args[0]
@@ -389,10 +604,10 @@ class BuildRunCliTests(unittest.TestCase):
             with self.assertRaises(runner.BuildConfigurationError):
                 runner.cook_declared_assets(project.resolve(), {"asset_cooks": [unbounded]})
             del declaration["texture_max_size"]
-            self.assertEqual(command[command.index("--texture-output") + 1],
-                str((project / "build/cooked/cyborg-basecolor.png").resolve()))
+            assert_staged_output(self, command, "--texture-output",
+                project / "build/cooked/cyborg-basecolor.png")
             bounded = {**declaration, "max_triangles": 1000}
-            with mock.patch.object(runner, "run_command", return_value=0) as bounded_run:
+            with mocked_asset_cooker(runner) as bounded_run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [bounded]}), 0)
             bounded_command = bounded_run.call_args.args[0]
@@ -420,14 +635,14 @@ class BuildRunCliTests(unittest.TestCase):
             declaration = {"importer": "image", "source": "assets/crate.png",
                 "output": "build/cooked/textures/crate.png", "max_size": 2048}
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [declaration]}), 0)
             command = run.call_args.args[0]
             self.assertEqual(command[1], str(SCRIPT.parent / "cook_image_asset.py"))
             self.assertEqual(command[2], str(source.resolve()))
-            self.assertEqual(command[command.index("--output") + 1],
-                str((project / "build/cooked/textures/crate.png").resolve()))
+            assert_staged_output(self, command, "--output",
+                project / "build/cooked/textures/crate.png")
             self.assertEqual(command[command.index("--max-size") + 1], "2048")
             for broken in ({"max_size": 0}, {"max_size": True}, {"max_size": 9000},
                     {"output": "build/cooked/crate.jpg"}, {"asset_path": "assets/crate.png"},
@@ -453,7 +668,7 @@ class BuildRunCliTests(unittest.TestCase):
                 "textures": {"wall": "assets/wall.png", "floor": "assets/floor.jpg"},
             }
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [declaration]}), 0)
             command = run.call_args.args[0]
@@ -493,15 +708,14 @@ class BuildRunCliTests(unittest.TestCase):
                 "textures": {"wallalbedo": "assets/wall.png"},
             }
             runner = __import__("elisa_build_run")
-            with mock.patch.object(runner, "run_command", return_value=0) as run:
+            with mocked_asset_cooker(runner) as run:
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), {
                     "asset_cooks": [tile, images]}), 0)
             first, second = (call.args[0] for call in run.call_args_list)
-            self.assertEqual(first[1:], [
-                str(SCRIPT.parent / "cook_image_bundle.py"),
-                "--output", str((project / "assets/textures/wall.elpk").resolve()),
-                "--texture", f"wallalbedo={(project / 'assets/wall.png').resolve()}",
-            ])
+            self.assertEqual(first[1], str(SCRIPT.parent / "cook_image_bundle.py"))
+            assert_staged_output(self, first, "--output", project / "assets/textures/wall.elpk")
+            self.assertEqual(first[first.index("--texture") + 1],
+                f"wallalbedo={(project / 'assets/wall.png').resolve()}")
             self.assertEqual(second[1], str(SCRIPT.parent / "cook_gltf_asset.py"))
             self.assertEqual(second[second.index("--dependency") + 1], "textures/wall.elpk")
             rejected = [
@@ -566,6 +780,13 @@ class BuildRunCliTests(unittest.TestCase):
             project.mkdir()
             main_source = project / "main.elisa"
             main_source.write_text("using Application\ndef main() -> i32:\n    0\n", encoding="utf-8")
+            assets = project / "assets"
+            assets.mkdir()
+            (assets / "walk.fbx").write_bytes(b"fbx")
+            (project / "elisa.project.json").write_text(json.dumps({"asset_cooks": [{
+                "source": "assets/walk.fbx", "asset_path": "assets/walk.fbx",
+                "output": "build/walk.pkg",
+            }]}), encoding="utf-8")
             output = project / "old game"
             output.write_text("stale", encoding="utf-8")
             wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
@@ -592,8 +813,12 @@ class BuildRunCliTests(unittest.TestCase):
                 ])
             self.assertEqual(status, 17)
             self.assertEqual(output.read_text(), "stale")
+            self.assertFalse(output.with_name(output.name + ".provenance.json").exists())
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse((log_dir / "ran.json").exists())
+            self.assertFalse((project / "build/walk.pkg").exists(),
+                "asset conversion should not run after Elisa compilation fails")
+            self.assertFalse((project / "build/.elisa-asset-cook-cache.json").exists())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,8 @@
         @callconv(c)
         extern elisa_render_scene_v1_clear_primary_viewport() -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_primary_camera_visibility_mask(layer_mask: u32) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_set_camera_render_target(width: i32, height: i32, update_interval: f32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_clear_camera_render_target() -> i32
@@ -32,6 +34,9 @@
         @callconv(c)
         extern elisa_render_scene_v1_update_camera(handle: i64, projection: i32,
             width: i32, height: i32, projection_value: f32, near_clip: f32, far_clip: f32) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_camera_visibility_mask(handle: i64,
+            layer_mask: u32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_set_camera_handle_look_at(handle: i64,
             eye_x: f32, eye_y: f32, eye_z: f32,
@@ -90,6 +95,9 @@
         extern elisa_render_scene_v1_snapshot_abort() -> i32
         @callconv(c)
         extern elisa_render_scene_v1_snapshot_result(index: u32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_has_animation_clip(handle: i64,
+            clip_name: cstr, found: mutable i32&) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_play_animation(handle: i64, clip_name: cstr,
             loop: i32, speed: f32, blend_seconds: f32) -> i32
@@ -215,6 +223,10 @@
         @callconv(c)
         extern elisa_render_scene_v1_destroy_text(handle: i64) -> i32
         @callconv(c)
+        extern elisa_render_scene_v1_set_text_camera(handle: i64, camera_handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_text_camera(handle: i64) -> i32
+        @callconv(c)
         extern elisa_render_scene_v1_create_overlay_panel(x: f32, y: f32,
             width: f32, height: f32, red: f32, green: f32, blue: f32, alpha: f32) -> i64
         @callconv(c)
@@ -228,6 +240,11 @@
         extern elisa_render_scene_v1_set_overlay_panel_visible(handle: i64, visible: i32) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_destroy_overlay_panel(handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_set_overlay_panel_camera(handle: i64,
+            camera_handle: i64) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_clear_overlay_panel_camera(handle: i64) -> i32
         @callconv(c)
         extern elisa_render_scene_v1_create_electric_arc(width: f32, amplitude: f32, seed: u32) -> i64
         @callconv(c)

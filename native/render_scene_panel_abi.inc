@@ -92,10 +92,30 @@ extern "C" int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle) {
     const size_t slot = decode_panel_handle(state, handle);
     if (slot == MAX_OVERLAY_PANELS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     OverlayPanelSlot& entry = state.overlay_panels[slot];
-    state.path->RemoveSprite(&entry.sprite);
+    if (wi::RenderPath2D* path = overlay_render_path(state, entry)) path->RemoveSprite(&entry.sprite);
     entry.sprite.SetHidden(true);
+    entry.camera_slot = MAX_RENDER_CAMERAS;
+    entry.camera_generation = 0;
     entry.live = false;
     return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_overlay_panel_camera(
+    int64_t handle, int64_t camera_handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    const size_t slot = decode_panel_handle(state, handle);
+    if (slot == MAX_OVERLAY_PANELS) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    OverlayPanelSlot& entry = state.overlay_panels[slot];
+    return set_overlay_camera(state, entry, camera_handle,
+        [&](wi::RenderPath2D* path) { path->AddSprite(&entry.sprite); },
+        [&](wi::RenderPath2D* path) { path->RemoveSprite(&entry.sprite); });
+}
+
+extern "C" int32_t elisa_render_scene_v1_clear_overlay_panel_camera(int64_t handle) {
+    return elisa_render_scene_v1_set_overlay_panel_camera(handle, 0);
 }
 #include "render_scene_image_abi.inc"
 #include "render_scene_debug_abi.inc"

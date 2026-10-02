@@ -26,6 +26,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 from macos_deployment_target import METAL_MINIMUM_MACOS, deployment_targets, format_version
@@ -314,16 +315,31 @@ def source_revision(project: Path) -> str:
     return f"{revision}-dirty" if dirty else revision
 
 
+def executable_build_identity(executable: Path) -> str:
+    sidecar = executable.with_name(executable.name + ".provenance.json")
+    try:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return "unavailable"
+    identity = record.get("build_identity") if isinstance(record, dict) else None
+    if not isinstance(identity, str) or re.fullmatch(r"[0-9a-fA-F]{16}", identity) is None:
+        return "unavailable"
+    return identity.lower()
+
+
 def write_launcher(path: Path, binary_name: str,
-    window: tuple[str, int, int] = ("Elisa Engine", 1280, 720), identity: str = "") -> None:
+    window: tuple[str, int, int] = ("Elisa Engine", 1280, 720), identity: str = "",
+    bundle_id: str = "org.elisa.application", build_identity: str = "unavailable") -> None:
     # The runtime reads its window settings from the environment, which the
     # build runner sets from elisa.project.json. A double-clicked bundle has
     # no runner, so the launcher supplies the same defaults while still
     # letting an explicitly exported value win. The identity line goes to
     # stderr first so every log names the build that produced it.
     title, width, height = window
-    announce = f"echo {shlex.quote(identity)} >&2\n" if identity else ""
-    crash_identity = (f"if [ -z \"${{ELISA_BUILD_IDENTITY:-}}\" ]; then ELISA_BUILD_IDENTITY={shlex.quote(identity)}; fi\n"
+    announce = f"printf '%s\\n' {shlex.quote(identity)} >&2 || :\n" if identity else ""
+    crash_ips_pattern = shlex.quote(f"{path.name}*.ips")
+    crash_legacy_pattern = shlex.quote(f"{path.name}*.crash")
+    crash_identity = (f"if [ -z \"${{ELISA_BUILD_IDENTITY:-}}\" ]; then ELISA_BUILD_IDENTITY={shlex.quote(build_identity)}; fi\n"
         "export ELISA_BUILD_IDENTITY\n") if identity else ""
     script = f"""#!/bin/sh
 set -eu
@@ -351,7 +367,59 @@ fi
         export ELISA_ENGINE_SHADER_MANIFEST
     fi
 fi
-{announce}exec \"$resources/{binary_name}\" \"$@\"
+{announce}log_directory=\"${{HOME:-}}/Library/Logs/Elisa\"
+log_directory=\"$log_directory\"/{shlex.quote(bundle_id)}
+log_file=\"\"
+if [ -n \"${{HOME:-}}\" ] && mkdir -p \"$log_directory\" 2>/dev/null; then
+    log_file=\"$log_directory/latest.log\"
+    if [ -f \"$log_file\" ]; then
+        cp \"$log_file\" \"$log_directory/previous.log\" 2>/dev/null || :
+    fi
+    if ! {{
+        printf '%s\\n' {shlex.quote(identity or 'Elisa application')}
+        printf 'build_identity=%s\\n' {shlex.quote(build_identity)}
+        printf 'started_utc=%s\\n' \"$(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || printf unknown)\"
+        printf '%s\\n' '--- process output ---'
+    }} > \"$log_file\" 2>/dev/null; then
+        log_file=\"\"
+    fi
+fi
+if [ -n \"$log_file\" ]; then
+    printf 'launcher_log=%s\\n' \"$log_file\" >&2 || :
+    if \"$resources/{binary_name}\" \"$@\" >> \"$log_file\" 2>&1; then
+        status=0
+    else
+        status=$?
+    fi
+    printf '\\nprocess_exit_status=%s\\n' \"$status\" >> \"$log_file\" 2>/dev/null || :
+else
+    if \"$resources/{binary_name}\" \"$@\"; then
+        status=0
+    else
+        status=$?
+    fi
+fi
+if [ \"$status\" -ne 0 ]; then
+    home_directory=\"$(/usr/bin/printenv HOME 2>/dev/null || :)\"
+    diagnostic_reports=\"$home_directory/Library/Logs/DiagnosticReports\"
+    if [ -n \"$home_directory\" ] && [ -d \"$diagnostic_reports\" ]; then
+        if [ -n \"$log_file\" ]; then
+            {{
+                printf '%s\\n' 'recent macOS crash report candidates (match timestamps to started_utc):'
+                find \"$diagnostic_reports\" -type f \\
+                    \\( -name {crash_ips_pattern} -o -name {crash_legacy_pattern} \\) \\
+                    -mtime -1 -print
+            }} >> \"$log_file\" 2>/dev/null || :
+        else
+            printf '%s\\n' 'recent macOS crash report candidates (match timestamps to this run):' >&2 || :
+            find \"$diagnostic_reports\" -type f \\
+                \\( -name {crash_ips_pattern} -o -name {crash_legacy_pattern} \\) \\
+                -mtime -1 -print >&2 2>/dev/null || :
+        fi
+    fi
+fi
+printf 'Elisa process exit status: %s\\n' \"$status\" >&2 || :
+exit \"$status\"
 """
     path.write_text(script, encoding="utf-8")
     path.chmod(path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
@@ -423,8 +491,8 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         icon = icon.expanduser().resolve()
         if not icon.is_file() or icon.suffix.lower() != ".icns":
             raise PackageError("app icon must be an existing .icns file")
-    if not bundle_id or any(character.isspace() for character in bundle_id):
-        raise PackageError("bundle identifier must be a non-empty token")
+    if not bundle_id or re.fullmatch(r"[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*", bundle_id) is None:
+        raise PackageError("bundle identifier must be dot-separated alphanumeric, underscore or hyphen tokens")
     bundle_name = safe_bundle_name(name)
     app = output if output.suffix == ".app" else output.with_suffix(".app")
     if app == project or app in project.parents:
@@ -444,13 +512,15 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     binary_name = f"{bundle_name}.bin"
     # Hash the built executable before load-command edits and re-signing so
     # the identity matches the build runner's output.
+    build_identity = executable_build_identity(executable)
     identity = (f"Elisa package: {bundle_name} {version} ({bundle_id}) "
         f"executable-sha256={hashlib.sha256(executable.read_bytes()).hexdigest()} "
-        f"source={source_revision(project)}")
+        f"build-identity={build_identity} source={source_revision(project)}")
     shutil.copy2(executable, resources / binary_name)
     if is_mach_o(resources / binary_name):
         bundle_dynamic_libraries(resources / binary_name, contents / "Frameworks")
-    write_launcher(macos / bundle_name, binary_name, window or (name, 1280, 720), identity)
+    write_launcher(macos / bundle_name, binary_name, window or (name, 1280, 720),
+        identity, bundle_id, build_identity)
 
     # Runtime paths in the game are deliberately project-relative. Stage the
     # declared runtime resources (or, without a declaration, the whole assets
@@ -470,6 +540,59 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         manifest = shader_manifest(resources / "shaders")
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    provenance_source = executable.with_name(executable.name + ".provenance.json")
+    if provenance_source.is_file():
+        provenance_destination = resources / "build-provenance.json"
+        if provenance_destination.exists():
+            raise PackageError("a packaged resource conflicts with build-provenance.json")
+        try:
+            provenance = json.loads(provenance_source.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as error:
+            raise PackageError(f"could not read build provenance {provenance_source}: {error}") from error
+        if not isinstance(provenance, dict):
+            raise PackageError(f"build provenance must contain an object: {provenance_source}")
+        provenance["project_root"] = "<project>"
+        try:
+            provenance["main_source"] = Path(str(provenance.get("main_source", ""))).resolve().relative_to(project.resolve()).as_posix()
+        except (OSError, ValueError):
+            provenance["main_source"] = Path(str(provenance.get("main_source", ""))).name
+        repositories = provenance.get("repositories")
+        if isinstance(repositories, dict):
+            for label, identity in repositories.items():
+                if isinstance(identity, dict):
+                    identity["root"] = f"<{label}>"
+        tools = provenance.get("tools")
+        if isinstance(tools, dict):
+            for tool in tools.values():
+                if isinstance(tool, dict):
+                    for field in ("requested", "resolved"):
+                        value = tool.get(field)
+                        if isinstance(value, str):
+                            tool[field] = Path(value).name
+                    if isinstance(tool.get("path"), str):
+                        tool["path"] = Path(str(tool["path"])).name
+        native = provenance.get("native_link_artifacts")
+        if isinstance(native, list):
+            for item in native:
+                if isinstance(item, dict) and isinstance(item.get("path"), str):
+                    item["path"] = Path(str(item["path"])).name
+        options = provenance.get("options")
+        if isinstance(options, dict):
+            for field in ("wicked_build", "compiler_request", "native_compiler_request"):
+                if isinstance(options.get(field), str):
+                    options[field] = Path(str(options[field])).name
+        binary = provenance.get("binary")
+        if isinstance(binary, dict):
+            binary["path"] = "build executable"
+        packaged_binary = resources / binary_name
+        provenance["packaged_binary"] = {
+            "path": binary_name,
+            "sha256": hashlib.sha256(packaged_binary.read_bytes()).hexdigest(),
+            "size_bytes": packaged_binary.stat().st_size,
+        }
+        provenance_destination.write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8")
 
     for relative in notices:
         destination = resources / "Notices" / relative
@@ -545,9 +668,11 @@ def main() -> int:
         if icon is None:
             candidate = project / "resources" / "AppIcon.icns"
             icon = candidate if candidate.is_file() else None
+        stage_started = time.perf_counter()
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
             manifest_window(manifest, project), options.shader_root, manifest_notices(manifest, project))
+        print(f"App packaging: {time.perf_counter() - stage_started:.2f}s", flush=True)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
         return 1

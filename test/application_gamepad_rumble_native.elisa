@@ -1,0 +1,47 @@
+# Exercise the Elisa rumble facade without generating physical controller
+# output. Validation failures are safe even when a gamepad is connected.
+using Application
+
+def main() -> i32:
+    before_start: Application::GamepadRumbleStatus = Application::rumble_gamepad(
+        1, 0.4, 0.7, 125)
+    return 1 if before_start != Application::GamepadRumbleStatus.NotInitialized
+    before_start_label: mutable Application::GamepadButtonLabel = Application::GamepadButtonLabel.Unknown
+    before_start_label_status: Application::GamepadButtonLabelStatus =
+        Application::query_gamepad_button_label(1,
+            Application::GamepadButtonCode.South, &before_start_label)
+    return 9 if before_start_label_status != Application::GamepadButtonLabelStatus.NotInitialized
+    return 10 if before_start_label != Application::GamepadButtonLabel.Unknown
+    before_start_connection: Application::GamepadConnectionStatus =
+        Application::query_gamepad_connection(1)
+    return 14 if before_start_connection != Application::GamepadConnectionStatus.NotInitialized
+
+    config: Application::Config = Application::default_config()
+    return 2 if Application::initialize(config) != Application::InitializeStatus.Ready
+    invalid_slot: Application::GamepadRumbleStatus = Application::rumble_gamepad(0, 0.4, 0.7, 125)
+    invalid_low: Application::GamepadRumbleStatus = Application::rumble_gamepad(1, -0.1, 0.7, 125)
+    invalid_high: Application::GamepadRumbleStatus = Application::rumble_gamepad(1, 0.4, 1.1, 125)
+    invalid_duration: Application::GamepadRumbleStatus = Application::rumble_gamepad(1, 0.4, 0.7, 0)
+    long_duration: Application::GamepadRumbleStatus = Application::rumble_gamepad(1, 0.4, 0.7, 60001)
+    invalid_label_slot: Application::GamepadButtonLabelStatus =
+        Application::query_gamepad_button_label(0,
+            Application::GamepadButtonCode.South, &before_start_label)
+    live_label_status: Application::GamepadButtonLabelStatus =
+        Application::query_gamepad_button_label(1,
+            Application::GamepadButtonCode.South, &before_start_label)
+    invalid_connection_slot: Application::GamepadConnectionStatus =
+        Application::query_gamepad_connection(0)
+    live_connection_status: Application::GamepadConnectionStatus =
+        Application::query_gamepad_connection(1)
+    return 3 if invalid_slot != Application::GamepadRumbleStatus.InvalidArgument
+    return 4 if invalid_low != Application::GamepadRumbleStatus.InvalidArgument
+    return 5 if invalid_high != Application::GamepadRumbleStatus.InvalidArgument
+    return 6 if invalid_duration != Application::GamepadRumbleStatus.InvalidArgument
+    return 7 if long_duration != Application::GamepadRumbleStatus.InvalidArgument
+    return 11 if invalid_label_slot != Application::GamepadButtonLabelStatus.InvalidArgument
+    return 12 if live_label_status != Application::GamepadButtonLabelStatus.Available and live_label_status != Application::GamepadButtonLabelStatus.Unavailable
+    return 13 if live_label_status == Application::GamepadButtonLabelStatus.Available and before_start_label == Application::GamepadButtonLabel.Unknown
+    return 15 if invalid_connection_slot != Application::GamepadConnectionStatus.InvalidArgument
+    return 16 if live_connection_status != Application::GamepadConnectionStatus.Connected and live_connection_status != Application::GamepadConnectionStatus.Disconnected
+    return 8 if not Application::shutdown()
+    0

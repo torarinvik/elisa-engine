@@ -65,6 +65,7 @@ int32_t elisa_render_scene_v1_resize(int32_t width, int32_t height);
 int32_t elisa_render_scene_v1_set_primary_viewport(
     int32_t x, int32_t y, int32_t width, int32_t height);
 int32_t elisa_render_scene_v1_clear_primary_viewport(void);
+int32_t elisa_render_scene_v1_set_primary_camera_visibility_mask(uint32_t layer_mask);
 int32_t elisa_render_scene_v1_set_camera_render_target(
     int32_t width, int32_t height, float update_interval);
 int32_t elisa_render_scene_v1_clear_camera_render_target(void);
@@ -85,6 +86,7 @@ int64_t elisa_render_scene_v1_create_camera(
 int32_t elisa_render_scene_v1_update_camera(
     int64_t handle, int32_t projection, int32_t width, int32_t height,
     float projection_value, float near_clip, float far_clip);
+int32_t elisa_render_scene_v1_set_camera_visibility_mask(int64_t handle, uint32_t layer_mask);
 int32_t elisa_render_scene_v1_set_camera_handle_look_at(
     int64_t handle, float eye_x, float eye_y, float eye_z,
     float target_x, float target_y, float target_z,
@@ -298,6 +300,8 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_material_set(
 int32_t elisa_render_scene_v1_snapshot_mesh_texture_count(uint64_t mesh_high, uint64_t mesh_low);
 int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
+int32_t elisa_render_scene_v1_has_animation_clip(
+    int64_t handle, const char* clip_name, int32_t* found);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_play_animation_blended(
@@ -519,6 +523,8 @@ int32_t elisa_render_scene_v1_set_text_color(
     int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_text_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_text(int64_t handle);
+int32_t elisa_render_scene_v1_set_text_camera(int64_t handle, int64_t camera_handle);
+int32_t elisa_render_scene_v1_clear_text_camera(int64_t handle);
 int64_t elisa_render_scene_v1_create_overlay_panel(float x, float y,
     float width, float height, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_overlay_panel_position(int64_t handle, float x, float y);
@@ -527,6 +533,8 @@ int32_t elisa_render_scene_v1_set_overlay_panel_color(
     int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_overlay_panel_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_overlay_panel(int64_t handle);
+int32_t elisa_render_scene_v1_set_overlay_panel_camera(int64_t handle, int64_t camera_handle);
+int32_t elisa_render_scene_v1_clear_overlay_panel_camera(int64_t handle);
 int32_t elisa_render_scene_v1_debug_box(
     float min_x, float min_y, float min_z,
     float max_x, float max_y, float max_z,
@@ -581,6 +589,8 @@ int32_t elisa_render_scene_v1_set_overlay_image_color(
     int64_t handle, float red, float green, float blue, float alpha);
 int32_t elisa_render_scene_v1_set_overlay_image_visible(int64_t handle, int32_t visible);
 int32_t elisa_render_scene_v1_destroy_overlay_image(int64_t handle);
+int32_t elisa_render_scene_v1_set_overlay_image_camera(int64_t handle, int64_t camera_handle);
+int32_t elisa_render_scene_v1_clear_overlay_image_camera(int64_t handle);
 int64_t elisa_render_scene_v1_create_electric_arc(float width, float amplitude, uint32_t seed);
 int32_t elisa_render_scene_v1_update_electric_arc(int64_t handle,
     float start_x, float start_y, float start_z,

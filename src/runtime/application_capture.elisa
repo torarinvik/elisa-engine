@@ -20,6 +20,9 @@ extend Application:
         extern elisa_application_v1_environment_integer(name: cstr, fallback: i64) -> i64
 
         @callconv(c)
+        extern elisa_application_v1_build_identity() -> i64
+
+        @callconv(c)
         extern elisa_application_v1_save_screenshot(path: cstr) -> i32
 
         @callconv(c)
@@ -47,6 +50,11 @@ extend Application:
 
         def environment_integer(name: cstr, fallback: i64) -> i64:
             elisa_application_v1_environment_integer(name, fallback)
+
+        # Zero identifies a direct native build not made through the project
+        # runner; runner-built apps carry a provenance-linked identity.
+        def build_identity() -> i64:
+            elisa_application_v1_build_identity()
 
         def save_screenshot(path: cstr) -> bool:
             elisa_application_v1_save_screenshot(path) == Application::NativeStatus::OK

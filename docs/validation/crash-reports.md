@@ -17,7 +17,8 @@ handler itself only calls open, write and backtrace. Nothing is sent over the ne
 
 Packaged launchers default `ELISA_CRASH_DIR` to `~/Library/Logs/<app>`, and a directory the user
 exports takes precedence. If the directory can't be created, crash reports are turned off. The
-launcher also exports its identity line as `ELISA_BUILD_IDENTITY`.
+launcher exports the 16-digit build identity from the executable's provenance sidecar as
+`ELISA_BUILD_IDENTITY`; it keeps the longer package and source identity in the launcher log.
 
 ## Evidence
 

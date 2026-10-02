@@ -62,11 +62,13 @@ bool apply_overlay_image(OverlayImageSlot& entry, const char* asset_path,
 }
 
 void release_overlay_image(RenderSceneService& state, OverlayImageSlot& entry) {
-    if (state.path != nullptr) state.path->RemoveSprite(&entry.sprite);
+    if (wi::RenderPath2D* path = overlay_render_path(state, entry)) path->RemoveSprite(&entry.sprite);
     entry.sprite.SetHidden(true);
     entry.sprite.textureResource = {};
     entry.resource = {};
     entry.texture_width = 0;
     entry.texture_height = 0;
+    entry.camera_slot = MAX_RENDER_CAMERAS;
+    entry.camera_generation = 0;
     entry.live = false;
 }

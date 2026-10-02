@@ -131,26 +131,30 @@ public:
         }
         if (state_ == nullptr) return;
 
-        wi::image::Params image;
-        image.blendFlag = wi::enums::BLENDMODE_OPAQUE;
-        image.quality = wi::image::QUALITY_LINEAR;
-        image.pivot = XMFLOAT2(0.0f, 0.0f);
-
         size_t composed = 0;
         std::lock_guard<std::mutex> guard(state_->mutex);
+        wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+        if (device == nullptr) return;
         for (const RenderCameraSlot& slot : state_->cameras) {
             if (!slot.live || !slot.viewport_enabled || slot.viewport_width <= 0 ||
                 slot.viewport_height <= 0 || slot.pipeline == nullptr) continue;
             const wi::graphics::Texture& target = slot.pipeline->GetRenderResult3D();
             if (!target.IsValid()) continue;
-
-            image.pos = XMFLOAT3(PhysicalToLogical(slot.viewport_x),
-                PhysicalToLogical(slot.viewport_y), 0.0f);
-            image.siz = XMFLOAT2(PhysicalToLogical(slot.viewport_width),
-                PhysicalToLogical(slot.viewport_height));
-            wi::image::Draw(&target, image, cmd);
+            const wi::graphics::Viewport viewport{
+                float(slot.viewport_x), float(slot.viewport_y),
+                float(slot.viewport_width), float(slot.viewport_height), 0.0f, 1.0f};
+            device->BindViewports(1, &viewport, cmd);
+            // Compose the whole camera path so its local 2D overlay target is
+            // alpha-composited along with the 3D image into this viewport.
+            slot.pipeline->Compose(cmd);
             ++composed;
         }
+        const wi::graphics::Viewport framebuffer{
+            0.0f, 0.0f,
+            float(state_->host_canvas_width > 0 ? state_->host_canvas_width : uint32_t(state_->width)),
+            float(state_->host_canvas_height > 0 ? state_->host_canvas_height : uint32_t(state_->height)),
+            0.0f, 1.0f};
+        device->BindViewports(1, &framebuffer, cmd);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         state_->camera_viewports_composed = composed;
 #endif

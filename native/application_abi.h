@@ -28,6 +28,28 @@ enum {
     ELISA_APPLICATION_CAPTURE_CANCELLED = 3,
 };
 
+enum {
+    ELISA_APPLICATION_RUMBLE_UNAVAILABLE = 0,
+    ELISA_APPLICATION_RUMBLE_STARTED = 1,
+};
+
+enum {
+    ELISA_APPLICATION_GAMEPAD_LABEL_UNAVAILABLE = 0,
+    ELISA_APPLICATION_GAMEPAD_LABEL_AVAILABLE = 1,
+};
+
+enum {
+    ELISA_APPLICATION_GAMEPAD_LABEL_UNKNOWN = 0,
+    ELISA_APPLICATION_GAMEPAD_LABEL_A = 1,
+    ELISA_APPLICATION_GAMEPAD_LABEL_B = 2,
+    ELISA_APPLICATION_GAMEPAD_LABEL_X = 3,
+    ELISA_APPLICATION_GAMEPAD_LABEL_Y = 4,
+    ELISA_APPLICATION_GAMEPAD_LABEL_CROSS = 5,
+    ELISA_APPLICATION_GAMEPAD_LABEL_CIRCLE = 6,
+    ELISA_APPLICATION_GAMEPAD_LABEL_SQUARE = 7,
+    ELISA_APPLICATION_GAMEPAD_LABEL_TRIANGLE = 8,
+};
+
 // Engine-internal extension points for runtime services. The public Elisa
 // surface uses opaque handles and scalar values; these callbacks stay in the
 // native engine boundary.
@@ -76,6 +98,9 @@ enum {
 };
 
 uint32_t elisa_application_abi_version(void);
+// Stable 63-bit identifier for source/tool inputs compiled by the project
+// runner. Direct native builds use zero when no build ID is set.
+int64_t elisa_application_v1_build_identity(void);
 const char* elisa_application_v1_project_title(void);
 int32_t elisa_application_v1_project_width(void);
 int32_t elisa_application_v1_project_height(void);
@@ -133,6 +158,21 @@ int64_t elisa_application_v1_next_input_event_token(void);
 int32_t elisa_application_v1_next_pointer_event(
     int32_t* kind, int32_t* button, float* x, float* y,
     float* delta_x, float* delta_y, uint32_t* buttons, int32_t* pressed);
+// Requests normalized whole-gamepad rumble on a stable one-based connection
+// slot. Returns 1 when started, 0 when that slot/device cannot rumble, or a
+// negative application status for invalid state/arguments/thread use.
+int32_t elisa_application_v1_rumble_gamepad(
+    int32_t device_slot, float low_frequency, float high_frequency,
+    int32_t duration_ms);
+// Queries the printed label for a portable SDL gamepad button on a stable
+// one-based connection slot. Returns 1 when known, 0 when unavailable or
+// unknown, or a negative application status for invalid state/thread/args.
+int32_t elisa_application_v1_gamepad_button_label(
+    int32_t device_slot, int32_t portable_button_code, int32_t* label);
+// Queries whether a stable one-based gamepad slot currently has a connected
+// device. Returns 1 when connected, 0 when disconnected, or a negative
+// application status for invalid state/arguments/thread use.
+int32_t elisa_application_v1_gamepad_connected(int32_t device_slot);
 // Relative mouse mode hides and confines the cursor so motion deltas keep
 // arriving past the window edge (mouse-look). Returns OK, INVALID_ARGUMENT,
 // INVALID_STATE, WRONG_THREAD, or UNSUPPORTED when the platform refuses;

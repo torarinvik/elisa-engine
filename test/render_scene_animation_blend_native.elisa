@@ -54,11 +54,15 @@ module RenderSceneAnimationBlendNativeTests:
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
 
-        def play_at(handle: RenderScene::InstanceHandle, phase: f32, speed: f32) -> i32:
-            catch RenderScene::play_animation_at(handle, CLIP, phase, speed, 0.0):
+        def play_clip_at(handle: RenderScene::InstanceHandle, clip: cstr,
+            phase: f32, speed: f32) -> i32:
+            catch RenderScene::play_animation_at(handle, clip, phase, speed, 0.0):
                 ok: 0
                 RenderScene::RenderSceneError.InvalidValue: 1
                 error failure: 2
+
+        def play_at(handle: RenderScene::InstanceHandle, phase: f32, speed: f32) -> i32:
+            play_clip_at(handle, CLIP, phase, speed)
 
         def explicit_phase_checks(rig: RenderScene::InstanceHandle) -> i32:
             raw: i64 = RenderScene::native_smoke_handle(rig)
@@ -180,6 +184,53 @@ module RenderSceneAnimationBlendNativeTests:
             return 20 if retime(rig, -1.0) != 0
             return 21 if retime(rig, -17.0) != 1
             return 22 if retime(box, 1.0) != 1
+
+            # Player 1 and Player 2 load the same animated asset into separate
+            # scene handles. Their clips, phases, speeds and transition state
+            # must remain independent even when they advance in the same tick.
+            other: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+                "build/cooked/subsets/morphed-skinned.pkg", Geometry::transform_identity(),
+                RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
+                value: value
+                error failure: return 56
+            raw_other: i64 = RenderScene::native_smoke_handle(other)
+            raw_rig: i64 = RenderScene::native_smoke_handle(rig)
+            source_started: bool = play_clip_at(rig, CLIP, 0.35, 0.5) == 0
+            other_started: bool = play_clip_at(other, NEXT_CLIP, 0.35, 2.0) == 0
+            started_both: bool = source_started and other_started
+            return 57 if not started_both
+            source_pose_ok: bool = elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 1.35) != 0
+            other_pose_ok: bool = elisa_render_scene_v1_test_animation_joint_y(raw_other, 3, 3.70) != 0
+            distinct_poses: bool = source_pose_ok and other_pose_ok
+            return 58 if not distinct_poses
+            began_transition: bool = play(rig, NEXT_CLIP, FADE, phase_matched_linear())
+            source_retimed: bool = retime(rig, 0.5) == 0
+            began_one_fade: bool = began_transition and source_retimed
+            return 59 if not began_one_fade
+            source_weight: f32 = elisa_render_scene_v1_test_animation_blend_weight(raw_rig)
+            other_weight: f32 = elisa_render_scene_v1_test_animation_blend_weight(raw_other)
+            only_source_fades: bool = near(source_weight, 0.0) and other_weight < 0.0
+            return 60 if not only_source_fades
+            source_advanced: bool = advance(rig, 0.1)
+            other_advanced: bool = advance(other, 0.1)
+            advanced_both: bool = source_advanced and other_advanced
+            return 61 if not advanced_both
+            source_phase: f32 = progress(rig)
+            other_phase: f32 = progress(other)
+            distinct_phases: bool = near(source_phase, 0.40) and near(other_phase, 0.55)
+            return 62 if not distinct_phases
+            source_blend_weight: f32 = elisa_render_scene_v1_test_animation_blend_weight(raw_rig)
+            other_blend_weight: f32 = elisa_render_scene_v1_test_animation_blend_weight(raw_other)
+            distinct_transitions: bool = near(source_blend_weight, 0.25) and other_blend_weight < 0.0
+            return 63 if not distinct_transitions
+            source_blended_pose_ok: bool = elisa_render_scene_v1_test_animation_joint_y(raw_rig, 3, 2.0) != 0
+            other_advanced_pose_ok: bool = elisa_render_scene_v1_test_animation_joint_y(raw_other, 3, 4.10) != 0
+            distinct_blended_poses: bool = source_blended_pose_ok and other_advanced_pose_ok
+            return 64 if not distinct_blended_poses
+            other_destroyed: bool = catch RenderScene::destroy(other):
+                ok: true
+                error failure: false
+            return 65 if not other_destroyed
             destroyed: bool = catch RenderScene::destroy(rig):
                 ok: true
                 error failure: false

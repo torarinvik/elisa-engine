@@ -100,6 +100,7 @@ extern "C" int64_t elisa_render_scene_v1_create_camera(
     }
     camera_slot.entity = entity;
     camera_slot.generation += 1;
+    camera_slot.visibility_mask = ~uint32_t(0);
     camera_slot.viewport_x = 0;
     camera_slot.viewport_y = 0;
     camera_slot.viewport_width = 0;
@@ -133,6 +134,20 @@ extern "C" int32_t elisa_render_scene_v1_update_camera(
     state.cameras[slot].camera_width = width;
     state.cameras[slot].camera_height = height;
     if (state.camera_entity == state.cameras[slot].entity) sync_camera_settings(state, *camera);
+    return ELISA_RENDER_SCENE_OK;
+}
+
+extern "C" int32_t elisa_render_scene_v1_set_camera_visibility_mask(
+    int64_t handle, uint32_t layer_mask) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_RENDER_CAMERAS;
+    if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    RenderCameraSlot& camera_slot = state.cameras[slot];
+    camera_slot.visibility_mask = layer_mask;
+    if (camera_slot.pipeline != nullptr) camera_slot.pipeline->setlayerMask(layer_mask);
     return ELISA_RENDER_SCENE_OK;
 }
 
@@ -211,6 +226,8 @@ extern "C" int32_t elisa_render_scene_v1_destroy_camera(int64_t handle) {
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
     if (state.camera_entity == state.cameras[slot].entity) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    const int32_t rehome_status = rehome_camera_overlays_to_primary(state, slot);
+    if (rehome_status != ELISA_RENDER_SCENE_OK) return rehome_status;
     if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();
     state.cameras[slot].pipeline.reset();
     state.scene->Entity_Remove(state.cameras[slot].entity);
@@ -268,6 +285,7 @@ extern "C" int32_t elisa_render_scene_v1_set_camera_viewport(
     camera_slot.pipeline->camera = camera;
     camera_slot.pipeline->init(uint32_t(width), uint32_t(height), state.path->dpi);
     camera_slot.pipeline->scaling = state.path->scaling;
+    camera_slot.pipeline->setlayerMask(camera_slot.visibility_mask);
     if (camera->IsOrtho()) {
         camera->CreateOrtho(float(width), float(height), camera->zNearP, camera->zFarP,
             camera->ortho_vertical_size);
@@ -285,6 +303,8 @@ extern "C" int32_t elisa_render_scene_v1_clear_camera_viewport(int64_t handle) {
     if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
     size_t slot = MAX_RENDER_CAMERAS;
     if (!valid_camera_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    const int32_t rehome_status = rehome_camera_overlays_to_primary(state, slot);
+    if (rehome_status != ELISA_RENDER_SCENE_OK) return rehome_status;
     wi::scene::CameraComponent* camera = state.scene->cameras.GetComponent(state.cameras[slot].entity);
     if (camera == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     if (state.cameras[slot].pipeline != nullptr) state.cameras[slot].pipeline->Stop();

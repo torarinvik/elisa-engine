@@ -60,6 +60,18 @@ module RenderSceneAnimationSubmissionNativeTests:
                 RenderScene::Color{red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0}):
                 value: value
                 error failure: return 1
+            has_lift: bool = catch RenderScene::has_animation_clip(mesh, "lift"):
+                value: value
+                error failure: return 65
+            has_drop: bool = catch RenderScene::has_animation_clip(mesh, "drop"):
+                value: value
+                error failure: return 66
+            has_missing: bool = catch RenderScene::has_animation_clip(mesh, "missing-clip"):
+                value: value
+                error failure: return 67
+            return 62 if not has_lift
+            return 63 if not has_drop
+            return 64 if has_missing
             return 23 if elisa_render_scene_v1_test_inverse_bind(RenderScene::native_smoke_handle(mesh), TIP_CLUSTER,
                 INVERSE_BIND_TRANSLATION_ROW, INVERSE_BIND_X_COLUMN,
                 EXPECTED_WICKED_INVERSE_BIND_X) != 1

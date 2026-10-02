@@ -12,6 +12,24 @@ float clip_phase(const InstanceSlot& instance, int32_t clip_index, float time) {
     return std::clamp(time / clip.duration_seconds, 0.0f, 1.0f);
 }
 
+extern "C" int32_t elisa_render_scene_v1_has_animation_clip(
+    int64_t handle, const char* clip_name, int32_t* found) {
+    if (clip_name == nullptr || clip_name[0] == '\0' || found == nullptr) {
+        return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    }
+    size_t name_length = 0;
+    while (name_length <= 1024 && clip_name[name_length] != '\0') ++name_length;
+    if (name_length == 0 || name_length > 1024) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized) return ELISA_RENDER_SCENE_NOT_INITIALIZED;
+    if (!on_owner_thread(state)) return ELISA_RENDER_SCENE_WRONG_THREAD;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return ELISA_RENDER_SCENE_UNKNOWN_HANDLE;
+    *found = find_animation_clip(state.instances[slot], clip_name) >= 0 ? 1 : 0;
+    return ELISA_RENDER_SCENE_OK;
+}
+
 int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, float speed,
     float blend_seconds, int32_t flags, float start_phase = -1.0f) {
     if ((loop != 0 && loop != 1) || !finite(speed) || speed < -16.0f || speed > 16.0f ||

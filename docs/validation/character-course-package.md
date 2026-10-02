@@ -18,17 +18,26 @@ no cooked assets.
 
 ## Build identity
 
-`package_macos_app.py` writes one stderr line from the bundle launcher before
-`exec`:
+`package_macos_app.py` writes the build identity to stderr as the bundle starts:
 
 ```
-Elisa package: CourseValidation 0.1.0 (org.elisa.elisa-character-course) executable-sha256=888dbba0… source=e87a5bfa…-dirty
+Elisa package: CourseValidation 0.1.0 (org.elisa.elisa-character-course) executable-sha256=888dbba0… build-identity=0123456789abcdef source=e87a5bfa…-dirty
 ```
 
 `executable-sha256` is the hash of the built executable before it is copied and
-re-signed. `source` is `git rev-parse HEAD` of the project, with `-dirty` when
-`git status --porcelain -- <project>` is non-empty, or `unknown` outside git. A
-bug report that includes the first line of stderr identifies the exact build.
+re-signed. `build-identity` matches the compact ID in game-owned session
+reports and the full provenance sidecar. `source` is `git rev-parse HEAD` of the
+project, with `-dirty` when `git status --porcelain -- <project>` is non-empty,
+or `unknown` outside git. A bug report that includes the first line of stderr
+identifies the exact build.
+
+The launcher also captures executable stdout/stderr and the final process exit
+status in `~/Library/Logs/Elisa/<bundle-id>/latest.log`. Before each launch it
+copies the preceding log to `previous.log`, preserving one abnormal run across
+a restart. It returns the same status to LaunchServices or the calling shell,
+including the shell-style signal status when the child is terminated by a
+signal. Logging is best-effort: an unavailable log directory does not prevent
+the game from starting.
 
 ## Failing-resource diagnostics
 
@@ -67,6 +76,17 @@ The build used compiler `b841e64b` (stage1 sha256 `fa6d286d…4017c`).
 | `test_package_macos_app.py` (21 tests, including empty resources and the identity line) | pass |
 | Standalone validation: relocated to a path with spaces, source/Homebrew/network denied, 2 launches | 2/2 exit 0 (self-test includes a restart) |
 | Bundled Frameworks | libSDL3, freetype, glib, graphite2, harfbuzz, intl, pcre2, png16, zstd |
+
+## Launcher diagnostics follow-up (2026-09-29)
+
+The packaging suite now passes 26 tests. It verifies launch logs include the
+build identity and output, retain the previous run, preserve normal and
+nonzero process statuses (including signal-style status 143), that the app
+still launches when logging is unavailable, and do not accept unsafe bundle
+identifiers for the log path. Packaged stdout/stderr and final
+status are retained at `~/Library/Logs/Elisa/<bundle-id>/latest.log` with the
+previous run in `previous.log`; the launcher continues to return the process
+status to its caller. This does not collect a CrashReporter stack trace.
 | Relocated copy, one byte appended to `metal/objectPS.cso` | exit 1, `Elisa shader manifest rejected: size or sha256 mismatch for metal/objectPS.cso` |
 | Relocated copy, `metal/objectPS.cso` removed | exit 1, `Elisa shader manifest rejected: missing shader metal/objectPS.cso` |
 | Identity line on every launch above | present |

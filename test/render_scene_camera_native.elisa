@@ -28,6 +28,14 @@ module RenderSceneCameraNativeTests:
             width: i32, height: i32, expected_enabled: i32) -> i32
 
         @callconv(c)
+        extern elisa_render_scene_v1_test_primary_camera_visibility_mask_matches(
+            expected_mask: u32) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_camera_visibility_mask_matches(
+            handle: i64, expected_mask: u32) -> i32
+
+        @callconv(c)
         extern elisa_render_scene_v1_test_camera_quality_profile_matches(
             tonemap: i32, bloom: i32, threshold: f32, fxaa: i32,
             ambient_occlusion: i32, reflections: i32, depth_effects: i32,
@@ -141,6 +149,11 @@ module RenderSceneCameraNativeTests:
                 RenderScene::CameraProjection.Perspective, 640, 400, 0.8, 0.2, 300.0):
                 value: value
                 error failure: return 139
+            secondary_mask: i32 = catch RenderScene::set_camera_visibility_mask(secondary, 2):
+                ok: 0
+                error failure: 1
+            return 200 if (secondary_mask != 0 or
+                elisa_render_scene_v1_test_camera_visibility_mask_matches(secondary.id, 2) != 1)
             activate_secondary: i32 = catch RenderScene::activate_camera(secondary):
                 ok: 0
                 error failure: 1
@@ -181,6 +194,13 @@ module RenderSceneCameraNativeTests:
             return 150 if Application::pump() != Application::PumpStatus.Running
             return 151 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
+            return 201 if elisa_render_scene_v1_test_camera_visibility_mask_matches(
+                secondary.id, 2) != 1
+            update_secondary_mask: i32 = catch RenderScene::set_camera_visibility_mask(secondary, 4):
+                ok: 0
+                error failure: 1
+            return 202 if (update_secondary_mask != 0 or
+                elisa_render_scene_v1_test_camera_visibility_mask_matches(secondary.id, 4) != 1)
             camera_profile: mutable Quality::Profile = Quality::Profile()
             camera_profile.tonemap <- Quality::Tonemap.Uchimura
             camera_profile.render_scale <- 0.5
@@ -281,8 +301,30 @@ module RenderSceneCameraNativeTests:
             return 167 if Application::pump() != Application::PumpStatus.Running
             return 168 if elisa_render_scene_v1_test_camera_viewport_matches(
                 160, 0, 160, 100, 1) != 1
+            return 203 if elisa_render_scene_v1_test_camera_visibility_mask_matches(
+                secondary.id, 4) != 1
             return 181 if elisa_render_scene_v1_test_primary_viewport_matches(
                 10, 10, 140, 180, 1) != 1
+            primary_mask: i32 = catch RenderScene::set_primary_camera_visibility_mask(1):
+                ok: 0
+                error failure: 1
+            return 204 if (primary_mask != 0 or
+                elisa_render_scene_v1_test_primary_camera_visibility_mask_matches(1) != 1)
+            primary_resize: i32 = catch RenderScene::resize(640, 400):
+                ok: 0
+                error failure: 1
+            return 205 if (primary_resize != 0 or
+                elisa_render_scene_v1_test_primary_camera_visibility_mask_matches(1) != 1)
+            restore_primary_size: i32 = catch RenderScene::resize(320, 200):
+                ok: 0
+                error failure: 1
+            return 206 if (restore_primary_size != 0 or
+                Application::pump() != Application::PumpStatus.Running)
+            reset_primary_mask: i32 = catch RenderScene::set_primary_camera_visibility_mask(0xffffffff):
+                ok: 0
+                error failure: 1
+            return 207 if (reset_primary_mask != 0 or
+                elisa_render_scene_v1_test_primary_camera_visibility_mask_matches(0xffffffff) != 1)
             clear_primary_viewport: i32 = catch RenderScene::clear_primary_viewport():
                 ok: 0
                 error failure: 1
