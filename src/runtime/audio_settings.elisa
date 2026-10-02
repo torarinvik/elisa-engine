@@ -1,0 +1,45 @@
+# Versioned persistence for the player's audio mix: music, effects and UI bus
+# gains stored as whole percentages in a checked Save blob under a stable
+# user-data key. Decoding rejects out-of-range values instead of clamping, so
+# a corrupt save never reaches the mixer.
+include "../audio/mixer.elisa"
+include "./save.elisa"
+include "./user_data.elisa"
+
+module AudioSettings:
+    public:
+        const USER_DATA_KEY: cstr = "audio-mix"
+        const VERSION: i64 = 1
+        const FIELDS: usize = 3
+
+        error AudioSettingsError:
+            InvalidMix
+            WrongVersion
+            Corrupt
+
+        def percent(gain: f32) -> i64:
+            (gain * 100.0 + 0.5).i64()
+
+        def mix_to_blob(mix: AudioMixer::Snapshot&) -> Save::Blob error[AudioSettingsError, Save::SaveError]:
+            raise AudioSettingsError.InvalidMix if not AudioMixer::valid(mix)
+            values: mutable i64[Save::MAX_FIELDS] = zeroed
+            values[0] <- percent(mix.music)
+            values[1] <- percent(mix.effects)
+            values[2] <- percent(mix.ui)
+            blob: mutable Save::Blob = try Save::save_write(values, FIELDS)
+            blob.version <- VERSION
+            blob
+
+        def mix_from_blob(blob: Save::Blob&) -> AudioMixer::Snapshot error[AudioSettingsError]:
+            raise AudioSettingsError.WrongVersion if blob.version != VERSION
+            raise AudioSettingsError.Corrupt if not Save::blob_valid(blob) or blob.count != FIELDS + 1
+            bad: mutable bool = false
+            for k in 1..<4:
+                bad <- true if blob.fields[k] < 0 or blob.fields[k] > 100
+            raise AudioSettingsError.Corrupt if bad
+            AudioMixer::snapshot(blob.fields[1].f32() / 100.0, blob.fields[2].f32() / 100.0, blob.fields[3].f32() / 100.0)
+
+        # UserData::initialize remains application-owned.
+        def save_user_data(mix: AudioMixer::Snapshot&) -> void error[AudioSettingsError, Save::SaveError, UserData::UserDataError]:
+            blob: mutable Save::Blob = try mix_to_blob(mix)
+            try UserData::write_blob(USER_DATA_KEY, &blob)

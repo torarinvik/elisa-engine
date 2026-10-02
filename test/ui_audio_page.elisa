@@ -1,0 +1,41 @@
+include "../src/ui/audio_page.elisa"
+
+def main() -> i32:
+    mix: AudioMixer::Snapshot = AudioMixer::snapshot(0.6, 1.0, 0.35)
+    p: mutable UiSettingsPage::Page = UiAudioPage::page_of(&mix)
+    return 1 if p.value[0] != 60 or p.value[1] != 100 or p.value[2] != 35
+    # Nudging music up one step changes only music.
+    p <- UiSettingsPage::nudge(p, 1)
+    s: AudioMixer::Snapshot = UiAudioPage::snapshot_of(&p)
+    return 2 if s.music != 0.65 or s.effects != 1.0 or s.ui != 0.35 or not AudioMixer::valid(&s)
+    # The edited mix round-trips through the save blob.
+    blob: mutable Save::Blob = catch AudioSettings::mix_to_blob(&s):
+        value: value
+        error failure: return 3
+    back: AudioMixer::Snapshot = catch AudioSettings::mix_from_blob(&blob):
+        value: value
+        error failure: return 4
+    again: UiSettingsPage::Page = UiAudioPage::page_of(&back)
+    return 5 if again.value[0] != 65 or again.value[2] != 35
+    # Out-of-range or wrong-version blobs are rejected, not clamped.
+    blob.fields[2] <- 140
+    bad: i32 = catch AudioSettings::mix_from_blob(&blob):
+        value: 0
+        AudioSettings::AudioSettingsError.Corrupt: 1
+        error failure: 2
+    return 6 if bad != 1
+    blob.fields[2] <- 100
+    blob.version <- 2
+    old: i32 = catch AudioSettings::mix_from_blob(&blob):
+        value: 0
+        AudioSettings::AudioSettingsError.WrongVersion: 1
+        error failure: 2
+    return 7 if old != 1
+    # An invalid mix is never written.
+    loud: AudioMixer::Snapshot = AudioMixer::snapshot(1.5, 0.0, 0.0)
+    refused: i32 = catch AudioSettings::mix_to_blob(&loud):
+        value: 0
+        AudioSettings::AudioSettingsError.InvalidMix: 1
+        error failure: 2
+    return 8 if refused != 1
+    return 0

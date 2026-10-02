@@ -1,0 +1,21 @@
+# The audio settings page: one 0-100 % slider per mixer bus, loaded from a
+# mixer snapshot and turned back into one. Rows are bound to fields 301-303.
+include "./settings_page.elisa"
+include "../runtime/audio_settings.elisa"
+
+module UiAudioPage:
+    public:
+        const MUSIC_ROW: i64 = 0
+        const EFFECTS_ROW: i64 = 1
+        const UI_ROW: i64 = 2
+
+        def page_of(mix: AudioMixer::Snapshot&) -> UiSettingsPage::Page:
+            p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+            for k in 0..<3:
+                p <- UiSettingsPage::add_row(p, k.i64(), 301 + k.i64(), 0, 100, 5, 100)
+            p <- UiSettingsPage::load(p, MUSIC_ROW, AudioSettings::percent(mix.music))
+            p <- UiSettingsPage::load(p, EFFECTS_ROW, AudioSettings::percent(mix.effects))
+            UiSettingsPage::load(p, UI_ROW, AudioSettings::percent(mix.ui))
+
+        def snapshot_of(p: UiSettingsPage::Page&) -> AudioMixer::Snapshot:
+            AudioMixer::snapshot(p.value[MUSIC_ROW].f32() / 100.0, p.value[EFFECTS_ROW].f32() / 100.0, p.value[UI_ROW].f32() / 100.0)
