@@ -1,0 +1,28 @@
+include "../src/backend/recovery.elisa"
+include "../src/backend/recovery_rebuild.elisa"
+
+def main() -> i32:
+    world: mutable i64[64] = zeroed
+    world[0] <- 11
+    world[1] <- 12
+    world[2] <- 13
+    r: mutable BackendRecovery::Recovery = BackendRecovery::make()
+    table: mutable BackendRebuild::Table = BackendRebuild::rebuild(&world, 3, r.epoch)
+    return 1 if table.count != 3 or BackendRebuild::live(&table, r.epoch) != 3
+    # Device loss: old rows are no longer live and must be rebuilt.
+    BackendRecovery::report(&r, BackendRecovery::Failure.DeviceLost)
+    return 2 if not r.rebuild_pending or BackendRebuild::live(&table, r.epoch) != 0
+    table <- BackendRebuild::rebuild(&world, 3, r.epoch)
+    return 3 if table.count != 3 or BackendRebuild::live(&table, r.epoch) != 3
+    # Rebuilding again does not duplicate anything.
+    table <- BackendRebuild::rebuild(&world, 3, r.epoch)
+    return 4 if table.count != 3 or BackendRebuild::copies(&table, 12) != 1
+    # A list that repeats an entity, or holds a dead id, yields one row each.
+    world[3] <- 12
+    world[4] <- 0
+    dup: BackendRebuild::Table = BackendRebuild::rebuild(&world, 5, r.epoch)
+    return 5 if dup.count != 3 or dup.refused != 2 or BackendRebuild::copies(&dup, 12) != 1
+    # Past capacity the extra rows are refused, not written.
+    over: BackendRebuild::Table = BackendRebuild::rebuild(&world, 70, r.epoch)
+    return 6 if over.count != 3 or over.refused != 67
+    return 0

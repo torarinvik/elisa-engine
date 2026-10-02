@@ -1,0 +1,66 @@
+# Scene rebuild after device loss. Render instances are rebuilt from the
+# world's authoritative entity list, never from gameplay spawns, so rebuilding
+# twice or from a list that repeats an entity cannot duplicate it. Every row
+# carries the epoch it was made in; rows from an older epoch belong to the
+# lost device and are not live.
+module BackendRebuild:
+    private:
+        const module Tune:
+            CAPACITY: i64 = 64
+
+    public:
+        const CAPACITY: i64 = Tune::CAPACITY
+
+        struct Table:
+            entity: i64[64]
+            epoch: i64[64]
+            count: i64
+            refused: i64
+
+        def Table() -> Table:
+            Table{entity: zeroed, epoch: zeroed, count: 0, refused: 0}
+
+        # Rebuilds one row per distinct positive entity id in the first `n`
+        # entries, all at `epoch`. Duplicates, non-positive ids and rows past
+        # capacity are counted as refused.
+        def rebuild(entities: i64[64]&, n: i64, epoch: i64) -> Table:
+            ids: mutable i64[64] = zeroed
+            epochs: mutable i64[64] = zeroed
+            count: mutable i64 = 0
+            refused: mutable i64 = 0
+            limit: i64 = n if n < Tune::CAPACITY else Tune::CAPACITY
+            refused <- n - Tune::CAPACITY if n > Tune::CAPACITY else 0
+            i: mutable i64 = 0
+            while i < limit:
+                id: i64 = entities[i]
+                seen: mutable bool = false
+                j: mutable i64 = 0
+                while j < count:
+                    seen <- true if ids[j] == id
+                    j <- j + 1
+                if id <= 0 or seen:
+                    refused <- refused + 1
+                else:
+                    ids[count] <- id
+                    epochs[count] <- epoch
+                    count <- count + 1
+                i <- i + 1
+            Table{entity: ids, epoch: epochs, count: count, refused: refused}
+
+        # Rows usable on the device of `epoch`.
+        def live(t: Table&, epoch: i64) -> i64:
+            total: mutable i64 = 0
+            i: mutable i64 = 0
+            while i < t.count and i < Tune::CAPACITY:
+                total <- total + 1 if t.epoch[i] == epoch else total
+                i <- i + 1
+            total
+
+        # How many rows render `id`; a correct rebuild gives 0 or 1.
+        def copies(t: Table&, id: i64) -> i64:
+            total: mutable i64 = 0
+            i: mutable i64 = 0
+            while i < t.count and i < Tune::CAPACITY:
+                total <- total + 1 if t.entity[i] == id else total
+                i <- i + 1
+            total

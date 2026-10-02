@@ -26,8 +26,17 @@ device, swapchain or upload failure is injected into Wicked or SDL3.
 - Negative control: not bumping the epoch on device loss makes it exit 7.
 - Source-length check passes.
 
+## Scene rebuild (2026-10-02)
+
+`src/backend/recovery_rebuild.elisa` (`BackendRebuild`) rebuilds render rows
+from the world's entity list at the current epoch. `test/backend_recovery_rebuild.elisa`
+(in the gate) checks that device loss makes the old rows not live, that a
+rebuild restores one row per entity, and that rebuilding again, a repeated id
+or a dead id never duplicates a row; ids past the 64-row capacity are
+refused. Negative control: dropping the duplicate check exits 5.
+
 ## Gaps
 
-- Not connected to SDL3/Metal or Wicked, no injected native failures, and no
-  proof that a rebuilt scene has no duplicated entities. R14's done condition is
+- Not connected to SDL3/Metal or Wicked, no injected native failures, and the
+  rebuild table is not yet driven by the real world or renderer. R14's done condition is
   not met. Full gate still blocked at `world-test`.
