@@ -1,0 +1,101 @@
+# N02 distance streaming through NavTileStream: the 40 m corridor of
+# nav_tiles_native cooked in 6.4 m tiles. Focusing near the start with a
+# small radius unloads every far tile within a per-step budget (the route
+# then ends off the mesh); widening the radius brings them all back and the
+# route is found; a focus at the far end keeps only the goal side loaded.
+# A stale handle is refused. Linked by scripts/build_nav_native_test.sh.
+include "../src/nav/tile_stream.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def stage_code() -> i32:
+    catch NavMesh::begin():
+        value: floor_code()
+        error failure: 1
+
+def floor_code() -> i32:
+    catch NavMesh::add_box(v(20.0, -0.1, 0.0), v(20.0, 0.1, 1.5)):
+        value: 0
+        error failure: 1
+
+def cooked() -> NavMesh::Handle:
+    catch NavCook::cook(NavMesh::default_profile(), 64, 7001):
+        value: value.handle
+        error failure: NavMesh::empty_handle()
+
+# 0 Found, 1 Unreachable, 2 OffMesh, 3 Truncated, 9 raised.
+def route_code(handle: NavMesh::Handle) -> i32:
+    catch NavMesh::find_route(handle, v(1.0, 0.0, 0.0), v(39.0, 0.0, 0.0), v(1.0, 1.0, 1.0)):
+        value: status_code(value.status)
+        error failure: 9
+
+def status_code(status: NavRoute::Status) -> i32:
+    if status == NavRoute::Status.Found:
+        0
+    elif status == NavRoute::Status.Unreachable:
+        1
+    elif status == NavRoute::Status.OffMesh:
+        2
+    else:
+        3
+
+def no_step() -> NavTileStream::Step:
+    NavTileStream::Step{loaded: -1, unloaded: -1, pending: -1}
+
+def step_at(handle: NavMesh::Handle, x: f32, radius: f32, budget: i64) -> NavTileStream::Step:
+    catch NavTileStream::step(handle, x, 0.0, radius, budget):
+        value: value
+        error failure: no_step()
+
+# 0 stale, 1 other.
+def stale_code(handle: NavMesh::Handle) -> i32:
+    catch NavTileStream::step(handle, 0.0, 0.0, 1.0, 4):
+        value: 1
+        NavTiles::NavTileError.Stale: 0
+        error failure: 1
+
+def empty_grid() -> NavTileStream::Grid:
+    NavTileStream::Grid{origin_x: 0.0, origin_z: 0.0, size: 0.0, tiles_x: 0, tiles_z: 0}
+
+def grid_of(handle: NavMesh::Handle) -> NavTileStream::Grid:
+    catch NavTileStream::grid(handle):
+        value: value
+        error failure: empty_grid()
+
+# 0 loaded, 1 out, 2 other.
+def loaded_code(handle: NavMesh::Handle, tx: u32) -> i32:
+    catch NavTiles::loaded(handle, tx, 0):
+        value: 0 if value else 1
+        error failure: 2
+
+def drop_code(handle: NavMesh::Handle) -> i32:
+    catch NavMesh::unload(handle):
+        value: 0
+        error failure: 1
+
+def main() -> i32:
+    NavCook::cache_clear()
+    return 1 if stage_code() != 0
+    mesh: NavMesh::Handle = cooked()
+    return 2 if not NavMesh::live(mesh)
+    g: NavTileStream::Grid = grid_of(mesh)
+    return 3 if g.tiles_x != 7 or g.tiles_z != 1 or g.size < 6.3 or g.size > 6.5 or g.origin_x > 0.0 or g.origin_x < -1.0
+    # Only the first tile is within 3 m of x=1; six unloads at two a step.
+    first: NavTileStream::Step = step_at(mesh, 1.0, 3.0, 2)
+    return 4 if first.loaded != 0 or first.unloaded != 2 or first.pending != 4
+    second: NavTileStream::Step = step_at(mesh, 1.0, 3.0, 2)
+    return 5 if second.unloaded != 2 or second.pending != 2 or route_code(mesh) != 1
+    third: NavTileStream::Step = step_at(mesh, 1.0, 3.0, 2)
+    return 6 if third.unloaded != 2 or third.pending != 0 or route_code(mesh) != 2
+    settled: NavTileStream::Step = step_at(mesh, 1.0, 3.0, 2)
+    return 7 if settled.loaded != 0 or settled.unloaded != 0 or settled.pending != 0
+    return 8 if loaded_code(mesh, 0) != 0 or loaded_code(mesh, 1) != 1 or loaded_code(mesh, 6) != 1
+    # A radius covering the corridor brings all six back in one step.
+    wide: NavTileStream::Step = step_at(mesh, 20.0, 30.0, 16)
+    return 9 if wide.loaded != 6 or wide.unloaded != 0 or wide.pending != 0 or route_code(mesh) != 0
+    # Focus at the far end: tiles 5 and 6 stay, the start leaves the mesh.
+    far: NavTileStream::Step = step_at(mesh, 39.0, 4.0, 16)
+    return 10 if far.unloaded != 5 or loaded_code(mesh, 4) != 1 or loaded_code(mesh, 5) != 0 or route_code(mesh) != 2
+    return 11 if drop_code(mesh) != 0 or stale_code(mesh) != 0 or NavMesh::live_count() != 0
+    0

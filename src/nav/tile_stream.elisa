@@ -1,0 +1,103 @@
+# N02: a distance-driven streaming policy over `NavTiles`. Every tile of a
+# cooked mesh whose rectangle comes within `radius` metres (in x/z) of the
+# focus should be loaded; every other tile should be out. `step` makes at
+# most `budget` of those changes, nearest-first is not promised, so callers
+# step each frame until `pending` reaches 0. Tiles the cook left empty are
+# skipped. A stale handle raises `NavTiles::NavTileError.Stale`.
+include "./tiles.elisa"
+
+module NavTileStream:
+    public:
+        struct Grid:
+            origin_x: f32
+            origin_z: f32
+            size: f32
+            tiles_x: u32
+            tiles_z: u32
+
+        struct Step:
+            loaded: i64
+            unloaded: i64
+            # Changes still wanted after the budget ran out.
+            pending: i64
+
+    private:
+        const module GridStatus:
+            OK: i32 = 0
+            STALE_HANDLE: i32 = 4
+
+        @callconv(c)
+        extern elisa_navigation_v1_tile_grid(slot: u32, generation: u32, origin_x: mutable f32&,
+            origin_z: mutable f32&, tile_world: mutable f32&, tiles_x: mutable u32&, tiles_z: mutable u32&) -> i32
+
+        def gap(low: f32, high: f32, at: f32) -> f32:
+            return low - at if at < low
+            return at - high if at > high
+            0.0
+
+        # 0 leave, 1 load, 2 unload, 3 skip (empty tile), 4 stale.
+        def wanted(handle: NavMesh::Handle, g: Grid, tx: u32, tz: u32, x: f32, z: f32, radius: f32) -> i64:
+            low_x: f32 = g.origin_x + tx.f32() * g.size
+            low_z: f32 = g.origin_z + tz.f32() * g.size
+            dx: f32 = gap(low_x, low_x + g.size, x)
+            dz: f32 = gap(low_z, low_z + g.size, z)
+            near: bool = dx * dx + dz * dz <= radius * radius
+            catch NavTiles::loaded(handle, tx, tz):
+                value: change(near, value)
+                NavTiles::NavTileError.Stale: 4
+                error failure: 3
+
+        def change(near: bool, loaded: bool) -> i64:
+            return 1 if near and not loaded
+            return 2 if loaded and not near
+            0
+
+        # 0 done, 1 refused or failed.
+        def apply(handle: NavMesh::Handle, tx: u32, tz: u32, action: i64) -> i64:
+            return apply_load(handle, tx, tz) if action == 1
+            catch NavTiles::unload_tile(handle, tx, tz):
+                value: 0
+                error failure: 1
+
+        def apply_load(handle: NavMesh::Handle, tx: u32, tz: u32) -> i64:
+            catch NavTiles::load_tile(handle, tx, tz):
+                value: 0
+                error failure: 1
+
+    public:
+        def grid(handle: NavMesh::Handle) -> Grid error[NavTiles::NavTileError]:
+            origin_x: mutable f32 = 0.0
+            origin_z: mutable f32 = 0.0
+            size: mutable f32 = 0.0
+            tiles_x: mutable u32 = 0
+            tiles_z: mutable u32 = 0
+            status: i32 = elisa_navigation_v1_tile_grid(handle.slot, handle.generation, &origin_x, &origin_z, &size, &tiles_x, &tiles_z)
+            raise NavTiles::NavTileError.Stale if status == GridStatus::STALE_HANDLE
+            raise NavTiles::NavTileError.TileFailed if status != GridStatus::OK
+            Grid{origin_x: origin_x, origin_z: origin_z, size: size, tiles_x: tiles_x, tiles_z: tiles_z}
+
+        def step(handle: NavMesh::Handle, x: f32, z: f32, radius: f32, budget: i64) -> Step error[NavTiles::NavTileError]:
+            g: Grid = try grid(handle)
+            count: i64 = g.tiles_x.i64() * g.tiles_z.i64()
+            loads: mutable i64 = 0
+            unloads: mutable i64 = 0
+            pending: mutable i64 = 0
+            stale: mutable bool = false
+            for k in 0..<64:
+                index: i64 = k.i64()
+                if index < count:
+                    tx: u32 = (index % g.tiles_x.i64()).u32()
+                    tz: u32 = (index / g.tiles_x.i64()).u32()
+                    action: i64 = wanted(handle, g, tx, tz, x, z, radius)
+                    if action == 4:
+                        stale <- true
+                    elif action == 1 or action == 2:
+                        if loads + unloads >= budget:
+                            pending <- pending + 1
+                        elif apply(handle, tx, tz, action) == 0:
+                            if action == 1:
+                                loads <- loads + 1
+                            else:
+                                unloads <- unloads + 1
+            raise NavTiles::NavTileError.Stale if stale
+            Step{loaded: loads, unloaded: unloads, pending: pending}

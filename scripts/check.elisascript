@@ -571,7 +571,7 @@ def main(arguments: darray[sview]) -> i64:
     for viewport_test in ["viewport_render", "viewport_motion"]:
         if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), viewport_test]) != 0 or run_visible(str(root.joinpath(f"build/{viewport_test}-test")), []) != 0:
             return 1
-    for nav_test in ["nav_cook_native", "nav_tiles_native"]:
+    for nav_test in ["nav_cook_native", "nav_tiles_native", "nav_tile_stream_native"]:
         if run_visible("bash", [str(root.joinpath("scripts/build_nav_native_test.sh")), nav_test]) != 0 or run_visible(str(root.joinpath(f"build/{nav_test}-test")), []) != 0:
             return 1
     rejection_output: sview = str(root.joinpath("build/ownership-negative.o"))

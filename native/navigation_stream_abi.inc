@@ -178,4 +178,26 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
     return ELISA_NAVIGATION_OK;
 }
 
+// The cook grid of a cooked mesh: the x/z corner of tile (0, 0), the side of
+// a tile in metres and the number of tiles across and along.
+int32_t elisa_navigation_v1_tile_grid(uint32_t slot, uint32_t generation, float* origin_x, float* origin_z,
+    float* tile_world, uint32_t* tiles_x, uint32_t* tiles_z) {
+    if (origin_x == nullptr || origin_z == nullptr || tile_world == nullptr || tiles_x == nullptr ||
+        tiles_z == nullptr) {
+        return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    }
+    Service& nav = service();
+    std::lock_guard<std::mutex> lock(nav.mutex);
+    if (streamed_artifact(nav, slot, generation) == nullptr) return ELISA_NAVIGATION_STALE_HANDLE;
+    probe::nav::cook::BlobHeader header;
+    size_t at = 0;
+    if (!probe::nav::cook::get(cook_state().blobs[slot], at, header)) return ELISA_NAVIGATION_BAKE_FAILED;
+    *origin_x = header.origin[0];
+    *origin_z = header.origin[2];
+    *tile_world = header.tile_world;
+    *tiles_x = header.tiles_x;
+    *tiles_z = header.tiles_z;
+    return ELISA_NAVIGATION_OK;
+}
+
 } // extern "C"

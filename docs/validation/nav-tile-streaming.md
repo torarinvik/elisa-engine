@@ -53,10 +53,28 @@ one. The call returns the new tile's polygon count; 0 means the tile is now empt
 As a negative control, staging no wall fails with 16. The test passes under
 `-fsanitize=address,undefined` (by hand).
 
+## Streaming by distance
+
+`NavTileStream::step(handle, x, z, radius, budget)` (`src/nav/tile_stream.elisa`) reads
+the cooked grid through `elisa_navigation_v1_tile_grid` and wants every non-empty tile
+whose rectangle lies within `radius` of the focus loaded and every other tile out. It makes
+at most `budget` changes per call and reports loaded, unloaded and still-pending counts.
+`test/nav_tile_stream_native.elisa` (in the gate) checks, on the 7-tile corridor:
+
+- Focus at x=1 with radius 3 and budget 2 unloads 2, 2, 2 tiles (pending 4, 2, 0); the
+  route is `Unreachable` midway and `OffMesh` once the goal tile is out; a fourth step
+  changes nothing.
+- A radius covering the corridor loads all six back in one step and the route is `Found`.
+- Focus at x=39 with radius 4 keeps tiles 5 and 6 and unloads five.
+- After the mesh is unloaded, `step` raises `Stale`.
+
+As a negative control, expecting pending 3 after the first step fails with 4. The test
+passes under `-fsanitize=address,undefined` (by hand).
+
 ## Gaps
 
 - A rebuild re-rasterises the whole staged scene clipped to one tile; nothing tracks which
   tiles changed geometry touches, so the caller names them. Rebuilds are not cached on disk.
-- No distance-driven streaming policy: the caller chooses which tiles to load. `NavStream`
-  models such a policy but is not wired to these calls.
+- `NavTileStream` visits tiles in grid order, not nearest-first, and handles at most 64
+  tiles per mesh. The older abstract `NavStream` model is not wired to it.
 - No agent or crowd test runs across a tile that is unloaded mid-route.
