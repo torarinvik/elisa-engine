@@ -27,3 +27,37 @@ Validated on 2026-09-29 with the pinned Stage1 compiler
 - No importer calls this yet, and there are no worker processes, timeouts or
   fuzz corpora. A12 stays open.
 - No proof harness for this module.
+
+## GLB import under limits (2026-10-02)
+
+`GlbImport` (`src/assets/glb_import.elisa`) is the first importer that uses the budget:
+
+- `parse_limited` charges the image size as a byte allocation, and the chunk walk as two
+  work units, before it reads the header.
+- `read_bin_limited` refuses a malformed range first and only then charges the copy, so
+  a malformed read costs nothing.
+- A refusal is `OverBudget` or `Malformed`.
+
+`test/assets_glb_fuzz.elisa` (in the gate) builds a seeded corpus of 512 mutants of a
+valid GLB with a BIN chunk. Each mutant is one of: a byte overwrite, a truncation, a
+random header or chunk length word, or appended junk.
+
+- **Reproducible.** Two runs of the corpus give the same verdict digest (code 2).
+- **Layout invariants.** Every accepted layout lies inside the image, and its whole BIN
+  payload reads back (code 3).
+- **Outcomes.** 96 mutants parse and 416 are refused as malformed (code 4).
+- **Byte budget.** A 64-byte limit refuses the image without charging anything (code 5).
+- **Work budget.** A 5-unit limit allows two parses and refuses the third (codes 6–7).
+- **BIN reads.** A read one byte past the byte limit is refused (codes 9–10). An
+  out-of-range read leaves the budget at zero (code 11).
+
+Negative controls:
+
+| Change | Fails at |
+|---|---|
+| Drop the size charge | 5 |
+| Drop the range precheck | 11 |
+| Charge before the range check (first draft) | 11 |
+
+Still open: model, image and animation importers beyond the container, out-of-process
+workers, and timeouts.

@@ -1,0 +1,37 @@
+# A12: GLB container import under `AssetImportLimits`. The image size is
+# charged as a byte allocation before the header is read, the chunk table
+# costs one work unit per chunk, and each BIN read is charged before it is
+# copied, so an oversized or hostile file is refused with a named reason. A
+# refused charge leaves the budget unchanged.
+include "./glb_container.elisa"
+include "./import_limits.elisa"
+
+module GlbImport:
+    private:
+        # A zero `total` marks a malformed image.
+        def parsed(bytes: darray[u8]&) -> GlbContainer::Layout:
+            catch GlbContainer::parse(bytes):
+                value: value
+                error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+    public:
+        error GlbImportError:
+            OverBudget
+            Malformed
+
+        # Parses `bytes` as a GLB after charging its size and chunk walk.
+        def parse_limited(bytes: darray[u8]&, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> GlbContainer::Layout error[GlbImportError]:
+            raise GlbImportError.OverBudget if AssetImportLimits::charge_alloc(budget, limits, bytes.count.i64(), 1) != AssetImportLimits::Verdict.Ok
+            raise GlbImportError.OverBudget if AssetImportLimits::charge_work(budget, limits, 2) != AssetImportLimits::Verdict.Ok
+            layout: GlbContainer::Layout = parsed(bytes)
+            raise GlbImportError.Malformed if layout.total == 0
+            layout
+
+        # Copies BIN bytes after charging them as a byte allocation.
+        def read_bin_limited(bytes: darray[u8]&, layout: GlbContainer::Layout&, offset: i64, count: i64, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> darray[u8] error[GlbImportError]:
+            raise GlbImportError.Malformed if count < 0
+            raise GlbImportError.Malformed if not GlbLayoutIndex::range_inside(layout.bin_start + offset, count, layout.bin_start, layout.bin_length) or not GlbContainer::has_bin(layout)
+            raise GlbImportError.OverBudget if AssetImportLimits::charge_alloc(budget, limits, count, 1) != AssetImportLimits::Verdict.Ok
+            catch GlbContainer::read_bin(bytes, layout, offset, count):
+                value: value
+                error failure: []

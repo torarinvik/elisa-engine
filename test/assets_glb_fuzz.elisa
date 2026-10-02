@@ -1,0 +1,134 @@
+include "../src/assets/glb_import.elisa"
+
+def put_word(bytes: mutable darray[u8]&, value: u64) -> i64:
+    bytes.push((value % 256).u8())
+    bytes.push((value / 256 % 256).u8())
+    bytes.push((value / 65536 % 256).u8())
+    bytes.push((value / 16777216 % 256).u8())
+    4
+
+# A GLB with a 28-byte JSON chunk and, when `bin` > 0, a BIN chunk of `bin`
+# bytes holding 0, 1, 2, ...
+def image(bin: i64) -> darray[u8]:
+    json: darray[u8] = [123, 34, 97, 115, 115, 101, 116, 34, 58, 123, 34, 118, 101, 114, 115, 105, 111, 110, 34, 58, 34, 50, 46, 48, 34, 125, 125, 32]
+    total: i64 = 12 + 8 + json.count.i64() + (bin + 8 if bin > 0 else 0)
+    out: mutable darray[u8] = []
+    put_word(&out, 1179937895)
+    put_word(&out, 2)
+    put_word(&out, total.u64())
+    put_word(&out, json.count.u64())
+    put_word(&out, 1313821514)
+    for i in 0..<json.count |out, json|:
+        out.push(json[i])
+    return out if bin <= 0
+    put_word(&out, bin.u64())
+    put_word(&out, 5130562)
+    for i in 0..<bin.usize() |out|:
+        out.push((i % 256).u8())
+    out
+
+def next_rand(x: i64) -> i64:
+    (x * 1103515245 + 12345) % 2147483648
+
+def limits_wide() -> AssetImportLimits::Limits:
+    AssetImportLimits::Limits{max_bytes: 1000000, max_elements: 1000000, max_depth: 4, max_work: 1000000}
+
+# One seeded mutant of `base`: a byte overwrite, a truncation, a length word
+# set to a random value, or appended junk.
+def mutant(base: darray[u8]&, seed: i64) -> darray[u8]:
+    kind: i64 = seed % 4
+    r: i64 = next_rand(seed)
+    n: i64 = base.count.i64()
+    keep: i64 = r % n if kind == 1 else n
+    at: i64 = r % n
+    word_at: i64 = [8, 12, 48][(r % 3).usize()]
+    out: mutable darray[u8] = []
+    for i in 0..<keep.usize() |out, base, kind, at, r, word_at|:
+        b: mutable u8 = base[i]
+        j: i64 = i.i64()
+        if kind == 0 and j == at:
+            b <- (r / 7 % 256).u8()
+        elif kind == 2 and j >= word_at and j < word_at + 4:
+            b <- (r / [1, 256, 65536, 16777216][(j - word_at).usize()] % 256).u8()
+        out.push(b)
+    if kind == 3:
+        for i in 0..<(r % 9).usize() |out|:
+            out.push(i.u8())
+    out
+
+# 0 parsed and every payload read back, 1 over budget, 2 malformed, 9 an
+# accepted layout that breaks an invariant.
+def classify(bytes: darray[u8]&) -> i64:
+    budget: AssetImportLimits::Budget = AssetImportLimits::start()
+    l: AssetImportLimits::Limits = limits_wide()
+    layout: GlbContainer::Layout = parse_or_empty(bytes, &budget, &l)
+    return layout.json_length if layout.total <= 0
+    return 9 if layout.json_start + layout.json_length > layout.total or layout.total != bytes.count.i64()
+    return 0 if not GlbContainer::has_bin(&layout)
+    return 9 if layout.bin_start + layout.bin_length != layout.total
+    catch GlbImport::read_bin_limited(bytes, &layout, 0, layout.bin_length, &budget, &l):
+        value: 0 if value.count.i64() == layout.bin_length else 9
+        error failure: 9
+
+# A failed parse comes back with total 0 and the code in `json_length`.
+def parse_or_empty(bytes: darray[u8]&, budget: mutable AssetImportLimits::Budget&, l: AssetImportLimits::Limits&) -> GlbContainer::Layout:
+    catch GlbImport::parse_limited(bytes, budget, l):
+        value: value
+        GlbImport::GlbImportError.OverBudget: GlbContainer::Layout{total: 0, json_start: 0, json_length: 1, bin_start: -1, bin_length: -1}
+        error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 2, bin_start: -1, bin_length: -1}
+
+# Runs the 512-case corpus and returns a digest of every verdict; `counts`
+# gets the number of cases per verdict.
+def corpus(base: darray[u8]&, counts: mutable darray[i64]&) -> i64:
+    digest: mutable i64 = 0
+    seed: mutable i64 = 20261002
+    for k in 0..<512 |digest, seed, counts, base|:
+        seed <- next_rand(seed)
+        m: darray[u8] = mutant(base, seed)
+        code: i64 = classify(&m)
+        counts[code.usize()] <- counts[code.usize()] + 1
+        digest <- (digest * 31 + code + 1) % 1000000007
+    digest
+
+# Bytes read, or -1 when refused.
+def read_code(bytes: darray[u8]&, layout: GlbContainer::Layout&, offset: i64, count: i64, budget: mutable AssetImportLimits::Budget&, l: AssetImportLimits::Limits&) -> i64:
+    catch GlbImport::read_bin_limited(bytes, layout, offset, count, budget, l):
+        value: value.count.i64()
+        error failure: -1
+
+def zeros() -> darray[i64]:
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+def main() -> i32:
+    base: darray[u8] = image(16)
+    return 1 if classify(&base) != 0
+    first: mutable darray[i64] = zeros()
+    again: mutable darray[i64] = zeros()
+    d1: i64 = corpus(&base, &first)
+    d2: i64 = corpus(&base, &again)
+    # The corpus is reproducible from its seed.
+    return 2 if d1 != d2 or first[2] != again[2]
+    # No mutant is accepted with a broken layout, and both outcomes occur.
+    return 3 if first[9] != 0
+    return 4 if first[0] == 0 or first[2] == 0 or first[0] + first[1] + first[2] != 512
+    # A tight byte limit refuses the image before parsing, charging nothing.
+    tight: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 64, max_elements: 1000, max_depth: 4, max_work: 100}
+    b: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 5 if parse_or_empty(&base, &b, &tight).json_length != 1 or b.bytes != 0 or b.work != 0
+    # Work bounds repeated imports: the third parse runs out.
+    few: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 100000, max_elements: 100000, max_depth: 4, max_work: 5}
+    w: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 6 if parse_or_empty(&base, &w, &few).total == 0 or parse_or_empty(&base, &w, &few).total == 0
+    return 7 if parse_or_empty(&base, &w, &few).json_length != 1 or w.work != 4
+    # BIN reads are charged; one past the byte limit is refused.
+    r: AssetImportLimits::Budget = AssetImportLimits::start()
+    exact: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: base.count.i64() + 8, max_elements: 100000, max_depth: 4, max_work: 100}
+    layout: GlbContainer::Layout = parse_or_empty(&base, &r, &exact)
+    return 8 if layout.total == 0
+    return 9 if read_code(&base, &layout, 0, 8, &r, &exact) != 8
+    # The range lies inside the payload, so only the budget can refuse it.
+    return 10 if read_code(&base, &layout, 8, 1, &r, &exact) != -1 or r.bytes != base.count.i64() + 8
+    # A read outside the payload is refused before anything is charged.
+    o: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 11 if read_code(&base, &layout, 12, 8, &o, &exact) != -1 or o.bytes != 0
+    0
