@@ -52,3 +52,8 @@ the same action when it is still enabled, and draws through
 Tab moves the focus and Enter runs the focused action. The hidden native smoke
 starts the game through the drawn menu and then checks that START is disabled
 and PAUSE is enabled. Both runs of `native_smoke_main.elisa` passed.
+
+The maze status HUD goes through `UiRenderer::sync_hud_clipped`. It shows the
+label only while its measured box lies wholly inside the screen clip, and keeps
+it hidden for a frame when the text has not been measured yet. The maze smoke
+checks that a 4×4 clip hides the label.

@@ -91,6 +91,19 @@ module UiRenderer:
         # As sync_menu, drawn inside `clip` (normally UiClip::current of the
         # caller's stack): panels are trimmed to the clip and a label shows
         # only when its whole row is inside, since overlays have no scissor.
+        # Shows a HUD label only while its measured box lies wholly inside
+        # `clip`; returns whether it is visible. Text not yet measured stays
+        # hidden for that frame.
+        def sync_hud_clipped(label: RenderScene::OverlayTextHandle, text: cstr,
+            x: i64, y: i64, font_size: i32, clip: UiClip::Box) -> bool error[RenderScene::RenderSceneError]:
+            try RenderScene::set_overlay_text(label, text)
+            metrics: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(text, font_size)
+            w: i64 = RenderSceneText::overlay_text_width_ceiling(&metrics)
+            h: i64 = font_size.i64() + 4
+            shown: bool = metrics.ready and UiClip::inside(clip, UiClip::box(x, y, w, h))
+            try RenderScene::set_overlay_text_visible(label, shown)
+            shown
+
         def sync_menu_clipped(canvas: mutable MenuCanvas&, menu: Ui::Menu&, theme: UiStyle::Theme&, width: i64, font_size: i32, clip: UiClip::Box) -> void error[RenderScene::RenderSceneError]:
             raise RenderScene::RenderSceneError.InvalidValue if not Ui::menu_valid(menu)
             raise RenderScene::RenderSceneError.InvalidValue if not UiStyle::theme_valid(theme)

@@ -207,7 +207,8 @@ module MazeNativeClient:
             snapshot: mutable RenderSnapshot::Snapshot&,
             presenter: mutable RenderScene::SnapshotPresenter&,
             lighting: mutable MazeLighting::Runtime&,
-            view: mutable MazeMenuView::View&, screen_w: i64, screen_h: i64) -> i32:
+            view: mutable MazeMenuView::View&, status_text: RenderScene::OverlayTextHandle,
+            screen_w: i64, screen_h: i64) -> i32:
             # Start through the drawn menu, which stays visible during play.
             return 52 if not MazeMenuView::activate(view, game)
             return 53 if game.status != MazeGame::GameStatus.Playing
@@ -216,6 +217,13 @@ module MazeNativeClient:
                 error failure: false
             return 54 if not menu_drawn
             return 55 if view.menu.items[0].enabled or not view.menu.items[2].enabled
+            # The HUD is clipped like the menu: hidden when the screen cannot
+            # hold it. Measurement may need a frame, so only hiding is checked.
+            hud_hidden: bool = catch UiRenderer::sync_hud_clipped(status_text, status_message(game),
+                12, 12, Actions::FONT_SIZE, UiClip::box(0, 0, 4, 4)):
+                value: not value
+                error failure: false
+            return 56 if not hud_hidden
             collision_gate: bool = catch verify_physical_barrier(session, game):
                 value: value
                 error failure: return 50
@@ -288,9 +296,10 @@ module MazeNativeClient:
                                     failure <- 64
                                     running <- false
                                 else:
-                                    text_updated: bool = catch RenderScene::set_overlay_text(
-                                        status_text, status_message(game)):
-                                        ok: true
+                                    text_updated: bool = catch UiRenderer::sync_hud_clipped(
+                                        status_text, status_message(game), 12, 12, Actions::FONT_SIZE,
+                                        UiClip::box(0, 0, frame.pixel_width.i64(), frame.pixel_height.i64())):
+                                        value: true
                                         error failure: false
                                     if not text_updated:
                                         failure <- 65
@@ -448,7 +457,7 @@ module MazeNativeClient:
             result: mutable i32 = 0
             if self_test:
                 result <- scripted_native_smoke(session, &game, &scene, &snapshot,
-                    &presenter, &lighting, &view, viewport_width.i64(), viewport_height.i64())
+                    &presenter, &lighting, &view, status_text, viewport_width.i64(), viewport_height.i64())
             else:
                 result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
                     &lighting, status_text, &input, &view)
