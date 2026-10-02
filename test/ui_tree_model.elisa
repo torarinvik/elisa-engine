@@ -1,0 +1,30 @@
+include "../src/ui/tree_model.elisa"
+
+def main() -> i32:
+    t: mutable UiTreeModel::Tree = UiTreeModel::new_tree()
+    t <- UiTreeModel::add(t, 1, -1)
+    t <- UiTreeModel::add(t, 2, 1)
+    t <- UiTreeModel::add(t, 3, 2)
+    t <- UiTreeModel::add(t, 4, 1)
+    t <- UiTreeModel::add(t, 9, -1)
+    return 1 if t.count != 5 or UiTreeModel::visible_count(&t) != 5
+    # Unknown parents and duplicate ids are refused.
+    return 2 if UiTreeModel::add(t, 5, 77).count != 5 or UiTreeModel::add(t, 3, -1).count != 5
+    t <- UiTreeModel::focus(t, 3)
+    return 3 if t.focus != 3
+    # Collapsing the root hides its subtree and moves focus up to it.
+    t <- UiTreeModel::set_open(t, 1, false)
+    return 4 if UiTreeModel::visible_count(&t) != 2 or t.focus != 1
+    # Hidden nodes cannot take focus.
+    return 5 if UiTreeModel::focus(t, 4).focus != 1
+    # Expanding again shows the subtree; focus stays where it was.
+    t <- UiTreeModel::set_open(t, 1, true)
+    return 6 if UiTreeModel::visible_count(&t) != 5 or t.focus != 1
+    # Collapsing a middle node hides only its children.
+    t <- UiTreeModel::focus(t, 3)
+    t <- UiTreeModel::set_open(t, 2, false)
+    return 7 if UiTreeModel::visible_count(&t) != 4 or t.focus != 2
+    # Collapsing an unrelated branch leaves focus alone.
+    t <- UiTreeModel::set_open(t, 9, false)
+    return 8 if t.focus != 2
+    return 0

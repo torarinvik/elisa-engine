@@ -648,6 +648,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **I07 · P1 · UI data binding and reusable widgets** — After: I02, I05.
   Progress on 2026-09-29: `UiListModel` bounded id-tracked list with focus repair on removal/reorder and a fixed-size virtual window; see `docs/validation/ui-list-model.md`. Bindings, trees, sliders, inspectors and widget reuse remain.
   Progress on 2026-10-02: `UiSlider` bounded integer slider (snap to grid with a reachable top, D-pad nudges, saved values outside the range fall back to the default and are flagged); `test/ui_slider.elisa` in the gate; see `docs/validation/ui-slider.md`. Not drawn or used by a settings screen yet.
+  Progress on 2026-10-02: `UiTreeModel` bounded tree with expand/collapse; collapsing moves hidden focus to the nearest visible ancestor and hidden nodes refuse focus; `test/ui_tree_model.elisa` in the gate; see `docs/validation/ui-tree-model.md`. No removal, reordering or drawing yet.
   Add typed model bindings, lists/tree views, sliders, inspectors, validation/error states, and virtualized large collections. Done: editor and game settings reuse the widgets; removal/reordering cannot leave stale focus or callbacks, and large lists remain bounded.
 - [ ] **I08 · P2 · Vector graphics** — After: I02, A04.
   Integrate ThorVG for a concrete SVG/Lottie UI asset path with scale, animation, clipping, and cache lifetime policy. Done: a real HUD/editor panel consumes vector assets with validated rendering cost and graceful unsupported-format diagnostics.

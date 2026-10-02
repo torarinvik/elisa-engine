@@ -1,0 +1,68 @@
+# Bounded tree model for tree views and inspectors. Nodes carry stable ids and
+# a parent index; collapsing a node hides its whole subtree, and focus that
+# would land on a hidden node moves to the collapsed ancestor in the same call,
+# so focus never names a row the user cannot see.
+module UiTreeModel:
+    public:
+        struct Tree:
+            ids: i64[64]
+            parent: i64[64]
+            open: bool[64]
+            count: i64
+            focus: i64
+
+        def new_tree() -> Tree:
+            Tree{ids: zeroed, parent: zeroed, open: zeroed, count: 0, focus: 0 - 1}
+
+        def index_of(t: Tree&, id: i64) -> i64:
+            found: mutable i64 = 0 - 1
+            for k in 0..<64:
+                found <- k.i64() if k.i64() < t.count and t.ids[k] == id and found < 0
+            found
+
+        # Adds `id` under `parent_id` (-1 for a root). Parents must already
+        # exist, so the parent index is always smaller and there are no cycles.
+        def add(t: Tree, id: i64, parent_id: i64) -> Tree:
+            return t if id < 0 or t.count >= 64 or index_of(&t, id) >= 0
+            p: i64 = 0 - 1 if parent_id < 0 else index_of(&t, parent_id)
+            return t if parent_id >= 0 and p < 0
+            ids: mutable i64[64] = t.ids
+            parents: mutable i64[64] = t.parent
+            opens: mutable bool[64] = t.open
+            ids[t.count] <- id
+            parents[t.count] <- p
+            opens[t.count] <- true
+            Tree{ids: ids, parent: parents, open: opens, count: t.count + 1, focus: t.focus}
+
+        # A node is visible when every ancestor is open.
+        def visible_at(t: Tree&, at: i64) -> bool:
+            ok: mutable bool = at >= 0 and at < t.count
+            cur: mutable i64 = t.parent[at] if ok else 0 - 1
+            for k in 0..<64:
+                ok <- false if cur >= 0 and not t.open[cur]
+                cur <- t.parent[cur] if cur >= 0 else cur
+            ok
+
+        def visible_count(t: Tree&) -> i64:
+            n: mutable i64 = 0
+            for k in 0..<64:
+                n <- n + 1 if k.i64() < t.count and visible_at(t, k.i64()) else n
+            n
+
+        def focus(t: Tree, id: i64) -> Tree:
+            at: i64 = index_of(&t, id)
+            return t if at < 0 or not visible_at(&t, at)
+            Tree{ids: t.ids, parent: t.parent, open: t.open, count: t.count, focus: id}
+
+        # Collapses or expands `id`. If focus ends up hidden it moves to the
+        # nearest visible ancestor.
+        def set_open(t: Tree, id: i64, open: bool) -> Tree:
+            at: i64 = index_of(&t, id)
+            return t if at < 0
+            opens: mutable bool[64] = t.open
+            opens[at] <- open
+            next: Tree = Tree{ids: t.ids, parent: t.parent, open: opens, count: t.count, focus: t.focus}
+            f: mutable i64 = index_of(&next, next.focus)
+            for k in 0..<64:
+                f <- next.parent[f] if f >= 0 and not visible_at(&next, f) else f
+            Tree{ids: next.ids, parent: next.parent, open: opens, count: next.count, focus: next.ids[f] if f >= 0 else 0 - 1}
