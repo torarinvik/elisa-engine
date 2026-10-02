@@ -4,7 +4,9 @@
 # the blob the mesh was cooked from. Only cooked meshes stream: a plain bake,
 # a stale handle or an unloaded mesh raises `Stale`; a tile outside the grid,
 # one the cook left empty, or a load/unload that would not change anything
-# raises `NoTile`.
+# raises `NoTile`. `rebuild_tile` re-cooks one tile from the staged scene
+# with the mesh's cook settings, swaps it in if it is loaded, and keeps it
+# as the tile a later load brings back.
 include "./cook.elisa"
 
 module NavTiles:
@@ -30,6 +32,10 @@ module NavTiles:
         @callconv(c)
         extern elisa_navigation_v1_tile_load(slot: u32, generation: u32, tx: u32, tz: u32) -> i32
 
+        @callconv(c)
+        extern elisa_navigation_v1_tile_rebuild(slot: u32, generation: u32, tx: u32, tz: u32,
+            polygons: mutable u32&) -> i32
+
         def tile_check(status: i32) -> void error[NavTileError]:
             raise NavTileError.Stale if status == TileStatus::STALE_HANDLE
             raise NavTileError.NoTile if status == TileStatus::INVALID_ARGUMENT
@@ -46,3 +52,9 @@ module NavTiles:
 
         def load_tile(handle: NavMesh::Handle, tx: u32, tz: u32) -> void error[NavTileError]:
             try tile_check(elisa_navigation_v1_tile_load(handle.slot, handle.generation, tx, tz))
+
+        # The rebuilt tile's polygon count; 0 when it is now empty.
+        def rebuild_tile(handle: NavMesh::Handle, tx: u32, tz: u32) -> u32 error[NavTileError]:
+            count: mutable u32 = 0
+            try tile_check(elisa_navigation_v1_tile_rebuild(handle.slot, handle.generation, tx, tz, &count))
+            count

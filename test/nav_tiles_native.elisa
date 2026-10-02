@@ -1,7 +1,9 @@
 # N02 tile streaming through the Elisa wrappers: a 40 m corridor cooked in
 # 64-voxel (6.4 m) tiles routes end to end; unloading a middle tile makes
 # the goal unreachable, unloading the goal's tile leaves it off the mesh,
-# and loading either back restores the full route. Repeated loads/unloads, tiles outside the grid, a baked (not
+# and loading either back restores the full route. Rebuilding the middle
+# tile over a staged wall cuts the route, survives an unload/load, and a
+# rebuild of the cleared floor while the tile is out comes back on load. Repeated loads/unloads, tiles outside the grid, a baked (not
 # cooked) mesh and an unloaded mesh are refused. Linked against the
 # navigation service by scripts/build_nav_native_test.sh.
 include "../src/nav/tiles.elisa"
@@ -18,6 +20,22 @@ def floor_code() -> i32:
     catch NavMesh::add_box(v(20.0, -0.1, 0.0), v(20.0, 0.1, 1.5)):
         value: 0
         error failure: 1
+
+# The floor plus, when `wall`, a wall across the middle (fourth) tile.
+def restage_code(wall: bool) -> i32:
+    return 1 if stage_code() != 0
+    return 0 if not wall
+    catch NavMesh::add_box(v(21.4, 1.0, 0.0), v(0.5, 1.0, 2.5)):
+        value: 0
+        error failure: 1
+
+# Polygon count, or -1 stale, -2 no tile, -3 other.
+def rebuild_code(handle: NavMesh::Handle, tx: u32) -> i64:
+    catch NavTiles::rebuild_tile(handle, tx, 0):
+        value: i64(value)
+        NavTiles::NavTileError.Stale: -1
+        NavTiles::NavTileError.NoTile: -2
+        error failure: -3
 
 def cooked() -> NavMesh::Handle:
     catch NavCook::cook(NavMesh::default_profile(), 64, 7001):
@@ -100,8 +118,14 @@ def main() -> i32:
     return 10 if unload_code(mesh, last) != 0 or route_code(mesh) != 2
     return 11 if load_code(mesh, last) != 0 or route_code(mesh) != 0
     return 12 if loaded_code(mesh, info.tiles_x) != 11 or unload_code(mesh, info.tiles_x + 5) != 11
+    return 16 if middle != 3 or restage_code(true) != 0 or rebuild_code(mesh, middle) <= 0 or route_code(mesh) != 1
+    return 17 if unload_code(mesh, middle) != 0 or load_code(mesh, middle) != 0 or route_code(mesh) != 1
+    # Rebuilt while out, the tile stays out until it is loaded.
+    return 18 if unload_code(mesh, middle) != 0 or restage_code(false) != 0 or rebuild_code(mesh, middle) <= 0
+    return 19 if loaded_code(mesh, middle) != 1 or route_code(mesh) != 1 or load_code(mesh, middle) != 0 or route_code(mesh) != 0
+    return 20 if rebuild_code(mesh, info.tiles_x) != -2
     plain: NavMesh::Handle = baked()
-    return 13 if not NavMesh::live(plain) or unload_code(plain, 0) != 10
-    return 14 if drop_code(mesh) != 0 or unload_code(mesh, middle) != 10 or loaded_code(mesh, 0) != 10
+    return 13 if not NavMesh::live(plain) or unload_code(plain, 0) != 10 or rebuild_code(plain, 0) != -1
+    return 14 if drop_code(mesh) != 0 or unload_code(mesh, middle) != 10 or loaded_code(mesh, 0) != 10 or rebuild_code(mesh, 0) != -1
     return 15 if drop_code(plain) != 0 or NavMesh::live_count() != 0
     0

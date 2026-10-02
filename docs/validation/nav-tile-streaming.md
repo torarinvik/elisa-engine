@@ -34,10 +34,29 @@ As a negative control, expecting `Found` after the cut fails with 6. The test al
 the service is built with `-fsanitize=address,undefined`. That run was done by hand; it is not
 part of the gate.
 
+## Rebuilding one tile
+
+`NavTiles::rebuild_tile(handle, tx, tz)` rebuilds one tile from the scene staged now, with the
+agent, cell and tile settings the mesh was cooked with. The grid stays where the cook put it in
+x and z, and only grows upward or downward for new geometry. A loaded tile is swapped in place.
+An unloaded tile stays unloaded, and a later load brings back the rebuilt tile, not the cooked
+one. The call returns the new tile's polygon count; 0 means the tile is now empty.
+
+`test/nav_tiles_native.elisa` codes 16–20 check this on the corridor:
+
+- A wall staged across the middle tile and rebuilt into it makes the route `Unreachable`.
+  The cut survives an unload and reload.
+- A rebuild of the cleared floor while the tile is unloaded leaves it unloaded, and the route
+  stays `Unreachable` until the tile is loaded; then it is `Found`.
+- Rebuilding a tile outside the grid is refused, and a baked or unloaded mesh raises `Stale`.
+
+As a negative control, staging no wall fails with 16. The test passes under
+`-fsanitize=address,undefined` (by hand).
+
 ## Gaps
 
-- Tiles reload only from their own cook. There is no rebuilding of a single tile from changed
-  geometry.
+- A rebuild re-rasterises the whole staged scene clipped to one tile; nothing tracks which
+  tiles changed geometry touches, so the caller names them. Rebuilds are not cached on disk.
 - No distance-driven streaming policy: the caller chooses which tiles to load. `NavStream`
   models such a policy but is not wired to these calls.
 - No agent or crowd test runs across a tile that is unloaded mid-route.

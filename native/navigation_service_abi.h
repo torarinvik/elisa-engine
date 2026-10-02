@@ -126,5 +126,8 @@ int32_t elisa_navigation_v1_tile_loaded(uint32_t slot, uint32_t generation, uint
     int32_t* loaded);
 int32_t elisa_navigation_v1_tile_unload(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz);
 int32_t elisa_navigation_v1_tile_load(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz);
+// Rebuild one tile of a cooked mesh from the staged scene with its cook settings.
+int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uint32_t tx, uint32_t tz,
+    uint32_t* polygons);
 
 }

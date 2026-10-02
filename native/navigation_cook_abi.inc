@@ -5,6 +5,21 @@
 
 namespace {
 
+struct TileOverride {
+    uint32_t tx = 0;
+    uint32_t tz = 0;
+    std::vector<unsigned char> data; // empty: the rebuild left no tile
+};
+
+struct SlotCook {
+    probe::nav::AgentProfile agent{};
+    float cell_size = 0.0f;
+    float cell_height = 0.0f;
+    int tile_cells = 0;
+    float top = 0.0f; // the cook's upper bound; rebuilds only raise it
+    std::vector<TileOverride> rebuilt;
+};
+
 struct CookState {
     probe::nav::cook::CookCache cache;
     probe::nav::cook::Diagnostics diagnostics;
@@ -15,6 +30,8 @@ struct CookState {
     // The blob each cooked store slot was built from, for tile streaming.
     std::array<std::vector<unsigned char>, probe::nav::NavMeshTileStore::MAX_TILES> blobs;
     std::array<uint32_t, probe::nav::NavMeshTileStore::MAX_TILES> blob_generation{};
+    // What each cooked slot was cooked with, so one tile can be rebuilt.
+    std::array<SlotCook, probe::nav::NavMeshTileStore::MAX_TILES> cooks{};
 };
 
 CookState& cook_state() {
@@ -96,6 +113,9 @@ int32_t elisa_navigation_v1_cook(float agent_radius, float agent_height, float m
     nav.filters[handle.slot] = probe::nav::QueryFilter();
     state.blobs[handle.slot] = blob;
     state.blob_generation[handle.slot] = handle.generation;
+    float low[3], high[3];
+    rcCalcBounds(input.vertices, input.vertex_count, low, high);
+    state.cooks[handle.slot] = {input.agent, cell_size, cell_height, cells, high[1] + agent_height, {}};
     state.digest = blob_digest(blob);
     state.bytes = static_cast<uint32_t>(blob.size());
     *slot = handle.slot;
