@@ -9,6 +9,8 @@ module CourseLook:
             SENSITIVITY: f32 = 0.004
             PI: f32 = 3.14159265
             TWO_PI: f32 = 6.2831853
+            # The turn-rate factor under the Reduced motion setting.
+            REDUCED: f32 = 0.5
 
         struct Look:
             yaw: mutable f32
@@ -23,6 +25,10 @@ module CourseLook:
             yaw <- yaw + Tune::TWO_PI if yaw < -Tune::PI
             Look{yaw: yaw}
 
+        # A pointer turn at the setting's rate: half speed under reduced motion.
+        def turn_at(look: Look, delta_x: f32, reduced: bool) -> Look:
+            turn(look, delta_x * (Tune::REDUCED if reduced else 1.0))
+
         # Rotates a vector about the vertical axis by the look's yaw.
         def rotate(look: Look, v: Geometry::Vec3) -> Geometry::Vec3:
             c: f32 = ElisaMath::cosf(look.yaw)
@@ -30,12 +36,13 @@ module CourseLook:
             Geometry::Vec3{x: v.x * c + v.z * s, y: v.y, z: v.z * c - v.x * s}
 
         # Consumes queued pointer events. Motion turns the camera only while
-        # relative mode holds the pointer, so a free cursor never spins it.
-        def drain(look: Look) -> Look:
+        # relative mode holds the pointer, so a free cursor never spins it;
+        # `reduced` halves the turn rate for the Reduced motion setting.
+        def drain(look: Look, reduced: bool) -> Look:
             turned: mutable Look = look
             relative: bool = Application::relative_mouse()
             event: mutable Application::PointerEvent = zeroed
-            while Application::next_pointer_event(&event) |turned, relative, event|:
+            while Application::next_pointer_event(&event) |turned, relative, event, reduced|:
                 if relative and event.kind == Application::PointerEventKind.Motion:
-                    turned <- turn(turned, event.delta_x)
+                    turned <- turn_at(turned, event.delta_x, reduced)
             turned

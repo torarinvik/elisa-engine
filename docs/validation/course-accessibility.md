@@ -106,7 +106,21 @@ All controls were reverted.
 - Overlays are DPI-scaled by the canvas (measured in
   [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)); the text setting
   multiplies on top of that.
-- No reduced-motion setting and no platform accessibility bridge (I06).
+- Reduced motion only halves the mouse-look turn rate. The course has no
+  camera smoothing, shake or animated UI for it to calm yet, and the turn
+  factor is checked with synthetic deltas, not a live drag.
+- No platform accessibility bridge (I06).
 - The contrast theme covers the HUD, not the 3D scene.
 - No display or audio-device selection (I03). Physical controller behaviour
   is covered only by mapping; no hardware run.
+
+## Reduced motion (2026-10-02)
+
+A fifth settings row, Reduced motion, sits between Captions and Language
+(menu rows 6-10; the pad rows now start at 11 and the device rows at 14).
+When on, `CourseLook::turn_at` turns the orbit camera half as far for the
+same pointer drag. The flag is saved as field 5 of a version 3 save. Version 2
+saves (no flag) load with full motion, and version 1 saves still load as
+English. Self-test checks: the row toggles and reads `< On >`, a version 2
+save loads with the flag off, the relaunch hand-off saves and reloads it on,
+and case 248 checks the reduced turn is exactly half the full turn.

@@ -28,6 +28,10 @@
             _ = Application::set_relative_mouse(false)
             return 246 if Application::relative_mouse()
             # With the pointer free, queued motion never turns the camera.
-            drained: CourseLook::Look = CourseLook::drain(still)
+            drained: CourseLook::Look = CourseLook::drain(still, false)
             return 247 if drained.yaw != 0.0
+            # Reduced motion turns half as far for the same drag.
+            gentle: CourseLook::Look = CourseLook::turn_at(still, 100.0, true)
+            full: CourseLook::Look = CourseLook::turn_at(still, 100.0, false)
+            return 248 if not look_close(gentle.yaw * 2.0, full.yaw) or full.yaw == 0.0
             0

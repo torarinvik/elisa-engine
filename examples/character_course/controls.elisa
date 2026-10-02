@@ -164,12 +164,12 @@ module CourseControls:
         const SLOT_JUMP: i64 = 4
         const SLOT_CROUCH: i64 = 5
         const SLOT_COUNT: i64 = 6
-        # Four CourseAccess settings rows follow the six key slots, then
+        # Five CourseAccess settings rows follow the six key slots, then
         # three gamepad rows (jump, crouch, restart) cycled with Left/Right,
         # then the CourseDeviceMenu display and audio-output rows.
-        const PAD_FIRST: i64 = 10
-        const DEVICE_FIRST: i64 = 13
-        const MENU_ROWS: i64 = 15
+        const PAD_FIRST: i64 = 11
+        const DEVICE_FIRST: i64 = 14
+        const MENU_ROWS: i64 = 16
 
         struct Keymap:
             forward: i64

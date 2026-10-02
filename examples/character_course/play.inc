@@ -5,8 +5,8 @@
         struct Legend:
             panel: mutable RenderScene::OverlayPanelHandle
             header: mutable RenderScene::OverlayTextHandle
-            labels: mutable RenderScene::OverlayTextHandle[15]
-            keys: mutable RenderScene::OverlayTextHandle[15]
+            labels: mutable RenderScene::OverlayTextHandle[16]
+            keys: mutable RenderScene::OverlayTextHandle[16]
             caption: mutable RenderScene::OverlayTextHandle
             words: CourseText::Captions
 
@@ -72,7 +72,7 @@
                 CoursePad::button_name(CoursePad::slot_code(pads, row - CourseControls::PAD_FIRST))
 
         # Every menu row as a semantic control: six key bindings, the
-        # text-size slider, two toggles, and the language and pad rows,
+        # text-size slider, three toggles, and the language and pad rows,
         # which cycle like sliders.
         def row_semantics(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64, selected: i64) -> UiSemantics::Control error[UiSemantics::SemanticsError]:
             role: mutable UiSemantics::Role = UiSemantics::Role.KeyBinding
@@ -80,7 +80,7 @@
                 role <- UiSemantics::Role.Slider
             elif row >= CourseControls::SLOT_COUNT:
                 access_row: i64 = row - CourseControls::SLOT_COUNT
-                toggle: bool = access_row == CourseAccess::ROW_CONTRAST or access_row == CourseAccess::ROW_CAPTIONS
+                toggle: bool = access_row == CourseAccess::ROW_CONTRAST or access_row == CourseAccess::ROW_CAPTIONS or access_row == CourseAccess::ROW_MOTION
                 role <- UiSemantics::Role.Toggle if toggle else UiSemantics::Role.Slider
             try UiSemantics::Control(role, row_label(row), row_key(keymap, pads, settings, row), row, CourseControls::MENU_ROWS, row == selected)
 
@@ -131,8 +131,8 @@
             header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
                 box_color(0.78, 0.84, 0.9))
-            labels: mutable RenderScene::OverlayTextHandle[15] = zeroed
-            keys: mutable RenderScene::OverlayTextHandle[15] = zeroed
+            labels: mutable RenderScene::OverlayTextHandle[16] = zeroed
+            keys: mutable RenderScene::OverlayTextHandle[16] = zeroed
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -178,8 +178,8 @@
             try RenderScene::set_overlay_text_position(legend.header, Tune::LEGEND_X, legend_row_y(settings, -1))
             try RenderScene::set_overlay_text_color(legend.header, CourseAccess::header_color(settings))
             # Fields of a forwarded `Legend&` are copied out before the loop.
-            labels: RenderScene::OverlayTextHandle[15] = legend.labels
-            keys: RenderScene::OverlayTextHandle[15] = legend.keys
+            labels: RenderScene::OverlayTextHandle[16] = legend.labels
+            keys: RenderScene::OverlayTextHandle[16] = legend.keys
             scale: CourseAccess::Settings = settings
             for row in 0..<CourseControls::MENU_ROWS |labels, keys, scale, size, key_x|:
                 row_y: f32 = legend_row_y(&scale, row)
@@ -215,8 +215,8 @@
             try RenderScene::set_overlay_text(legend.header, legend_header(selected >= 0))
             highlight: RenderScene::Color = CourseAccess::highlight_color(settings)
             plain: RenderScene::Color = CourseAccess::text_color(settings)
-            labels: RenderScene::OverlayTextHandle[15] = legend.labels
-            keys: RenderScene::OverlayTextHandle[15] = legend.keys
+            labels: RenderScene::OverlayTextHandle[16] = legend.labels
+            keys: RenderScene::OverlayTextHandle[16] = legend.keys
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -246,7 +246,7 @@
         # The device rows show live listings, so they are drawn apart from
         # `row_key`: the display number, and the output name or default.
         def refresh_device_rows(legend: Legend&, picks: CourseDeviceMenu::Picks&) -> void error[RenderScene::RenderSceneError]:
-            keys: RenderScene::OverlayTextHandle[15] = legend.keys
+            keys: RenderScene::OverlayTextHandle[16] = legend.keys
             display: RenderScene::OverlayTextHandle = keys[(CourseControls::DEVICE_FIRST + CourseDeviceMenu::ROW_DISPLAY).usize()]
             output: RenderScene::OverlayTextHandle = keys[(CourseControls::DEVICE_FIRST + CourseDeviceMenu::ROW_OUTPUT).usize()]
             try RenderScene::set_overlay_text_i64(display, "< Display ", picks.display + 1)
@@ -257,8 +257,8 @@
                 try RenderScene::set_overlay_text_utf8(output, &name.name[0], name.name_count.u32())
 
         def release_legend(legend: Legend&) -> void error[RenderScene::RenderSceneError]:
-            labels: RenderScene::OverlayTextHandle[15] = legend.labels
-            keys: RenderScene::OverlayTextHandle[15] = legend.keys
+            labels: RenderScene::OverlayTextHandle[16] = legend.labels
+            keys: RenderScene::OverlayTextHandle[16] = legend.keys
             for row in 0..<CourseControls::MENU_ROWS |labels, keys|:
                 label: RenderScene::OverlayTextHandle = labels[row.usize()]
                 key: RenderScene::OverlayTextHandle = keys[row.usize()]
@@ -408,7 +408,7 @@
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
-                        look <- CourseLook::drain(look)
+                        look <- CourseLook::drain(look, settings.reduced_motion)
                         focus_lost: bool = CourseControls::drain_gameplay_recorded(input, recording, recording_tick)
                         recording_tick <- recording_tick + 1
                         if focus_lost and state.phase == Phase.Playing:

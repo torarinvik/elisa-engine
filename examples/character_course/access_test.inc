@@ -8,10 +8,10 @@
             CAPTION_NANOS: u64 = 2500000000
 
         def handoff_access() -> CourseAccess::Settings:
-            CourseAccess::Settings{text_scale: 150, high_contrast: true, captions: true, locale: UiLocale::RU}
+            CourseAccess::Settings{text_scale: 150, high_contrast: true, captions: true, reduced_motion: true, locale: UiLocale::RU}
 
         def same_settings(left: CourseAccess::Settings&, right: CourseAccess::Settings&) -> bool:
-            left.text_scale == right.text_scale and left.high_contrast == right.high_contrast and left.captions == right.captions and left.locale == right.locale
+            left.text_scale == right.text_scale and left.high_contrast == right.high_contrast and left.captions == right.captions and left.reduced_motion == right.reduced_motion and left.locale == right.locale
 
         def write_access_raw(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool:
             values: mutable i64[Save::MAX_FIELDS] = zeroed
@@ -43,11 +43,13 @@
             capped: CourseAccess::Settings = CourseAccess::adjust(biggest, CourseAccess::ROW_TEXT_SIZE, 1)
             floor: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_TEXT_SIZE, -1)
             contrast: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_CONTRAST, 1)
+            calm: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_MOTION, 1)
             captions: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_CAPTIONS, -1)
             other: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_COUNT, 1)
             sizes: bool = bigger.text_scale == 125 and biggest.text_scale == 150 and capped.text_scale == 150 and floor.text_scale == 100
             flags: bool = contrast.high_contrast and not contrast.captions and captions.captions and not captions.high_contrast
-            sizes and flags and same_settings(&other, &start) and not start.high_contrast and not start.captions
+            motion: bool = calm.reduced_motion and not calm.captions and not start.reduced_motion and CourseAccess::row_value(&calm, CourseAccess::ROW_MOTION) == "< On >"
+            sizes and flags and motion and same_settings(&other, &start) and not start.high_contrast and not start.captions
 
         # Up from the first slot wraps to the last settings row; Left/Right
         # adjust a settings row and a letter key there changes nothing.
@@ -65,8 +67,12 @@
             unchanged: bool = letter.result == CourseControls::MenuResult.Ignored and letter.menu.keymap.crouch == defaults.crouch and slot_side.result == CourseControls::MenuResult.Ignored
             last_row and adjusted and unchanged and wrapped.menu.selected == CourseControls::SLOT_FORWARD
 
-        # A version 1 save (no language) still loads, as English.
+        # A version 1 save (no language) still loads, as English; a version 2
+        # save (no motion flag) loads with full motion.
         def version_one_loads() -> bool:
+            return false if not write_access_raw(2, 150, 0, 1, UiLocale::NB, 5)
+            two: CourseAccess::LoadResult = CourseAccess::load()
+            return false if two.status != CourseAccess::LoadStatus.Loaded or two.settings.reduced_motion or two.settings.locale != UiLocale::NB
             return false if not write_access_raw(1, 125, 1, 0, UiLocale::JA, 4)
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             loaded.status == CourseAccess::LoadStatus.Loaded and loaded.settings.text_scale == 125 and loaded.settings.high_contrast and loaded.settings.locale == UiLocale::EN
@@ -146,7 +152,7 @@
             widest: mutable f32 = 0.0
             pending: mutable bool = false
             for index in 0..<30 |words, settings, widest, pending, font_size|:
-                shown: CourseAccess::Settings = CourseAccess::Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: settings.captions, locale: index / CourseText::CAPTIONS}
+                shown: CourseAccess::Settings = CourseAccess::Settings{text_scale: settings.text_scale, high_contrast: settings.high_contrast, captions: settings.captions, reduced_motion: settings.reduced_motion, locale: index / CourseText::CAPTIONS}
                 line: UiLocaleData::Utf8 = wrapped_caption(&words, &shown, caption_event(index % CourseText::CAPTIONS))
                 metrics: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text_utf8(&line.bytes[0], line.length, font_size)
                 pending <- true if not metrics.ready
@@ -162,7 +168,7 @@
             for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
                 _ = try RuntimeServices::pump(session)
             widest: f32 = try widest_caption(&captions, &large)
-            arabic: CourseAccess::Settings = CourseAccess::Settings{text_scale: large.text_scale, high_contrast: large.high_contrast, captions: large.captions, locale: UiLocale::AR}
+            arabic: CourseAccess::Settings = CourseAccess::Settings{text_scale: large.text_scale, high_contrast: large.high_contrast, captions: large.captions, reduced_motion: large.reduced_motion, locale: UiLocale::AR}
             english: CourseAccess::Settings = CourseAccess::defaults()
             anchored: bool = caption_anchor_x(&arabic) == Tune::LEGEND_X + caption_width(&arabic) and caption_anchor_x(&english) == Tune::LEGEND_X
             return 184 if not captions.loaded or not anchored
