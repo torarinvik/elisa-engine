@@ -1,0 +1,52 @@
+include "../src/ui/settings_page.elisa"
+
+# Game and editor settings are both built from the same widget models.
+def game_page() -> UiSettingsPage::Page:
+    p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+    p <- UiSettingsPage::add_row(p, 0, 101, 0, 100, 5, 80)       # master volume
+    p <- UiSettingsPage::add_row(p, 1, 102, 500, 1000, 50, 1000) # render scale permille
+    p <- UiSettingsPage::add_row(p, 2, 103, 1, 20, 1, 10)        # look sensitivity
+    p
+
+def editor_page() -> UiSettingsPage::Page:
+    p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+    p <- UiSettingsPage::add_row(p, 0, 201, 1, 64, 1, 8)  # grid snap
+    p <- UiSettingsPage::add_row(p, 1, 202, 0, 30, 5, 5)  # autosave minutes
+    p
+
+def main() -> i32:
+    g: mutable UiSettingsPage::Page = game_page()
+    e: mutable UiSettingsPage::Page = editor_page()
+    return 1 if g.list.count != 3 or e.list.count != 2 or UiSettingsPage::focused(&g) != 0
+    # Invalid ranges and duplicate rows are refused.
+    bad: UiSettingsPage::Page = UiSettingsPage::add_row(g, 5, 9, 10, 10, 1, 10)
+    dup: UiSettingsPage::Page = UiSettingsPage::add_row(g, 1, 9, 0, 10, 1, 5)
+    return 2 if bad.list.count != 3 or dup.list.count != 3
+    # D-pad: down twice reaches the last row, a third press stays there.
+    g <- UiSettingsPage::step_focus(g, 1)
+    g <- UiSettingsPage::step_focus(g, 1)
+    g <- UiSettingsPage::step_focus(g, 1)
+    return 3 if UiSettingsPage::focused(&g) != 2
+    # Right nudges the focused slider by its step and the edit reaches its field.
+    g <- UiSettingsPage::nudge(g, 1)
+    sens: UiBinding::Handle = UiSettingsPage::handle_of(&g, 2)
+    edit: UiSettingsPage::Edit = UiSettingsPage::fire(&g, sens, 2)
+    return 4 if g.value[2] != 11 or edit.field != 103 or edit.value != 11
+    # The editor page is independent: nudging it leaves the game page alone.
+    e <- UiSettingsPage::nudge(e, -1)
+    return 5 if e.value[0] != 7 or g.value[0] != 80
+    # Untrusted saves fall back to the default and are flagged.
+    g <- UiSettingsPage::load(g, 1, 4000)
+    g <- UiSettingsPage::load(g, 0, 42)
+    return 6 if g.value[1] != 1000 or not g.recovered[1] or g.value[0] != 40 or g.recovered[0]
+    # Removing the focused row repairs focus and kills its callback, even after
+    # the row is re-added and takes the same binding slot.
+    g <- UiSettingsPage::remove_row(g, 2)
+    return 7 if g.list.count != 2 or UiSettingsPage::focused(&g) != 1
+    stale: UiSettingsPage::Edit = UiSettingsPage::fire(&g, sens, 2)
+    return 8 if stale.field != -1
+    g <- UiSettingsPage::add_row(g, 2, 103, 1, 20, 1, 10)
+    again: UiSettingsPage::Edit = UiSettingsPage::fire(&g, sens, 2)
+    fresh: UiSettingsPage::Edit = UiSettingsPage::fire(&g, UiSettingsPage::handle_of(&g, 2), 2)
+    return 9 if again.field != -1 or fresh.field != 103 or fresh.value != 10
+    return 0

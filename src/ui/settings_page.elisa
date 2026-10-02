@@ -1,0 +1,107 @@
+# A settings page built from the reusable widget models: rows live in a
+# UiListModel (focus and D-pad order), each row is a UiSlider, and each row's
+# edits reach its setting through a generation-checked UiBinding. Game and
+# editor settings are both pages of this one type. Removing a row repairs
+# focus and unbinds the row, so a stale callback resolves to no field.
+include "./list_model.elisa"
+include "./slider.elisa"
+include "./binding.elisa"
+
+module UiSettingsPage:
+    public:
+        const ROWS: i64 = 16
+
+        struct Page:
+            list: UiListModel::List
+            binding: UiBinding::Table
+            field: i64[16]
+            low: i64[16]
+            high: i64[16]
+            step: i64[16]
+            default: i64[16]
+            value: i64[16]
+            recovered: bool[16]
+
+        # The last edit a nudge produced: the bound field and its new value,
+        # or field -1 when the edit had no live binding.
+        struct Edit:
+            field: i64
+            value: i64
+
+        def new_page() -> Page:
+            Page{list: UiListModel::new_list(), binding: UiBinding::new_table(), field: zeroed, low: zeroed, high: zeroed, step: zeroed, default: zeroed, value: zeroed, recovered: zeroed}
+
+        def slider_of(p: Page&, row: i64) -> UiSlider::Slider:
+            UiSlider::Slider{low: p.low[row], high: p.high[row], step: p.step[row], default: p.default[row], value: p.value[row], valid: p.low[row] < p.high[row] and p.step[row] > 0, recovered: p.recovered[row]}
+
+        # Adds slider row `row` (0..15) editing `field`. The first row takes
+        # focus. Invalid ranges and duplicate rows are refused.
+        def add_row(p: Page, row: i64, field: i64, low: i64, high: i64, step: i64, default: i64) -> Page:
+            s: UiSlider::Slider = UiSlider::make(low, high, step, default)
+            return p if row < 0 or row >= ROWS or not s.valid
+            l: mutable UiListModel::List = p.list
+            return p if not UiListModel::push(&l, row)
+            _ = UiListModel::focus(&l, row) if l.count == 1 else true
+            fields: mutable i64[16] = p.field
+            lows: mutable i64[16] = p.low
+            highs: mutable i64[16] = p.high
+            steps: mutable i64[16] = p.step
+            defaults: mutable i64[16] = p.default
+            values: mutable i64[16] = p.value
+            flags: mutable bool[16] = p.recovered
+            fields[row] <- field
+            lows[row] <- low
+            highs[row] <- high
+            steps[row] <- step
+            defaults[row] <- default
+            values[row] <- s.value
+            flags[row] <- false
+            Page{list: l, binding: UiBinding::bind(p.binding, row, field), field: fields, low: lows, high: highs, step: steps, default: defaults, value: values, recovered: flags}
+
+        def with_value(p: Page, row: i64, s: UiSlider::Slider) -> Page:
+            values: mutable i64[16] = p.value
+            flags: mutable bool[16] = p.recovered
+            values[row] <- s.value
+            flags[row] <- s.recovered
+            Page{list: p.list, binding: p.binding, field: p.field, low: p.low, high: p.high, step: p.step, default: p.default, value: values, recovered: flags}
+
+        # D-pad up/down: focus moves to the neighbouring row, stopping at the ends.
+        def step_focus(p: Page, direction: i64) -> Page:
+            l: mutable UiListModel::List = p.list
+            at: i64 = UiListModel::index_of(&l, l.focus_id)
+            to_at: i64 = at + direction
+            return p if at < 0 or to_at < 0 or to_at >= l.count
+            _ = UiListModel::focus(&l, l.ids[to_at])
+            Page{list: l, binding: p.binding, field: p.field, low: p.low, high: p.high, step: p.step, default: p.default, value: p.value, recovered: p.recovered}
+
+        def focused(p: Page&) -> i64:
+            p.list.focus_id
+
+        # The binding handle a row's widget callback holds.
+        def handle_of(p: Page&, row: i64) -> UiBinding::Handle:
+            return UiBinding::none() if row < 0 or row >= ROWS
+            UiBinding::handle(&p.binding, row, p.field[row])
+
+        # D-pad left/right on the focused row.
+        def nudge(p: Page, direction: i64) -> Page:
+            row: i64 = p.list.focus_id
+            return p if row < 0 or row >= ROWS
+            moved: UiSlider::Slider = UiSlider::nudge(slider_of(&p, row), direction)
+            with_value(p, row, moved)
+
+        # Fires a widget callback through its handle: the edit names the bound
+        # field, or field -1 when the row was removed since the handle was taken.
+        def fire(p: Page&, h: UiBinding::Handle, row: i64) -> Edit:
+            f: i64 = UiBinding::resolve(&p.binding, h)
+            ok: bool = f >= 0 and row >= 0 and row < ROWS
+            Edit{field: f if ok else 0 - 1, value: p.value[row] if ok else 0}
+
+        # Applies a saved value; out-of-range saves fall back and are flagged.
+        def load(p: Page, row: i64, saved: i64) -> Page:
+            return p if row < 0 or row >= ROWS or UiListModel::index_of(&p.list, row) < 0
+            with_value(p, row, UiSlider::load(slider_of(&p, row), saved))
+
+        def remove_row(p: Page, row: i64) -> Page:
+            l: mutable UiListModel::List = p.list
+            return p if not UiListModel::remove(&l, row)
+            Page{list: l, binding: UiBinding::unbind_owner(p.binding, row), field: p.field, low: p.low, high: p.high, step: p.step, default: p.default, value: p.value, recovered: p.recovered}
