@@ -5,6 +5,10 @@
 # warm-up; every later one must end on the same live resource counts, and a
 # drift reports 180 plus the iteration as its trace. Injected failures follow.
         const STRESS_ITERATIONS: usize = 12
+        # Heap sampling starts after this iteration, once lazy caches are warm.
+        const HEAP_SETTLED_ITERATION: usize = 3
+        # Allowed heap growth over the remaining iterations; measured < 16 KiB.
+        const HEAP_GROWTH_LIMIT: u64 = 262144
 
         struct StressCounts:
             instances: usize
@@ -102,7 +106,8 @@
             current: mutable PhysicsRuntime::CharacterHandle = warm.character
             status: mutable i32 = 0
             previous: mutable PhysicsRuntime::CharacterHandle = character
-            for iteration in 1..<STRESS_ITERATIONS |session, current, status, previous, baseline|:
+            heap_settled: mutable u64 = 0
+            for iteration in 1..<STRESS_ITERATIONS |session, current, status, previous, baseline, heap_settled|:
                 if status == 0:
                     previous <- current
                     cycled: ProgressOutcome = catch stress_cycle(session, current, iteration):
@@ -112,7 +117,11 @@
                     counts: StressCounts = stress_counts(session)
                     status <- cycled.status
                     status <- 180 + iteration.i32() if status == 0 and not same_counts(counts, baseline)
+                    heap_settled <- RenderScene::heap_bytes_in_use() if iteration == HEAP_SETTLED_ITERATION
             return ProgressOutcome{status: status, character: current} if status != 0
+            heap_end: u64 = RenderScene::heap_bytes_in_use()
+            return ProgressOutcome{status: 194, character: current} if heap_settled == 0 or heap_end == 0
+            return ProgressOutcome{status: 193, character: current} if heap_end > heap_settled + HEAP_GROWTH_LIMIT
             try RenderScene::resize(width, height)
             injected: i32 = injected_test(session, previous, width, height)
             final: StressCounts = stress_counts(session)

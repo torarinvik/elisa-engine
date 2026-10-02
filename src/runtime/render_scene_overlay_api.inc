@@ -91,5 +91,8 @@
             try check_status(elisa_render_scene_v1_shutdown())
         def instance_count() -> usize:
             elisa_render_scene_v1_instance_count().usize()
+        # Process heap bytes in use; zero when the platform has no sampler.
+        def heap_bytes_in_use() -> u64:
+            elisa_render_scene_v1_heap_bytes_in_use()
         def is_initialized() -> bool:
             elisa_render_scene_v1_is_initialized() != 0

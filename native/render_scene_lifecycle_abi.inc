@@ -45,6 +45,17 @@ extern "C" uint64_t elisa_render_scene_v1_instance_count(void) {
     for (const InstanceSlot& instance : state.instances) count += instance.live ? 1 : 0;
     return count;
 }
+// Process heap bytes in use, for lifecycle stress memory sampling. Zero means
+// the platform has no sampler, and callers must treat it as unsupported.
+extern "C" uint64_t elisa_render_scene_v1_heap_bytes_in_use(void) {
+#if defined(__APPLE__)
+    malloc_statistics_t stats{};
+    malloc_zone_statistics(nullptr, &stats);
+    return static_cast<uint64_t>(stats.size_in_use);
+#else
+    return 0;
+#endif
+}
 extern "C" int32_t elisa_render_scene_v1_is_initialized(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

@@ -561,6 +561,7 @@ int32_t elisa_render_scene_v1_instance_probe(int64_t handle, float* position, in
 int32_t elisa_render_scene_v1_shutdown(void);
 uint64_t elisa_render_scene_v1_instance_count(void);
 int32_t elisa_render_scene_v1_is_initialized(void);
+uint64_t elisa_render_scene_v1_heap_bytes_in_use(void);
 
 #ifdef __cplusplus
 }

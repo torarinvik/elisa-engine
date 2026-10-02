@@ -265,3 +265,5 @@
         extern elisa_render_scene_v1_instance_count() -> u64
         @callconv(c)
         extern elisa_render_scene_v1_is_initialized() -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_heap_bytes_in_use() -> u64

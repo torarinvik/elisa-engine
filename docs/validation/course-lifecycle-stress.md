@@ -39,6 +39,11 @@ self-test.
     In both cases `stop` releases every clip loaded before the failure and the
     audio service goes idle. A normal sound cycle works afterwards.
   - Destroying the already-destroyed character handle is rejected.
+- **Heap sample.** `RenderScene::heap_bytes_in_use` reads the process heap
+  (`malloc_zone_statistics` over all zones on macOS; zero elsewhere). The
+  test samples it after iteration 3 and again after iteration 11. Growth over
+  those eight iterations must stay within 256 KiB. On 2026-10-03 it measured
+  under 16 KiB. A zero sample fails, because the gate is macOS-only.
 - **Final count.** It must still equal the baseline.
 
 ## Checks
@@ -55,6 +60,8 @@ self-test.
 | 179 | a stale character destroy is rejected |
 | 181–191 | the resource counts after iteration 1–11 differ from the warm-up baseline |
 | 192 | the counts after the injected failures differ from the baseline |
+| 193 | heap growth from iteration 3 to 11 exceeds 256 KiB |
+| 194 | the heap sampler returned zero |
 
 Commands:
 
@@ -77,13 +84,16 @@ relaunch smokes, `check` and the native gate each exited 0.
   detected only through this capacity, because `AudioRuntime` has no clip
   count.
 
+- **The heap limit is 1 byte.** The self-test fails at 193 (2026-10-03).
+
 All controls were reverted.
 
 ## Gaps
 
 - The counts come from public APIs only: render instances, navmeshes, audio
   voices and streams, plus stale-handle checks for characters and beacon
-  entities. Process memory, GPU memory and Jolt body counts are not sampled.
+  entities, plus a process heap sample. GPU memory and Jolt body counts are
+  not sampled.
 - The run is 12 iterations inside the finite self-test, not a multi-hour soak
   (Q06). There is no ASan/UBSan run of the course binary itself.
 - Resize goes through `RenderScene::resize` on a hidden window. An OS-level

@@ -1,4 +1,7 @@
 #include "render_scene_abi.h"
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#endif
 #include "adaptive_resolution.h"
 #include "Utility/meshoptimizer/meshoptimizer.h"
 #include "application_abi.h"
