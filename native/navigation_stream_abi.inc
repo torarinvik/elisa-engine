@@ -91,8 +91,9 @@ int32_t elisa_navigation_v1_tile_unload(uint32_t slot, uint32_t generation, uint
     dtNavMesh* mesh = artifact->streamed_mesh();
     const dtMeshTile* tile = mesh->getTileAt(static_cast<int>(tx), static_cast<int>(tz), 0);
     if (tile == nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
-    return dtStatusSucceed(mesh->removeTile(mesh->getTileRef(tile), nullptr, nullptr))
-        ? ELISA_NAVIGATION_OK : ELISA_NAVIGATION_BAKE_FAILED;
+    if (dtStatusFailed(mesh->removeTile(mesh->getTileRef(tile), nullptr, nullptr))) return ELISA_NAVIGATION_BAKE_FAILED;
+    cook_state().cooks[slot].epoch += 1;
+    return ELISA_NAVIGATION_OK;
 }
 
 // Put an unloaded tile back from the cooked blob, re-linking its neighbours.
@@ -106,7 +107,9 @@ int32_t elisa_navigation_v1_tile_load(uint32_t slot, uint32_t generation, uint32
     if (!tile_bytes(slot, tx, tz, data, size) || size == 0) return ELISA_NAVIGATION_INVALID_ARGUMENT;
     dtNavMesh* mesh = artifact->streamed_mesh();
     if (mesh->getTileAt(static_cast<int>(tx), static_cast<int>(tz), 0) != nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
-    return add_tile_copy(mesh, data, size);
+    const int32_t added = add_tile_copy(mesh, data, size);
+    if (added == ELISA_NAVIGATION_OK) cook_state().cooks[slot].epoch += 1;
+    return added;
 }
 
 // Rebuild tile (tx, tz) from the staged scene with the settings its mesh was
@@ -165,6 +168,7 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
     if (current != nullptr && dtStatusFailed(mesh->removeTile(mesh->getTileRef(current), nullptr, nullptr))) {
         return ELISA_NAVIGATION_BAKE_FAILED;
     }
+    if (current != nullptr) cooked.epoch += 1;
     if (swap && !data.empty()) {
         const int32_t added = add_tile_copy(mesh, data.data(), static_cast<uint32_t>(data.size()));
         if (added != ELISA_NAVIGATION_OK) return added;
@@ -174,6 +178,7 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
         if (tile.tx == tx && tile.tz == tz) { tile.data = data; replaced = true; }
     }
     if (!replaced) cooked.rebuilt.push_back({tx, tz, data});
+    cooked.epoch += 1;
     *polygons = static_cast<uint32_t>(count);
     return ELISA_NAVIGATION_OK;
 }
@@ -197,6 +202,19 @@ int32_t elisa_navigation_v1_tile_grid(uint32_t slot, uint32_t generation, float*
     *tile_world = header.tile_world;
     *tiles_x = header.tiles_x;
     *tiles_z = header.tiles_z;
+    return ELISA_NAVIGATION_OK;
+}
+
+// The tile epoch of a cooked mesh: it changes whenever a tile is loaded,
+// unloaded or rebuilt, so a route found under one epoch is current only while
+// the epoch is unchanged.
+int32_t elisa_navigation_v1_tile_epoch(uint32_t slot, uint32_t generation, uint32_t* epoch) {
+    if (epoch == nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    *epoch = 0;
+    Service& nav = service();
+    std::lock_guard<std::mutex> lock(nav.mutex);
+    if (streamed_artifact(nav, slot, generation) == nullptr) return ELISA_NAVIGATION_STALE_HANDLE;
+    *epoch = cook_state().cooks[slot].epoch;
     return ELISA_NAVIGATION_OK;
 }
 

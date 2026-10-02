@@ -556,6 +556,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.
   Integrate tile streaming and supported DetourTileCache obstacle updates with generation-tagged query results. Done: unload/rebuild during a pending path request cannot return stale routes; rebakes are bounded and agents recover when tiles become available.
   Progress on 2026-09-29: `src/nav/stream.elisa` adds generation-tagged path requests over streamed tiles with bounded per-frame rebakes and `test/nav_stream.elisa` (see `docs/validation/nav-stream.md`); no DetourTileCache binding or agent recovery, so the item stays open.
+  Progress on 2026-10-02: `NavTileRoutes` tags route requests on a cooked, streamed mesh with a native tile epoch that every load, unload and rebuild bumps. A route found before a tile change is refused as `Moved`, and an agent stranded at an unloaded tile replans to `Arrived` once `NavTileStream` brings it back (`test/nav_tile_routes_native.elisa`, gate; control fails at 4; [`nav-tile-routes`](docs/validation/nav-tile-routes.md)). The item stays open: obstacles go through per-tile rebuilds rather than DetourTileCache, and the epoch is per mesh rather than per tile.
 
 ## S — audio and acoustics
 

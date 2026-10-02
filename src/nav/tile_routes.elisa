@@ -1,0 +1,44 @@
+# N06: generation-tagged route requests over a streamed (cooked) navmesh.
+# A caller takes a `Ticket` when it issues a path request and checks it with
+# `deliver` before handing the finished route to an agent. Any tile load,
+# unload or rebuild on the mesh in between raises `Moved`, so a route that
+# crossed (or skipped) a tile that changed meanwhile is never used. The epoch
+# is per mesh, not per tile: a change anywhere invalidates every pending
+# request, which is conservative but never stale.
+include "./tile_stream.elisa"
+
+module NavTileRoutes:
+    public:
+        error NavTileRouteError:
+            # The mesh was unloaded or is not a cooked mesh.
+            Stale
+            # A tile changed after the ticket was taken; request again.
+            Moved
+
+        struct Ticket:
+            handle: NavMesh::Handle
+            epoch: u32
+
+    private:
+        const module EpochStatus:
+            OK: i32 = 0
+            STALE_HANDLE: i32 = 4
+
+        @callconv(c)
+        extern elisa_navigation_v1_tile_epoch(slot: u32, generation: u32, epoch: mutable u32&) -> i32
+
+        def epoch_of(handle: NavMesh::Handle) -> u32 error[NavTileRouteError]:
+            epoch: mutable u32 = 0
+            status: i32 = elisa_navigation_v1_tile_epoch(handle.slot, handle.generation, &epoch)
+            raise NavTileRouteError.Stale if status != EpochStatus::OK
+            epoch
+
+    public:
+        def ticket(handle: NavMesh::Handle) -> Ticket error[NavTileRouteError]:
+            epoch: u32 = try epoch_of(handle)
+            Ticket{handle: handle, epoch: epoch}
+
+        # Succeeds only while no tile of the ticket's mesh has changed.
+        def deliver(ticket: Ticket) -> void error[NavTileRouteError]:
+            epoch: u32 = try epoch_of(ticket.handle)
+            raise NavTileRouteError.Moved if epoch != ticket.epoch

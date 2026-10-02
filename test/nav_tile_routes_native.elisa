@@ -1,0 +1,122 @@
+# N06 through NavTileRoutes on the 7-tile corridor of nav_tiles_native. A
+# route requested before a tile unload, load or rebuild is refused as Moved
+# on delivery; one requested afterwards is delivered. An agent given the cut
+# route strands at the cut, and once NavTileStream brings the tiles back a
+# fresh request from where it stands is delivered and walks to Arrived. A
+# stale mesh is refused. Linked by scripts/build_nav_native_test.sh.
+include "../src/nav/tile_routes.elisa"
+include "../src/nav/agent.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def stage_code() -> i32:
+    catch NavMesh::begin():
+        value: floor_code()
+        error failure: 1
+
+def floor_code() -> i32:
+    catch NavMesh::add_box(v(20.0, -0.1, 0.0), v(20.0, 0.1, 1.5)):
+        value: 0
+        error failure: 1
+
+def cooked() -> NavMesh::Handle:
+    catch NavCook::cook(NavMesh::default_profile(), 64, 7001):
+        value: value.handle
+        error failure: NavMesh::empty_handle()
+
+def offmesh_route() -> NavRoute::Route:
+    NavRoute::Route(NavRoute::Status.OffMesh)
+
+def route_from(handle: NavMesh::Handle, start: Geometry::Vec3) -> NavRoute::Route:
+    catch NavMesh::find_route(handle, start, v(39.0, 0.0, 0.0), v(1.0, 1.0, 1.0)):
+        value: value
+        error failure: offmesh_route()
+
+def empty_ticket(handle: NavMesh::Handle) -> NavTileRoutes::Ticket:
+    NavTileRoutes::Ticket{handle: handle, epoch: 4294967295}
+
+def ticket_of(handle: NavMesh::Handle) -> NavTileRoutes::Ticket:
+    catch NavTileRoutes::ticket(handle):
+        value: value
+        error failure: empty_ticket(handle)
+
+# 0 delivered, 1 moved, 2 stale.
+def deliver_code(ticket: NavTileRoutes::Ticket) -> i32:
+    catch NavTileRoutes::deliver(ticket):
+        value: 0
+        NavTileRoutes::NavTileRouteError.Moved: 1
+        error failure: 2
+
+def stale_ticket_code(handle: NavMesh::Handle) -> i32:
+    catch NavTileRoutes::ticket(handle):
+        value: 1
+        NavTileRoutes::NavTileRouteError.Stale: 0
+        error failure: 1
+
+def tile_code(handle: NavMesh::Handle, tx: u32, load: bool) -> i32:
+    return load_code(handle, tx) if load
+    catch NavTiles::unload_tile(handle, tx, 0):
+        value: 0
+        error failure: 1
+
+def load_code(handle: NavMesh::Handle, tx: u32) -> i32:
+    catch NavTiles::load_tile(handle, tx, 0):
+        value: 0
+        error failure: 1
+
+def rebuild_code(handle: NavMesh::Handle, tx: u32) -> i32:
+    catch NavTiles::rebuild_tile(handle, tx, 0):
+        value: 0
+        error failure: 1
+
+def stream_code(handle: NavMesh::Handle) -> i64:
+    catch NavTileStream::step(handle, 20.0, 0.0, 30.0, 16):
+        value: value.loaded
+        error failure: -1
+
+def last_point(route: NavRoute::Route) -> Geometry::Vec3:
+    return v(-100.0, 0.0, 0.0) if route.count == 0
+    route.points[route.count - 1]
+
+# The agent's state after steering once from `at`.
+def steer_state(agent: mutable NavAgent::Agent&, at: Geometry::Vec3) -> NavAgent::State:
+    NavAgent::steer(agent, at).state
+
+def drop_code(handle: NavMesh::Handle) -> i32:
+    catch NavMesh::unload(handle):
+        value: 0
+        error failure: 1
+
+def main() -> i32:
+    NavCook::cache_clear()
+    return 1 if stage_code() != 0
+    mesh: NavMesh::Handle = cooked()
+    return 2 if not NavMesh::live(mesh)
+    # Requested, then a tile goes out before delivery: refused.
+    early: NavTileRoutes::Ticket = ticket_of(mesh)
+    full: NavRoute::Route = route_from(mesh, v(1.0, 0.0, 0.0))
+    return 3 if full.status != NavRoute::Status.Found or deliver_code(early) != 0
+    return 4 if tile_code(mesh, 3, false) != 0 or deliver_code(early) != 1
+    # Requested after the cut: delivered, and it ends at the cut.
+    late: NavTileRoutes::Ticket = ticket_of(mesh)
+    cut: NavRoute::Route = route_from(mesh, v(1.0, 0.0, 0.0))
+    return 5 if cut.status != NavRoute::Status.Unreachable or deliver_code(late) != 0
+    agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
+    return 6 if NavAgent::assign(&agent, cut) != NavAgent::State.Moving
+    stop: Geometry::Vec3 = last_point(cut)
+    return 7 if steer_state(&agent, stop) != NavAgent::State.Stranded or stop.x > 25.0
+    # Streaming brings the tile back: the old ticket is refused, a new
+    # request from where the agent stands is delivered and arrives.
+    return 8 if stream_code(mesh) != 1 or deliver_code(late) != 1
+    again: NavTileRoutes::Ticket = ticket_of(mesh)
+    resumed: NavRoute::Route = route_from(mesh, stop)
+    return 9 if resumed.status != NavRoute::Status.Found or deliver_code(again) != 0
+    return 10 if NavAgent::assign(&agent, resumed) != NavAgent::State.Moving
+    return 11 if steer_state(&agent, last_point(resumed)) != NavAgent::State.Arrived
+    # Rebuilds and loads move the epoch too.
+    return 12 if rebuild_code(mesh, 1) != 0 or deliver_code(again) != 1
+    reload: NavTileRoutes::Ticket = ticket_of(mesh)
+    return 13 if tile_code(mesh, 6, false) != 0 or tile_code(mesh, 6, true) != 0 or deliver_code(reload) != 1
+    return 14 if drop_code(mesh) != 0 or deliver_code(reload) != 2 or stale_ticket_code(mesh) != 0
+    0

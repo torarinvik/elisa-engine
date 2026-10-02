@@ -18,6 +18,7 @@ struct SlotCook {
     int tile_cells = 0;
     float top = 0.0f; // the cook's upper bound; rebuilds only raise it
     std::vector<TileOverride> rebuilt;
+    uint32_t epoch = 0; // bumped by every tile load, unload and rebuild
 };
 
 struct CookState {
