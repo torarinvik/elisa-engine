@@ -1,0 +1,80 @@
+# The render quality settings page: a UiSettingsPage whose rows are loaded
+# from a persisted Quality::Profile and written back to one. Enums and bools
+# become small integer sliders and render scale becomes a percentage, so the
+# generic page needs no knowledge of the profile. A page edit that would make
+# the profile invalid (temporal AA with FSR2) is refused as a whole.
+include "./settings_page.elisa"
+include "../runtime/quality_settings.elisa"
+
+module UiQualityPage:
+    public:
+        const LEVEL_ROW: i64 = 0
+        const SCALE_ROW: i64 = 1
+        const BLOOM_ROW: i64 = 2
+        const FXAA_ROW: i64 = 3
+        const TAA_ROW: i64 = 4
+        const AO_ROW: i64 = 5
+        const SSR_ROW: i64 = 6
+        const FOG_ROW: i64 = 7
+        const SHADOW_ROW: i64 = 8
+
+        def flag(on: bool) -> i64:
+            1 if on else 0
+
+        def percent(scale: f32) -> i64:
+            ElisaMath::round(scale.f64() * 100.0).i64()
+
+        def level_code(l: Quality::Level) -> i64:
+            return 0 if l == Quality::Level.Low
+            return 1 if l == Quality::Level.Medium
+            2
+
+        def shadow_code(s: Quality::ShadowQuality) -> i64:
+            return 0 if s == Quality::ShadowQuality.Low
+            return 1 if s == Quality::ShadowQuality.Medium
+            2
+
+        # Rows use field ids 1..9 in row order.
+        def page_of(profile: Quality::Profile&) -> UiSettingsPage::Page:
+            p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+            p <- UiSettingsPage::add_row(p, LEVEL_ROW, 1, 0, 2, 1, 1)
+            p <- UiSettingsPage::add_row(p, SCALE_ROW, 2, 25, 100, 5, 100)
+            for k in 2..<8:
+                p <- UiSettingsPage::add_row(p, k.i64(), k.i64() + 1, 0, 1, 1, 1)
+            p <- UiSettingsPage::add_row(p, SHADOW_ROW, 9, 0, 2, 1, 1)
+            p <- UiSettingsPage::load(p, LEVEL_ROW, level_code(profile.level))
+            p <- UiSettingsPage::load(p, SCALE_ROW, percent(profile.render_scale))
+            p <- UiSettingsPage::load(p, BLOOM_ROW, flag(profile.bloom))
+            p <- UiSettingsPage::load(p, FXAA_ROW, flag(profile.fxaa))
+            p <- UiSettingsPage::load(p, TAA_ROW, flag(profile.temporal_aa))
+            p <- UiSettingsPage::load(p, AO_ROW, flag(profile.ambient_occlusion))
+            p <- UiSettingsPage::load(p, SSR_ROW, flag(profile.screen_space_reflections))
+            p <- UiSettingsPage::load(p, FOG_ROW, flag(profile.fog))
+            UiSettingsPage::load(p, SHADOW_ROW, shadow_code(profile.shadow_quality))
+
+        def level_of(v: i64) -> Quality::Level:
+            return Quality::Level.Low if v <= 0
+            return Quality::Level.Medium if v == 1
+            Quality::Level.High
+
+        def shadow_of(v: i64) -> Quality::ShadowQuality:
+            return Quality::ShadowQuality.Low if v <= 0
+            return Quality::ShadowQuality.Medium if v == 1
+            Quality::ShadowQuality.High
+
+        # Applies the page over `base`; fields the page does not show (tonemap,
+        # upscaler, thresholds, biases) keep their base values. Returns `base`
+        # unchanged when the edited profile would not validate.
+        def apply(p: UiSettingsPage::Page&, base: Quality::Profile) -> Quality::Profile:
+            next: mutable Quality::Profile = base
+            next.level <- level_of(p.value[LEVEL_ROW])
+            next.render_scale <- p.value[SCALE_ROW].f32() / 100.0
+            next.bloom <- p.value[BLOOM_ROW] == 1
+            next.fxaa <- p.value[FXAA_ROW] == 1
+            next.temporal_aa <- p.value[TAA_ROW] == 1
+            next.ambient_occlusion <- p.value[AO_ROW] == 1
+            next.screen_space_reflections <- p.value[SSR_ROW] == 1
+            next.fog <- p.value[FOG_ROW] == 1
+            next.shadow_quality <- shadow_of(p.value[SHADOW_ROW])
+            return base if not Quality::profile_valid(next)
+            next

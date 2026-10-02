@@ -1,0 +1,43 @@
+include "../src/ui/quality_page.elisa"
+
+def main() -> i32:
+    base: mutable Quality::Profile = Quality::Profile()
+    base.shadow_quality <- Quality::ShadowQuality.High
+    base.render_scale <- 0.75
+    base.fog <- false
+    p: mutable UiSettingsPage::Page = UiQualityPage::page_of(&base)
+    # Loaded rows mirror the profile.
+    return 1 if p.value[UiQualityPage::LEVEL_ROW] != 1 or p.value[UiQualityPage::SCALE_ROW] != 75 or p.value[UiQualityPage::SHADOW_ROW] != 2 or p.value[UiQualityPage::FOG_ROW] != 0
+    # An unedited page applies back to the same profile.
+    same: Quality::Profile = UiQualityPage::apply(&p, base)
+    return 2 if same.render_scale != base.render_scale or same.fog or same.shadow_quality != Quality::ShadowQuality.High or same.tonemap != base.tonemap
+    # Nudging render scale (row 1) and fog (row 7) lands in the profile.
+    p <- UiSettingsPage::step_focus(p, 1)
+    p <- UiSettingsPage::nudge(p, 1)
+    for k in 0..<6:
+        p <- UiSettingsPage::step_focus(p, 1)
+    p <- UiSettingsPage::nudge(p, 1)
+    edited: Quality::Profile = UiQualityPage::apply(&p, base)
+    return 3 if edited.render_scale != 0.8 or not edited.fog
+    # The edited profile survives the persisted blob round trip.
+    blob: Save::Blob = catch QualitySettings::profile_to_blob(&edited):
+        value: value
+        error failure: return 4
+    back: Quality::Profile = catch QualitySettings::profile_from_blob(blob):
+        value: value
+        error failure: return 5
+    again: UiSettingsPage::Page = UiQualityPage::page_of(&back)
+    return 6 if again.value[UiQualityPage::SCALE_ROW] != 80 or again.value[UiQualityPage::FOG_ROW] != 1
+    # Temporal AA with FSR2 is invalid, so the whole edit is refused.
+    fsr: mutable Quality::Profile = edited
+    fsr.upscaler <- Quality::Upscaler.Fsr2
+    fsr.temporal_aa <- false
+    q: mutable UiSettingsPage::Page = UiQualityPage::page_of(&fsr)
+    q <- UiSettingsPage::load(q, UiQualityPage::TAA_ROW, 1)
+    q <- UiSettingsPage::load(q, UiQualityPage::FOG_ROW, 0)
+    kept: Quality::Profile = UiQualityPage::apply(&q, fsr)
+    return 7 if kept.temporal_aa or not kept.fog
+    # A corrupt saved value is clamped into range when loaded.
+    r: UiSettingsPage::Page = UiSettingsPage::load(p, UiQualityPage::SCALE_ROW, 900)
+    return 8 if r.value[UiQualityPage::SCALE_ROW] != 100 or UiQualityPage::apply(&r, base).render_scale != 1.0
+    return 0
