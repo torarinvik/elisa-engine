@@ -15,11 +15,11 @@ def tool_path(variable: sview, name: sview) -> sview:
             return candidate
     ""
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
-    # A spawn that never started (e.g. ENOMEM under swap pressure) is a silent 126: retry, then name the program.
+    # A silent 126 is a spawn that never started (ENOMEM under swap): retry. 30 min timeout survives load spikes.
     for attempt in 0..<3:
         result: ProcessCapture =
             empty_input: sview = ""
-            capture_process_result(executable(program), arguments, empty_input)
+            capture_process_result(executable(program), arguments, empty_input, 1800000000)
         if result.exit_status != 126 or result.stdout != "" or result.stderr != "":
             _ = write_stdout(result.stdout)
             _ = write_stderr(result.stderr)
