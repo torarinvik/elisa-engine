@@ -1,0 +1,14 @@
+include "../src/audio/spatial_scale.elisa"
+
+extend SpatialScale:
+    # Plan S03: the Doppler ratio never divides by a zero, negative or NaN
+    # denominator. Float mode is syntactic: the `not (denominator >
+    # MIN_DENOMINATOR)` guard hands `quotient` exactly its requires.
+    def prove_guard_then_quotient(numerator: f32, denominator: f32) -> f32:
+        return MAX_RATIO if not (denominator > MIN_DENOMINATOR)
+        quotient(numerator, denominator)
+
+    def prove_conjunct_guard(numerator: f32, denominator: f32, ready: bool) -> f32:
+        if ready and denominator > MIN_DENOMINATOR:
+            return quotient(numerator, denominator)
+        MIN_RATIO

@@ -1,0 +1,127 @@
+# Plan S03: SpatialAudio gain and Doppler pitch follow their expected curves
+# numerically, and the same physical motion sounds the same at any scene scale.
+include "../src/audio/spatial.elisa"
+include "../src/vendor/elisa_math.elisa"
+
+def vec(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def near(value: f32, expected: f32) -> bool:
+    ElisaMath::fabsf(value - expected) <= 0.0001
+
+def quotient(numerator: f32, denominator: f32) -> f32:
+    numerator / denominator
+
+def listener_at(z: f32, velocity_z: f32) -> SpatialAudio::Listener:
+    SpatialAudio::Listener{position: vec(0.0, 0.0, z), velocity: vec(0.0, 0.0, velocity_z)}
+
+# Omni source on the -z axis facing +z (toward the listener at the origin).
+def source_at(z: f32, velocity_z: f32, minimum: f32, maximum: f32) -> SpatialAudio::Source:
+    SpatialAudio::Source{
+        id: 1,
+        position: vec(0.0, 0.0, z),
+        velocity: vec(0.0, 0.0, velocity_z),
+        forward: vec(0.0, 0.0, 1.0),
+        minimum_distance: minimum,
+        maximum_distance: maximum,
+        inner_cone_cos: 0.9,
+        outer_cone_cos: 0.0,
+        outer_cone_gain: 0.25,
+        occlusion: 0.0,
+        live: true,
+    }
+
+def policy(units: f32, factor: f32) -> SpatialAudio::Policy:
+    SpatialAudio::Policy{speed_of_sound: 343.0, units_per_meter: units, doppler_factor: factor}
+
+def gain_at(distance: f32) -> f32:
+    SpatialAudio::spatial_gain(source_at(0.0 - distance, 0.0, 1.0, 11.0), listener_at(0.0, 0.0))
+
+# Linear rolloff between minimum 1 and maximum 11: 1 - (d - 1) / 10.
+def distance_curve() -> i32:
+    return 10 if not near(gain_at(0.5), 1.0)
+    return 11 if not near(gain_at(1.0), 1.0)
+    return 12 if not near(gain_at(3.5), 0.75)
+    return 13 if not near(gain_at(6.0), 0.5)
+    return 14 if not near(gain_at(10.0), 0.1)
+    return 15 if not near(gain_at(11.0), 0.0) or not near(gain_at(40.0), 0.0)
+    # The same curve authored in centimetres (100 units per metre).
+    scaled: f32 = SpatialAudio::spatial_gain(source_at(-350.0, 0.0, 100.0, 1100.0), listener_at(0.0, 0.0))
+    return 16 if not near(scaled, 0.75)
+    0
+
+# Cone between inner cos 0.9 (gain 1) and outer cos 0 (gain 0.25) is linear in
+# the alignment cosine; occlusion scales the result by (1 - occlusion).
+def cone_curve() -> i32:
+    source: SpatialAudio::Source = source_at(0.0, 0.0, 1.0, 1000.0)
+    # Listener at 2 units, alignment 0.45 -> 0.25 + 0.5 * 0.75 = 0.625.
+    side: f32 = ElisaMath::sqrtf(4.0 - 0.9 * 0.9)
+    off_axis: SpatialAudio::Listener = SpatialAudio::Listener{position: vec(side, 0.0, 0.9), velocity: vec(0.0, 0.0, 0.0)}
+    return 20 if not near(SpatialAudio::cone_gain(source, off_axis), 0.625)
+    behind: SpatialAudio::Listener = listener_at(-2.0, 0.0)
+    return 21 if not near(SpatialAudio::cone_gain(source, behind), 0.25)
+    ahead: SpatialAudio::Listener = listener_at(2.0, 0.0)
+    return 22 if not near(SpatialAudio::cone_gain(source, ahead), 1.0)
+    occluded: SpatialAudio::Source = source
+    occluded.occlusion <- 0.4
+    expected: f32 = SpatialAudio::distance_gain(source, ahead) * 0.6
+    return 23 if not near(SpatialAudio::spatial_gain(occluded, ahead), expected)
+    0
+
+def pitch(source_velocity: f32, listener_velocity: f32, units: f32, factor: f32) -> f32:
+    SpatialAudio::doppler_ratio_scaled(source_at(-10.0 * units, source_velocity * units, 1.0, 2.0),
+        listener_at(0.0, listener_velocity * units), policy(units, factor))
+
+# (c + f*v_l) / (c - f*v_s) with c = 343 m/s; speeds below are metres per second
+# and are scaled with positions, so every scene scale must agree.
+def doppler_at_scale(units: f32, code: i32) -> i32:
+    return code if not near(pitch(34.3, 0.0, units, 1.0), 343.0 / 308.7)
+    return code + 1 if not near(pitch(-34.3, 0.0, units, 1.0), 343.0 / 377.3)
+    return code + 2 if not near(pitch(0.0, -34.3, units, 1.0), 377.3 / 343.0)
+    return code + 3 if not near(pitch(0.0, 34.3, units, 1.0), 308.7 / 343.0)
+    return code + 4 if not near(pitch(34.3, 0.0, units, 2.0), 343.0 / 274.4)
+    return code + 5 if not near(pitch(34.3, 0.0, units, 0.0), 1.0)
+    return code + 6 if not near(pitch(300.0, 0.0, units, 1.0), 2.0) or not near(pitch(400.0, 0.0, units, 1.0), 2.0)
+    return code + 7 if not near(pitch(-400.0, 0.0, units, 1.0), 0.5)
+    0
+
+# (c + f*v_l) / (c - f*v_s) with c = 343 m/s; speeds are metres per second
+# scaled with positions, so every scene scale must agree.
+def doppler_curve() -> i32:
+    status: i32 = doppler_at_scale(1.0, 30)
+    return status if status != 0
+    status2: i32 = doppler_at_scale(100.0, 40)
+    return status2 if status2 != 0
+    doppler_at_scale(0.01, 50)
+
+def scale_mismatch_and_policy() -> i32:
+    # 34.3 scene units per second in a centimetre scene is only 0.343 m/s.
+    slow: f32 = SpatialAudio::doppler_ratio_scaled(source_at(-1000.0, 34.3, 1.0, 2.0),
+        listener_at(0.0, 0.0), policy(100.0, 1.0))
+    return 60 if not near(slow, 343.0 / 342.657)
+    # Motion across the line of sight carries no Doppler.
+    crossing: SpatialAudio::Source = SpatialAudio::Source{
+        id: 1, position: vec(0.0, 0.0, -10.0), velocity: vec(30.0, 0.0, 0.0),
+        forward: vec(0.0, 0.0, 1.0), minimum_distance: 1.0, maximum_distance: 2.0,
+        inner_cone_cos: 1.0, outer_cone_cos: 1.0, outer_cone_gain: 1.0,
+        occlusion: 0.0, live: true,
+    }
+    return 61 if not near(SpatialAudio::doppler_ratio(crossing, listener_at(0.0, 0.0)), 1.0)
+    return 62 if not near(SpatialAudio::doppler_ratio(source_at(-10.0, 34.3, 1.0, 2.0), listener_at(0.0, 0.0)), 343.0 / 308.7)
+    return 63 if not SpatialAudio::policy_valid(SpatialAudio::default_policy())
+    return 64 if SpatialAudio::policy_valid(policy(0.0, 1.0)) or SpatialAudio::policy_valid(policy(quotient(0.0, 0.0), 1.0))
+    return 65 if SpatialAudio::policy_valid(policy(1.0, -1.0)) or SpatialAudio::policy_valid(policy(1.0, quotient(1.0, 0.0)))
+    bad: SpatialAudio::Policy = SpatialAudio::Policy{speed_of_sound: quotient(0.0, 0.0), units_per_meter: 1.0, doppler_factor: 1.0}
+    return 66 if SpatialAudio::policy_valid(bad)
+    return 67 if not near(SpatialAudio::doppler_ratio_scaled(source_at(-10.0, 34.3, 1.0, 2.0), listener_at(0.0, 0.0), bad), 1.0)
+    return 68 if not near(SpatialAudio::doppler_ratio(source_at(0.0, 34.3, 1.0, 2.0), listener_at(0.0, 0.0)), 1.0)
+    0
+
+def main() -> i32:
+    distance: i32 = distance_curve()
+    return distance if distance != 0
+    cone: i32 = cone_curve()
+    return cone if cone != 0
+    doppler: i32 = doppler_curve()
+    return doppler if doppler != 0
+    scale_mismatch_and_policy()

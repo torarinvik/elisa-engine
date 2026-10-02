@@ -41,6 +41,11 @@ module WorldAudio:
             detached_finished: usize
             listener_lost: bool
 
+        # The gain and Doppler pitch pushed to an emitter's native voice.
+        struct EmitterMix:
+            gain: f32
+            pitch: f32
+
         affine struct Emitters:
             private:
                 entities: mutable World::EntityRef[WorldAudio::MAX_EMITTERS]
@@ -51,6 +56,7 @@ module WorldAudio:
                 listener: mutable SpatialAudio::Listener
                 listener_entity: mutable World::EntityRef
                 listener_tracked: mutable bool
+                policy: mutable SpatialAudio::Policy
 
     private:
         const module Sentinel:
@@ -135,10 +141,11 @@ module WorldAudio:
             strength
 
         def push_mix(session: RuntimeServices::Session&, voice: AudioRuntime::VoiceHandle,
-            source: SpatialAudio::Source, listener: SpatialAudio::Listener) -> i32:
+            source: SpatialAudio::Source, listener: SpatialAudio::Listener,
+            policy: SpatialAudio::Policy) -> i32:
             catch RuntimeServices::audio_set_voice_spatial(session, voice,
                 SpatialAudio::spatial_gain(source, listener),
-                SpatialAudio::doppler_ratio(source, listener)):
+                SpatialAudio::doppler_ratio_scaled(source, listener, policy)):
                 ok: Mix::OK
                 AudioRuntime::AudioError.InvalidHandle: Mix::VOICE_GONE
                 RuntimeServices::RuntimeServicesError.SessionStopped: Mix::SESSION_STOPPED
@@ -188,6 +195,7 @@ module WorldAudio:
                 listener: still_listener(),
                 listener_entity: World::EntityRef{world_epoch: 0, id: 0},
                 listener_tracked: false,
+                policy: SpatialAudio::default_policy(),
             }
 
         def emitter_count(emitters: Emitters&) -> usize:
@@ -198,6 +206,24 @@ module WorldAudio:
 
         def listener_tracked(emitters: Emitters&) -> bool:
             emitters.listener_tracked
+
+        def policy(emitters: Emitters&) -> SpatialAudio::Policy:
+            emitters.policy
+
+        # Set the scene scale and Doppler policy; the next update applies it.
+        def set_policy(emitters: mutable Emitters&,
+            policy: SpatialAudio::Policy) -> void error[WorldAudioError]:
+            raise WorldAudioError.InvalidSettings if not SpatialAudio::policy_valid(policy)
+            emitters.policy <- policy
+
+        # The mix most recently pushed for an entity's voice, recomputed from
+        # the committed source, listener and policy.
+        def emitter_mix(emitters: Emitters&, entity: World::EntityRef) -> EmitterMix error[WorldAudioError]:
+            source: SpatialAudio::Source = try emitter_source(emitters, entity)
+            EmitterMix{
+                gain: SpatialAudio::spatial_gain(source, emitters.listener),
+                pitch: SpatialAudio::doppler_ratio_scaled(source, emitters.listener, emitters.policy),
+            }
 
         def emitter_source(emitters: Emitters&, entity: World::EntityRef) -> SpatialAudio::Source error[WorldAudioError]:
             raise WorldAudioError.EmitterNotFound if emitter_index(emitters, entity) == Sentinel::NO_EMITTER
@@ -250,7 +276,7 @@ module WorldAudio:
             raise WorldAudioError.Capacity if attached == 2
             raise WorldAudioError.InvalidSettings if attached == 3
             stored: bool = AudioRuntime::VoiceHandles::store(&emitters.voices, emitters.count, voice)
-            mixed: i32 = push_mix(session, voice, source, emitters.listener) if stored else Mix::FAILED
+            mixed: i32 = push_mix(session, voice, source, emitters.listener, emitters.policy) if stored else Mix::FAILED
             if mixed != Mix::OK:
                 AudioRuntime::VoiceHandles::clear(&emitters.voices, emitters.count)
                 rolled_back: bool = catch SpatialAudio::source_detach(&emitters.sources, entity.id):
@@ -329,7 +355,7 @@ module WorldAudio:
                     previous: SpatialAudio::Source = try emitter_source(emitters, emitters.entities[index])
                     source: SpatialAudio::Source = moved_source(previous, pose,
                         emitters.forwards[index], delta_seconds)
-                    mixed: i32 = push_mix(session, voice, source, listener)
+                    mixed: i32 = push_mix(session, voice, source, listener, emitters.policy)
                     if mixed == Mix::VOICE_GONE:
                         removed[index] <- true
                         finished <- finished + 1
@@ -384,7 +410,7 @@ module WorldAudio:
                     error failure: false
                 raise WorldAudioError.BindingTableCorrupt if not stored
                 voice: AudioRuntime::VoiceHandle = try voice_at(emitters, index)
-                mixed: i32 = push_mix(session, voice, staged[index], emitters.listener)
+                mixed: i32 = push_mix(session, voice, staged[index], emitters.listener, emitters.policy)
                 if mixed == Mix::VOICE_GONE:
                     removed[index] <- true
                     removed_finished <- removed_finished + 1

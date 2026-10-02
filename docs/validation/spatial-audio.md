@@ -142,3 +142,34 @@ Validation on 2026-09-21 (macOS 27.0 / Apple M5, SDL3/Metal):
   remaining binding. The per-body material fixture verifies full-restitution
   rebound. The 30 Hz and 120 Hz render captures match at 640x480. Source-length,
   module-hygiene and whitespace checks passed.
+
+## Scene scale and numeric curves (S03, 2026-10-02)
+
+`SpatialAudio::Policy` sets the speed of sound (m/s), scene units per metre and
+a Doppler factor. Pitch is `(c + f*v_l) / (c - f*v_s)`, where `c` is the speed of
+sound in scene units per second, `v_s` is the source speed toward the listener
+and `v_l` the listener speed toward the source. It is clamped to [0.5, 2]. An
+invalid policy, or a source at the listener position, gives 1.
+`doppler_ratio` keeps the metre default. `WorldAudio::set_policy` validates and
+stores the policy per emitter set. `emitter_mix` returns the gain and pitch
+pushed to the native voice. The division lives in float-only
+`src/audio/spatial_scale.elisa`. `proof/spatial_scale.elisa` proves that it
+never divides by a zero, negative or NaN denominator (10/10 obligations).
+
+Evidence:
+
+- `test/audio_spatial_scale.elisa` (in the shared gate) checks the curves to
+  1e-4. Linear distance rolloff is checked at seven points, including in
+  centimetres. Cone interpolation and occlusion scaling are also checked.
+  Doppler is checked for an approaching or receding source and listener, factors
+  0 and 2, and both clamps, at 1, 100 and 0.01 units per metre. It also checks
+  that crossing motion gives no shift and that invalid policies are rejected.
+- `test/world_audio_scale_probe.elisa` runs in the native smoke project
+  `world-audio-scale-smoke` (SDL3/Metal, silent miniaudio). It drives a metre
+  rig and a centimetre rig through the same motion. Each rig gets gain 0.85 and
+  pitch 343/313 for a 30 m/s source, and 0.875 and 358/343 for a 15 m/s
+  listener. A hitch step gives unit pitch. Despawning each source stops its
+  voice, and the native active-voice count returns to its baseline.
+
+Limits: the mix is still gain and pitch only (no panning or HRTF), and rolloff is
+linear only.

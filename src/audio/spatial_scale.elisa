@@ -1,0 +1,43 @@
+# Scene-scale Doppler arithmetic for SpatialAudio (plan S03), kept float-only
+# and free of structs so the prover can check it (proof/spatial_scale.elisa).
+# Guards use `not (x > LIMIT)`: NaN fails every comparison, so a `<=` guard
+# would let a NaN denominator through to the division.
+module SpatialScale:
+    public:
+        # Doppler pitch is clamped to the native mixer's accepted range.
+        const MIN_RATIO: f32 = 0.5
+        const MAX_RATIO: f32 = 2.0
+        # Policy bounds: speed of sound in metres per second, scene units per
+        # metre, and the Doppler exaggeration factor.
+        const MIN_SPEED: f32 = 1.0
+        const MAX_SPEED: f32 = 100000.0
+        const MIN_UNITS: f32 = 0.001
+        const MAX_UNITS: f32 = 1000.0
+        const MAX_FACTOR: f32 = 10.0
+        # Smallest denominator that is divided; anything at or below it means
+        # the source moves toward the listener at (or beyond) sound speed.
+        const MIN_DENOMINATOR: f32 = 0.000001
+
+        def policy_valid(speed: f32, units: f32, factor: f32) -> bool:
+            speed >= MIN_SPEED and speed <= MAX_SPEED and units >= MIN_UNITS and units <= MAX_UNITS and factor >= 0.0 and factor <= MAX_FACTOR
+
+        # Speed of sound expressed in scene units per second.
+        def scene_speed(speed: f32, units: f32) -> f32:
+            speed * units
+
+        def quotient(numerator: f32, denominator: f32) -> f32:
+            requires denominator > MIN_DENOMINATOR
+            numerator / denominator
+
+        def clamp_ratio(value: f32) -> f32:
+            return MIN_RATIO if not (value > MIN_RATIO)
+            return MAX_RATIO if not (value < MAX_RATIO)
+            value
+
+        # Classic Doppler: (c + f*v_listener) / (c - f*v_source), with both
+        # speeds measured toward the other party in scene units per second.
+        def ratio(scene_speed_of_sound: f32, listener_toward: f32, source_toward: f32,
+            factor: f32) -> f32:
+            denominator: f32 = scene_speed_of_sound - factor * source_toward
+            return MAX_RATIO if not (denominator > MIN_DENOMINATOR)
+            clamp_ratio(quotient(scene_speed_of_sound + factor * listener_toward, denominator))

@@ -1,0 +1,161 @@
+# Plan S03 end-to-end: the same motion authored in metres and in centimetres
+# produces the same pushed gain and Doppler pitch through WorldAudio, both
+# match the expected curves numerically, and despawning the emitting entities
+# stops their native voices.
+include "../src/runtime/world_audio.elisa"
+include "../src/vendor/elisa_math.elisa"
+
+module WorldAudioScaleProbe:
+    private:
+        const module Tune:
+            STEP: f32 = 1.0 / 60.0
+            HITCH: f32 = 0.5
+            EPSILON: f32 = 0.001
+            CENTIMETRES: f32 = 100.0
+
+        struct Rig:
+            listener: World::EntityRef
+            source: World::EntityRef
+            units: f32
+            origin_x: f32
+
+        def place(world: mutable World::World&, entity: World::EntityRef, x: f32, z: f32) -> bool:
+            catch World::world_set_transform(world, entity, Geometry::Transform{
+                position: Geometry::Vec3{x: x, y: 0.0, z: z},
+                rotation: Geometry::quat_identity(),
+                scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            }):
+                ok: true
+                error failure: false
+
+        def settings(units: f32) -> WorldAudio::EmitterSettings:
+            WorldAudio::EmitterSettings{
+                local_forward: Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0},
+                minimum_distance: units,
+                maximum_distance: 11.0 * units,
+                inner_cone_cos: -1.0,
+                outer_cone_cos: -1.0,
+                outer_cone_gain: 1.0,
+            }
+
+        def near(value: f32, expected: f32) -> bool:
+            ElisaMath::fabsf(value - expected) <= Tune::EPSILON
+
+        def voice_count(session: RuntimeServices::Session&) -> usize:
+            catch RuntimeServices::audio_active_voice_count(session):
+                value: value
+                error failure: 999
+
+        def spawn(world: mutable World::World&) -> World::EntityRef:
+            catch World::world_spawn(world, World::StaticObject.Structure):
+                value: value
+                error failure: World::EntityRef{world_epoch: 0, id: 0}
+
+        # Positions in metres are multiplied by the rig's units per metre.
+        def place_rig(world: mutable World::World&, rig: Rig, listener_z: f32, source_z: f32) -> bool:
+            place(world, rig.listener, rig.origin_x, listener_z * rig.units) and place(world, rig.source, rig.origin_x, source_z * rig.units)
+
+        def step(session: RuntimeServices::Session&, world: World::World&,
+            emitters: mutable WorldAudio::Emitters&, seconds: f32) -> bool:
+            catch WorldAudio::update(session, world, emitters, seconds):
+                value: value.updated == 1
+                error failure: false
+
+        def mix_matches(emitters: WorldAudio::Emitters&, rig: Rig, gain: f32, pitch: f32) -> bool:
+            catch WorldAudio::emitter_mix(emitters, rig.source):
+                value: near(value.gain, gain) and near(value.pitch, pitch)
+                error failure: false
+
+        def setup(session: RuntimeServices::Session&, world: mutable World::World&,
+            emitters: mutable WorldAudio::Emitters&, rig: Rig,
+            clip: AudioRuntime::ClipHandle) -> i32:
+            return 1 if rig.listener.id == 0 or rig.source.id == 0
+            return 2 if not place_rig(world, rig, 0.0, -3.0)
+            if rig.units != 1.0:
+                scaled: bool = catch WorldAudio::set_policy(emitters, SpatialAudio::Policy{
+                    speed_of_sound: 343.0, units_per_meter: rig.units, doppler_factor: 1.0}):
+                    ok: true
+                    error failure: false
+                return 3 if not scaled
+            listening: bool = catch WorldAudio::listen_from(world, emitters, rig.listener):
+                ok: true
+                error failure: false
+            return 4 if not listening
+            voice: AudioRuntime::VoiceHandle = catch RuntimeServices::audio_play(session, clip, true,
+                AudioRuntime::Bus.Effects, 1.0, 1):
+                value: value
+                error failure: return 5
+            attached: bool = catch WorldAudio::attach(session, world, emitters, rig.source, voice, settings(rig.units)):
+                ok: true
+                error failure: false
+            return 6 if not attached
+            return 7 if not step(session, world, emitters, Tune::STEP)
+            return 8 if not mix_matches(emitters, rig, 1.0 - 2.0 / 10.0, 1.0)
+            0
+
+        # Source approaches at 30 m/s: gain 1 - (2.5 - 1) / 10, pitch 343 / 313.
+        # Then the listener approaches at 15 m/s: gain 1 - (2.25 - 1) / 10,
+        # pitch 358 / 343. A hitch step carries no Doppler.
+        def motion(session: RuntimeServices::Session&, world: mutable World::World&,
+            emitters: mutable WorldAudio::Emitters&, rig: Rig) -> i32:
+            return 10 if not place_rig(world, rig, 0.0, -2.5)
+            return 11 if not step(session, world, emitters, Tune::STEP)
+            return 12 if not mix_matches(emitters, rig, 0.85, 343.0 / 313.0)
+            return 13 if not place_rig(world, rig, -0.25, -2.5)
+            return 14 if not step(session, world, emitters, Tune::STEP)
+            return 15 if not mix_matches(emitters, rig, 0.875, 358.0 / 343.0)
+            return 16 if not place_rig(world, rig, -0.25, -5.0)
+            return 17 if not step(session, world, emitters, Tune::HITCH)
+            return 18 if not mix_matches(emitters, rig, 1.0 - 3.75 / 10.0, 1.0)
+            0
+
+        def destroy(session: RuntimeServices::Session&, world: mutable World::World&,
+            emitters: mutable WorldAudio::Emitters&, rig: Rig) -> i32:
+            despawned: bool = catch World::world_despawn(world, rig.source):
+                ok: true
+                error failure: false
+            return 20 if not despawned
+            report: WorldAudio::UpdateReport = catch WorldAudio::update(session, world, emitters, Tune::STEP):
+                value: value
+                error failure: return 21
+            return 22 if report.detached_despawned != 1 or report.updated != 0
+            return 23 if WorldAudio::emitter_count(emitters) != 0
+            0
+
+    public:
+        def run(session: RuntimeServices::Session&) -> i32:
+            world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 101
+            clip: AudioRuntime::ClipHandle = catch RuntimeServices::audio_decode_file(session,
+                "test/fixtures/audio-smoke.wav"):
+                value: value
+                error failure: return 102
+            baseline: usize = voice_count(session)
+            metres: Rig = Rig{listener: spawn(&world), source: spawn(&world), units: 1.0, origin_x: 0.0}
+            centimetres: Rig = Rig{listener: spawn(&world), source: spawn(&world),
+                units: Tune::CENTIMETRES, origin_x: 5000.0}
+            metre_set: mutable WorldAudio::Emitters = WorldAudio::Emitters()
+            centimetre_set: mutable WorldAudio::Emitters = WorldAudio::Emitters()
+            invalid: i32 = catch WorldAudio::set_policy(&centimetre_set, SpatialAudio::Policy{
+                speed_of_sound: 343.0, units_per_meter: 0.0, doppler_factor: 1.0}):
+                ok: 0
+                WorldAudio::WorldAudioError.InvalidSettings: 1
+                error failure: 2
+            return 103 if invalid != 1 or WorldAudio::policy(centimetre_set).units_per_meter != 1.0
+            status: i32 = setup(session, &world, &metre_set, metres, clip)
+            return 110 + status if status != 0
+            status2: i32 = setup(session, &world, &centimetre_set, centimetres, clip)
+            return 130 + status2 if status2 != 0
+            return 104 if voice_count(session) != baseline + 2
+            moved: i32 = motion(session, &world, &metre_set, metres)
+            return 150 + moved if moved != 0
+            moved2: i32 = motion(session, &world, &centimetre_set, centimetres)
+            return 170 + moved2 if moved2 != 0
+            gone: i32 = destroy(session, &world, &metre_set, metres)
+            return 190 + gone if gone != 0
+            return 105 if voice_count(session) != baseline + 1
+            gone2: i32 = destroy(session, &world, &centimetre_set, centimetres)
+            return 210 + gone2 if gone2 != 0
+            return 106 if voice_count(session) != baseline
+            0

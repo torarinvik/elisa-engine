@@ -1,6 +1,7 @@
 # Engine-owned spatial audio state. Native mixers consume the bounded source
 # snapshot; entity lifetime and attenuation policy remain portable and tested.
 include "../math/geometry.elisa"
+include "./spatial_scale.elisa"
 
 module SpatialAudio:
     private:
@@ -136,15 +137,35 @@ module SpatialAudio:
         def spatial_gain(source: Source, listener: Listener) -> f32:
             clamp_gain(distance_gain(source, listener) * cone_gain(source, listener) * (1.0 - source.occlusion))
 
-        def doppler_ratio(source: Source, listener: Listener) -> f32:
-            offset: Geometry::Vec3 = Geometry::vec3_sub(source.position, listener.position)
+        # Scene scale and Doppler policy. Positions and velocities are in scene
+        # units; `units_per_meter` converts the physical speed of sound so a
+        # 100-units-per-metre scene hears the same pitch shift as a metre scene.
+        struct Policy:
+            speed_of_sound: f32
+            units_per_meter: f32
+            doppler_factor: f32
+
+        def default_policy() -> Policy:
+            Policy{speed_of_sound: Limits::SPEED_OF_SOUND, units_per_meter: 1.0, doppler_factor: 1.0}
+
+        def policy_valid(policy: Policy) -> bool:
+            SpatialScale::policy_valid(policy.speed_of_sound, policy.units_per_meter, policy.doppler_factor)
+
+        # Pitch ratio (c + f*v_l) / (c - f*v_s), where v_s is the source speed
+        # toward the listener and v_l the listener speed toward the source, in
+        # scene units per second. Clamped to [0.5, 2]; an invalid policy or
+        # coincident positions give 1.
+        def doppler_ratio_scaled(source: Source, listener: Listener, policy: Policy) -> f32:
+            return 1.0 if not policy_valid(policy)
+            offset: Geometry::Vec3 = Geometry::vec3_sub(listener.position, source.position)
             length: f32 = Geometry::sqrt_f32(Geometry::vec3_length_squared(offset))
-            return 1.0 if length <= 0.0
-            direction: Geometry::Vec3 = Geometry::vec3_scale(offset, 1.0 / length)
-            relative_speed: f32 = Geometry::vec3_dot(Geometry::vec3_sub(source.velocity, listener.velocity), direction)
-            denominator: f32 = Limits::SPEED_OF_SOUND + relative_speed
-            return 2.0 if denominator <= Limits::SPEED_OF_SOUND * 0.5
-            value: f32 = Limits::SPEED_OF_SOUND / denominator
-            return 0.5 if value <= 0.5
-            return 2.0 if value >= 2.0
-            value
+            return 1.0 if not (length > 0.0)
+            toward_listener: Geometry::Vec3 = Geometry::vec3_scale(offset, 1.0 / length)
+            source_toward: f32 = Geometry::vec3_dot(source.velocity, toward_listener)
+            listener_toward: f32 = 0.0 - Geometry::vec3_dot(listener.velocity, toward_listener)
+            SpatialScale::ratio(SpatialScale::scene_speed(policy.speed_of_sound, policy.units_per_meter),
+                listener_toward, source_toward, policy.doppler_factor)
+
+        # Doppler ratio for a metre-scale scene.
+        def doppler_ratio(source: Source, listener: Listener) -> f32:
+            doppler_ratio_scaled(source, listener, default_policy())

@@ -15,8 +15,7 @@ def tool_path(variable: sview, name: sview) -> sview:
             return candidate
     ""
 def run_visible(program: sview, arguments: darray[sview]) -> i64:
-    # The launcher reports a spawn that never started (e.g. ENOMEM under swap pressure) as a
-    # silent 126; retry it, and name the program if it still cannot start.
+    # A spawn that never started (e.g. ENOMEM under swap pressure) is a silent 126: retry, then name the program.
     for attempt in 0..<3:
         result: ProcessCapture =
             empty_input: sview = ""
@@ -240,7 +239,6 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-
     println("Deterministic headless game tests passed.")
     bridge_scene_test_binary: sview = str(root.joinpath("build/scene-bridge-test"))
     _ =
@@ -550,7 +548,7 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    for policy_test in ["audio_spatial", "audio_events", "audio_event_assets", "audio_mixer", "audio_virtual", "audio_triggers", "nav_agent"]:
+    for policy_test in ["audio_spatial", "audio_spatial_scale", "audio_events", "audio_event_assets", "audio_mixer", "audio_virtual", "audio_triggers", "nav_agent"]:
         # A typed local built from an f-string inside this loop traps elisascript --check; keep the paths inline.
         if run_visible(compiler, ["-emit", "exe", "-o", str(root.joinpath(f"build/{policy_test}-test")), str(root.joinpath(f"test/{policy_test}.elisa"))]) != 0 or run_visible(str(root.joinpath(f"build/{policy_test}-test")), []) != 0:
             return 1
@@ -570,10 +568,9 @@ def main(arguments: darray[sview]) -> i64:
         if run_visible(compiler, ["-emit", "exe", "-o", str(root.joinpath(f"build/{asset_test}-test")), str(root.joinpath(f"test/{asset_test}.elisa"))]) != 0 or run_visible(str(root.joinpath(f"build/{asset_test}-test")), []) != 0:
             return 1
     # The Metal viewport bridge (no window) builds through its own link script.
-    if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), "viewport_render"]) != 0 or run_visible(str(root.joinpath("build/viewport_render-test")), []) != 0:
-        return 1
-    if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), "viewport_motion"]) != 0 or run_visible(str(root.joinpath("build/viewport_motion-test")), []) != 0:
-        return 1
+    for viewport_test in ["viewport_render", "viewport_motion"]:
+        if run_visible("bash", [str(root.joinpath("scripts/build_viewport_native_test.sh")), viewport_test]) != 0 or run_visible(str(root.joinpath(f"build/{viewport_test}-test")), []) != 0:
+            return 1
     # N01: cooked, cached navmeshes through the Recast/Detour service.
     if run_visible("bash", [str(root.joinpath("scripts/build_nav_native_test.sh")), "nav_cook_native"]) != 0 or run_visible(str(root.joinpath("build/nav_cook_native-test")), []) != 0:
         return 1
