@@ -1,0 +1,36 @@
+include "../src/ui/focus_nav.elisa"
+
+def main() -> i32:
+    mutable n: UiFocusNav::Nav = UiFocusNav::new_nav()
+    # Two rows of three 100x40 buttons; the middle of row 2 is disabled.
+    for r in 0..<2:
+        for c in 0..<3:
+            return 1 if UiFocusNav::add_widget(&n, c.i64() * 120, r.i64() * 60, 100, 40, true) < 0
+    return 2 if not UiFocusNav::set_enabled(&n, 4, false) or n.count != 6
+    return 3 if UiFocusNav::add_widget(&n, 0, 0, 0 - 1, 4, true) >= 0
+    # No focus: any move takes the first enabled widget.
+    return 4 if not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Right) or n.focus != 0
+    return 5 if not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Right) or n.focus != 1
+    # Down from the middle skips the disabled widget below and lands diagonally.
+    return 6 if not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Down) or n.focus != 3
+    return 7 if UiFocusNav::step_dir(&n, UiFocusNav::Dir.Down) or n.focus != 3
+    return 8 if UiFocusNav::step_dir(&n, UiFocusNav::Dir.Left) or n.focus != 3
+    return 9 if not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Right) or n.focus != 5
+    return 10 if not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Up) or n.focus != 2
+    # Straight down from 0 picks the aligned 3.
+    return 11 if not UiFocusNav::focus_at(&n, 0) or not UiFocusNav::step_dir(&n, UiFocusNav::Dir.Down) or n.focus != 3
+    # Tab order wraps and skips disabled widgets.
+    return 12 if not UiFocusNav::focus_at(&n, 3) or not UiFocusNav::step_seq(&n, 1) or n.focus != 5
+    return 13 if not UiFocusNav::step_seq(&n, 1) or n.focus != 0
+    return 14 if not UiFocusNav::step_seq(&n, 0 - 1) or n.focus != 5
+    return 15 if not UiFocusNav::step_seq(&n, 0 - 1) or n.focus != 3
+    # Disabling the focused widget clears focus; disabled widgets refuse focus.
+    return 16 if UiFocusNav::focus_at(&n, 4) or UiFocusNav::focus_at(&n, 9)
+    return 17 if not UiFocusNav::set_enabled(&n, 3, false) or n.focus != 0 - 1
+    # A single enabled widget: Tab does not report a change.
+    mutable one: UiFocusNav::Nav = UiFocusNav::new_nav()
+    return 18 if UiFocusNav::add_widget(&one, 0, 0, 10, 10, true) != 0 or not UiFocusNav::step_seq(&one, 1)
+    return 19 if UiFocusNav::step_seq(&one, 1) or one.focus != 0
+    mutable none: UiFocusNav::Nav = UiFocusNav::new_nav()
+    return 20 if UiFocusNav::step_dir(&none, UiFocusNav::Dir.Up) or UiFocusNav::step_seq(&none, 1)
+    return 0

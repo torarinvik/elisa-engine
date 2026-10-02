@@ -1,0 +1,111 @@
+# Directional and sequential focus for keyboard and gamepad UI. Widgets register
+# a box and an enabled flag; moving focus picks the nearest enabled widget whose
+# centre lies in the pressed direction, preferring alignment over raw distance,
+# and Tab order walks registration order with wrap-around. Disabled or removed
+# widgets never receive focus.
+module UiFocusNav:
+    public:
+        const module Tune:
+            CAPACITY: i64 = 32
+            # Off-axis distance costs this many times on-axis distance.
+            CROSS_WEIGHT: i64 = 3
+
+        enum Dir:
+            Left
+            Right
+            Up
+            Down
+
+        struct Nav:
+            cx: mutable i64[32]
+            cy: mutable i64[32]
+            enabled: mutable bool[32]
+            count: mutable i64
+            focus: mutable i64
+
+        def new_nav() -> Nav:
+            zx: i64[32] = zeroed
+            zy: i64[32] = zeroed
+            ze: bool[32] = zeroed
+            Nav{cx: zx, cy: zy, enabled: ze, count: 0, focus: 0 - 1}
+
+        # Returns the widget index, or -1 when full or the box is malformed.
+        def add_widget(n: mutable Nav&, x: i64, y: i64, w: i64, h: i64, enabled: bool) -> i64:
+            return 0 - 1 if n.count >= 32 or w < 0 or h < 0
+            n.cx[n.count] <- x + w / 2
+            n.cy[n.count] <- y + h / 2
+            n.enabled[n.count] <- enabled
+            n.count <- n.count + 1
+            n.count - 1
+
+        def set_enabled(n: mutable Nav&, index: i64, enabled: bool) -> bool:
+            return false if index < 0 or index >= n.count or index >= 32
+            n.enabled[index] <- enabled
+            n.focus <- 0 - 1 if n.focus == index and not enabled
+            true
+
+        def focus_at(n: mutable Nav&, index: i64) -> bool:
+            return false if index < 0 or index >= n.count or index >= 32
+            return false if not n.enabled[index]
+            n.focus <- index
+            true
+
+        def nav_abs(v: i64) -> i64:
+            v if v >= 0 else 0 - v
+
+        # Cost of moving from the focused widget to `k` in `dir`, or -1 when
+        # `k` is not strictly in that direction.
+        def dir_cost(n: Nav&, k: i64, dir: Dir) -> i64:
+            return 0 - 1 if n.focus < 0 or n.focus >= 32 or k < 0 or k >= 32
+            dx: i64 = n.cx[k] - n.cx[n.focus]
+            dy: i64 = n.cy[k] - n.cy[n.focus]
+            mutable along: i64 = 0
+            mutable cross: i64 = 0
+            match dir:
+                Dir.Left:
+                    along <- 0 - dx
+                    cross <- nav_abs(dy)
+                Dir.Right:
+                    along <- dx
+                    cross <- nav_abs(dy)
+                Dir.Up:
+                    along <- 0 - dy
+                    cross <- nav_abs(dx)
+                Dir.Down:
+                    along <- dy
+                    cross <- nav_abs(dx)
+            return 0 - 1 if along <= 0
+            along + cross * Tune::CROSS_WEIGHT
+
+        # Moves focus in `dir`; with no focus it takes the first enabled widget.
+        # Returns whether focus changed. Ties keep the earlier widget.
+        def step_dir(n: mutable Nav&, dir: Dir) -> bool:
+            return step_seq(n, 1) if n.focus < 0
+            mutable best: i64 = 0 - 1
+            mutable best_cost: i64 = 0
+            for k in 0..<32:
+                ki: i64 = k.i64()
+                mutable c: i64 = 0 - 1
+                if ki < n.count and ki != n.focus and n.enabled[k]:
+                    c <- dir_cost(n, ki, dir)
+                if c >= 0 and (best < 0 or c < best_cost):
+                    best <- ki
+                    best_cost <- c
+            return false if best < 0
+            n.focus <- best
+            true
+
+        # Tab (+1) / Shift-Tab (-1) in registration order, wrapping, skipping
+        # disabled widgets.
+        def step_seq(n: mutable Nav&, delta: i64) -> bool:
+            return false if n.count <= 0 or n.count > 32
+            start: i64 = n.count - 1 if delta > 0 else 0
+            mutable at: i64 = n.focus if n.focus >= 0 else start
+            d: i64 = 1 if delta > 0 else n.count - 1
+            mutable found: i64 = 0 - 1
+            for k in 0..<32:
+                at <- (at + d) % n.count if k.i64() < n.count and found < 0 else at
+                found <- at if k.i64() < n.count and found < 0 and n.enabled[at] else found
+            return false if found < 0 or found == n.focus
+            n.focus <- found
+            true
