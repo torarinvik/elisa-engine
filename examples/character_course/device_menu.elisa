@@ -1,0 +1,77 @@
+# The Display and Audio output rows of the course settings menu. Left/Right
+# cycle the connected displays (the window moves at once) and the playback
+# outputs plus the system default (opened on the next launch, since the
+# loaded clips belong to the running mixer). Picks are indices into the
+# listings taken when the menu opened; the play loop draws the row text.
+module CourseDeviceMenu:
+    private:
+        const module Limits:
+            NAME_BYTES: usize = 48
+
+    public:
+        const ROW_DISPLAY: i64 = 0
+        const ROW_OUTPUT: i64 = 1
+        const ROW_COUNT: i64 = 2
+        # The output pick that means "follow the system default".
+        const DEFAULT_OUTPUT: i64 = -1
+
+        struct Picks:
+            display: i64
+            display_count: i64
+            output: i64
+            output_count: i64
+
+        # Wraps `value + delta` into `low ..< count`.
+        def cycle(value: i64, delta: i64, low: i64, count: i64) -> i64:
+            return low if count <= low
+            span: i64 = count - low
+            low + ((value - low + delta) % span + span) % span
+
+        def adjust(picks: Picks, row: i64, delta: i64) -> Picks:
+            if row == ROW_DISPLAY:
+                Picks{display: cycle(picks.display, delta, 0, picks.display_count), display_count: picks.display_count,
+                    output: picks.output, output_count: picks.output_count}
+            elif row == ROW_OUTPUT:
+                Picks{display: picks.display, display_count: picks.display_count,
+                    output: cycle(picks.output, delta, DEFAULT_OUTPUT, picks.output_count), output_count: picks.output_count}
+            else:
+                picks
+
+        def row_name(row: i64) -> cstr:
+            "Display" if row == ROW_DISPLAY else "Audio output"
+
+        def same_name(a: AudioDevices::Device&, b: AudioDevices::Device&) -> bool:
+            same: mutable bool = a.name_count == b.name_count and a.name_count != 0
+            for i in 0..<a.name_count |same, a, b|:
+                same <- false if a.name[i] != b.name[i]
+            same
+
+        # Picks for the window's display and the saved output; an output that
+        # is gone, or none saved, reads as the system default.
+        def current(displays: ApplicationDisplays::Displays&, window_id: i32, saved: AudioDevices::Device&) -> Picks:
+            display: mutable i64 = 0
+            for i in 0..<displays.count |display, displays, window_id|:
+                display <- i.i64() if displays.items[i].id == window_id
+            total: i32 = AudioDevices::count()
+            outputs: i64 = total.i64() if total > 0 else 0
+            output: mutable i64 = DEFAULT_OUTPUT
+            for i in 0..<outputs.usize() |output, saved|:
+                found: AudioDevices::Result = AudioDevices::device(i)
+                output <- i.i64() if same_name(&found.device, saved)
+            Picks{display: display, display_count: displays.count.i64(), output: output, output_count: outputs}
+
+        # The output to save: the picked device, or an empty name for default.
+        def chosen_output(picks: Picks&) -> AudioDevices::Device:
+            return DeviceSettings::empty_audio() if picks.output < 0 or picks.output >= picks.output_count
+            AudioDevices::device(picks.output.usize()).device
+
+        # The picked output's name cut at a code-point boundary to
+        # NAME_BYTES; an empty name means the system default.
+        def output_label(picks: Picks&) -> AudioDevices::Device:
+            device: mutable AudioDevices::Device = chosen_output(picks)
+            if device.name_count > Limits::NAME_BYTES:
+                cut: mutable usize = Limits::NAME_BYTES
+                while cut > 0 and (device.name[cut] & 192u8) == 128u8 |cut, device|:
+                    cut <- cut - 1
+                device <- AudioDevices::Device{name: device.name, name_count: cut, is_default: device.is_default}
+            device

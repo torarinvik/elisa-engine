@@ -5,8 +5,8 @@
         struct Legend:
             panel: mutable RenderScene::OverlayPanelHandle
             header: mutable RenderScene::OverlayTextHandle
-            labels: mutable RenderScene::OverlayTextHandle[13]
-            keys: mutable RenderScene::OverlayTextHandle[13]
+            labels: mutable RenderScene::OverlayTextHandle[15]
+            keys: mutable RenderScene::OverlayTextHandle[15]
             caption: mutable RenderScene::OverlayTextHandle
             words: CourseText::Captions
 
@@ -56,14 +56,18 @@
                 CourseControls::slot_name(row)
             elif row < CourseControls::PAD_FIRST:
                 CourseAccess::row_name(row - CourseControls::SLOT_COUNT)
-            else:
+            elif row < CourseControls::DEVICE_FIRST:
                 CoursePad::slot_name(row - CourseControls::PAD_FIRST)
+            else:
+                CourseDeviceMenu::row_name(row - CourseControls::DEVICE_FIRST)
 
         def row_key(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64) -> cstr:
             if row < CourseControls::SLOT_COUNT:
                 CourseControls::key_name(CourseControls::slot_code(keymap, row))
             elif row < CourseControls::PAD_FIRST:
                 CourseAccess::row_value(settings, row - CourseControls::SLOT_COUNT)
+            elif row >= CourseControls::DEVICE_FIRST:
+                "< Left/Right >"
             else:
                 CoursePad::button_name(CoursePad::slot_code(pads, row - CourseControls::PAD_FIRST))
 
@@ -127,8 +131,8 @@
             header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
                 box_color(0.78, 0.84, 0.9))
-            labels: mutable RenderScene::OverlayTextHandle[13] = zeroed
-            keys: mutable RenderScene::OverlayTextHandle[13] = zeroed
+            labels: mutable RenderScene::OverlayTextHandle[15] = zeroed
+            keys: mutable RenderScene::OverlayTextHandle[15] = zeroed
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -174,8 +178,8 @@
             try RenderScene::set_overlay_text_position(legend.header, Tune::LEGEND_X, legend_row_y(settings, -1))
             try RenderScene::set_overlay_text_color(legend.header, CourseAccess::header_color(settings))
             # Fields of a forwarded `Legend&` are copied out before the loop.
-            labels: RenderScene::OverlayTextHandle[13] = legend.labels
-            keys: RenderScene::OverlayTextHandle[13] = legend.keys
+            labels: RenderScene::OverlayTextHandle[15] = legend.labels
+            keys: RenderScene::OverlayTextHandle[15] = legend.keys
             scale: CourseAccess::Settings = settings
             for row in 0..<CourseControls::MENU_ROWS |labels, keys, scale, size, key_x|:
                 row_y: f32 = legend_row_y(&scale, row)
@@ -211,8 +215,8 @@
             try RenderScene::set_overlay_text(legend.header, legend_header(selected >= 0))
             highlight: RenderScene::Color = CourseAccess::highlight_color(settings)
             plain: RenderScene::Color = CourseAccess::text_color(settings)
-            labels: RenderScene::OverlayTextHandle[13] = legend.labels
-            keys: RenderScene::OverlayTextHandle[13] = legend.keys
+            labels: RenderScene::OverlayTextHandle[15] = legend.labels
+            keys: RenderScene::OverlayTextHandle[15] = legend.keys
             map: CourseControls::Keymap = keymap
             pad_map: CoursePad::Pad = pads
             values: CourseAccess::Settings = settings
@@ -239,9 +243,22 @@
             try RenderScene::set_overlay_text_visible(legend.caption, wanted != 0)
             wanted
 
+        # The device rows show live listings, so they are drawn apart from
+        # `row_key`: the display number, and the output name or default.
+        def refresh_device_rows(legend: Legend&, picks: CourseDeviceMenu::Picks&) -> void error[RenderScene::RenderSceneError]:
+            keys: RenderScene::OverlayTextHandle[15] = legend.keys
+            display: RenderScene::OverlayTextHandle = keys[(CourseControls::DEVICE_FIRST + CourseDeviceMenu::ROW_DISPLAY).usize()]
+            output: RenderScene::OverlayTextHandle = keys[(CourseControls::DEVICE_FIRST + CourseDeviceMenu::ROW_OUTPUT).usize()]
+            try RenderScene::set_overlay_text_i64(display, "< Display ", picks.display + 1)
+            name: AudioDevices::Device = CourseDeviceMenu::output_label(picks)
+            if name.name_count == 0:
+                try RenderScene::set_overlay_text(output, "< System default >")
+            else:
+                try RenderScene::set_overlay_text_utf8(output, &name.name[0], name.name_count.u32())
+
         def release_legend(legend: Legend&) -> void error[RenderScene::RenderSceneError]:
-            labels: RenderScene::OverlayTextHandle[13] = legend.labels
-            keys: RenderScene::OverlayTextHandle[13] = legend.keys
+            labels: RenderScene::OverlayTextHandle[15] = legend.labels
+            keys: RenderScene::OverlayTextHandle[15] = legend.keys
             for row in 0..<CourseControls::MENU_ROWS |labels, keys|:
                 label: RenderScene::OverlayTextHandle = labels[row.usize()]
                 key: RenderScene::OverlayTextHandle = keys[row.usize()]
@@ -283,6 +300,9 @@
             caption_shown: mutable u32 = 0
             menu_open: mutable bool = false
             menu: mutable CourseControls::Menu = CourseControls::Menu(keymap)
+            # Display and output picks are re-read each time the menu opens.
+            device_list: mutable ApplicationDisplays::Displays = ApplicationDisplays::list().displays
+            device_picks: mutable CourseDeviceMenu::Picks = devices_picks(&device_list)
             # Mouse-look holds the pointer only while playing outside the menu;
             # `look_held` is the last requested mode so an unsupported
             # platform is asked once per change, not every frame.
@@ -318,7 +338,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -361,7 +381,8 @@
                             pad_stored: bool = catch CoursePad::save(&pads):
                                 ok: true
                                 error failure: false
-                            stored: bool = keys_stored and access_stored and pad_stored
+                            devices_stored: bool = devices_menu_save(&device_picks)
+                            stored: bool = keys_stored and access_stored and pad_stored and devices_stored
                             _ = try refresh_legend(legend, keymap, pads, settings, -1)
                             _ = try RenderScene::set_overlay_text(instruction,
                                 "Controls saved | P resume" if stored else "Controls not saved; kept until quit | P resume")
@@ -369,12 +390,18 @@
                             _ = try RenderScene::set_overlay_text(instruction,
                                 "Reserved key | Esc P R Q L Tab and arrows stay fixed")
                         elif step.result == CourseControls::MenuResult.Adjusted:
-                            if menu.selected >= CourseControls::PAD_FIRST:
+                            if menu.selected >= CourseControls::DEVICE_FIRST:
+                                device_row: i64 = menu.selected - CourseControls::DEVICE_FIRST
+                                device_picks <- CourseDeviceMenu::adjust(device_picks, device_row, step.delta)
+                                if device_row == CourseDeviceMenu::ROW_DISPLAY and device_picks.display < device_list.count.i64():
+                                    _ = ApplicationDisplays::move_window_to(device_list.items[device_picks.display.usize()].id)
+                            elif menu.selected >= CourseControls::PAD_FIRST:
                                 pads <- CoursePad::cycle(pads, menu.selected - CourseControls::PAD_FIRST, step.delta)
                             else:
                                 settings <- CourseAccess::adjust(settings, menu.selected - CourseControls::SLOT_COUNT, step.delta)
                             _ = try layout_hud(legend, instruction, settings)
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
+                            try refresh_device_rows(legend, device_picks)
                             language_row: bool = menu.selected == CourseControls::SLOT_COUNT + CourseAccess::ROW_LANGUAGE
                             caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, 0 if language_row else caption_shown)
                         elif step.result != CourseControls::MenuResult.Ignored:
@@ -397,7 +424,10 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_CONTROLS) and state.phase == Phase.Paused:
                             menu_open <- true
                             menu <- CourseControls::Menu(keymap)
+                            device_list <- ApplicationDisplays::list().displays
+                            device_picks <- devices_picks(&device_list)
                             _ = try refresh_legend(legend, keymap, pads, settings, menu.selected)
+                            try refresh_device_rows(legend, device_picks)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_RESTART):
                             character <- try restart_character(session, character)

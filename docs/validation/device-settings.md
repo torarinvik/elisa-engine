@@ -31,6 +31,24 @@ examples/character_course/devices.inc wires the settings into the course:
 
 Both smokes passed. A negative control made the handoff save no display. The relaunch then exited with status 6, which is 262 truncated to 8 bits.
 
+## In-game device rows
+
+The paused settings menu (Tab) ends with two rows from examples/character_course/device_menu.elisa (`CourseDeviceMenu`):
+
+- **Display** cycles the connected displays with Left/Right, a click or the D-pad. The window moves to the picked display at once.
+- **Audio output** cycles the system default and each playback device. It is saved, and it opens on the next launch: the loaded clips belong to the running mixer, so the course does not swap outputs mid-game.
+
+Both listings are re-read whenever the menu opens. The pick starts on the window's display and on the saved output; a saved output that is gone reads as the system default. Closing the menu saves the window's display and the picked output to `course-devices`. Quitting keeps the output already in the record. A failed save reports "Controls not saved" like the other rows.
+
+Self-test `devices_menu_test()` (codes 266–269) checks:
+
+- wrapping in both directions, including the default slot, and an empty listing;
+- that the display pick is the window's display and a missing output maps to the default;
+- that stepping the output row picks device 0 and steps back to the default;
+- that a full display cycle returns to the start.
+
+Both course smokes passed. A negative control that removed the wrap made the self-test exit with 10, which is 266 truncated to 8 bits.
+
 Remaining gaps:
-- There is no in-game menu for picking a display or an output.
-- Only one display was available.
+- Only one display was available, so moving between displays was not observed.
+- The output-name cut at 48 bytes is not exercised; no connected device has a name that long.

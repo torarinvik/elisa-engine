@@ -12,8 +12,24 @@
                     _ = DeviceSettings::reopen_audio(&saved, Tune::AUDIO_SAMPLE_RATE_HZ, Tune::AUDIO_CHANNELS)
             saved
 
+        # Keeps the output in the record, which the settings menu may have
+        # changed since startup.
         def devices_quit(saved: DeviceSettings::Saved&) -> bool:
-            DeviceSettings::save_window(DEVICES_KEY, &saved.audio)
+            current: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
+            audio: AudioDevices::Device = current.audio if current.stored == DeviceSettings::Stored.Loaded else saved.audio
+            DeviceSettings::save_window(DEVICES_KEY, &audio)
+
+        # Menu picks for the window's display and the saved output.
+        def devices_picks(displays: ApplicationDisplays::Displays&) -> CourseDeviceMenu::Picks:
+            saved: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
+            audio: AudioDevices::Device = saved.audio if saved.stored == DeviceSettings::Stored.Loaded else DeviceSettings::empty_audio()
+            CourseDeviceMenu::current(displays, ApplicationDisplays::window_display(), &audio)
+
+        # Saves the window's display and the picked output when the menu
+        # closes; the output opens on the next launch.
+        def devices_menu_save(picks: CourseDeviceMenu::Picks&) -> bool:
+            output: AudioDevices::Device = CourseDeviceMenu::chosen_output(picks)
+            DeviceSettings::save_window(DEVICES_KEY, &output)
 
         def devices_default_output() -> AudioDevices::Device:
             output: mutable AudioDevices::Device = DeviceSettings::empty_audio()
@@ -48,4 +64,25 @@
                 value: 0
                 error failure: 1
             return 265 if removed != 0 or DeviceSettings::load(DEVICES_KEY).stored != DeviceSettings::Stored.NotFound
+            0
+
+        # Self-test: the device rows wrap, the display pick follows the
+        # window, a missing saved output reads as the default, and long
+        # names are cut on a code-point boundary.
+        def devices_menu_test() -> i32:
+            return 266 if CourseDeviceMenu::cycle(2, 1, 0, 3) != 0 or CourseDeviceMenu::cycle(0, -1, 0, 3) != 2 or CourseDeviceMenu::cycle(-1, -1, -1, 2) != 1 or CourseDeviceMenu::cycle(5, 1, 0, 0) != 0
+            listing: ApplicationDisplays::Listing = ApplicationDisplays::list()
+            gone: mutable AudioDevices::Device = DeviceSettings::empty_audio()
+            gone.name[0] <- 90u8
+            gone.name_count <- 1
+            picks: CourseDeviceMenu::Picks = CourseDeviceMenu::current(&listing.displays, ApplicationDisplays::window_display(), &gone)
+            window_ok: bool = listing.displays.count == 0 or listing.displays.items[picks.display.usize()].id == ApplicationDisplays::window_display()
+            return 267 if not window_ok or picks.output != CourseDeviceMenu::DEFAULT_OUTPUT or CourseDeviceMenu::chosen_output(&picks).name_count != 0
+            stepped: CourseDeviceMenu::Picks = CourseDeviceMenu::adjust(picks, CourseDeviceMenu::ROW_OUTPUT, 1)
+            if picks.output_count > 0:
+                return 268 if stepped.output != 0 or CourseDeviceMenu::chosen_output(&stepped).name_count != AudioDevices::device(0).device.name_count
+                back: CourseDeviceMenu::Picks = CourseDeviceMenu::adjust(stepped, CourseDeviceMenu::ROW_OUTPUT, -1)
+                return 268 if back.output != CourseDeviceMenu::DEFAULT_OUTPUT
+            same_display: CourseDeviceMenu::Picks = CourseDeviceMenu::adjust(picks, CourseDeviceMenu::ROW_DISPLAY, listing.displays.count.i64())
+            return 269 if same_display.display != picks.display or same_display.output != picks.output
             0

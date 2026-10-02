@@ -7,6 +7,7 @@ include "./beacons.elisa"
 include "./props.elisa"
 include "./text.elisa"
 include "./access.elisa"
+include "./device_menu.elisa"
 include "./look.elisa"
 include "./cells.elisa"
 include "../../src/runtime/action_input_recording.elisa"
@@ -460,6 +461,8 @@ module CharacterCourse:
                 return stressed.status if stressed.status != 0
                 try NavMesh::unload(guide.mesh)
                 return 119 if NavMesh::live_count() != 0
+                menu_devices: i32 = devices_menu_test()
+                return menu_devices if menu_devices != 0
                 devices_status: i32 = devices_handoff()
                 return devices_status if devices_status != 0
                 0
