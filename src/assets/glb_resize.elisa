@@ -111,6 +111,27 @@ module GlbResize:
         # be the file's last chunk. A new, validated document; `doc` is left
         # unchanged.
         def replace_tracks(doc: GlbDocument::Document&, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbError]:
+            return try rewrite(doc, -1, slots, starts, values)
+
+        # Like replace_tracks, but the new keys go to fresh accessors that
+        # only animation `animation`'s samplers are repointed at. Exporters
+        # share identical key accessors between animations; this leaves the
+        # other animations' tracks as they were. Two slots may not share an
+        # accessor.
+        def replace_animation_tracks(doc: GlbDocument::Document&, animation: usize, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbError]:
+            raise GlbDocument::GlbError.IndexOutOfRange if animation >= GlbDocument::animation_count(doc)
+            return try rewrite(doc, animation.i64(), slots, starts, values)
+
+    private:
+        def type_name(components: usize) -> sview:
+            return "SCALAR" if components == 1
+            return "VEC2" if components == 2
+            return "VEC3" if components == 3
+            return "VEC4"
+
+        # `animation` < 0 patches the tracks' accessors in place; otherwise
+        # new accessors are appended and that animation's samplers repointed.
+        def rewrite(doc: GlbDocument::Document&, animation: i64, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbError]:
             raise GlbDocument::GlbError.AccessorShape if starts.count != slots.count + 1
             raise GlbDocument::GlbError.AccessorShape if slots.count > 0 and starts[slots.count] > values.count
             bin_start: usize = GlbDocument::bin_start(doc)
@@ -131,6 +152,8 @@ module GlbResize:
             buffer_length: i64 = GltfJson::member(&bytes, &tokens, first_buffer, "byteLength")
             raise GlbDocument::GlbError.MissingField if buffer_length < 0
             view_count: usize = GltfJson::child_count(&tokens, views)
+            accessor_count: usize = GltfJson::child_count(&tokens, accessors)
+            animations: i64 = GltfJson::member(&bytes, &tokens, 0, "animations")
             mutable splices: darray[Splice] = []
             mutable text: darray[u8] = []
             mutable appended: darray[u8] = []
@@ -152,6 +175,21 @@ module GlbResize:
                 for k in first..<stop:
                     raise GlbDocument::GlbError.AccessorShape if values[k] != values[k] or values[k] > 3.4e38 or values[k] < -3.4e38
                     put_u32(&appended, float_bits(values[k]))
+                if animation >= 0:
+                    for t in 0..<s:
+                        raise GlbDocument::GlbError.AccessorShape if GlbDocument::track(doc, slots[t]).accessor == held.accessor
+                    # Repoint this animation's samplers at accessor_count + s.
+                    sampler_list: i64 = GltfJson::member(&bytes, &tokens, GltfJson::element(&tokens, animations, animation.usize()), "samplers")
+                    raise GlbDocument::GlbError.MissingField if GltfJson::kind_of(&tokens, sampler_list) != GltfJson::KIND_ARRAY
+                    for m in 0..<GltfJson::child_count(&tokens, sampler_list):
+                        sampler: i64 = GltfJson::element(&tokens, sampler_list, m)
+                        for side in 0..<2:
+                            ref: i64 = GltfJson::member(&bytes, &tokens, sampler, "input" if side == 0 else "output")
+                            if ref >= 0 and GltfJson::index_value(&bytes, &tokens, ref) == held.accessor.i64():
+                                before_ref: usize = text.count
+                                push_count(&text, accessor_count + s)
+                                add_splice(&splices, &text, tokens[ref.usize()].start, tokens[ref.usize()].stop, before_ref)
+                    continue
                 count_at: i64 = GltfJson::member(&bytes, &tokens, accessor, "count")
                 view_at: i64 = GltfJson::member(&bytes, &tokens, accessor, "bufferView")
                 raise GlbDocument::GlbError.MissingField if count_at < 0 or view_at < 0
@@ -190,6 +228,24 @@ module GlbResize:
                     text.push(125)
                     at <- at + length
                 close: usize = tokens[views.usize()].stop - 1
+                add_splice(&splices, &text, close, close, before)
+            if animation >= 0 and slots.count > 0:
+                before: usize = text.count
+                for s in 0..<slots.count:
+                    components: usize = GlbDocument::track(doc, slots[s]).components
+                    text.push(44) if s > 0 or accessor_count > 0
+                    push_text(&text, "{\"bufferView\":")
+                    push_count(&text, view_count + s)
+                    push_text(&text, ",\"componentType\":5126,\"count\":")
+                    push_count(&text, (starts[s + 1] - starts[s]) / components)
+                    push_text(&text, ",\"type\":\"")
+                    push_text(&text, type_name(components))
+                    push_text(&text, "\",\"min\":")
+                    push_bound(&text, values, starts[s], starts[s + 1], components, true)
+                    push_text(&text, ",\"max\":")
+                    push_bound(&text, values, starts[s], starts[s + 1], components, false)
+                    text.push(125)
+                close: usize = tokens[accessors.usize()].stop - 1
                 add_splice(&splices, &text, close, close, before)
             total_bin: usize = base + appended.count
             before_length: usize = text.count

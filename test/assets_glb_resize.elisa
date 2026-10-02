@@ -181,7 +181,71 @@ def real_file() -> i32:
         return 63 if GlbDocument::track_value(&out, slot, 2 * n - 2, 0) != GlbDocument::track_value(&doc, slot, n - 1, 0)
     0
 
+# One animation of the boxing character, whose key accessors are shared
+# with other animations: doubled through fresh accessors, the others keep
+# their key counts and values.
+def push_unique(slots: mutable darray[usize]&, slot: usize) -> bool:
+    for s in slots:
+        return false if s == slot
+    slots.push(slot)
+    return true
+
+def real_animation() -> i32:
+    path: cstr = "../elisa-boxing-game/build/dual-stance/black/black-boxer.glb"
+    doc: GlbDocument::Document =
+        catch GlbDocument::load(path):
+            value: value
+            error failure: GlbDocument::Document()
+    return 0 if GlbDocument::byte_count(&doc) == 0 or GlbDocument::animation_count(&doc) < 2
+    mutable slots: darray[usize] = []
+    mutable starts: darray[usize] = [0]
+    mutable values: darray[f32] = []
+    for ch in 0..<GlbDocument::channel_count(&doc, 0):
+        held: GlbDocument::Channel = GlbDocument::channel(&doc, 0, ch)
+        for side in 0..<2:
+            slot: usize = held.input if side == 0 else held.output
+            continue if not push_unique(&slots, slot)
+            track: GlbDocument::Track = GlbDocument::track(&doc, slot)
+            for key in 0..<track.count:
+                for c in 0..<track.components:
+                    values.push(GlbDocument::track_value(&doc, slot, key, c))
+                if key + 1 < track.count:
+                    for c in 0..<track.components:
+                        values.push((GlbDocument::track_value(&doc, slot, key, c) + GlbDocument::track_value(&doc, slot, key + 1, c)) * 0.5)
+            starts.push(values.count)
+    out: GlbDocument::Document =
+        catch GlbResize::replace_animation_tracks(&doc, 0, &slots, &starts, &values):
+            value: value
+            error failure: GlbDocument::Document()
+    return 70 if GlbDocument::byte_count(&out) == 0
+    for a in 0..<GlbDocument::animation_count(&doc):
+        for ch in 0..<GlbDocument::channel_count(&doc, a):
+            old: GlbDocument::Channel = GlbDocument::channel(&doc, a, ch)
+            new: GlbDocument::Channel = GlbDocument::channel(&out, a, ch)
+            n: usize = GlbDocument::key_count(&doc, old.output)
+            m: usize = GlbDocument::key_count(&out, new.output)
+            if a == 0:
+                return 71 if m != 2 * n - 1
+            else:
+                return 72 if m != n or GlbDocument::track_value(&out, new.output, n - 1, 0) != GlbDocument::track_value(&doc, old.output, n - 1, 0)
+    # Shared accessors in one call are refused.
+    if slots.count >= 1:
+        twice: darray[usize] = [slots[0], slots[0]]
+        twice_starts: darray[usize] = [0, starts[1] - starts[0], 2 * (starts[1] - starts[0])]
+        mutable twice_values: darray[f32] = []
+        for k in starts[0]..<starts[1]:
+            twice_values.push(values[k])
+        for k in starts[0]..<starts[1]:
+            twice_values.push(values[k])
+        refused: i32 = catch GlbResize::replace_animation_tracks(&doc, 0, &twice, &twice_starts, &twice_values):
+            value: 0
+            error failure: 1
+        return 73 if refused != 1
+    0
+
 def main() -> i32:
     status: i32 = synthetic()
     return status if status != 0
+    scoped: i32 = real_animation()
+    return scoped if scoped != 0
     real_file()
