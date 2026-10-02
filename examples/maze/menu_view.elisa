@@ -1,0 +1,76 @@
+# The maze menu kept on screen through play. The view retains one panel pair and
+# a label per action, rebuilds the menu from game state each refresh so enabled
+# rows follow the rules in MazeMenu, keeps focus on the same action when it is
+# still enabled, and draws through UiRenderer inside a screen clip.
+include "./menu.elisa"
+include "../../src/runtime/ui_renderer.elisa"
+
+module MazeMenuView:
+    private:
+        const module Look:
+            X: i64 = 12
+            Y: i64 = 48
+            WIDTH: i64 = 160
+            FONT_SIZE: i32 = 14
+            SCREEN_LIMIT: i64 = 16384
+
+    public:
+        struct View:
+            canvas: mutable UiRenderer::MenuCanvas
+            menu: mutable Ui::Menu
+            theme: UiStyle::Theme
+
+        # Rebuilds from `game`, keeping focus on the previously focused action.
+        def rebuild(view: mutable View&, game: MazeGame::MazeGame&) -> void:
+            kept: i64 = Ui::focused_action(view.menu)
+            menu: mutable Ui::Menu = MazeMenu::menu_build(game)
+            menu.x <- Look::X
+            menu.y <- Look::Y
+            for index in 0..<Ui::item_count(menu) |menu, kept|:
+                if menu.items[index].action == kept and menu.items[index].enabled:
+                    menu.focus <- index.i64()
+            view.menu <- menu
+
+        def create(game: MazeGame::MazeGame&) -> View error[RenderScene::RenderSceneError]:
+            theme: UiStyle::Theme = UiStyle::theme_default()
+            background: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(
+                Look::X.f32(), Look::Y.f32(), Look::WIDTH.f32(), 20.0,
+                UiRenderer::render_color(theme.background))
+            focus: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(
+                Look::X.f32(), Look::Y.f32(), Look::WIDTH.f32(), 20.0,
+                UiRenderer::render_color(theme.focus))
+            view: mutable View = View{canvas: UiRenderer::MenuCanvas(background, focus),
+                menu: MazeMenu::menu_build(game), theme: theme}
+            for index in 0..<MazeMenu::action_count() |view|:
+                label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                    "", Look::X.f32(), Look::Y.f32(), Look::FONT_SIZE,
+                    UiRenderer::render_color(theme.text))
+                _ = UiRenderer::menu_canvas_add_label(&view.canvas, label)
+            rebuild(&view, game)
+            view
+
+        # Redraws the menu for the current game state inside the screen.
+        def refresh(view: mutable View&, game: MazeGame::MazeGame&,
+            screen_w: i64, screen_h: i64) -> void error[RenderScene::RenderSceneError]:
+            raise RenderScene::RenderSceneError.InvalidValue if screen_w <= 0 or screen_h <= 0 or screen_w > Look::SCREEN_LIMIT or screen_h > Look::SCREEN_LIMIT
+            rebuild(view, game)
+            clip: UiClip::Box = UiClip::box(0, 0, screen_w, screen_h)
+            try UiRenderer::sync_menu_clipped(&view.canvas, &view.menu,
+                &view.theme, Look::WIDTH, Look::FONT_SIZE, clip)
+
+        def focus_next(view: mutable View&) -> bool:
+            Ui::focus_next(&view.menu)
+
+        def focus_previous(view: mutable View&) -> bool:
+            Ui::focus_previous(&view.menu)
+
+        # Runs the focused action; false when nothing enabled is focused.
+        def activate(view: mutable View&, game: mutable MazeGame::MazeGame&) -> bool:
+            return false if view.menu.focus < 0
+            MazeMenu::menu_activate_row(game, &view.menu, view.menu.focus.usize())
+
+        def destroy(view: mutable View&) -> void error[RenderScene::RenderSceneError]:
+            for index in 0..<UiRenderer::menu_canvas_label_count(&view.canvas) |view|:
+                try RenderScene::destroy_overlay_text(view.canvas.labels[index])
+            try RenderScene::destroy_overlay_panel(view.canvas.focus_band)
+            try RenderScene::destroy_overlay_panel(view.canvas.background)

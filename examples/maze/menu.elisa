@@ -32,11 +32,11 @@ module MazeMenu:
         # offered only from the menu.
         def menu_build(game: MazeGame::MazeGame&) -> Ui::Menu:
             menu: mutable Ui::Menu = Ui::Menu(0, 0)
-            _ = Ui::menu_add(&menu, Action::START, game.status == MazeGame::GameStatus.Menu)
-            _ = Ui::menu_add(&menu, Action::RESTART, game.status != MazeGame::GameStatus.Menu)
-            _ = Ui::menu_add(&menu, Action::PAUSE, game.status == MazeGame::GameStatus.Playing)
-            _ = Ui::menu_add(&menu, Action::RESUME, game.status == MazeGame::GameStatus.Paused)
-            _ = Ui::menu_add(&menu, Action::QUIT, true)
+            _ = Ui::menu_add_labeled(&menu, Action::START, game.status == MazeGame::GameStatus.Menu, "START")
+            _ = Ui::menu_add_labeled(&menu, Action::RESTART, game.status != MazeGame::GameStatus.Menu, "RESTART")
+            _ = Ui::menu_add_labeled(&menu, Action::PAUSE, game.status == MazeGame::GameStatus.Playing, "PAUSE")
+            _ = Ui::menu_add_labeled(&menu, Action::RESUME, game.status == MazeGame::GameStatus.Paused, "RESUME")
+            _ = Ui::menu_add_labeled(&menu, Action::QUIT, true, "QUIT")
             menu
 
         def menu_invoke(game: mutable MazeGame::MazeGame&, action: i64) -> bool:

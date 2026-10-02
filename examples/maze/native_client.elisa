@@ -6,6 +6,7 @@ include "./presentation.elisa"
 include "./render_assets.elisa"
 include "./trace.elisa"
 include "./lighting.elisa"
+include "./menu_view.elisa"
 
 module MazeNativeClient:
     private:
@@ -18,6 +19,8 @@ module MazeNativeClient:
             PAUSE: i64 = 6
             RESTART: i64 = 7
             QUIT: i64 = 8
+            MENU_NEXT: i64 = 9
+            MENU_ACTIVATE: i64 = 10
             SELF_TEST_FRAMES: usize = 10
             PHYSICS_WALL_LAYER: u32 = 0
             TEST_OBSTACLE_HALF_EXTENT: f32 = 0.15
@@ -83,6 +86,8 @@ module MazeNativeClient:
             return false if not bind_key(input, Actions::PAUSE, Application::KeyboardKeyCode.P)
             return false if not bind_key(input, Actions::RESTART, Application::KeyboardKeyCode.R)
             return false if not bind_key(input, Actions::QUIT, Application::KeyboardKeyCode.Escape)
+            return false if not bind_key(input, Actions::MENU_NEXT, Application::KeyboardKeyCode.Tab)
+            return false if not bind_key(input, Actions::MENU_ACTIVATE, Application::KeyboardKeyCode.Enter)
             true
 
         def status_message(game: MazeGame::MazeGame&) -> cstr:
@@ -101,7 +106,14 @@ module MazeNativeClient:
                     "Exiting maze"
 
         def apply_actions(session: RuntimeServices::Session&,
-            game: mutable MazeGame::MazeGame, input: ActionInput::Input&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            game: mutable MazeGame::MazeGame, input: ActionInput::Input&,
+            view: mutable MazeMenuView::View&) -> bool error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            # The menu stays on screen during play: Tab moves its focus and
+            # Enter runs the focused action.
+            if ActionInput::action_pressed(input, Actions::MENU_NEXT):
+                return MazeMenuView::focus_next(view)
+            if ActionInput::action_pressed(input, Actions::MENU_ACTIVATE):
+                return MazeMenuView::activate(view, game)
             if ActionInput::action_pressed(input, Actions::START) and game.status == MazeGame::GameStatus.Menu:
                 MazeGame::game_start(game)
                 return true
@@ -127,8 +139,9 @@ module MazeNativeClient:
                 false
 
         def apply_actions_result(session: RuntimeServices::Session&,
-            game: mutable MazeGame::MazeGame, input: ActionInput::Input&) -> i32:
-            changed: bool = catch apply_actions(session, game, input):
+            game: mutable MazeGame::MazeGame, input: ActionInput::Input&,
+            view: mutable MazeMenuView::View&) -> i32:
+            changed: bool = catch apply_actions(session, game, input, view):
                 value: value
                 error failure: return 0
             return 1 if changed
@@ -193,8 +206,16 @@ module MazeNativeClient:
             scene: mutable MazePresentation::MazeScene&,
             snapshot: mutable RenderSnapshot::Snapshot&,
             presenter: mutable RenderScene::SnapshotPresenter&,
-            lighting: mutable MazeLighting::Runtime&) -> i32:
-            MazeGame::game_start(game)
+            lighting: mutable MazeLighting::Runtime&,
+            view: mutable MazeMenuView::View&, screen_w: i64, screen_h: i64) -> i32:
+            # Start through the drawn menu, which stays visible during play.
+            return 52 if not MazeMenuView::activate(view, game)
+            return 53 if game.status != MazeGame::GameStatus.Playing
+            menu_drawn: bool = catch MazeMenuView::refresh(view, game, screen_w, screen_h):
+                ok: true
+                error failure: false
+            return 54 if not menu_drawn
+            return 55 if view.menu.items[0].enabled or not view.menu.items[2].enabled
             collision_gate: bool = catch verify_physical_barrier(session, game):
                 value: value
                 error failure: return 50
@@ -222,11 +243,11 @@ module MazeNativeClient:
             presenter: mutable RenderScene::SnapshotPresenter&,
             lighting: mutable MazeLighting::Runtime&,
             status_text: RenderScene::OverlayTextHandle,
-            input: mutable ActionInput::Input&) -> i32:
+            input: mutable ActionInput::Input&, view: mutable MazeMenuView::View&) -> i32:
             running: mutable bool = true
             resize_serial: mutable u64 = 0
             failure: mutable i32 = 0
-            while running |session, game, scene, snapshot, presenter, lighting, status_text, input, resize_serial, failure|:
+            while running |session, game, scene, snapshot, presenter, lighting, status_text, input, view, resize_serial, failure|:
                 pump: Application::PumpStatus = catch RuntimeServices::pump(session):
                     value: value
                     error failure: Application::PumpStatus.Failed
@@ -258,7 +279,7 @@ module MazeNativeClient:
                             failure <- 66 if not exit_requested
                             running <- false
                         else:
-                            action_result: i32 = apply_actions_result(session, game, input)
+                            action_result: i32 = apply_actions_result(session, game, input, view)
                             if action_result == 0:
                                 failure <- 67
                                 running <- false
@@ -273,6 +294,13 @@ module MazeNativeClient:
                                         error failure: false
                                     if not text_updated:
                                         failure <- 65
+                                        running <- false
+                                    menu_drawn: bool = catch MazeMenuView::refresh(view, game,
+                                        frame.pixel_width.i64(), frame.pixel_height.i64()):
+                                        ok: true
+                                        error failure: false
+                                    if not menu_drawn:
+                                        failure <- 68
                                         running <- false
             failure
 
@@ -401,6 +429,9 @@ module MazeNativeClient:
                     blue: Overlay::TEXT_BLUE, alpha: Overlay::TEXT_ALPHA}):
                 value: value
                 error failure: return 10
+            view: mutable MazeMenuView::View = catch MazeMenuView::create(game):
+                value: value
+                error failure: return 18
             first_frame: Application::PumpStatus = catch RuntimeServices::pump(session):
                 value: value
                 error failure: return 11
@@ -417,14 +448,18 @@ module MazeNativeClient:
             result: mutable i32 = 0
             if self_test:
                 result <- scripted_native_smoke(session, &game, &scene, &snapshot,
-                    &presenter, &lighting)
+                    &presenter, &lighting, &view, viewport_width.i64(), viewport_height.i64())
             else:
                 result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
-                    &lighting, status_text, &input)
+                    &lighting, status_text, &input, &view)
             lighting_closed: bool = catch MazeLighting::shutdown(&lighting):
                 ok: true
                 error failure: false
             return 17 if not lighting_closed
+            menu_closed: bool = catch MazeMenuView::destroy(&view):
+                ok: true
+                error failure: false
+            return 19 if not menu_closed
             return result if result != 0
             clear_status: bool = catch RenderSnapshotScene::clear(&presenter):
                 ok: true

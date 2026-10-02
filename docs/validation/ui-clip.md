@@ -42,3 +42,13 @@ with 0 findings: overlap widths are never negative for coordinates within
 ±1e9, and scroll offsets stay within [0, max scroll]. `clip_intersect` and
 `new_scroll` reject inputs outside those bounds, so the proven range covers
 every value they pass in.
+
+## Maze menu during play
+
+`examples/maze/menu_view.elisa` keeps the maze menu on screen for the whole
+session. It rebuilds the rows from game state on every refresh, keeps focus on
+the same action when it is still enabled, and draws through
+`UiRenderer::sync_menu_clipped` inside the screen clip. In the native client,
+Tab moves the focus and Enter runs the focused action. The hidden native smoke
+starts the game through the drawn menu and then checks that START is disabled
+and PAUSE is enabled. Both runs of `native_smoke_main.elisa` passed.
