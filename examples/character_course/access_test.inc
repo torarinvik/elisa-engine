@@ -235,6 +235,25 @@
             outside: bool = semantics_refused(&keymap, settings)
             first.role == UiSemantics::Role.KeyBinding and not first.selected and not UiSemantics::adjustable(&first) and size.role == UiSemantics::Role.Slider and size.selected and toggle.role == UiSemantics::Role.Toggle and toggle.selected and UiSemantics::position(&toggle) == CourseControls::PAD_FIRST - 1 and cycling and pad_row.label == "Pad jump" and pad_row.value == "A / Cross" and UiSemantics::adjustable(&pad_row) and outside and size.value == "< 100% >"
 
+        # The menu speaks its focused row: "Text size, < 100% >, slider,
+        # 7 of 16" (36 bytes), and a device row by name only: "Display,
+        # slider, 15 of 16" (25 bytes).
+        def spoken_row(row: i64, count: usize, last_byte: u8) -> bool:
+            keymap: CourseControls::Keymap = CourseControls::defaults()
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            plain: CourseAccess::Settings = CourseAccess::defaults()
+            return false if announce_row(&keymap, &pad_defaults, &plain, row) != ApplicationAccessibility::Announce.Ok
+            spoken: mutable ApplicationAccessibility::Spoken = ApplicationAccessibility::Spoken()
+            return false if ApplicationAccessibility::last(&spoken) != ApplicationAccessibility::Announce.Ok
+            spoken.count == count and spoken.data[count - 1] == last_byte
+
+        def announce_test() -> bool:
+            keymap: CourseControls::Keymap = CourseControls::defaults()
+            pad_defaults: CoursePad::Pad = CoursePad::defaults()
+            plain: CourseAccess::Settings = CourseAccess::defaults()
+            outside: bool = announce_row(&keymap, &pad_defaults, &plain, CourseControls::MENU_ROWS) == ApplicationAccessibility::Announce.Invalid
+            outside and spoken_row(CourseControls::SLOT_COUNT, 36, 54) and spoken_row(CourseControls::DEVICE_FIRST, 25, 54)
+
         def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError]:
             return 153 if not adjust_test()
             large: CourseAccess::Settings = handoff_access()
@@ -256,6 +275,7 @@
             caption_status: i32 = try captions_fit(session)
             return caption_status if caption_status != 0
             return 201 if not semantics_test(&plain_settings)
+            return 233 if not announce_test()
             # The live HUD takes every setting and releases every handle.
             keymap: CourseControls::Keymap = CourseControls::defaults()
             pad_defaults: CoursePad::Pad = CoursePad::defaults()

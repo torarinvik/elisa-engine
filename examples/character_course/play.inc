@@ -84,6 +84,18 @@
                 role <- UiSemantics::Role.Toggle if toggle else UiSemantics::Role.Slider
             try UiSemantics::Control(role, row_label(row), row_key(keymap, pads, settings, row), row, CourseControls::MENU_ROWS, row == selected)
 
+        # Speaks the focused row to a screen reader. Device rows carry their
+        # listing in the legend text, not in row_key, so only the name is read.
+        def announce_row(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64) -> ApplicationAccessibility::Announce:
+            return ApplicationAccessibility::Announce.Invalid if row < 0 or row >= CourseControls::MENU_ROWS
+            control: UiSemantics::Control = catch row_semantics(keymap, pads, settings, row, row):
+                value: value
+                # An empty label is refused by the host.
+                error failure: UiSemantics::Control{role: UiSemantics::Role.Label, label: "", value: "", index: 0, count: 1, selected: false, enabled: false}
+            value: cstr = "" if row >= CourseControls::DEVICE_FIRST else control.value
+            ApplicationAccessibility::announce(control.label, value, UiSemantics::role_name(control.role),
+                UiSemantics::position(&control), control.count, ApplicationAccessibility::Priority.Medium)
+
         def legend_row_y(settings: CourseAccess::Settings&, row: i64) -> f32:
             Tune::HUD_Y + CourseAccess::scaled(settings, Tune::LEGEND_Y - Tune::HUD_Y + (row + 1).f32() * Tune::LEGEND_ROW_HEIGHT)
 
@@ -402,10 +414,12 @@
                             _ = try layout_hud(legend, instruction, settings)
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             try refresh_device_rows(legend, device_picks)
+                            _ = announce_row(menu.keymap, pads, settings, menu.selected)
                             language_row: bool = menu.selected == CourseControls::SLOT_COUNT + CourseAccess::ROW_LANGUAGE
                             caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, 0 if language_row else caption_shown)
                         elif step.result != CourseControls::MenuResult.Ignored:
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
+                            _ = announce_row(menu.keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                     else:
                         look <- CourseLook::drain(look, settings.reduced_motion)
@@ -428,6 +442,7 @@
                             device_picks <- devices_picks(&device_list)
                             _ = try refresh_legend(legend, keymap, pads, settings, menu.selected)
                             try refresh_device_rows(legend, device_picks)
+                            _ = announce_row(keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_RESTART):
                             character <- try restart_character(session, character)

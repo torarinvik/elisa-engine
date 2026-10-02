@@ -188,6 +188,13 @@ int32_t elisa_application_v1_relative_mouse(void);
 // returns QUEUE_FULL without copying when `capacity` is too small.
 int32_t elisa_application_v1_set_clipboard_text(const uint8_t* text, uint32_t length);
 int32_t elisa_application_v1_clipboard_text(uint8_t* out, uint32_t capacity, uint32_t* length);
+// Screen-reader announcement of a control as "label, value, role, N of M"
+// (empty value/role skipped; count 0 omits the position). Parts are UTF-8,
+// at most 256 bytes each; priority 0 low, 1 medium, 2 high. UNSUPPORTED off
+// macOS. last_announcement copies the last posted text.
+int32_t elisa_application_v1_announce_control(const char* label, const char* value, const char* role,
+    int32_t position, int32_t count, int32_t priority);
+int32_t elisa_application_v1_last_announcement(uint8_t* out, uint32_t capacity, uint32_t* length);
 
 // Connected displays. display_info writes eight int32 fields: id, x, y,
 // width, height, refresh in millihertz, content scale in permille, primary.

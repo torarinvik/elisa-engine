@@ -1,0 +1,33 @@
+# Screen-reader bridge checks for the native application smoke (codes
+# 177-179). The smoke cannot hear VoiceOver; it checks that the host refuses
+# announcements before it starts, posts a composed control description to the
+# window afterwards, and refuses malformed parts without replacing it.
+module ApplicationAccessibilityProbe:
+    private:
+        def spoken_is(expected: u8[40], count: usize) -> bool:
+            spoken: mutable ApplicationAccessibility::Spoken = ApplicationAccessibility::Spoken()
+            return false if ApplicationAccessibility::last(&spoken) != ApplicationAccessibility::Announce.Ok
+            same: mutable bool = spoken.count == count
+            for index in 0..<count |same, spoken, expected|:
+                same <- false if same and spoken.data[index] != expected[index]
+            same
+
+    public:
+        def before_start() -> i32:
+            status: ApplicationAccessibility::Announce = ApplicationAccessibility::announce("Text size", "125%", "slider", 8, 16, ApplicationAccessibility::Priority.Medium)
+            return 177 if status != ApplicationAccessibility::Announce.NotRunning
+            0
+
+        def run() -> i32:
+            spoken: ApplicationAccessibility::Announce = ApplicationAccessibility::announce("Text size", "125%", "slider", 8, 16, ApplicationAccessibility::Priority.Medium)
+            return 178 if spoken != ApplicationAccessibility::Announce.Ok
+            # "Text size, 125%, slider, 8 of 16"
+            expected: u8[40] = [84, 101, 120, 116, 32, 115, 105, 122, 101, 44, 32, 49, 50, 53, 37, 44, 32, 115, 108, 105,
+                100, 101, 114, 44, 32, 56, 32, 111, 102, 32, 49, 54, 0, 0, 0, 0, 0, 0, 0, 0]
+            return 178 if not spoken_is(expected, 32)
+            # An empty label, a position past the count and an empty role
+            # with a bad count are refused; the last text stays.
+            return 179 if ApplicationAccessibility::announce("", "on", "toggle", 1, 2, ApplicationAccessibility::Priority.Low) != ApplicationAccessibility::Announce.Invalid
+            return 179 if ApplicationAccessibility::announce("Captions", "on", "toggle", 3, 2, ApplicationAccessibility::Priority.Low) != ApplicationAccessibility::Announce.Invalid
+            return 179 if not spoken_is(expected, 32)
+            0

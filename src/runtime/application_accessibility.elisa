@@ -1,0 +1,60 @@
+# Screen-reader announcements for Elisa applications. A focused or changed
+# control is spoken as "label, value, role, N of M"; on macOS the native host
+# posts it to the window as an NSAccessibility announcement request, which
+# VoiceOver reads when it is running. Other platforms report Unsupported.
+include "./application.elisa"
+
+module ApplicationAccessibility:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_announce_control(label: cstr, value: cstr, role: cstr, position: i32, count: i32, priority: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_last_announcement(out: mutable u8&, capacity: u32, length: mutable u32&) -> i32
+
+        const module Status:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = -1
+            INVALID_STATE: i32 = -2
+            WRONG_THREAD: i32 = -4
+            QUEUE_FULL: i32 = -9
+
+        def status_of(status: i32) -> Announce:
+            return Announce.Ok if status == Status::OK
+            return Announce.Invalid if status == Status::INVALID_ARGUMENT or status == Status::QUEUE_FULL
+            return Announce.NotRunning if status == Status::INVALID_STATE or status == Status::WRONG_THREAD
+            Announce.Unsupported
+
+    public:
+        const MAX_BYTES: usize = 1024
+
+        enum Announce:
+            Ok
+            Invalid
+            NotRunning
+            Unsupported
+
+        enum Priority:
+            Low
+            Medium
+            High
+
+        struct Spoken:
+            data: mutable u8[1024]
+            count: mutable usize
+
+        def Spoken() -> Spoken:
+            Spoken{data: zeroed, count: 0}
+
+        # `position` is one-based within `count`; a count of 0 omits it.
+        def announce(label: cstr, value: cstr, role: cstr, position: i64, count: i64, priority: Priority) -> Announce:
+            return Announce.Invalid if count < 0 or count > 4096 or position < 0 or position > count
+            level: i32 = 2 if priority == Priority.High else (1 if priority == Priority.Medium else 0)
+            status_of(elisa_application_v1_announce_control(label, value, role, position.i32(), count.i32(), level))
+
+        # The last text the host posted, for checks.
+        def last(out: mutable Spoken&) -> Announce:
+            length: mutable u32 = 0
+            status: i32 = elisa_application_v1_last_announcement(&out.data[0], MAX_BYTES.u32(), &length)
+            out.count <- length.usize() if status == Status::OK else 0
+            status_of(status)
