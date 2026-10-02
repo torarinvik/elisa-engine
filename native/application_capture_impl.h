@@ -130,6 +130,67 @@ void release_cancelled_captures(ApplicationService& service, wi::graphics::Graph
     }
 }
 
+// Device loss (injected by the test hook; Wicked exposes no portable removal
+// query): every outstanding ticket fails once, and its staging texture, source
+// reference and timestamp resources are dropped at once. Wicked defers the
+// actual GPU destruction, so in-flight copies stay safe on a live device.
+int32_t fail_application_captures(ApplicationService& service) {
+    int32_t failed = 0;
+    for (CaptureRequest& capture : service.captures) {
+        if (capture.state == CaptureRequestState::Pending) {
+            const uint64_t ticket = capture.ticket;
+            capture = CaptureRequest{};
+            capture.state = CaptureRequestState::Failed;
+            capture.ticket = ticket;
+            ++failed;
+        } else if (capture.state == CaptureRequestState::Cancelled) {
+            capture = CaptureRequest{};
+        }
+    }
+    service.last_capture_timing = CaptureGpuTiming{};
+    return failed;
+}
+
+// Records begin/end timestamps around the copy and resolves them into a
+// READBACK buffer in the same command list, so the query result rides the
+// capture's own fence. Returns false (no timing) when the backend has none.
+bool record_capture_timestamps(wi::graphics::GraphicsDevice* device, CaptureRequest& slot,
+    wi::graphics::CommandList command, bool end) {
+    if (!end) {
+        if (device->GetTimestampFrequency() == 0) return false;
+        wi::graphics::GPUQueryHeapDesc heap_desc;
+        heap_desc.type = wi::graphics::GpuQueryType::TIMESTAMP;
+        heap_desc.query_count = 2;
+        wi::graphics::GPUBufferDesc buffer_desc;
+        buffer_desc.size = 2 * sizeof(uint64_t);
+        buffer_desc.usage = wi::graphics::Usage::READBACK;
+        if (!device->CreateQueryHeap(&heap_desc, &slot.timestamps) ||
+            !device->CreateBuffer(&buffer_desc, nullptr, &slot.timestamp_readback)) {
+            slot.timestamps = {};
+            slot.timestamp_readback = {};
+            return false;
+        }
+        device->QueryReset(&slot.timestamps, 0, 2, command);
+        device->QueryEnd(&slot.timestamps, 0, command);
+        return true;
+    }
+    device->QueryEnd(&slot.timestamps, 1, command);
+    device->QueryResolve(&slot.timestamps, 0, 2, &slot.timestamp_readback, 0, command);
+    return true;
+}
+
+void keep_capture_timing(ApplicationService& service, const CaptureRequest& capture) {
+    service.last_capture_timing = CaptureGpuTiming{};
+    service.last_capture_timing.ticket = capture.ticket;
+    if (!capture.timestamps_recorded || capture.timestamp_readback.mapped_data == nullptr) return;
+    uint64_t stamps[2] = {};
+    std::memcpy(stamps, capture.timestamp_readback.mapped_data, sizeof(stamps));
+    wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    if (device == nullptr || stamps[1] < stamps[0]) return;
+    service.last_capture_timing.ticks = stamps[1] - stamps[0];
+    service.last_capture_timing.frequency = device->GetTimestampFrequency();
+}
+
 } // namespace
 
 extern "C" int32_t elisa_application_v1_request_screenshot(const char* path, uint64_t* ticket) {
@@ -168,7 +229,12 @@ extern "C" int32_t elisa_application_v1_request_screenshot(const char* path, uin
         pixel_order = elisa::capture::PixelOrder::BGRA;
         break;
     case wi::graphics::Format::R10G10B10A2_UNORM:
+#ifdef __APPLE__
+        // Wicked's Metal backend stores this format as BGR10A2Unorm.
+        pixel_order = elisa::capture::PixelOrder::BGR10A2;
+#else
         pixel_order = elisa::capture::PixelOrder::RGB10A2;
+#endif
         break;
     default:
         return ELISA_APPLICATION_UNSUPPORTED;
@@ -190,7 +256,10 @@ extern "C" int32_t elisa_application_v1_request_screenshot(const char* path, uin
     const wi::graphics::GPUBarrier to_copy = wi::graphics::GPUBarrier::Image(
         &source, source_desc.layout, wi::graphics::ResourceState::COPY_SRC);
     device->Barrier(&to_copy, 1, command);
+    CaptureRequest timing_slot;
+    const bool timed = record_capture_timestamps(device, timing_slot, command, false);
     device->CopyResource(&staging, &source, command);
+    if (timed) record_capture_timestamps(device, timing_slot, command, true);
     const wi::graphics::GPUBarrier restore = wi::graphics::GPUBarrier::Image(
         &source, wi::graphics::ResourceState::COPY_SRC, source_desc.layout);
     device->Barrier(&restore, 1, command);
@@ -207,6 +276,9 @@ extern "C" int32_t elisa_application_v1_request_screenshot(const char* path, uin
     slot->device = device;
     slot->source = source;
     slot->staging = std::move(staging);
+    slot->timestamps = std::move(timing_slot.timestamps);
+    slot->timestamp_readback = std::move(timing_slot.timestamp_readback);
+    slot->timestamps_recorded = timed;
     slot->path = path;
     *ticket = next_ticket;
     return ELISA_APPLICATION_OK;
@@ -230,6 +302,10 @@ extern "C" int32_t elisa_application_v1_poll_screenshot(
         }
     }
     if (capture == nullptr) return ELISA_APPLICATION_TICKET_NOT_FOUND;
+    if (capture->state == CaptureRequestState::Failed) {
+        *capture = CaptureRequest{};
+        return ELISA_APPLICATION_CAPTURE_DEVICE_LOST;
+    }
     if (capture->state == CaptureRequestState::Cancelled) {
         if (capture->submitted && device != nullptr && device == capture->device &&
             device->SupportsFrameCompletionQuery() &&
@@ -269,6 +345,7 @@ extern "C" int32_t elisa_application_v1_poll_screenshot(
     *frame_count = capture->application_frame;
     *width = capture->width;
     *height = capture->height;
+    keep_capture_timing(service, *capture);
     *capture = CaptureRequest{};
     return ELISA_APPLICATION_OK;
 }
@@ -289,3 +366,42 @@ extern "C" int32_t elisa_application_v1_cancel_screenshot(uint64_t ticket) {
     }
     return ELISA_APPLICATION_TICKET_NOT_FOUND;
 }
+
+// GPU timestamp ticks spent on the copy of the most recently completed ticket.
+// UNSUPPORTED when the backend recorded no timestamps for it.
+extern "C" int32_t elisa_application_v1_screenshot_gpu_ticks(uint64_t ticket, uint64_t* ticks, uint64_t* frequency) {
+    if (ticket == 0 || ticks == nullptr || frequency == nullptr) return ELISA_APPLICATION_INVALID_ARGUMENT;
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    if (service.last_capture_timing.ticket != ticket) return ELISA_APPLICATION_TICKET_NOT_FOUND;
+    if (service.last_capture_timing.frequency == 0) return ELISA_APPLICATION_UNSUPPORTED;
+    *ticks = service.last_capture_timing.ticks;
+    *frequency = service.last_capture_timing.frequency;
+    return ELISA_APPLICATION_OK;
+}
+
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE) || defined(ELISA_APPLICATION_TEST_PROBE)
+// Injects a capture-device failure; returns how many pending tickets failed.
+extern "C" int32_t elisa_application_v1_test_fail_capture_device(void) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    return fail_application_captures(service);
+}
+
+// Slots still holding a staging texture, source reference or query resource.
+extern "C" int32_t elisa_application_v1_test_capture_resource_count(void) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    int32_t held = 0;
+    for (const CaptureRequest& capture : service.captures) {
+        if (capture.staging.IsValid() || capture.source.IsValid() || capture.timestamps.IsValid() ||
+            capture.timestamp_readback.IsValid())
+            ++held;
+    }
+    return held;
+}
+#endif

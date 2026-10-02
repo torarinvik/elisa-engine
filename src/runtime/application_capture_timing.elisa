@@ -1,0 +1,23 @@
+# Float-free conversion of GPU timestamp ticks (read back with an async
+# capture) into nanoseconds. Kept separate so the prover can read it.
+module ApplicationCaptureTiming:
+    public:
+        const NANOS_PER_SECOND: u64 = 1000000000
+        # Above 10 GHz the remainder product could overflow u64.
+        const MAX_FREQUENCY: u64 = 10000000000
+        # Whole seconds above this would overflow i64 when scaled to nanoseconds.
+        const MAX_WHOLE_SECONDS: u64 = 9000000000
+
+        # Zero for an unknown or implausible frequency, or an overflowing span.
+        def ticks_to_nanoseconds(ticks: u64, frequency: u64) -> u64:
+            ensure frequency != 0 or result == 0
+            ensure result <= 9000000000999999999
+            return 0 if frequency == 0 or frequency > MAX_FREQUENCY
+            whole: u64 = ticks / frequency
+            return 0 if whole > MAX_WHOLE_SECONDS
+            part: u64 = ticks % frequency
+            # part < frequency, so the fraction is already below one second;
+            # the cap only states that for the prover.
+            fraction: u64 = part * NANOS_PER_SECOND / frequency
+            capped: u64 = fraction if fraction < NANOS_PER_SECOND else NANOS_PER_SECOND - 1
+            whole * NANOS_PER_SECOND + capped

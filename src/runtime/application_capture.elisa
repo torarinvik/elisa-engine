@@ -1,6 +1,7 @@
 # Review and capture controls extend the public application surface without
 # making the core lifecycle module carry optional automation policy.
 include "./application.elisa"
+include "./application_capture_timing.elisa"
 
 module ApplicationCapture:
     public:
@@ -10,6 +11,8 @@ module ApplicationCapture:
         const SCREENSHOT_CANCELLED: i32 = 3
         const SCREENSHOT_FAILED: i32 = -1
         const SCREENSHOT_TICKET_NOT_FOUND: i32 = -11
+        const SCREENSHOT_DEVICE_LOST: i32 = -12
+        const SCREENSHOT_TIMING_UNSUPPORTED: i32 = -10
 
 extend Application:
     private:
@@ -34,6 +37,10 @@ extend Application:
 
         @callconv(c)
         extern elisa_application_v1_cancel_screenshot(ticket: u64) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_screenshot_gpu_ticks(ticket: u64, ticks: mutable u64&,
+            frequency: mutable u64&) -> i32
 
         @callconv(c)
         extern elisa_application_v1_presented_width() -> i64
@@ -68,6 +75,16 @@ extend Application:
 
         def cancel_screenshot(ticket: u64) -> bool:
             elisa_application_v1_cancel_screenshot(ticket) == Application::NativeStatus::OK
+
+        # GPU nanoseconds of the copy behind the most recently completed
+        # ticket, read back through the capture's own fence; a negative
+        # status instead (SCREENSHOT_TIMING_UNSUPPORTED without timestamps).
+        def screenshot_gpu_nanoseconds(ticket: u64) -> i64:
+            ticks: mutable u64 = 0
+            frequency: mutable u64 = 0
+            status: i32 = elisa_application_v1_screenshot_gpu_ticks(ticket, &ticks, &frequency)
+            return i64(status) if status != Application::NativeStatus::OK
+            i64(ApplicationCaptureTiming::ticks_to_nanoseconds(ticks, frequency))
 
         # Last presented frame as RGBA8, top row first, sized to
         # `presented_width` x `presented_height` (plan M01 backdrop). False

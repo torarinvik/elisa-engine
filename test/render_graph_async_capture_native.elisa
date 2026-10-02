@@ -1,0 +1,27 @@
+# R17 authored-scene asynchronous capture (render group 239, cases 38-43).
+# After the authored graph has recovered from its injected pass failure, one
+# ticket captures the rendered scene through the bounded readback queue while
+# frames keep presenting. The ticket must report the frame and pixel size it
+# was requested on; the Python harness compares the PNG with the synchronous
+# recovered capture and with a committed reference.
+module RenderGraphAsyncCapture:
+    public:
+        def capture_authored_scene() -> i32:
+            path: cstr = Application::environment_value("ELISA_RENDER_GRAPH_SCENE_ASYNC_CAPTURE")
+            return 0 if path == ""
+            requested: mutable Application::FrameInfo = zeroed
+            return 38 if not Application::frame_info(&requested)
+            ticket: mutable u64 = 0
+            return 39 if not Application::request_screenshot(path, &ticket)
+            frame_count: mutable u64 = 0
+            width: mutable u32 = 0
+            height: mutable u32 = 0
+            status: mutable i32 = ApplicationCapture::SCREENSHOT_PENDING
+            for attempt in 0..<8:
+                if status == ApplicationCapture::SCREENSHOT_PENDING:
+                    return 40 if Application::pump() != Application::PumpStatus.Running
+                    status <- Application::poll_screenshot(ticket, &frame_count, &width, &height)
+            return 41 if status != ApplicationCapture::SCREENSHOT_COMPLETE
+            return 42 if frame_count != requested.frame_count
+            return 43 if width != requested.pixel_width.u32() or height != requested.pixel_height.u32()
+            0

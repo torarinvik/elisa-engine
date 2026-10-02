@@ -5,6 +5,85 @@ include "../src/runtime/public.elisa"
 module ApplicationCaptureResizeTest:
     @callconv(c)
     extern elisa_application_v1_test_set_window_size(width: i32, height: i32) -> i32
+    @callconv(c)
+    extern elisa_application_v1_test_fail_capture_device() -> i32
+    @callconv(c)
+    extern elisa_application_v1_test_capture_resource_count() -> i32
+
+    # Requests one capture of the presented frame, then resizes the window to
+    # the next size and presents it, so successive tickets hold different
+    # back buffers. Records the frame/dimensions the ticket must report.
+    def request_then_resize(path: cstr, expected: mutable Application::FrameInfo&,
+            next_width: i32, next_height: i32) -> u64:
+        return 0 if not Application::frame_info(expected)
+        ticket: mutable u64 = 0
+        return 0 if not Application::request_screenshot(path, &ticket)
+        return 0 if elisa_application_v1_test_set_window_size(next_width, next_height) != 0
+        return 0 if Application::pump() != Application::PumpStatus.Running
+        ticket
+
+    def matches(ticket: u64, expected: Application::FrameInfo&) -> bool:
+        frame_count: mutable u64 = 0
+        width: mutable u32 = 0
+        height: mutable u32 = 0
+        # The fence is asynchronous: present more frames while it is pending.
+        status: mutable i32 = Application::poll_screenshot(ticket, &frame_count, &width, &height)
+        for attempt in 0..<8:
+            if status == ApplicationCapture::SCREENSHOT_PENDING:
+                return false if Application::pump() != Application::PumpStatus.Running
+                status <- Application::poll_screenshot(ticket, &frame_count, &width, &height)
+        return false if status != ApplicationCapture::SCREENSHOT_COMPLETE
+        frame_count == expected.frame_count and width == expected.pixel_width.u32() and height == expected.pixel_height.u32()
+
+    # Three captures pending across three further resizes; each still reports
+    # its own frame and size, and the copy's GPU timestamps were read back.
+    def repeated_resize(path: cstr) -> i32:
+        first: mutable Application::FrameInfo = zeroed
+        second: mutable Application::FrameInfo = zeroed
+        third: mutable Application::FrameInfo = zeroed
+        a: u64 = request_then_resize(path, &first, 480, 300)
+        return 30 if a == 0
+        b: u64 = request_then_resize(path, &second, 360, 240)
+        return 31 if b == 0
+        c: u64 = request_then_resize(path, &third, 440, 280)
+        return 32 if c == 0
+        return 33 if first.pixel_width == second.pixel_width or second.pixel_width == third.pixel_width
+        return 34 if first.frame_count >= second.frame_count or second.frame_count >= third.frame_count
+        return 35 if Application::pump() != Application::PumpStatus.Running
+        return 36 if not matches(b, second)
+        return 37 if not matches(a, first)
+        return 38 if not matches(c, third)
+        return 39 if Application::screenshot_gpu_nanoseconds(c) <= 0
+        return 40 if Application::screenshot_gpu_nanoseconds(a) != i64(ApplicationCapture::SCREENSHOT_TICKET_NOT_FOUND)
+        return 41 if elisa_application_v1_test_capture_resource_count() != 0
+        0
+
+    # An injected device failure fails one submitted and one unsubmitted
+    # ticket cleanly, releases their staging resources at once, and the queue
+    # completes a fresh capture afterwards.
+    def device_failure(path: cstr) -> i32:
+        submitted: mutable u64 = 0
+        unsubmitted: mutable u64 = 0
+        return 50 if not Application::request_screenshot(path, &submitted)
+        return 51 if Application::pump() != Application::PumpStatus.Running
+        return 52 if not Application::request_screenshot(path, &unsubmitted)
+        return 53 if elisa_application_v1_test_capture_resource_count() != 2
+        return 54 if elisa_application_v1_test_fail_capture_device() != 2
+        return 55 if elisa_application_v1_test_capture_resource_count() != 0
+        frame_count: mutable u64 = 0
+        width: mutable u32 = 0
+        height: mutable u32 = 0
+        return 56 if Application::poll_screenshot(submitted, &frame_count, &width, &height) != ApplicationCapture::SCREENSHOT_DEVICE_LOST
+        return 57 if Application::poll_screenshot(unsubmitted, &frame_count, &width, &height) != ApplicationCapture::SCREENSHOT_DEVICE_LOST
+        return 58 if Application::poll_screenshot(submitted, &frame_count, &width, &height) != ApplicationCapture::SCREENSHOT_TICKET_NOT_FOUND
+        return 59 if Application::cancel_screenshot(unsubmitted)
+        return 60 if Application::pump() != Application::PumpStatus.Running
+        recovered: mutable Application::FrameInfo = zeroed
+        ticket: u64 = request_then_resize(path, &recovered, 440, 280)
+        return 61 if ticket == 0
+        return 62 if not matches(ticket, recovered)
+        return 63 if elisa_application_v1_test_capture_resource_count() != 0
+        0
 
 def run_capture_smoke() -> i32:
     config: Application::Config = Application::default_config()
@@ -49,7 +128,10 @@ def run_capture_smoke() -> i32:
     return 17 if frame_count != original.frame_count or width != original.pixel_width.u32() or height != original.pixel_height.u32()
     return 18 if not Application::cancel_screenshot(third_ticket)
     return 19 if not Application::cancel_screenshot(fourth_ticket)
-    0
+    return 20 if Application::pump() != Application::PumpStatus.Running
+    resized_status: i32 = ApplicationCaptureResizeTest::repeated_resize(path)
+    return resized_status if resized_status != 0
+    ApplicationCaptureResizeTest::device_failure(path)
 
 def main() -> i32:
     result: i32 = run_capture_smoke()

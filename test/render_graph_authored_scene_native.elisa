@@ -7,6 +7,7 @@
 # Frames are not bit-stable between pumps, so aliasing safety is judged by
 # comparing the aliased capture with the dedicated-target capture in Python.
 include "render_graph_native_harness.elisa"
+include "render_graph_async_capture_native.elisa"
 using RenderGraphNativeHarness
 
 module RenderGraphAuthoredSceneTests:
@@ -209,6 +210,8 @@ module RenderGraphAuthoredSceneTests:
                 return 31 if not authored_frame_ok()
             return 32 if RenderGraphRuntime::execution_count() <= graph_before_failure
             return 34 if not authored_capture("ELISA_RENDER_GRAPH_SCENE_RECOVERED_CAPTURE")
+            async_status: i32 = RenderGraphAsyncCapture::capture_authored_scene()
+            return async_status if async_status != 0
             return 35 if configure_clear_copy_graph(3) != OK
             return 36 if not authored_frame_ok()
             0

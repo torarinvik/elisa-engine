@@ -1,0 +1,13 @@
+# R17 GPU query readback: converting read-back timestamp ticks to nanoseconds
+# never divides by zero or overflows, yields zero for an unknown frequency,
+# and fits i64 so the public wrapper can return it beside negative statuses.
+include "../src/runtime/application_capture_timing.elisa"
+
+extend ApplicationCaptureTiming:
+    def prove_unknown_frequency_is_zero(ticks: u64) -> u64:
+        ensure result == 0
+        ticks_to_nanoseconds(ticks, 0)
+
+    def prove_nanoseconds_fit_i64(ticks: u64, frequency: u64) -> u64:
+        ensure result <= 9000000000999999999
+        ticks_to_nanoseconds(ticks, frequency)

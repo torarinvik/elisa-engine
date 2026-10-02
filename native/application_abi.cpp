@@ -86,6 +86,7 @@ struct ApplicationService {
     std::array<OpenGamepad, GAMEPAD_CAPACITY> gamepads{};
     std::array<CaptureRequest, APPLICATION_CAPTURE_QUEUE_CAPACITY> captures{};
     uint64_t next_capture_ticket = 1;
+    CaptureGpuTiming last_capture_timing{};
     size_t input_event_count = 0;
     size_t input_event_read = 0;
     size_t pointer_event_count = 0;

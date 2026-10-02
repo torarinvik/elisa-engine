@@ -24,6 +24,7 @@ enum {
     ELISA_APPLICATION_QUEUE_FULL = -9,
     ELISA_APPLICATION_UNSUPPORTED = -10,
     ELISA_APPLICATION_TICKET_NOT_FOUND = -11,
+    ELISA_APPLICATION_CAPTURE_DEVICE_LOST = -12,
     ELISA_APPLICATION_CAPTURE_PENDING = 2,
     ELISA_APPLICATION_CAPTURE_CANCELLED = 3,
 };
@@ -133,6 +134,8 @@ int32_t elisa_application_v1_asset_stream_reset(void);
 // Test-only real SDL window lifecycle requests used by native SDL3 smoke tests.
 int32_t elisa_application_v1_test_set_minimized(int32_t minimized);
 int32_t elisa_application_v1_test_set_window_size(int32_t width, int32_t height);
+int32_t elisa_application_v1_test_fail_capture_device(void);
+int32_t elisa_application_v1_test_capture_resource_count(void);
 int32_t elisa_application_v1_test_push_pointer_event(
     int32_t kind, int32_t button, float x, float y, float delta_x,
     float delta_y, uint32_t buttons, int32_t pressed);
@@ -214,6 +217,7 @@ int32_t elisa_application_v1_request_screenshot(const char* path, uint64_t* tick
 int32_t elisa_application_v1_poll_screenshot(
     uint64_t ticket, uint64_t* frame_count, uint32_t* width, uint32_t* height);
 int32_t elisa_application_v1_cancel_screenshot(uint64_t ticket);
+int32_t elisa_application_v1_screenshot_gpu_ticks(uint64_t ticket, uint64_t* ticks, uint64_t* frequency);
 int32_t elisa_application_v1_activate_render_path(void* render_path);
 int32_t elisa_application_v1_register_shutdown_hook(
     void* context, elisa_application_shutdown_fn function);

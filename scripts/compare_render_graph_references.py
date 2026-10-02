@@ -5,7 +5,9 @@ Render group 239 (`test/render_graph_authored_scene_native.elisa`) saves the
 copy -> saturation -> 4x clear -> resolve -> blend graph before resize, after
 resize, after a real minimize/restore and after an injected pass failure has
 recovered, plus the same graph with a dedicated (non-aliased) resolve target.
-The aliased base capture must match the dedicated one, and each capture must
+The asynchronous readback capture (R17) is taken one frame after the recovered
+one. The aliased base capture must match the dedicated one, the asynchronous
+capture must match the synchronous recovered one, and each capture must
 match its committed reference. The comparison uses the lighting references' 160x100 reduction and
 peak/mean tolerances.
 """
@@ -30,6 +32,8 @@ CAPTURES = (
     ("resized", "ELISA_RENDER_GRAPH_SCENE_RESIZED_CAPTURE"),
     ("restored", "ELISA_RENDER_GRAPH_SCENE_RESTORED_CAPTURE"),
     ("recovered", "ELISA_RENDER_GRAPH_SCENE_RECOVERED_CAPTURE"),
+    # R17: the same recovered scene read back through the asynchronous queue.
+    ("async", "ELISA_RENDER_GRAPH_SCENE_ASYNC_CAPTURE"),
 )
 
 
@@ -64,6 +68,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{'PASS' if passed else 'FAIL'} render-graph aliased vs dedicated: "
             f"peak={peak:.4f} mean={mean:.4f}")
         failed = not passed
+        asynchronous, synchronous = (resample_nearest(read_png(capture_path(args.capture_dir, name)),
+            REFERENCE_WIDTH, REFERENCE_HEIGHT) for name in ("async", "recovered"))
+        peak, mean, passed = compare(asynchronous, synchronous,
+            DEFAULT_PEAK_TOLERANCE, DEFAULT_MEAN_TOLERANCE)
+        print(f"{'PASS' if passed else 'FAIL'} render-graph async vs recovered: "
+            f"peak={peak:.4f} mean={mean:.4f}")
+        failed = failed or not passed
         for name, _ in CAPTURES:
             capture = capture_path(args.capture_dir, name)
             reference = args.reference_dir / f"{name}.png"
