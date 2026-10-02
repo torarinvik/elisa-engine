@@ -57,14 +57,10 @@ public:
         return initialize(backends, 1, sample_rate, channels);
     }
 
-    bool initialize_default(uint32_t sample_rate = 48000, uint32_t channels = 2) {
-        return initialize(nullptr, 0, sample_rate, channels);
-    }
+    bool initialize_default(uint32_t sample_rate = 48000, uint32_t channels = 2) { return initialize(nullptr, 0, sample_rate, channels); }
 
     // Opens a specific playback device, as identified by enumeration.
-    bool initialize_device(uint32_t sample_rate, uint32_t channels, const ma_device_id& id) {
-        return initialize(nullptr, 0, sample_rate, channels, &id);
-    }
+    bool initialize_device(uint32_t sample_rate, uint32_t channels, const ma_device_id& id) { return initialize(nullptr, 0, sample_rate, channels, &id); }
 
     bool reopen_null() {
         if (!initialized_) return false;
@@ -87,9 +83,7 @@ public:
     }
 
     void close_device_for_reopen() {
-        accept_device_notifications_.store(false, std::memory_order_release);
-        ma_device_uninit(&device_);
-        ma_context_uninit(&context_);
+        close_device();
         {
             std::lock_guard<std::mutex> guard(mutex_);
             initialized_ = false;
@@ -103,20 +97,12 @@ public:
     }
 
 #if defined(ELISA_AUDIO_TEST_PROBE)
-    void request_device_recovery_for_test() {
-        ma_device_notification notification{};
-        notification.pDevice = &device_;
-        notification.type = ma_device_notification_type_stopped;
-        notification_callback(&notification);
-    }
+#include "miniaudio_service_test_hooks.inc"
 #endif
 
     void shutdown() {
+        if (initialized_) close_device();
         accept_device_notifications_.store(false, std::memory_order_release);
-        if (initialized_) {
-            ma_device_uninit(&device_);
-            ma_context_uninit(&context_);
-        }
         streams_.shutdown(mutex_);
         std::lock_guard<std::mutex> guard(mutex_);
         initialized_ = false;
@@ -389,10 +375,11 @@ private:
         config.dataCallback = &Service::data_callback;
         config.notificationCallback = &Service::notification_callback;
         config.pUserData = this;
-        if (ma_device_init(&context_, &config, &device_) != MA_SUCCESS) {
+        if (take_injected_init_failure() || ma_device_init(&context_, &config, &device_) != MA_SUCCESS) {
             ma_context_uninit(&context_);
             return false;
         }
+        open_devices_.fetch_add(1, std::memory_order_acq_rel);
         // Before the device starts, so the callback never sees a resize.
         streams_.allocate(sample_rate, channels);
         {
@@ -403,9 +390,7 @@ private:
         }
         accept_device_notifications_.store(true, std::memory_order_release);
         if (ma_device_start(&device_) != MA_SUCCESS) {
-            accept_device_notifications_.store(false, std::memory_order_release);
-            ma_device_uninit(&device_);
-            ma_context_uninit(&context_);
+            close_device();
             std::lock_guard<std::mutex> guard(mutex_);
             initialized_ = false;
             sample_rate_ = 0;
@@ -563,9 +548,20 @@ private:
         }
     }
 
+    // Sole device close; ma_device_uninit joins the callback thread first.
+    void close_device() {
+        accept_device_notifications_.store(false, std::memory_order_release);
+        ma_device_uninit(&device_);
+        ma_context_uninit(&context_);
+        open_devices_.fetch_sub(1, std::memory_order_acq_rel);
+    }
+    bool take_injected_init_failure() { return injected_init_failures_ > 0 && injected_init_failures_-- > 0; }
+
     static void data_callback(ma_device* device, void* output, const void*, ma_uint32 frames) {
         auto* service = static_cast<Service*>(device->pUserData);
-        if (service != nullptr) service->mix(static_cast<int16_t*>(output), frames, device->playback.channels);
+        if (service == nullptr) return;
+        service->data_callbacks_.fetch_add(1, std::memory_order_relaxed);
+        service->mix(static_cast<int16_t*>(output), frames, device->playback.channels);
     }
 
     static void notification_callback(const ma_device_notification* notification) {
@@ -595,6 +591,9 @@ private:
     std::array<bool, BUS_COUNT> bus_paused_{};
     StreamTable streams_;
     std::atomic<uint64_t> contended_callbacks_{0};
+    std::atomic<uint64_t> data_callbacks_{0};
+    uint32_t injected_init_failures_ = 0; // set only by test hooks
+    static inline std::atomic<int> open_devices_{0}; // across all services
 };
 
 } // namespace probe::audio

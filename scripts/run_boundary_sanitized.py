@@ -56,13 +56,13 @@ def run_asset_worker_tsan() -> int:
     return 0
 
 
-def run_stream_harness(sanitizer: str) -> int:
+def run_stream_harness(sanitizer: str, harness: str = "stream") -> int:
     name = sanitizer.split(",")[0]
-    output = ENGINE_ROOT / f"build/stream-harness-{name}"
+    output = ENGINE_ROOT / f"build/{harness}-harness-{name}"
     arguments = [
         "c++", "-std=c++17", "-O1", "-g", f"-fsanitize={sanitizer}",
         "-I", str(ENGINE_ROOT / "native"), "-I", str(DEPENDENCIES / "miniaudio"),
-        str(ENGINE_ROOT / "native/miniaudio_stream_harness.cpp"),
+        str(ENGINE_ROOT / f"native/miniaudio_{harness}_harness.cpp"),
         str(ENGINE_ROOT / "native/miniaudio_implementation.cpp"),
         "-framework", "CoreFoundation", "-framework", "CoreAudio", "-framework", "AudioToolbox",
         "-o", str(output),
@@ -79,7 +79,7 @@ def run_stream_harness(sanitizer: str) -> int:
     sys.stdout.write(run_result.stdout)
     sys.stderr.write(run_result.stderr)
     if run_result.returncode == 0:
-        print(f"stream harness passed under -fsanitize={sanitizer}")
+        print(f"{harness} harness passed under -fsanitize={sanitizer}")
     return run_result.returncode
 
 
@@ -161,9 +161,10 @@ def main() -> int:
     if status != 0:
         return status
     for sanitizer in ("address,undefined", "thread"):
-        status = run_stream_harness(sanitizer)
-        if status != 0:
-            return status
+        for harness in ("stream", "lifecycle"):
+            status = run_stream_harness(sanitizer, harness)
+            if status != 0:
+                return status
     return run_asset_worker_tsan()
 
 
