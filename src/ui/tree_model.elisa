@@ -101,3 +101,50 @@ module UiTreeModel:
                     n <- n + 1
             fallback: i64 = t.ids[heir] if heir >= 0 else (ids[0] if n > 0 else 0 - 1)
             Tree{ids: ids, parent: parents, open: opens, count: n, focus: fallback if lost else t.focus}
+
+        # Index of the nearest earlier sibling of `at`, or -1.
+        def previous_sibling(t: Tree&, at: i64) -> i64:
+            found: mutable i64 = 0 - 1
+            for k in 0..<64:
+                found <- k.i64() if k.i64() < at and t.parent[k] == t.parent[at] else found
+            found
+
+        # Moves `id` and its subtree before its previous sibling. Rows are
+        # reordered by a stable permutation, so parents still precede children
+        # and focus, tracked by id, stays on the moved node.
+        def move_up(t: Tree, id: i64) -> Tree:
+            a: i64 = index_of(&t, id)
+            b: i64 = previous_sibling(&t, a) if a >= 0 else 0 - 1
+            return t if b < 0
+            ids: mutable i64[64] = zeroed
+            parents: mutable i64[64] = zeroed
+            opens: mutable bool[64] = zeroed
+            remap: mutable i64[64] = zeroed
+            used: mutable bool[64] = zeroed
+            for slot in 0..<64:
+                pick: mutable i64 = 0 - 1
+                best: mutable i64 = 0
+                for k in 0..<64:
+                    key: i64 = 2 * b if within(&t, k.i64(), a) else 2 * k.i64() + 1
+                    better: bool = pick < 0 or key < best
+                    if k.i64() < t.count and not used[k] and better:
+                        pick <- k.i64()
+                        best <- key
+                if pick >= 0:
+                    used[pick] <- true
+                    remap[pick] <- slot.i64()
+                    ids[slot] <- t.ids[pick]
+                    opens[slot] <- t.open[pick]
+                    p: i64 = t.parent[pick]
+                    parents[slot] <- remap[p] if p >= 0 else 0 - 1
+            Tree{ids: ids, parent: parents, open: opens, count: t.count, focus: t.focus}
+
+        # Moves `id` after its next sibling.
+        def move_down(t: Tree, id: i64) -> Tree:
+            a: i64 = index_of(&t, id)
+            next: mutable i64 = 0 - 1
+            for k in 0..<64:
+                hit: bool = a >= 0 and k.i64() > a and k.i64() < t.count and t.parent[k] == t.parent[a]
+                next <- k.i64() if hit and next < 0 else next
+            return t if next < 0
+            move_up(t, t.ids[next])

@@ -29,3 +29,15 @@ Validated on 2026-10-02 with the pinned Stage1 compiler
 
 - No reordering, no drawing, no inspector built on it yet. I07
   stays open.
+
+## Sibling reordering (2026-10-02)
+
+`UiTreeModel::move_up(t, id)` moves a node and its whole subtree before its
+previous sibling; `move_down` moves it after its next sibling. Rows are rebuilt
+by a stable permutation (the moved subtree takes the sort key just below the
+sibling it passes), so every parent still precedes its children and `remove`'s
+single-pass remap stays valid. Focus is tracked by id and stays on its node.
+`test/ui_tree_model.elisa` codes 14-19 check sibling order, parent remapping,
+the first-sibling no-op, move_down undoing move_up and removal after
+reordering. Negative control: writing the old parent index instead of the
+remapped one exits 15.

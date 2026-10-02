@@ -43,4 +43,26 @@ def main() -> i32:
     return 12 if t.focus != 9 or UiTreeModel::remove(t, 77).count != 1
     t <- UiTreeModel::remove(t, 9)
     return 13 if t.count != 0 or t.focus != -1
+    # Raising moves a whole subtree before its previous sibling; parents
+    # still precede children and focus stays on the moved node.
+    r: mutable UiTreeModel::Tree = UiTreeModel::new_tree()
+    r <- UiTreeModel::add(r, 10, -1)
+    r <- UiTreeModel::add(r, 20, 10)
+    r <- UiTreeModel::add(r, 30, 10)
+    r <- UiTreeModel::add(r, 21, 20)
+    r <- UiTreeModel::add(r, 31, 30)
+    r <- UiTreeModel::focus(r, 31)
+    r <- UiTreeModel::move_up(r, 30)
+    return 14 if UiTreeModel::index_of(&r, 30) > UiTreeModel::index_of(&r, 20) or r.focus != 31
+    for k in 0..<5:
+        return 15 if r.parent[k] >= k.i64()
+    return 16 if r.parent[UiTreeModel::index_of(&r, 31)] != UiTreeModel::index_of(&r, 30) or r.parent[UiTreeModel::index_of(&r, 21)] != UiTreeModel::index_of(&r, 20)
+    # The first sibling cannot rise; lowering undoes the raise.
+    again: UiTreeModel::Tree = UiTreeModel::move_up(r, 30)
+    return 17 if again.ids[1] != 30 or UiTreeModel::move_up(r, 10).count != 5
+    r <- UiTreeModel::move_down(r, 30)
+    return 18 if UiTreeModel::index_of(&r, 20) > UiTreeModel::index_of(&r, 30) or r.focus != 31
+    # Removal after reordering still drops the right subtree.
+    r <- UiTreeModel::remove(r, 30)
+    return 19 if r.count != 3 or r.focus != 10 or UiTreeModel::index_of(&r, 21) < 0
     return 0
