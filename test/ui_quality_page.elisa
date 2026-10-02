@@ -37,7 +37,7 @@ def main() -> i32:
     q <- UiSettingsPage::load(q, UiQualityPage::FOG_ROW, 0)
     kept: Quality::Profile = UiQualityPage::apply(&q, fsr)
     return 7 if kept.temporal_aa or not kept.fog
-    # A corrupt saved value is clamped into range when loaded.
+    # A corrupt saved value falls back to the row default (100 %).
     r: UiSettingsPage::Page = UiSettingsPage::load(p, UiQualityPage::SCALE_ROW, 900)
     return 8 if r.value[UiQualityPage::SCALE_ROW] != 100 or UiQualityPage::apply(&r, base).render_scale != 1.0
     return 0
