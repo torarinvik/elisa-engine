@@ -1,0 +1,66 @@
+# Bounded callback bindings for widgets. A binding links a widget id to a
+# model field; the handle carries a generation, so once the widget is removed
+# (or the slot reused) an old handle no longer resolves and cannot fire into a
+# model that has moved on.
+module UiBinding:
+    public:
+        struct Handle:
+            slot: i64
+            generation: i64
+
+        struct Table:
+            owner: i64[32]
+            field: i64[32]
+            generation: i64[32]
+            live: bool[32]
+            count: i64
+
+        def new_table() -> Table:
+            Table{owner: zeroed, field: zeroed, generation: zeroed, live: zeroed, count: 0}
+
+        def none() -> Handle:
+            Handle{slot: 0 - 1, generation: 0}
+
+        # First free slot, or -1 when all 32 are bound.
+        def free_slot(t: Table&) -> i64:
+            found: mutable i64 = 0 - 1
+            for k in 0..<32:
+                found <- k.i64() if not t.live[k] and found < 0
+            found
+
+        def bind(t: Table, owner: i64, field: i64) -> Table:
+            s: i64 = free_slot(&t)
+            return t if s < 0 or owner < 0
+            owners: mutable i64[32] = t.owner
+            fields: mutable i64[32] = t.field
+            gens: mutable i64[32] = t.generation
+            lives: mutable bool[32] = t.live
+            owners[s] <- owner
+            fields[s] <- field
+            gens[s] <- gens[s] + 1
+            lives[s] <- true
+            Table{owner: owners, field: fields, generation: gens, live: lives, count: t.count + 1}
+
+        # The handle of the live binding for (owner, field), or none().
+        def handle(t: Table&, owner: i64, field: i64) -> Handle:
+            h: mutable Handle = none()
+            for k in 0..<32:
+                if t.live[k] and t.owner[k] == owner and t.field[k] == field and h.slot < 0:
+                    h <- Handle{slot: k.i64(), generation: t.generation[k]}
+            h
+
+        # The field a handle fires into, or -1 when the handle is stale.
+        def resolve(t: Table&, h: Handle) -> i64:
+            return 0 - 1 if h.slot < 0 or h.slot >= 32
+            ok: bool = t.live[h.slot] and t.generation[h.slot] == h.generation
+            t.field[h.slot] if ok else 0 - 1
+
+        # Drops every binding of a removed widget.
+        def unbind_owner(t: Table, owner: i64) -> Table:
+            lives: mutable bool[32] = t.live
+            n: mutable i64 = t.count
+            for k in 0..<32:
+                if lives[k] and t.owner[k] == owner:
+                    lives[k] <- false
+                    n <- n - 1
+            Table{owner: t.owner, field: t.field, generation: t.generation, live: lives, count: n}

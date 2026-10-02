@@ -1,0 +1,23 @@
+include "../src/ui/binding.elisa"
+
+def main() -> i32:
+    t: mutable UiBinding::Table = UiBinding::new_table()
+    t <- UiBinding::bind(t, 7, 100)
+    t <- UiBinding::bind(t, 7, 101)
+    t <- UiBinding::bind(t, 8, 200)
+    volume: UiBinding::Handle = UiBinding::handle(&t, 7, 100)
+    return 1 if t.count != 3 or UiBinding::resolve(&t, volume) != 100
+    # Removing the widget makes its handles stale; other widgets are untouched.
+    t <- UiBinding::unbind_owner(t, 7)
+    return 2 if t.count != 1 or UiBinding::resolve(&t, volume) != -1
+    return 3 if UiBinding::resolve(&t, UiBinding::handle(&t, 8, 200)) != 200
+    # A new widget reusing the slot does not revive the old handle.
+    t <- UiBinding::bind(t, 9, 300)
+    return 4 if UiBinding::handle(&t, 9, 300).slot != volume.slot
+    return 5 if UiBinding::resolve(&t, volume) != -1
+    # Garbage handles never resolve; the table stays bounded.
+    return 6 if UiBinding::resolve(&t, UiBinding::none()) != -1 or UiBinding::resolve(&t, UiBinding::Handle{slot: 40, generation: 1}) != -1
+    for i in 0 ..< 40:
+        t <- UiBinding::bind(t, 1000 + i, 1)
+    return 7 if t.count != 32 or UiBinding::handle(&t, 1039, 1).slot != -1
+    return 0
