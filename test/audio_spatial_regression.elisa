@@ -1,0 +1,50 @@
+include "../src/audio/spatial.elisa"
+include "../src/audio/regression.elisa"
+
+# Offline spatial fixture: a fixed square wave is rendered through
+# `spatial_gain` at listener positions and fed into AudioRegression::Stats,
+# so distance falloff, cone shading and occlusion are asserted on mix energy.
+def source(forward_x: f32, occlusion: f32) -> SpatialAudio::Source:
+    SpatialAudio::Source{
+        id: 1,
+        position: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        velocity: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0},
+        forward: Geometry::Vec3{x: forward_x, y: 0.0, z: 0.0},
+        minimum_distance: 0.0,
+        maximum_distance: 100.0,
+        inner_cone_cos: 0.9,
+        outer_cone_cos: 0.0,
+        outer_cone_gain: 0.25,
+        occlusion: occlusion,
+        live: true,
+    }
+
+def listener(x: f32) -> SpatialAudio::Listener:
+    SpatialAudio::Listener{position: Geometry::Vec3{x: x, y: 0.0, z: 0.0}, velocity: Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}}
+
+# Mixes 480 samples of a +-20000 square wave at the given gain.
+def render(gain: f32) -> AudioRegression::Stats:
+    permille: i64 = i64(gain * 1000.0 + 0.5)
+    s: mutable AudioRegression::Stats = AudioRegression::Stats()
+    for i in 0 ..< 480:
+        wave: i64 = 20000 if i % 2 == 0 else -20000
+        s <- AudioRegression::feed(s, AudioRegression::apply_gain(wave, permille))
+    s
+
+def main() -> i32:
+    front: SpatialAudio::Source = source(1.0, 0.0)
+    near: AudioRegression::Stats = render(SpatialAudio::spatial_gain(front, listener(10.0)))
+    mid: AudioRegression::Stats = render(SpatialAudio::spatial_gain(front, listener(50.0)))
+    far: AudioRegression::Stats = render(SpatialAudio::spatial_gain(front, listener(150.0)))
+    # Energy falls with distance, nothing clips, and past range is silence.
+    return 1 if not AudioRegression::clean(&near) or not AudioRegression::clean(&mid)
+    return 2 if AudioRegression::mean_energy(&near) <= AudioRegression::mean_energy(&mid)
+    return 3 if far.silent != far.samples or far.peak != 0
+    return 4 if near.peak != 18000 or mid.peak != 10000
+    # Behind the cone the outer gain applies: a quarter of the amplitude.
+    back: AudioRegression::Stats = render(SpatialAudio::spatial_gain(source(-1.0, 0.0), listener(50.0)))
+    return 5 if back.peak != 2500
+    # Half occlusion halves the amplitude.
+    hidden: AudioRegression::Stats = render(SpatialAudio::spatial_gain(source(1.0, 0.5), listener(50.0)))
+    return 6 if hidden.peak != 5000
+    return 0

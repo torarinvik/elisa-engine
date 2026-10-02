@@ -33,7 +33,11 @@ timing checks deterministic and countable.
 
 - The assertions are not yet run against the real mixer output or the miniaudio
   callback; no long-session run has produced a report. S07 stays open.
-- Spatial fixtures are not covered.
+- Spatial fixtures: `test/audio_spatial_regression.elisa` renders a ±20000
+  square wave through `SpatialAudio::spatial_gain` and asserts mix stats:
+  peaks of 18000 at 10 units and 10000 at 50 units (range 100), silence past
+  range, 2500 behind the cone (outer gain 0.25) and 5000 at half occlusion.
+  Gain uses the portable model, not the native mixer's output.
 - A proof of `absolute` and `limit` was tried and dropped: the prover could not
   establish the clamp helper's ensures (returns of `32767` and `0 - 32767` after
   guards), so nothing here is proved.

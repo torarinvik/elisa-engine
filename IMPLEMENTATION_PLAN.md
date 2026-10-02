@@ -582,6 +582,7 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **S07 · P2 · Audio regression harness** — After: S02, S03.
   Capture offline mixes and timing telemetry for gain, clipping, channel mapping, looping, and spatial fixtures. Done: deterministic DSP assertions complement audible/manual checks and expose underruns or callback overruns in long-session runs.
   Progress on 2026-09-29: `src/audio/regression.elisa` gives deterministic mix statistics (peak, energy, clipping, silence), gain, downmix and loop-seam assertions, and callback overrun/underrun counters (see `docs/validation/audio-regression.md`). Wiring to real mixer output and long-session runs, and spatial fixtures, remain.
+  Progress on 2026-10-02: `test/audio_spatial_regression.elisa` (in the gate) renders a fixed wave through `SpatialAudio::spatial_gain` and asserts exact mix peaks for distance falloff, out-of-range silence, cone shading and occlusion. Real mixer output and long-session runs remain.
 
 ## I — input, UI, accessibility, and platform interaction
 
