@@ -1,0 +1,98 @@
+# UI clipping, scrolling and clipped hit testing. Nested panels push their
+# rectangle; the active clip is the intersection of everything pushed, so a
+# child can never draw or take a pointer outside any ancestor. A scroll view
+# clamps its offset to the content, maps content rows to screen rows and
+# scrolls a focused rectangle into view.
+module UiClip:
+    public:
+        const module Tune:
+            MAX_DEPTH: i64 = 8
+
+        struct Box:
+            x: i64
+            y: i64
+            w: i64
+            h: i64
+
+        struct Stack:
+            boxes: mutable Box[8]
+            depth: mutable i64
+
+        struct Scroll:
+            viewport: i64
+            content: i64
+            offset: mutable i64
+
+        def box(x: i64, y: i64, w: i64, h: i64) -> Box:
+            Box{x: x, y: y, w: w, h: h}
+
+        def new_stack(screen_w: i64, screen_h: i64) -> Stack:
+            z: Box[8] = zeroed
+            mutable s: Stack = Stack{boxes: z, depth: 1}
+            s.boxes[0] <- box(0, 0, screen_w, screen_h)
+            s
+
+        def clip_intersect(a: Box, b: Box) -> Box:
+            x0: i64 = a.x if a.x > b.x else b.x
+            y0: i64 = a.y if a.y > b.y else b.y
+            ax1: i64 = a.x + a.w
+            bx1: i64 = b.x + b.w
+            ay1: i64 = a.y + a.h
+            by1: i64 = b.y + b.h
+            x1: i64 = ax1 if ax1 < bx1 else bx1
+            y1: i64 = ay1 if ay1 < by1 else by1
+            w: i64 = x1 - x0 if x1 > x0 else 0
+            h: i64 = y1 - y0 if y1 > y0 else 0
+            box(x0, y0, w, h)
+
+        def current(s: Stack&) -> Box:
+            return box(0, 0, 0, 0) if s.depth < 1 or s.depth > 8
+            s.boxes[s.depth - 1]
+
+        # Pushes the intersection with the current clip; refuses past MAX_DEPTH
+        # and negative sizes so a malformed panel cannot widen the clip.
+        def push(s: mutable Stack&, b: Box) -> bool:
+            return false if s.depth < 1 or s.depth >= 8 or b.w < 0 or b.h < 0
+            s.boxes[s.depth] <- clip_intersect(current(s), b)
+            s.depth <- s.depth + 1
+            true
+
+        # The screen root is never popped.
+        def pop(s: mutable Stack&) -> bool:
+            return false if s.depth <= 1 or s.depth > 8
+            s.depth <- s.depth - 1
+            true
+
+        def contains(b: Box, px: i64, py: i64) -> bool:
+            px >= b.x and py >= b.y and px < b.x + b.w and py < b.y + b.h
+
+        # A widget is hit only where it is visible under the active clip.
+        def hit(s: Stack&, b: Box, px: i64, py: i64) -> bool:
+            contains(b, px, py) and contains(current(s), px, py)
+
+        def new_scroll(viewport: i64, content: i64) -> Scroll:
+            v: i64 = viewport if viewport > 0 else 0
+            c: i64 = content if content > 0 else 0
+            Scroll{viewport: v, content: c, offset: 0}
+
+        def max_offset(sc: Scroll&) -> i64:
+            sc.content - sc.viewport if sc.content > sc.viewport else 0
+
+        def scroll_to(sc: mutable Scroll&, offset: i64) -> i64:
+            top: i64 = max_offset(sc)
+            o: i64 = offset if offset > 0 else 0
+            sc.offset <- o if o < top else top
+            sc.offset
+
+        def scroll_by(sc: mutable Scroll&, delta: i64) -> i64:
+            scroll_to(sc, sc.offset + delta)
+
+        # Scrolls the least distance that shows [top, top + height); a span
+        # taller than the viewport aligns its top.
+        def reveal(sc: mutable Scroll&, top: i64, height: i64) -> i64:
+            return scroll_to(sc, top) if top < sc.offset or height >= sc.viewport
+            return scroll_to(sc, top + height - sc.viewport) if top + height > sc.offset + sc.viewport
+            sc.offset
+
+        def to_screen(sc: Scroll&, origin: i64, content_y: i64) -> i64:
+            origin + content_y - sc.offset

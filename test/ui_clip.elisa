@@ -1,0 +1,41 @@
+include "../src/ui/clip.elisa"
+
+def main() -> i32:
+    mutable s: UiClip::Stack = UiClip::new_stack(800, 600)
+    root: UiClip::Box = UiClip::current(&s)
+    return 1 if root.w != 800 or root.h != 600 or s.depth != 1
+    # Nested panels intersect; a child cannot widen its parent's clip.
+    return 2 if not UiClip::push(&s, UiClip::box(100, 100, 200, 100))
+    return 3 if not UiClip::push(&s, UiClip::box(250, 50, 300, 300))
+    c: UiClip::Box = UiClip::current(&s)
+    return 4 if c.x != 250 or c.y != 100 or c.w != 50 or c.h != 100
+    # A button half outside the clip is hit only on its visible half.
+    button: UiClip::Box = UiClip::box(280, 150, 60, 20)
+    return 5 if not UiClip::hit(&s, button, 290, 160)
+    return 6 if UiClip::hit(&s, button, 320, 160)
+    return 7 if UiClip::hit(&s, button, 279, 160)
+    # Disjoint panels clip to nothing.
+    return 8 if not UiClip::push(&s, UiClip::box(700, 500, 10, 10))
+    e: UiClip::Box = UiClip::current(&s)
+    return 9 if e.w != 0 or e.h != 0 or UiClip::hit(&s, UiClip::box(700, 500, 10, 10), 705, 505)
+    # Pop restores the outer clip; the root is never popped; negative sizes refused.
+    return 10 if not UiClip::pop(&s) or UiClip::current(&s).w != 50
+    return 11 if UiClip::push(&s, UiClip::box(0, 0, 0 - 1, 5))
+    return 12 if not UiClip::pop(&s) or not UiClip::pop(&s) or UiClip::pop(&s) or s.depth != 1
+    # Depth is bounded.
+    for k in 0..<7:
+        return 13 if not UiClip::push(&s, UiClip::box(0, 0, 800, 600))
+    return 14 if UiClip::push(&s, UiClip::box(0, 0, 800, 600)) or s.depth != 8
+    # Scrolling clamps to the content and reveals focused rows.
+    mutable sc: UiClip::Scroll = UiClip::new_scroll(100, 400)
+    return 15 if UiClip::max_offset(&sc) != 300 or UiClip::scroll_by(&sc, 0 - 5) != 0
+    return 16 if UiClip::scroll_by(&sc, 1000) != 300 or UiClip::scroll_to(&sc, 120) != 120
+    return 17 if UiClip::reveal(&sc, 130, 20) != 120
+    return 18 if UiClip::reveal(&sc, 230, 20) != 150
+    return 19 if UiClip::reveal(&sc, 40, 20) != 40
+    return 20 if UiClip::reveal(&sc, 10, 500) != 10
+    return 21 if UiClip::to_screen(&sc, 200, 50) != 240
+    # Content shorter than the viewport never scrolls.
+    mutable short: UiClip::Scroll = UiClip::new_scroll(100, 60)
+    return 22 if UiClip::scroll_by(&short, 50) != 0 or UiClip::reveal(&short, 40, 20) != 0
+    return 0
