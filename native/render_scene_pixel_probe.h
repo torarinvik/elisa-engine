@@ -391,6 +391,49 @@ extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_text(void) {
     return 0;
 }
 
+// Measures the lit overlay rows inside the logical HUD corner (0..200, 0..60)
+// and checks their height, divided by the canvas DPI scaling, against
+// `font_size` logical units. 0 = fits, 1 = no text, 2 = too short, 3 = too tall.
+extern "C" int32_t elisa_render_scene_v1_last_frame_overlay_text_fit(int32_t font_size) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (font_size <= 0 || !state.initialized || !on_owner_thread(state) || state.path == nullptr) return 1;
+    if (wi::graphics::GetDevice() != nullptr) wi::graphics::GetDevice()->WaitForGPU();
+    const wi::graphics::Texture& frame = state.path->GetRenderResult2D();
+    const wi::graphics::TextureDesc& desc = frame.GetDesc();
+    wi::vector<uint8_t> pixels;
+    if (!frame.IsValid() || desc.format != wi::graphics::Format::R8G8B8A8_UNORM ||
+        desc.width == 0 || desc.height == 0 ||
+        !wi::helper::saveTextureToMemoryFile(frame, "RAW", pixels) ||
+        pixels.size() < size_t(desc.width) * desc.height * RGBA8_CHANNEL_COUNT) return 1;
+    const uint32_t max_x = std::min(desc.width, state.path->LogicalToPhysical(200.0f));
+    const uint32_t max_y = std::min(desc.height, state.path->LogicalToPhysical(60.0f));
+    int64_t top = -1;
+    int64_t bottom = -1;
+    for (uint32_t y = 0; y < max_y; ++y) {
+        for (uint32_t x = 0; x < max_x; ++x) {
+            const size_t index = (size_t(y) * desc.width + x) * RGBA8_CHANNEL_COUNT;
+            bool visible = false;
+            for (size_t channel = 0; channel < RGBA8_COLOR_CHANNEL_COUNT; ++channel) {
+                visible = visible || pixels[index + channel] > OVERLAY_TEXT_BRIGHTNESS_THRESHOLD;
+            }
+            if (pixels[index + RGBA8_ALPHA_INDEX] > OVERLAY_TEXT_ALPHA_THRESHOLD && visible) {
+                if (top < 0) top = y;
+                bottom = y;
+                break;
+            }
+        }
+    }
+    if (top < 0) return 1;
+    const float scaling = state.path->GetDPIScaling();
+    const float logical_height = float(bottom - top + 1) / (scaling > 0.0f ? scaling : 1.0f);
+    std::fprintf(stderr, "overlay text fit: %lld physical rows, dpi scaling %.3f, %.2f logical for size %d\n",
+        (long long)(bottom - top + 1), scaling, logical_height, font_size);
+    if (logical_height < float(font_size) * 0.4f) return 2;
+    if (logical_height > float(font_size) * 1.3f) return 3;
+    return 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_last_frame_has_overlay_panel(void) {
     RenderSceneService& state = service();
     std::lock_guard<std::mutex> guard(state.mutex);

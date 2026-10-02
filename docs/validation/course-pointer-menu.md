@@ -71,7 +71,7 @@ All controls were reverted.
 - There is no hover highlight or pointer cursor feedback, and no pointer
   gameplay (camera look).
 - The hit test assumes that overlay text positions are top-left in logical
-  units, as in the layout. There is still no DPI or content-scale factor
-  (I02).
+  units, as in the layout. The canvas maps those units to physical pixels by
+  the display DPI ([`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)).
 - There are no drag or scroll containers; the legend fits on screen at every
   size.

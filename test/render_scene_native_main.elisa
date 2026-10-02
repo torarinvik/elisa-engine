@@ -48,7 +48,7 @@ using MazeTrace
 extern elisa_render_scene_v1_last_frame_center_differs_from_corner() -> i32
 extern elisa_render_scene_v1_test_failed_case(group: i32, case_number: i32) -> i32
 @callconv(c)
-extern elisa_render_scene_v1_last_frame_has_overlay_text() -> i32
+extern elisa_render_scene_v1_last_frame_overlay_text_fit(font_size: i32) -> i32
 @callconv(c)
 extern elisa_render_scene_v1_last_frame_has_overlay_panel() -> i32
 @callconv(c)
@@ -337,7 +337,7 @@ def exercise_render_scene() -> i32:
     shadow_rendering: i32 = RenderSceneEnvironmentNativeTests::verify_lighting_rendering(
         box, sphere, floor, electric_arc, hud_text, hud_panel)
     return elisa_render_scene_v1_test_failed_case(197, shadow_rendering) if shadow_rendering != 0
-    return 79 if elisa_render_scene_v1_last_frame_has_overlay_text() == 0
+    return elisa_render_scene_v1_test_failed_case(79, elisa_render_scene_v1_last_frame_overlay_text_fit(24)) if elisa_render_scene_v1_last_frame_overlay_text_fit(24) != 0
     return 131 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
     hidden_panel: i32 = catch RenderScene::set_overlay_panel_visible(hud_panel, false):
         ok: 0

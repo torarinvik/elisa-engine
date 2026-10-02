@@ -83,8 +83,9 @@ Compiler: stage1 snapshot sha256 `7ccb9831…9ce3`, built from a dirty
   implemented (all gamepads share one logical device).
 - **Manual play:** a person has not yet played with the legend, the rebind
   menu, focus pause or a live resize.
-- **Pointer input and DPI:** there is no mouse movement or scroll input, and
-  the legend uses logical pixel positions without DPI scaling.
+- **Pointer input:** there is no mouse movement or scroll input. The legend
+  uses logical positions, which the canvas scales by the display DPI (see
+  [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)).
 - **Key coverage:** only the portable key subset (codes 2001–2029) exists.
   Rebinding to keys outside it needs wider `Application` key codes.
 - **Gamepad rebinding:** gamepad bindings are fixed. Only keyboard slots can

@@ -103,10 +103,10 @@ All controls were reverted.
 
 ## Gaps
 
-- There is no DPI or content-scale factor yet. The text setting is the only
-  scale, and the canvas is logical pixels (I02).
-- No reduced-motion setting, no gamepad rebinding, and no semantic control
-  metadata or platform accessibility bridge (I06).
+- Overlays are DPI-scaled by the canvas (measured in
+  [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)); the text setting
+  multiplies on top of that.
+- No reduced-motion setting and no platform accessibility bridge (I06).
 - The contrast theme covers the HUD, not the 3D scene.
 - No display or audio-device selection (I03). Physical controller behaviour
   is covered only by mapping; no hardware run.
