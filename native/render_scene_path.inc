@@ -1,3 +1,13 @@
+#if !defined(ELISA_RENDER_SCENE_TEST_PROBE)
+// Production builds carry no frame-report probe; the scopes compile away.
+#define ELISA_FRAME_REPORT_ZONE(name) ((void)0)
+struct FrameReportScope {
+    FrameReportScope(uint32_t, bool, const wi::graphics::CommandList*) {}
+    void draws(int64_t) {}
+    void resident() {}
+};
+#endif
+
 class ElisaRenderPath3D final : public wi::RenderPath3D {
 public:
     explicit ElisaRenderPath3D(
@@ -6,6 +16,8 @@ public:
         : arcs_(arcs), debug_draw_(debug_draw), state_(state) {}
 
     void PreUpdate() override {
+        ELISA_FRAME_REPORT_ZONE("elisa_update");
+        FrameReportScope report(0, false, nullptr);
         if (state_ != nullptr && width > 0 && height > 0) {
             state_->host_canvas_width = width;
             state_->host_canvas_height = height;
@@ -25,6 +37,8 @@ public:
     }
 
     void Update(float dt) override {
+        ELISA_FRAME_REPORT_ZONE("elisa_update");
+        FrameReportScope report(0, false, nullptr);
         if (state_) {
             const float next_scale = state_->adaptive_resolution.advance(dt, resolutionScale);
             if (next_scale != resolutionScale)
@@ -71,6 +85,9 @@ public:
     }
 
     void Render() const override {
+        ELISA_FRAME_REPORT_ZONE("elisa_scene");
+        FrameReportScope report(1, true, nullptr);
+        report.draws(int64_t(visibility_main.visibleObjects.size()));
         if (state_ != nullptr) update_snapshot_lod_selection(*state_);
         if (state_ != nullptr && state_->scene != nullptr) {
             for (RenderCameraSlot& slot : state_->cameras) {
@@ -110,6 +127,9 @@ public:
     }
 
     void Compose(wi::graphics::CommandList cmd) const override {
+        ELISA_FRAME_REPORT_ZONE("elisa_compose");
+        FrameReportScope report(2, true, &cmd);
+        report.draws(1);
         if (state_ != nullptr && state_->primary_viewport.enabled) {
             wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
             if (device != nullptr) {
@@ -155,6 +175,8 @@ public:
             float(state_->host_canvas_height > 0 ? state_->host_canvas_height : uint32_t(state_->height)),
             0.0f, 1.0f};
         device->BindViewports(1, &framebuffer, cmd);
+        report.draws(int64_t(composed));
+        report.resident();
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
         state_->camera_viewports_composed = composed;
 #endif

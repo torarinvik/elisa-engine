@@ -23,6 +23,7 @@ from compare_lighting_references import (DEFAULT_MEAN_TOLERANCE,
     DEFAULT_PEAK_TOLERANCE, REFERENCE_HEIGHT, REFERENCE_WIDTH,
     compare_capture, update_reference)
 from compare_renders import compare, read_png, resample_nearest
+import render_frame_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +48,8 @@ def prepare(build: Path, environment: dict[str, str]) -> None:
         path = capture_path(build, name)
         path.unlink(missing_ok=True)
         environment[variable] = str(path)
+    # R20: the same scene's per-pass frame report (render group 240).
+    render_frame_report.prepare(build, environment)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as error:
         print(f"render graph reference check: {error}", file=sys.stderr)
         return 2
-    return 1 if failed else 0
+    return 1 if failed else render_frame_report.check(args.capture_dir)
 
 
 if __name__ == "__main__":

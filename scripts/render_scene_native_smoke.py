@@ -24,7 +24,7 @@ import elisa_build_run
 from elisa_package import write_geometry_package
 from png_image import encode_png
 import compare_renders
-import compare_render_graph_references
+import compare_render_graph_references, render_frame_report
 import gltf_texture_self_test
 import gltf_clearcoat_self_test
 import gltf_mirrored_normal_fixture
@@ -352,7 +352,7 @@ def main() -> int:
         str(ROOT / "native/physics_shape_service_abi.cpp"),
         str(basisu_transcoder / "basisu_transcoder.cpp"),
         str(wicked_source / "wiAppleHelper.mm"), str(wicked_source / "wiInput_Apple.mm"),
-        str(archive), str(runtime_object),
+        str(archive), str(runtime_object), *render_frame_report.tracy_args(ROOT),
         # Prebuilt objects a test main also needs, e.g. build/viewport_metal.o.
         *[extra for extra in os.environ.get("ELISA_RENDER_SCENE_EXTRA_OBJECTS", "").split(os.pathsep) if extra],
         str(libraries / "libWickedEngine.a"), str(libraries / "libJolt.a"),

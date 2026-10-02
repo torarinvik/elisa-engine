@@ -155,6 +155,10 @@ module RenderGraphAuthoredSceneTests:
             viewport
 
     public:
+        # The authored graph with its aliased resolve target, for the R20 report.
+        def configure_report_scene() -> i32:
+            authored_configure(RenderGraph::Lifetime.Transient)
+
         def exercise() -> i32:
             cyclic: mutable RenderGraph::Graph = RenderGraph::Graph()
             cyclic_built: i32 = authored_build(&cyclic, RenderGraph::Lifetime.Transient, true, true)

@@ -432,6 +432,7 @@ group G failed at case N` to stderr, then exits G.
 | 237 | `render_scene_pose_schedule_native.elisa` (run by `render_scene_late_groups_native.elisa`) | logged |
 | 238 | `render_scene_effect_memory_native.elisa` (run from the end of `render_scene_native_main.elisa`) | logged |
 | 239 | `render_graph_authored_scene_native.elisa` (run from the end of `render_graph_native.elisa`; group 280 then logs case 239) | logged |
+| 240 | `render_frame_report_native.elisa` (run from the end of `render_graph_native.elisa`; group 280 then logs case 240) | logged |
 
 Groups 197, 198, 199 and 227 used to return their codes as the exit, and those
 codes also belonged to other groups:

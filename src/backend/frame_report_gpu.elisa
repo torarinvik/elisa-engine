@@ -1,0 +1,35 @@
+# Scalar GPU-label rules for FrameReport, kept apart so the prover can read
+# them (proof/frame_report.elisa). UNAVAILABLE (-1) means the device or driver
+# gave no GPU time for a pass; it is a label, never a number to add or compare.
+# A frame total saturates at MAX_TOTAL_US (about 11.5 days) instead of overflowing.
+module FrameReportGpu:
+    public:
+        const UNAVAILABLE: i64 = -1
+        const MAX_TOTAL_US: i64 = 1000000000000
+
+        def known_after(known: bool, gpu_us: i64) -> bool:
+            ensure gpu_us >= 0 or result == false
+            return false if gpu_us < 0
+            known
+
+        def total_after(total: i64, gpu_us: i64) -> i64:
+            ensure gpu_us >= 0 or result == total
+            return total if gpu_us < 0
+            return total if total < 0
+            return 1000000000000 if total > 1000000000000
+            return 1000000000000 if gpu_us > 1000000000000
+            total + gpu_us
+
+        def over_budget(known: bool, gpu_us: i64, budget_gpu_us: i64) -> bool:
+            ensure known or result == false
+            return false if not known
+            gpu_us > budget_gpu_us
+
+        def valid_pass(cpu_us: i64, gpu_us: i64, draws: i64, uploads: i64, bytes: i64) -> bool:
+            ensure cpu_us >= 0 or result == false
+            ensure gpu_us >= -1 or result == false
+            return false if cpu_us < 0
+            return false if gpu_us < -1
+            return false if draws < 0
+            return false if uploads < 0
+            bytes >= 0

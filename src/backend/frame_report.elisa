@@ -4,10 +4,14 @@
 # driver gave none, and the report says so instead of inventing a number: one
 # unavailable pass makes the whole frame's GPU total unavailable. Cold frames
 # (first use, shader and cache warm-up) are judged against their own budget.
+# The scalar GPU-label rules live in FrameReportGpu and are proved in
+# proof/frame_report.elisa.
+include "frame_report_gpu.elisa"
+
 module FrameReport:
     public:
         const module Gpu:
-            NONE: i64 = -1
+            NONE: i64 = FrameReportGpu::UNAVAILABLE
 
         enum Verdict:
             Within
@@ -38,16 +42,12 @@ module FrameReport:
         def Report() -> Report:
             Report{passes: 0, cpu_us: 0, gpu_us: 0, gpu_known: true, draws: 0, upload_bytes: 0, resource_bytes: 0, slowest_pass: -1, slowest_cpu_us: -1}
 
-        def valid_pass(cpu_us: i64, gpu_us: i64, draws: i64, uploads: i64, bytes: i64) -> bool:
-            return false if cpu_us < 0 or draws < 0 or uploads < 0 or bytes < 0
-            gpu_us >= Gpu::NONE
-
         # Adds one pass. Negative counts are refused (the report is returned
         # unchanged) so a bad probe cannot lower a total.
         def record(report: Report, pass_id: i64, cpu_us: i64, gpu_us: i64, draws: i64, uploads: i64, bytes: i64) -> Report:
-            return report if not valid_pass(cpu_us, gpu_us, draws, uploads, bytes)
-            known: bool = report.gpu_known and gpu_us != Gpu::NONE
-            gpu_total: i64 = report.gpu_us + gpu_us if gpu_us != Gpu::NONE else report.gpu_us
+            return report if not FrameReportGpu::valid_pass(cpu_us, gpu_us, draws, uploads, bytes)
+            known: bool = FrameReportGpu::known_after(report.gpu_known, gpu_us)
+            gpu_total: i64 = FrameReportGpu::total_after(report.gpu_us, gpu_us)
             slower: bool = cpu_us > report.slowest_cpu_us
             Report{passes: report.passes + 1, cpu_us: report.cpu_us + cpu_us, gpu_us: gpu_total, gpu_known: known, draws: report.draws + draws, upload_bytes: report.upload_bytes + uploads, resource_bytes: report.resource_bytes + bytes, slowest_pass: pass_id if slower else report.slowest_pass, slowest_cpu_us: cpu_us if slower else report.slowest_cpu_us}
 
@@ -60,7 +60,7 @@ module FrameReport:
         # uploads, resources. An unavailable GPU total is never a failure.
         def judge(report: Report&, budget: Budget&) -> Verdict:
             return Verdict.OverCpu if report.cpu_us > budget.cpu_us
-            return Verdict.OverGpu if report.gpu_known and report.gpu_us > budget.gpu_us
+            return Verdict.OverGpu if FrameReportGpu::over_budget(report.gpu_known, report.gpu_us, budget.gpu_us)
             return Verdict.OverDraws if report.draws > budget.draws
             return Verdict.OverUploads if report.upload_bytes > budget.upload_bytes
             return Verdict.OverResources if report.resource_bytes > budget.resource_bytes

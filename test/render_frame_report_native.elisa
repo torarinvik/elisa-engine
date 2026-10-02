@@ -1,0 +1,105 @@
+# R20 frame report for the authored render-graph scene (render group 240).
+# The scene is resized to a size it has not used before and its graph is
+# rebuilt, so frame 0 recreates Wicked's render targets and the graph's
+# transient textures (the cold frame); frames 1.. reuse them (warm). The native
+# probe measures update, scene and compose passes per frame and writes the raw
+# report to $ELISA_RENDER_FRAME_REPORT. Each frame is accumulated through
+# FrameReport and must stay inside the committed cold or warm budget below,
+# which is the regression threshold the render smoke enforces. A GPU time the
+# device did not give is -1 and must leave the frame's GPU total unmeasured.
+include "../src/backend/frame_report.elisa"
+
+module RenderFrameReportNative:
+    private:
+        const FRAMES: u32 = 8
+        const REPORT_WIDTH: i32 = 480
+        const REPORT_HEIGHT: i32 = 300
+        const RESTORE_WIDTH: i32 = 640
+        const RESTORE_HEIGHT: i32 = 400
+        const PASSES: u32 = 3
+        const SCENE_PASS: u32 = 1
+        const COMPOSE_PASS: u32 = 2
+        const FIELD_GPU: u32 = 1
+        const FIELD_DRAWS: u32 = 2
+        const FIELD_UPLOADS: u32 = 3
+        const FIELD_BYTES: u32 = 4
+
+        @callconv(c)
+        extern elisa_render_scene_v1_test_frame_report_capture(frames: u32, report_variable: cstr) -> i32
+        @callconv(c)
+        extern elisa_render_scene_v1_test_frame_report_value(frame: u32, pass_index: u32, field: u32) -> i64
+        @callconv(c)
+        extern elisa_render_scene_v1_test_frame_report_tracy_frames() -> i64
+
+        # Regression thresholds (see docs/validation/render-frame-report.md for
+        # the measurements they were set from).
+        def cold_budget() -> FrameReport::Budget:
+            FrameReport::Budget{cpu_us: 100000, gpu_us: 50000, draws: 8, upload_bytes: 67108864, resource_bytes: 805306368}
+
+        def warm_budget() -> FrameReport::Budget:
+            FrameReport::Budget{cpu_us: 50000, gpu_us: 33000, draws: 8, upload_bytes: 4194304, resource_bytes: 805306368}
+
+        def value(frame: u32, pass_index: u32, field: u32) -> i64:
+            elisa_render_scene_v1_test_frame_report_value(frame, pass_index, field)
+
+        def record_pass(report: FrameReport::Report, frame: u32, pass_index: u32) -> FrameReport::Report:
+            FrameReport::record(report, i64(pass_index), value(frame, pass_index, 0), value(frame, pass_index, FIELD_GPU),
+                value(frame, pass_index, FIELD_DRAWS), value(frame, pass_index, FIELD_UPLOADS), value(frame, pass_index, FIELD_BYTES))
+
+        def frame_report(frame: u32) -> FrameReport::Report:
+            r0: FrameReport::Report = record_pass(FrameReport::Report(), frame, 0)
+            r1: FrameReport::Report = record_pass(r0, frame, SCENE_PASS)
+            record_pass(r1, frame, COMPOSE_PASS)
+
+        # 0 when the frame's GPU label agrees with its passes: measured only if
+        # no pass reported -1.
+        def label_consistent(report: FrameReport::Report&, frame: u32) -> bool:
+            update_gpu: i64 = value(frame, 0, FIELD_GPU)
+            scene_gpu: i64 = value(frame, SCENE_PASS, FIELD_GPU)
+            compose_gpu: i64 = value(frame, COMPOSE_PASS, FIELD_GPU)
+            any_missing: bool = update_gpu < 0 or scene_gpu < 0 or compose_gpu < 0
+            FrameReport::gpu_measured(report) != any_missing
+
+        def resize_to(width: i32, height: i32, clear_viewport: bool) -> bool:
+            resized: bool = catch RenderScene::resize(width, height):
+                ok: true
+                error failure: false
+            return false if not resized
+            if clear_viewport:
+                cleared: bool = catch RenderScene::clear_primary_viewport():
+                    ok: true
+                    error failure: false
+                return cleared
+            viewport: bool = catch RenderScene::set_primary_viewport(0, 0, width, height):
+                ok: true
+                error failure: false
+            viewport
+
+        def check_frames() -> i32:
+            cold: FrameReport::Budget = cold_budget()
+            warm: FrameReport::Budget = warm_budget()
+            for frame in 0..<FRAMES:
+                report: FrameReport::Report = frame_report(frame)
+                return 20 + i32(frame) if report.passes != i64(PASSES)
+                return 30 + i32(frame) if not label_consistent(&report, frame)
+                return 40 + i32(frame) if value(frame, SCENE_PASS, FIELD_DRAWS) <= 0 or value(frame, COMPOSE_PASS, FIELD_BYTES) <= 0
+                verdict: FrameReport::Verdict = FrameReport::judge_frame(&report, i64(frame), &cold, &warm)
+                return 50 + i32(frame) if verdict != FrameReport::Verdict.Within
+            0
+
+    public:
+        def exercise() -> i32:
+            return 1 if not resize_to(REPORT_WIDTH, REPORT_HEIGHT, false)
+            return 2 if RenderGraphAuthoredSceneTests::configure_report_scene() != 0
+            return 3 if elisa_render_scene_v1_test_frame_report_capture(FRAMES, "ELISA_RENDER_FRAME_REPORT") != 0
+            return 4 if RenderGraphRuntime::last_execution_status() != RenderGraphRuntime::EXECUTION_OK
+            # Out-of-range reads are refused rather than read past the capture.
+            return 5 if value(FRAMES, 0, 0) != -2 or value(0, PASSES, 0) != -2
+            tracy_frames: i64 = elisa_render_scene_v1_test_frame_report_tracy_frames()
+            return 6 if tracy_frames != -1 and tracy_frames != i64(FRAMES)
+            checked: i32 = check_frames()
+            return checked if checked != 0
+            return 7 if not resize_to(RESTORE_WIDTH, RESTORE_HEIGHT, true)
+            return 8 if RenderGraphNativeHarness::configure_clear_copy_graph(3) != RenderGraphRuntime::CONFIGURE_OK
+            return 9 if Application::pump() != Application::PumpStatus.Running
+            0

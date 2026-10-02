@@ -1,5 +1,6 @@
 include "render_graph_native_harness.elisa"
 include "render_graph_authored_scene_native.elisa"
+include "render_frame_report_native.elisa"
 using RenderGraphNativeHarness
 
 module RenderGraphNativeTests:
@@ -159,4 +160,6 @@ module RenderGraphNativeTests:
             return aberration_status if aberration_status != 0
             authored_status: i32 = RenderGraphAuthoredSceneTests::exercise()
             return elisa_render_scene_v1_test_failed_case(239, authored_status) if authored_status != 0
+            frame_report_status: i32 = RenderFrameReportNative::exercise()
+            return elisa_render_scene_v1_test_failed_case(240, frame_report_status) if frame_report_status != 0
             0

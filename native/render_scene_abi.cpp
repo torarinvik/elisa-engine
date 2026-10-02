@@ -31,6 +31,9 @@
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
 #include <DirectXMath.h>
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE) && defined(TRACY_ENABLE)
+#include <tracy/Tracy.hpp> // file scope: the probe header sits in namespace {}
+#endif
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -179,6 +182,7 @@ int32_t primary_view_height(const RenderSceneService& state);
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE)
 void render_path_gpu_timing_begin_render();
 void render_path_gpu_timing_end_render();
+#include "render_frame_report_probe.h"
 #endif
 #include "render_scene_path.inc"
 RenderSceneService& service() {

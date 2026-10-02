@@ -1,0 +1,31 @@
+# R20 frame report: a GPU time the device did not give (any negative value,
+# UNAVAILABLE in practice) leaves the frame's GPU total unmeasured and adds
+# nothing to it, an unmeasured GPU total is never over budget, and negative
+# probes are refused. Arguments are requires-bounded parameters because the
+# prover does not substitute a negative literal argument into callee ensures.
+include "../src/backend/frame_report_gpu.elisa"
+
+extend FrameReportGpu:
+    def prove_unavailable_pass_unmeasures(known: bool, gpu_us: i64) -> bool:
+        requires gpu_us < 0
+        ensure result == false
+        known_after(known, gpu_us)
+
+    def prove_unavailable_pass_adds_nothing(total: i64, gpu_us: i64) -> i64:
+        requires gpu_us < 0
+        ensure result == total
+        total_after(total, gpu_us)
+
+    def prove_unmeasured_gpu_never_over(gpu_us: i64, budget_gpu_us: i64) -> bool:
+        ensure result == false
+        over_budget(false, gpu_us, budget_gpu_us)
+
+    def prove_negative_cpu_refused(cpu_us: i64, gpu_us: i64, draws: i64, uploads: i64, bytes: i64) -> bool:
+        requires cpu_us < 0
+        ensure result == false
+        valid_pass(cpu_us, gpu_us, draws, uploads, bytes)
+
+    def prove_gpu_below_unavailable_refused(cpu_us: i64, gpu_us: i64, draws: i64, uploads: i64, bytes: i64) -> bool:
+        requires gpu_us < -1
+        ensure result == false
+        valid_pass(cpu_us, gpu_us, draws, uploads, bytes)
