@@ -1,0 +1,204 @@
+# N01: cooked, cached navmeshes. `cook` bakes the boxes staged through
+# `NavMesh` into a tiled, deterministic blob for one agent profile, or
+# reuses the cached blob when the scene's geometry and the profile are
+# unchanged; changed geometry or a changed profile invalidates the entry.
+# After each cook the service keeps its diagnostics (bad input, unused area
+# volumes, links off the mesh), its tile metadata and debug overlay lines
+# that name the staged box under each polygon. The cache saves to and loads
+# from a file; a corrupt or old file is diagnosed and leaves the cache as is.
+include "./navmesh.elisa"
+include "./cook_plan.elisa"
+
+module NavCook:
+    public:
+        error NavCookError:
+            InvalidInput
+            CookFailed
+            CookCapacity
+            CacheFile
+
+        # Diagnostic codes; see `native/navmesh_cook.h`.
+        const module Code:
+            INVALID_INPUT: u32 = 1
+            GRID_TOO_LARGE: u32 = 2
+            NO_WALKABLE_SURFACE: u32 = 3
+            DEGENERATE_TRIANGLE: u32 = 4
+            EMPTY_MESH: u32 = 5
+            LINK_ENDPOINT_OFF_MESH: u32 = 6
+            AREA_VOLUME_UNUSED: u32 = 7
+            TILE_CAPACITY: u32 = 8
+            CACHE_CORRUPT: u32 = 9
+            CACHE_VERSION: u32 = 10
+
+        const WARNING: u32 = 1
+        const ERROR: u32 = 2
+        const DEFAULT_TILE_CELLS: u32 = 64
+
+        enum Outcome:
+            Miss
+            Hit
+            Invalidated
+
+        struct Cooked:
+            handle: NavMesh::Handle
+            outcome: Outcome
+
+        struct Diagnostic:
+            code: u32
+            severity: u32
+            # The box, tile, volume or link the diagnostic names.
+            subject: u32
+            count: u32
+
+        struct Info:
+            tiles_x: u32
+            tiles_z: u32
+            tiles: u32
+            polygons: u32
+            bytes: u32
+            digest: u64
+
+        struct OverlayLine:
+            a: Geometry::Vec3
+            b: Geometry::Vec3
+            area: u32
+            # The staged box (in `add_box` order) under the polygon, or -1.
+            source_box: i32
+            link: bool
+
+    private:
+        const module CookStatus:
+            OK: i32 = 0
+            INVALID_ARGUMENT: i32 = 1
+            CAPACITY: i32 = 2
+            BAKE_FAILED: i32 = 3
+
+        @callconv(c)
+        extern elisa_navigation_v1_cook(agent_radius: f32, agent_height: f32,
+            max_climb: f32, max_slope_degrees: f32, cell_size: f32, cell_height: f32,
+            tile_cells: u32, scene_id: u64, slot: mutable u32&, generation: mutable u32&,
+            cache_outcome: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cook_diagnostic_count() -> u32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cook_diagnostic(index: u32, code: mutable u32&,
+            severity: mutable u32&, subject: mutable u32&, count: mutable u32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cook_info(tiles_x: mutable u32&, tiles_z: mutable u32&,
+            tiles: mutable u32&, polygons: mutable u32&, bytes: mutable u32&, digest: mutable u64&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cook_area_polygons(area: u32) -> u32
+
+        @callconv(c)
+        extern elisa_navigation_v1_overlay_count() -> u32
+
+        @callconv(c)
+        extern elisa_navigation_v1_overlay_line(index: u32, ax: mutable f32&, ay: mutable f32&,
+            az: mutable f32&, bx: mutable f32&, by: mutable f32&, bz: mutable f32&,
+            area: mutable u32&, source_box: mutable i32&, link: mutable i32&) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cache_size() -> u32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cache_clear() -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cache_save(path: cstr) -> i32
+
+        @callconv(c)
+        extern elisa_navigation_v1_cache_load(path: cstr) -> i32
+
+        def cook_check(status: i32) -> void error[NavCookError]:
+            raise NavCookError.InvalidInput if status == CookStatus::INVALID_ARGUMENT
+            raise NavCookError.CookCapacity if status == CookStatus::CAPACITY
+            raise NavCookError.CookFailed if status != CookStatus::OK
+
+        def outcome_of(code: u32) -> Outcome:
+            if code == 1:
+                Outcome.Hit
+            elif code == 2:
+                Outcome.Invalidated
+            else:
+                Outcome.Miss
+
+    public:
+        # Cook (or reuse) the staged scene under `scene_id` with tiles of
+        # `tile_cells` voxels a side. The mesh is published like a bake.
+        def cook(profile: NavMesh::Profile, tile_cells: u32, scene_id: u64) -> Cooked error[NavCookError]:
+            raise NavCookError.InvalidInput if not NavCookPlan::tile_size_ok(tile_cells.i64())
+            slot: mutable u32 = 0
+            generation: mutable u32 = 0
+            code: mutable u32 = 0
+            try cook_check(elisa_navigation_v1_cook(profile.radius, profile.height, profile.max_climb,
+                profile.max_slope_degrees, profile.cell_size, profile.cell_height, tile_cells, scene_id,
+                &slot, &generation, &code))
+            Cooked{handle: NavMesh::Handle{slot: slot, generation: generation}, outcome: outcome_of(code)}
+
+        def diagnostic_count() -> usize:
+            elisa_navigation_v1_cook_diagnostic_count().usize()
+
+        def diagnostic(index: usize) -> Diagnostic:
+            code: mutable u32 = 0
+            severity: mutable u32 = 0
+            subject: mutable u32 = 0
+            count: mutable u32 = 0
+            _ = elisa_navigation_v1_cook_diagnostic(index.u32(), &code, &severity, &subject, &count)
+            Diagnostic{code: code, severity: severity, subject: subject, count: count}
+
+        # Whether the last cook or cache operation reported `code` at `severity`.
+        def reported(code: u32, severity: u32) -> bool:
+            found: mutable bool = false
+            for index in 0..<diagnostic_count():
+                d: Diagnostic = diagnostic(index)
+                if d.code == code and d.severity == severity:
+                    found <- true
+            found
+
+        def info() -> Info error[NavCookError]:
+            tiles_x: mutable u32 = 0
+            tiles_z: mutable u32 = 0
+            tiles: mutable u32 = 0
+            polygons: mutable u32 = 0
+            bytes: mutable u32 = 0
+            digest: mutable u64 = 0
+            try cook_check(elisa_navigation_v1_cook_info(&tiles_x, &tiles_z, &tiles, &polygons, &bytes, &digest))
+            Info{tiles_x: tiles_x, tiles_z: tiles_z, tiles: tiles, polygons: polygons, bytes: bytes, digest: digest}
+
+        # Ground polygons of `area` in the last successful cook.
+        def area_polygons(area: u32) -> u32:
+            elisa_navigation_v1_cook_area_polygons(area)
+
+        def overlay_count() -> usize:
+            elisa_navigation_v1_overlay_count().usize()
+
+        def overlay_line(index: usize) -> OverlayLine:
+            ax: mutable f32 = 0.0
+            ay: mutable f32 = 0.0
+            az: mutable f32 = 0.0
+            bx: mutable f32 = 0.0
+            by: mutable f32 = 0.0
+            bz: mutable f32 = 0.0
+            area: mutable u32 = 0
+            source: mutable i32 = -1
+            link: mutable i32 = 0
+            _ = elisa_navigation_v1_overlay_line(index.u32(), &ax, &ay, &az, &bx, &by, &bz, &area, &source, &link)
+            OverlayLine{a: Geometry::Vec3{x: ax, y: ay, z: az}, b: Geometry::Vec3{x: bx, y: by, z: bz},
+                area: area, source_box: source, link: link != 0}
+
+        def cache_size() -> usize:
+            elisa_navigation_v1_cache_size().usize()
+
+        def cache_clear() -> void:
+            _ = elisa_navigation_v1_cache_clear()
+
+        def cache_save(path: cstr) -> void error[NavCookError]:
+            raise NavCookError.CacheFile if elisa_navigation_v1_cache_save(path) != CookStatus::OK
+
+        # A corrupt or old-version file raises and leaves the cache unchanged.
+        def cache_load(path: cstr) -> void error[NavCookError]:
+            raise NavCookError.CacheFile if elisa_navigation_v1_cache_load(path) != CookStatus::OK

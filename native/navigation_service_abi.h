@@ -100,4 +100,26 @@ int32_t elisa_navigation_v1_raycast(uint32_t slot, uint32_t generation,
 // Number of published meshes, for leak checks.
 uint32_t elisa_navigation_v1_live_count();
 
+// N01 cooked navmeshes (native/navigation_cook_abi.inc). `cook` turns the
+// staged scene into a deterministic tiled blob of `tile_cells` cells a side,
+// cached under `scene_id`: `cache_outcome` is 0 miss, 1 hit (no re-cook) or
+// 2 invalidated (the scene or profile changed). Failures leave diagnostics
+// {code, severity 1 warning / 2 error, subject, count} per navmesh_cook.h.
+int32_t elisa_navigation_v1_cook(float agent_radius, float agent_height, float max_climb,
+    float max_slope_degrees, float cell_size, float cell_height, uint32_t tile_cells, uint64_t scene_id,
+    uint32_t* slot, uint32_t* generation, uint32_t* cache_outcome);
+uint32_t elisa_navigation_v1_cook_diagnostic_count();
+int32_t elisa_navigation_v1_cook_diagnostic(uint32_t index, uint32_t* code, uint32_t* severity,
+    uint32_t* subject, uint32_t* count);
+int32_t elisa_navigation_v1_cook_info(uint32_t* tiles_x, uint32_t* tiles_z, uint32_t* tiles,
+    uint32_t* polygons, uint32_t* bytes, uint64_t* digest);
+uint32_t elisa_navigation_v1_cook_area_polygons(uint32_t area);
+uint32_t elisa_navigation_v1_overlay_count();
+int32_t elisa_navigation_v1_overlay_line(uint32_t index, float* ax, float* ay, float* az,
+    float* bx, float* by, float* bz, uint32_t* area, int32_t* source_box, int32_t* link);
+uint32_t elisa_navigation_v1_cache_size();
+int32_t elisa_navigation_v1_cache_clear();
+int32_t elisa_navigation_v1_cache_save(const char* path);
+int32_t elisa_navigation_v1_cache_load(const char* path);
+
 }

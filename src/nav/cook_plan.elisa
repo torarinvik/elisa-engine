@@ -1,0 +1,35 @@
+# N01 cook planning: how a scene's voxel grid splits into tiles, whether a
+# tile size and grid fit the native cook's limits, and how a cache entry is
+# judged. Pure arithmetic, shared by `NavCook` and its proof.
+module NavCookPlan:
+    public:
+        const MIN_TILE_CELLS: i64 = 16
+        const MAX_TILE_CELLS: i64 = 512
+        const MAX_TILES: i64 = 64
+
+        # Tiles needed to cover `cells` voxels with tiles of `tile_cells`.
+        def tiles_along(cells: i64, tile_cells: i64) -> i64:
+            ensure result >= 0
+            ensure tile_cells >= MIN_TILE_CELLS or result == 0
+            ensure tile_cells <= MAX_TILE_CELLS or result == 0
+            ensure cells <= 0 or cells > 1048576 or tile_cells < MIN_TILE_CELLS or tile_cells > MAX_TILE_CELLS or result >= 1
+            if cells <= 0 or tile_cells < MIN_TILE_CELLS or tile_cells > MAX_TILE_CELLS or cells > 1048576:
+                return 0
+            1 + (cells - 1) / tile_cells
+
+        def tile_size_ok(tile_cells: i64) -> bool:
+            tile_cells >= MIN_TILE_CELLS and tile_cells <= MAX_TILE_CELLS
+
+        # A grid fits when both axes need tiles and their product stays within
+        # MAX_TILES, the native cook's tile budget.
+        def grid_fits(tiles_x: i64, tiles_z: i64) -> bool:
+            ensure not result or (tiles_x >= 1 and tiles_z >= 1)
+            ensure not result or (tiles_x <= MAX_TILES and tiles_z <= MAX_TILES)
+            if tiles_x <= 0 or tiles_z <= 0 or tiles_x > MAX_TILES or tiles_z > MAX_TILES:
+                return false
+            tiles_x * tiles_z <= MAX_TILES
+
+        # A cached cook is reused only when both its source and settings digests match.
+        def reusable(cached_source: u64, cached_settings: u64, source: u64, settings: u64) -> bool:
+            ensure not result or (cached_source == source and cached_settings == settings)
+            cached_source == source and cached_settings == settings

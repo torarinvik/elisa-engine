@@ -83,14 +83,15 @@ def run_stream_harness(sanitizer: str, harness: str = "stream") -> int:
     return run_result.returncode
 
 
-def run_navigation_service(recast: Path, recast_libs: list[Path]) -> int:
-    output = ENGINE_ROOT / "build/navigation-service-asan"
+def run_navigation_service(recast: Path, recast_libs: list[Path], test: str = "navigation_service_test.cpp",
+    name: str = "navigation-service-asan") -> int:
+    output = ENGINE_ROOT / "build" / name
     arguments = [
         "c++", "-std=c++17", "-O1", "-g",
         "-fsanitize=address,undefined", "-fno-sanitize-recover=all",
         "-I", str(recast / "Recast/Include"), "-I", str(recast / "Detour/Include"),
         str(ENGINE_ROOT / "native/navigation_service_abi.cpp"),
-        str(ENGINE_ROOT / "test/navigation_service_test.cpp"),
+        str(ENGINE_ROOT / "test" / test),
         *(str(lib) for lib in recast_libs),
         "-o", str(output),
     ]
@@ -158,6 +159,9 @@ def main() -> int:
         return run_result.returncode
     print("sanitized boundary harness passed: no AddressSanitizer or UBSan finding")
     status = run_navigation_service(recast, recast_libs)
+    if status != 0:
+        return status
+    status = run_navigation_service(recast, recast_libs, "navmesh_cook_test.cpp", "navmesh-cook-asan")
     if status != 0:
         return status
     for sanitizer in ("address,undefined", "thread"):

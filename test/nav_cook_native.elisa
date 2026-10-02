@@ -1,0 +1,164 @@
+# N01 through the Elisa wrappers: a two-room scene with a doorway, a pillar,
+# stairs up to a mezzanine, a door area and a drop link cooks into a tiled
+# mesh; the same scene and profile hit the cache with the same digest, a
+# re-cook after clearing reproduces it, a new profile or moved geometry
+# invalidates, the cache round-trips through a file, and bad input is
+# diagnosed. Linked against the navigation service by
+# scripts/build_nav_native_test.sh.
+include "../src/nav/cook.elisa"
+
+def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
+    Geometry::Vec3{x: x, y: y, z: z}
+
+def box_code(center: Geometry::Vec3, half: Geometry::Vec3) -> i32:
+    catch NavMesh::add_box(center, half):
+        value: 0
+        error failure: 1
+
+def stage(pillar_x: f32) -> i32:
+    failures: mutable i32 = 0
+    if begin_code() != 0:
+        failures <- failures + 1
+    failures <- failures + box_code(v(6.0, -0.1, 0.0), v(11.0, 0.1, 5.0))
+    failures <- failures + box_code(v(6.0, 1.0, -3.0), v(0.1, 1.0, 2.0))
+    failures <- failures + box_code(v(6.0, 1.0, 3.0), v(0.1, 1.0, 2.0))
+    failures <- failures + box_code(v(pillar_x, 1.0, 2.0), v(0.5, 1.0, 0.5))
+    for step in 0..<6:
+        top: f32 = 0.25 * (step + 1).f32()
+        failures <- failures + box_code(v(8.75 + 0.5 * step.f32(), top * 0.5, -3.0), v(0.25, top * 0.5, 1.0))
+    failures <- failures + box_code(v(14.0, 0.75, -3.0), v(2.5, 0.75, 2.0))
+    failures <- failures + area_code(v(5.5, -0.5, -1.0), v(6.5, 0.5, 1.0), 3)
+    failures <- failures + link_code(v(14.0, 1.5, -1.4), v(14.0, 0.0, -0.4))
+    failures
+
+def begin_code() -> i32:
+    catch NavMesh::begin():
+        value: 0
+        error failure: 1
+
+def area_code(low: Geometry::Vec3, high: Geometry::Vec3, area: u32) -> i32:
+    catch NavMesh::mark_area(low, high, area):
+        value: 0
+        error failure: 1
+
+def link_code(a: Geometry::Vec3, b: Geometry::Vec3) -> i32:
+    catch NavMesh::add_link(a, b, 0.4, false):
+        value: 0
+        error failure: 1
+
+def profile(radius: f32) -> NavMesh::Profile:
+    p: NavMesh::Profile = NavMesh::default_profile()
+    NavMesh::Profile{radius: radius, height: p.height, max_climb: p.max_climb,
+        max_slope_degrees: p.max_slope_degrees, cell_size: p.cell_size, cell_height: p.cell_height}
+
+def failed_cook() -> NavCook::Cooked:
+    NavCook::Cooked{handle: NavMesh::empty_handle(), outcome: NavCook::Outcome.Miss}
+
+def cook_with(radius: f32, tile_cells: u32, scene: u64) -> NavCook::Cooked:
+    catch NavCook::cook(profile(radius), tile_cells, scene):
+        value: value
+        error failure: failed_cook()
+
+# 0 cooked, 10 bad input, 11 cook failed, 12 anything else.
+def cook_error(radius: f32, tile_cells: u32, scene: u64) -> i32:
+    catch NavCook::cook(profile(radius), tile_cells, scene):
+        value: 0
+        NavCook::NavCookError.InvalidInput: 10
+        NavCook::NavCookError.CookFailed: 11
+        error failure: 12
+
+def empty_info() -> NavCook::Info:
+    NavCook::Info{tiles_x: 0, tiles_z: 0, tiles: 0, polygons: 0, bytes: 0, digest: 0}
+
+def cook_info() -> NavCook::Info:
+    catch NavCook::info():
+        value: value
+        error failure: empty_info()
+
+def save_code(path: cstr) -> i32:
+    catch NavCook::cache_save(path):
+        value: 0
+        error failure: 1
+
+def load_code(path: cstr) -> i32:
+    catch NavCook::cache_load(path):
+        value: 0
+        error failure: 1
+
+def unload_code(handle: NavMesh::Handle) -> i32:
+    catch NavMesh::unload(handle):
+        value: 0
+        error failure: 1
+
+def overlay_ok() -> bool:
+    mezzanine: mutable bool = false
+    link: mutable bool = false
+    for index in 0..<NavCook::overlay_count():
+        line: NavCook::OverlayLine = NavCook::overlay_line(index)
+        if line.source_box == 10 and line.a.y > 1.3:
+            mezzanine <- true
+        if line.link and line.area == NavMesh::LINK_AREA:
+            link <- true
+    mezzanine and link
+
+def route_found(handle: NavMesh::Handle) -> bool:
+    catch NavMesh::find_route(handle, v(-4.0, 0.0, -3.0), v(15.0, 1.5, -3.0), v(1.0, 1.0, 1.0)):
+        value: value.status == NavRoute::Status.Found
+        error failure: false
+
+def bad_input() -> i32:
+    # A tile size outside 16..512 is refused before the service runs.
+    return 30 if stage(-2.0) != 0 or cook_error(0.25, 8, 90) != 10
+    # Nothing staged.
+    return 31 if begin_code() != 0 or cook_error(0.25, 64, 91) != 10 or not NavCook::reported(NavCook::Code::INVALID_INPUT, NavCook::ERROR)
+    # A cube on its corner has no walkable face.
+    return 32 if begin_code() != 0 or catch_oriented() != 0 or cook_error(0.25, 64, 92) != 11
+    return 33 if not NavCook::reported(NavCook::Code::NO_WALKABLE_SURFACE, NavCook::ERROR)
+    # A walkable box too small for the agent leaves an empty mesh.
+    return 34 if begin_code() != 0 or box_code(v(0.0, 0.0, 0.0), v(0.1, 0.1, 0.1)) != 0 or cook_error(0.25, 64, 93) != 11
+    return 35 if not NavCook::reported(NavCook::Code::EMPTY_MESH, NavCook::ERROR)
+    # A volume over no ground and a link into the void cook with warnings.
+    return 36 if begin_code() != 0 or box_code(v(0.0, -0.1, 0.0), v(3.0, 0.1, 3.0)) != 0
+    return 37 if area_code(v(20.0, -1.0, 20.0), v(21.0, 1.0, 21.0), 4) != 0 or link_code(v(0.0, 0.0, 0.0), v(30.0, 0.0, 30.0)) != 0
+    warned: NavCook::Cooked = cook_with(0.25, 64, 95)
+    return 38 if not NavMesh::live(warned.handle)
+    return 39 if not NavCook::reported(NavCook::Code::AREA_VOLUME_UNUSED, NavCook::WARNING) or not NavCook::reported(NavCook::Code::LINK_ENDPOINT_OFF_MESH, NavCook::WARNING)
+    unload_code(warned.handle)
+
+def catch_oriented() -> i32:
+    catch NavMesh::add_oriented_box(v(0.0, 0.0, 0.0), v(1.0, 1.0, 1.0), Geometry::Quat{x: -0.32506, y: 0.0, z: 0.32506, w: 0.88807}):
+        value: 0
+        error failure: 1
+
+def main() -> i32:
+    NavCook::cache_clear()
+    return 1 if stage(-2.0) != 0
+    first: NavCook::Cooked = cook_with(0.25, 64, 1)
+    return 2 if not NavMesh::live(first.handle) or first.outcome != NavCook::Outcome.Miss
+    info: NavCook::Info = cook_info()
+    return 3 if info.tiles < 2 or info.polygons == 0 or info.bytes == 0 or info.tiles > info.tiles_x * info.tiles_z
+    return 4 if not NavCookPlan::grid_fits(info.tiles_x.i64(), info.tiles_z.i64())
+    return 5 if NavCook::area_polygons(3) == 0 or NavCook::diagnostic_count() != 0
+    return 6 if not overlay_ok() or not route_found(first.handle)
+    hit: NavCook::Cooked = cook_with(0.25, 64, 1)
+    return 7 if hit.outcome != NavCook::Outcome.Hit or cook_info().digest != info.digest
+    # Determinism: a fresh cook reproduces the blob's digest and size.
+    NavCook::cache_clear()
+    again: NavCook::Cooked = cook_with(0.25, 64, 1)
+    return 8 if again.outcome != NavCook::Outcome.Miss or cook_info().digest != info.digest or cook_info().bytes != info.bytes
+    wide: NavCook::Cooked = cook_with(0.4, 64, 1)
+    return 9 if wide.outcome != NavCook::Outcome.Invalidated or cook_info().digest == info.digest
+    return 10 if stage(-1.0) != 0
+    moved: NavCook::Cooked = cook_with(0.4, 64, 1)
+    return 11 if moved.outcome != NavCook::Outcome.Invalidated
+    return 12 if save_code("/tmp/elisa-nav-cook-native.cache") != 0
+    NavCook::cache_clear()
+    return 13 if NavCook::cache_size() != 0 or load_code("/tmp/elisa-nav-cook-native.cache") != 0 or NavCook::cache_size() != 1
+    loaded: NavCook::Cooked = cook_with(0.4, 64, 1)
+    return 14 if loaded.outcome != NavCook::Outcome.Hit
+    # A file that is not a cache is diagnosed and leaves the cache alone.
+    return 15 if load_code("test/nav_cook_native.elisa") == 0 or NavCook::cache_size() != 1
+    return 16 if not NavCook::reported(NavCook::Code::CACHE_CORRUPT, NavCook::ERROR)
+    unloads: i32 = unload_code(first.handle) + unload_code(hit.handle) + unload_code(again.handle) + unload_code(wide.handle) + unload_code(moved.handle) + unload_code(loaded.handle)
+    return 17 if unloads != 0 or NavMesh::live_count() != 0
+    bad_input()

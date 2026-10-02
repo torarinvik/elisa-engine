@@ -166,6 +166,10 @@ public:
     const BakeMetadata& metadata() const { return metadata_; }
     const dtNavMesh* mesh() const { return mesh_; }
     const std::vector<unsigned char>& serialized_tile() const { return tile_data_; }
+    // Take ownership of a mesh and its query built elsewhere, such as a cooked multi-tile load.
+    void adopt(dtNavMesh* mesh, dtNavMeshQuery* query, const BakeMetadata& metadata) {
+        reset(); mesh_ = mesh; query_ = query; metadata_ = metadata; ready_ = mesh != nullptr && query != nullptr;
+    }
 
     NearestResult nearest_point(const float position[3], const float extents[3],
         const QueryFilter& query_filter = QueryFilter()) const {
@@ -517,10 +521,14 @@ public:
     static constexpr uint32_t MAX_TILES = 8;
 
     TileHandle publish(const BakeInput& input, std::string& error) {
-        const uint32_t slot = free_slot();
-        if (slot == MAX_TILES) return {};
+        if (free_slot() == MAX_TILES) return {};
         auto artifact = std::make_unique<NavMeshArtifact>();
-        if (!bake(input, *artifact, error)) return {};
+        return bake(input, *artifact, error) ? publish(std::move(artifact)) : TileHandle{};
+    }
+
+    TileHandle publish(std::unique_ptr<NavMeshArtifact> artifact) {
+        const uint32_t slot = free_slot();
+        if (slot == MAX_TILES || artifact == nullptr || !artifact->ready()) return {};
         Tile& tile = tiles_[slot];
         if (tile.generation == UINT32_MAX) return {};
         tile.generation = tile.generation == 0 ? 1 : tile.generation + 1;

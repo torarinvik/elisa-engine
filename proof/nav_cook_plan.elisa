@@ -1,0 +1,20 @@
+# N01 cook planning: `tiles_along` itself proves a valid tile size covers a
+# non-empty grid with at least one tile; here a bad tile size yields none, a
+# fitting grid has 1..MAX_TILES tiles per axis, and a cache entry is
+# reused only on matching digests.
+include "../src/nav/cook_plan.elisa"
+
+extend NavCookPlan:
+    def prove_bad_tile_size_has_no_tiles(cells: i64, tile_cells: i64) -> i64:
+        requires tile_cells < MIN_TILE_CELLS
+        ensure result == 0
+        tiles_along(cells, tile_cells)
+
+    def prove_grid_budget(tiles_x: i64, tiles_z: i64) -> bool:
+        ensure not result or (tiles_x >= 1 and tiles_z >= 1)
+        ensure not result or (tiles_x <= MAX_TILES and tiles_z <= MAX_TILES)
+        grid_fits(tiles_x, tiles_z)
+
+    def prove_reuse_needs_match(a: u64, b: u64, c: u64, d: u64) -> bool:
+        ensure not result or (a == c and b == d)
+        reusable(a, b, c, d)

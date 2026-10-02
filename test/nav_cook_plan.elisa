@@ -1,0 +1,9 @@
+include "../src/nav/cook_plan.elisa"
+
+def main() -> i32:
+    return 1 if NavCookPlan::tiles_along(100, 64) != 2 or NavCookPlan::tiles_along(64, 64) != 1 or NavCookPlan::tiles_along(65, 64) != 2
+    return 2 if NavCookPlan::tiles_along(100, 8) != 0 or NavCookPlan::tiles_along(100, 1024) != 0 or NavCookPlan::tiles_along(0, 64) != 0
+    return 3 if not NavCookPlan::tile_size_ok(16) or not NavCookPlan::tile_size_ok(512) or NavCookPlan::tile_size_ok(15)
+    return 4 if not NavCookPlan::grid_fits(8, 8) or NavCookPlan::grid_fits(9, 8) or NavCookPlan::grid_fits(0, 4) or not NavCookPlan::grid_fits(64, 1)
+    return 5 if not NavCookPlan::reusable(1, 2, 1, 2) or NavCookPlan::reusable(1, 2, 1, 3) or NavCookPlan::reusable(5, 2, 1, 2)
+    0
