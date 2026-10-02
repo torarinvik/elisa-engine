@@ -19,16 +19,20 @@ on the 7-tile corridor:
   from the stranded position is `Found`, delivered, and the agent reaches `Arrived`
   (codes 8–11).
 - Rebuilding a tile, and unloading and reloading one, also refuse older tickets (12–13).
+- Each tile also keeps its own epoch. `ticket_area` watches only the tiles an x/z box
+  touches: unloading and reloading a far tile leaves it deliverable, rebuilding a tile in
+  the box refuses it (15–17).
 - After the mesh is unloaded, delivery and new tickets raise `Stale` (14).
 
-As a negative control, removing the epoch bump on unload fails with 4. The test passes
+Negative controls: removing the epoch bump on unload fails with 4, dropping the per-tile
+bump also fails with 4, and summing the mesh-wide epoch for an area fails with 16. The test passes
 under `-fsanitize=address,undefined` (by hand).
 
 ## Gaps
 
-- The epoch is per mesh: any tile change refuses every pending request, even those whose
-  corridor never touched the tile.
-- Obstacles are applied as per-tile rebuilds (`NavTileStream::rebuild_area`), not through
-  DetourTileCache; there is no binding to it.
+- An area ticket sees only the tiles in its box; a caller must pass a box that holds the
+  whole route (points plus agent radius), or use `ticket` to watch every tile.
+- Obstacles are applied as per-tile rebuilds (`NavTileStream::rebuild_area`) by design;
+  DetourTileCache is not bound.
 - Queries run synchronously; the ticket guards the interval between issuing a request and
   using its result, not a background query thread.

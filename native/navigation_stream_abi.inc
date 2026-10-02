@@ -58,6 +58,18 @@ int32_t add_tile_copy(dtNavMesh* mesh, const unsigned char* data, uint32_t size)
     return ELISA_NAVIGATION_OK;
 }
 
+// Records a change to tile (tx, tz): the mesh epoch and that tile's epoch move.
+void bump_tile(uint32_t slot, uint32_t tx, uint32_t tz) {
+    SlotCook& cooked = cook_state().cooks[slot];
+    cooked.epoch += 1;
+    probe::nav::cook::BlobHeader header;
+    size_t at = 0;
+    if (!probe::nav::cook::get(cook_state().blobs[slot], at, header)) return;
+    if (tx >= header.tiles_x || tz >= header.tiles_z) return;
+    cooked.tile_epochs.resize(static_cast<size_t>(header.tiles_x) * header.tiles_z, 0);
+    cooked.tile_epochs[static_cast<size_t>(tz) * header.tiles_x + tx] += 1;
+}
+
 } // namespace
 
 extern "C" {
@@ -92,7 +104,7 @@ int32_t elisa_navigation_v1_tile_unload(uint32_t slot, uint32_t generation, uint
     const dtMeshTile* tile = mesh->getTileAt(static_cast<int>(tx), static_cast<int>(tz), 0);
     if (tile == nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
     if (dtStatusFailed(mesh->removeTile(mesh->getTileRef(tile), nullptr, nullptr))) return ELISA_NAVIGATION_BAKE_FAILED;
-    cook_state().cooks[slot].epoch += 1;
+    bump_tile(slot, tx, tz);
     return ELISA_NAVIGATION_OK;
 }
 
@@ -108,7 +120,7 @@ int32_t elisa_navigation_v1_tile_load(uint32_t slot, uint32_t generation, uint32
     dtNavMesh* mesh = artifact->streamed_mesh();
     if (mesh->getTileAt(static_cast<int>(tx), static_cast<int>(tz), 0) != nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
     const int32_t added = add_tile_copy(mesh, data, size);
-    if (added == ELISA_NAVIGATION_OK) cook_state().cooks[slot].epoch += 1;
+    if (added == ELISA_NAVIGATION_OK) bump_tile(slot, tx, tz);
     return added;
 }
 
@@ -168,7 +180,7 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
     if (current != nullptr && dtStatusFailed(mesh->removeTile(mesh->getTileRef(current), nullptr, nullptr))) {
         return ELISA_NAVIGATION_BAKE_FAILED;
     }
-    if (current != nullptr) cooked.epoch += 1;
+    if (current != nullptr) bump_tile(slot, tx, tz);
     if (swap && !data.empty()) {
         const int32_t added = add_tile_copy(mesh, data.data(), static_cast<uint32_t>(data.size()));
         if (added != ELISA_NAVIGATION_OK) return added;
@@ -178,7 +190,7 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
         if (tile.tx == tx && tile.tz == tz) { tile.data = data; replaced = true; }
     }
     if (!replaced) cooked.rebuilt.push_back({tx, tz, data});
-    cooked.epoch += 1;
+    bump_tile(slot, tx, tz);
     *polygons = static_cast<uint32_t>(count);
     return ELISA_NAVIGATION_OK;
 }
@@ -215,6 +227,32 @@ int32_t elisa_navigation_v1_tile_epoch(uint32_t slot, uint32_t generation, uint3
     std::lock_guard<std::mutex> lock(nav.mutex);
     if (streamed_artifact(nav, slot, generation) == nullptr) return ELISA_NAVIGATION_STALE_HANDLE;
     *epoch = cook_state().cooks[slot].epoch;
+    return ELISA_NAVIGATION_OK;
+}
+
+// The sum of the tile epochs over tiles [tx0, tx1] x [tz0, tz1] (clamped to
+// the grid). Every load, unload or rebuild of one of those tiles changes it;
+// changes to other tiles leave it alone.
+int32_t elisa_navigation_v1_area_epoch(uint32_t slot, uint32_t generation, uint32_t tx0, uint32_t tz0,
+    uint32_t tx1, uint32_t tz1, uint32_t* epoch) {
+    if (epoch == nullptr) return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    *epoch = 0;
+    Service& nav = service();
+    std::lock_guard<std::mutex> lock(nav.mutex);
+    if (streamed_artifact(nav, slot, generation) == nullptr) return ELISA_NAVIGATION_STALE_HANDLE;
+    probe::nav::cook::BlobHeader header;
+    size_t at = 0;
+    if (!probe::nav::cook::get(cook_state().blobs[slot], at, header)) return ELISA_NAVIGATION_BAKE_FAILED;
+    if (tx0 > tx1 || tz0 > tz1) return ELISA_NAVIGATION_INVALID_ARGUMENT;
+    const std::vector<uint32_t>& epochs = cook_state().cooks[slot].tile_epochs;
+    uint32_t sum = 0;
+    for (uint32_t tz = tz0; tz <= tz1 && tz < header.tiles_z; ++tz) {
+        for (uint32_t tx = tx0; tx <= tx1 && tx < header.tiles_x; ++tx) {
+            const size_t index = static_cast<size_t>(tz) * header.tiles_x + tx;
+            if (index < epochs.size()) sum += epochs[index];
+        }
+    }
+    *epoch = sum;
     return ELISA_NAVIGATION_OK;
 }
 

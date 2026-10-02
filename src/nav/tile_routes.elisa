@@ -2,9 +2,11 @@
 # A caller takes a `Ticket` when it issues a path request and checks it with
 # `deliver` before handing the finished route to an agent. Any tile load,
 # unload or rebuild on the mesh in between raises `Moved`, so a route that
-# crossed (or skipped) a tile that changed meanwhile is never used. The epoch
-# is per mesh, not per tile: a change anywhere invalidates every pending
-# request, which is conservative but never stale.
+# crossed (or skipped) a tile that changed meanwhile is never used. A
+# `ticket` watches every tile; `ticket_area` watches only the tiles an x/z
+# box touches, so streaming far from a route leaves it deliverable. Pass a
+# box that holds the whole route (its points plus the agent radius): a
+# change outside the box is not seen.
 include "./tile_stream.elisa"
 
 module NavTileRoutes:
@@ -18,6 +20,11 @@ module NavTileRoutes:
         struct Ticket:
             handle: NavMesh::Handle
             epoch: u32
+            # Watched tile range, inclusive.
+            tx0: u32
+            tz0: u32
+            tx1: u32
+            tz1: u32
 
     private:
         const module EpochStatus:
@@ -25,20 +32,48 @@ module NavTileRoutes:
             STALE_HANDLE: i32 = 4
 
         @callconv(c)
-        extern elisa_navigation_v1_tile_epoch(slot: u32, generation: u32, epoch: mutable u32&) -> i32
+        extern elisa_navigation_v1_area_epoch(slot: u32, generation: u32, tx0: u32, tz0: u32, tx1: u32, tz1: u32,
+            epoch: mutable u32&) -> i32
 
-        def epoch_of(handle: NavMesh::Handle) -> u32 error[NavTileRouteError]:
+        def area_epoch(handle: NavMesh::Handle, tx0: u32, tz0: u32, tx1: u32, tz1: u32) -> u32 error[NavTileRouteError]:
             epoch: mutable u32 = 0
-            status: i32 = elisa_navigation_v1_tile_epoch(handle.slot, handle.generation, &epoch)
+            status: i32 = elisa_navigation_v1_area_epoch(handle.slot, handle.generation, tx0, tz0, tx1, tz1, &epoch)
             raise NavTileRouteError.Stale if status != EpochStatus::OK
             epoch
 
+        def route_grid(handle: NavMesh::Handle) -> NavTileStream::Grid error[NavTileRouteError]:
+            catch NavTileStream::grid(handle):
+                value: value
+                error failure: raise NavTileRouteError.Stale
+
+        # Tile index along one axis holding `at`, clamped to [0, count).
+        def route_tile_index(origin: f32, size: f32, at: f32, count: u32) -> u32:
+            index: mutable i64 = ((at - origin) / size).i64()
+            index <- index - 1 if at < origin + index.f32() * size
+            return 0 if index < 0
+            return count - 1 if index >= count.i64()
+            index.u32()
+
+        def make_ticket(handle: NavMesh::Handle, tx0: u32, tz0: u32, tx1: u32, tz1: u32) -> Ticket error[NavTileRouteError]:
+            epoch: u32 = try area_epoch(handle, tx0, tz0, tx1, tz1)
+            Ticket{handle: handle, epoch: epoch, tx0: tx0, tz0: tz0, tx1: tx1, tz1: tz1}
+
     public:
         def ticket(handle: NavMesh::Handle) -> Ticket error[NavTileRouteError]:
-            epoch: u32 = try epoch_of(handle)
-            Ticket{handle: handle, epoch: epoch}
+            g: NavTileStream::Grid = try route_grid(handle)
+            try make_ticket(handle, 0, 0, g.tiles_x - 1, g.tiles_z - 1)
 
-        # Succeeds only while no tile of the ticket's mesh has changed.
+        # Watches the tiles the x/z box [min, max] touches (clamped to the grid).
+        def ticket_area(handle: NavMesh::Handle, min_x: f32, min_z: f32, max_x: f32, max_z: f32) -> Ticket error[NavTileRouteError]:
+            g: NavTileStream::Grid = try route_grid(handle)
+            tx0: u32 = route_tile_index(g.origin_x, g.size, min_x, g.tiles_x)
+            tz0: u32 = route_tile_index(g.origin_z, g.size, min_z, g.tiles_z)
+            tx1: u32 = route_tile_index(g.origin_x, g.size, max_x, g.tiles_x)
+            tz1: u32 = route_tile_index(g.origin_z, g.size, max_z, g.tiles_z)
+            raise NavTileRouteError.Stale if tx1 < tx0 or tz1 < tz0
+            try make_ticket(handle, tx0, tz0, tx1, tz1)
+
+        # Succeeds only while no watched tile has changed.
         def deliver(ticket: Ticket) -> void error[NavTileRouteError]:
-            epoch: u32 = try epoch_of(ticket.handle)
+            epoch: u32 = try area_epoch(ticket.handle, ticket.tx0, ticket.tz0, ticket.tx1, ticket.tz1)
             raise NavTileRouteError.Moved if epoch != ticket.epoch

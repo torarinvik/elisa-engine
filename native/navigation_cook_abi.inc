@@ -19,6 +19,7 @@ struct SlotCook {
     float top = 0.0f; // the cook's upper bound; rebuilds only raise it
     std::vector<TileOverride> rebuilt;
     uint32_t epoch = 0; // bumped by every tile load, unload and rebuild
+    std::vector<uint32_t> tile_epochs; // per tile (tz * tiles_x + tx), sized on first bump
 };
 
 struct CookState {
@@ -116,7 +117,7 @@ int32_t elisa_navigation_v1_cook(float agent_radius, float agent_height, float m
     state.blob_generation[handle.slot] = handle.generation;
     float low[3], high[3];
     rcCalcBounds(input.vertices, input.vertex_count, low, high);
-    state.cooks[handle.slot] = {input.agent, cell_size, cell_height, cells, high[1] + agent_height, {}};
+    state.cooks[handle.slot] = {input.agent, cell_size, cell_height, cells, high[1] + agent_height, {}, 0, {}};
     state.digest = blob_digest(blob);
     state.bytes = static_cast<uint32_t>(blob.size());
     *slot = handle.slot;

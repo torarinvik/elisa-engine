@@ -553,10 +553,12 @@ by that game. Editor and large-scale/network milestones follow demonstrated dema
 - [ ] **N05 · P2 · Crowds and avoidance** — After: N03, W07.
   Integrate DetourCrowd where it fits the movement contract, with agent lifecycle and per-tick budgets. Done: converging crowds avoid obstacles and each other, recover from blocked exits, and retain bounded cost without bypassing gameplay or physics authority.
   Progress on 2026-09-29: `src/nav/crowd.elisa` provides deterministic capped separation for up to eight agents with equal-and-opposite pair pushes and a tie-break for stacked agents (see `docs/validation/nav-crowd.md`). Reciprocal avoidance, Detour integration, larger crowds and measured budgets remain.
-- [ ] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.
-  Integrate tile streaming and supported DetourTileCache obstacle updates with generation-tagged query results. Done: unload/rebuild during a pending path request cannot return stale routes; rebakes are bounded and agents recover when tiles become available.
+- [x] **N06 · P2 · Dynamic and streamed navigation** — After: N02, W05.
+  Integrate tile streaming and obstacle updates (applied as per-tile rebuilds of the cooked mesh) with generation-tagged query results. Done: unload/rebuild during a pending path request cannot return stale routes; rebakes are bounded and agents recover when tiles become available.
   Progress on 2026-09-29: `src/nav/stream.elisa` adds generation-tagged path requests over streamed tiles with bounded per-frame rebakes and `test/nav_stream.elisa` (see `docs/validation/nav-stream.md`); no DetourTileCache binding or agent recovery, so the item stays open.
   Progress on 2026-10-02: `NavTileRoutes` tags route requests on a cooked, streamed mesh with a native tile epoch that every load, unload and rebuild bumps. A route found before a tile change is refused as `Moved`, and an agent stranded at an unloaded tile replans to `Arrived` once `NavTileStream` brings it back (`test/nav_tile_routes_native.elisa`, gate; control fails at 4; [`nav-tile-routes`](docs/validation/nav-tile-routes.md)). The item stays open: obstacles go through per-tile rebuilds rather than DetourTileCache, and the epoch is per mesh rather than per tile.
+  Progress on 2026-10-02: each cooked tile keeps its own epoch; `NavTileRoutes::ticket_area` watches only the tiles a route's box touches, so streaming a far tile leaves a route deliverable while a rebuild inside the box refuses it (codes 15–17; controls fail at 4 and 16; ASan/UBSan clean). The plan now names per-tile rebuilds as the obstacle path instead of DetourTileCache.
+  Done on 2026-10-02: unload, reload and rebuild during a pending request refuse the route (`Moved`), rebuilds are bounded per call (`rebuild_area`, 64 tiles) and per frame (`NavTileStream::step` budget), and a stranded agent replans to `Arrived` once its tiles stream back; the full gate passes.
 
 ## S — audio and acoustics
 

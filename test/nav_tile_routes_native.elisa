@@ -34,10 +34,15 @@ def route_from(handle: NavMesh::Handle, start: Geometry::Vec3) -> NavRoute::Rout
         error failure: offmesh_route()
 
 def empty_ticket(handle: NavMesh::Handle) -> NavTileRoutes::Ticket:
-    NavTileRoutes::Ticket{handle: handle, epoch: 4294967295}
+    NavTileRoutes::Ticket{handle: handle, epoch: 4294967295, tx0: 0, tz0: 0, tx1: 0, tz1: 0}
 
 def ticket_of(handle: NavMesh::Handle) -> NavTileRoutes::Ticket:
     catch NavTileRoutes::ticket(handle):
+        value: value
+        error failure: empty_ticket(handle)
+
+def area_ticket_of(handle: NavMesh::Handle, min_x: f32, max_x: f32) -> NavTileRoutes::Ticket:
+    catch NavTileRoutes::ticket_area(handle, min_x, -1.0, max_x, 1.0):
         value: value
         error failure: empty_ticket(handle)
 
@@ -118,5 +123,10 @@ def main() -> i32:
     return 12 if rebuild_code(mesh, 1) != 0 or deliver_code(again) != 1
     reload: NavTileRoutes::Ticket = ticket_of(mesh)
     return 13 if tile_code(mesh, 6, false) != 0 or tile_code(mesh, 6, true) != 0 or deliver_code(reload) != 1
+    # An area ticket over the first two tiles ignores a far tile and sees a near one.
+    near: NavTileRoutes::Ticket = area_ticket_of(mesh, 0.0, 8.0)
+    return 15 if near.tx0 != 0 or near.tx1 != 1 or deliver_code(near) != 0
+    return 16 if tile_code(mesh, 5, false) != 0 or deliver_code(near) != 0 or tile_code(mesh, 5, true) != 0 or deliver_code(near) != 0
+    return 17 if rebuild_code(mesh, 1) != 0 or deliver_code(near) != 1
     return 14 if drop_code(mesh) != 0 or deliver_code(reload) != 2 or stale_ticket_code(mesh) != 0
     0

@@ -131,6 +131,8 @@ int32_t elisa_navigation_v1_tile_rebuild(uint32_t slot, uint32_t generation, uin
     uint32_t* polygons);
 // The x/z origin, tile side and tile counts of a cooked mesh's grid.
 int32_t elisa_navigation_v1_tile_epoch(uint32_t slot, uint32_t generation, uint32_t* epoch);
+int32_t elisa_navigation_v1_area_epoch(uint32_t slot, uint32_t generation, uint32_t tx0, uint32_t tz0,
+    uint32_t tx1, uint32_t tz1, uint32_t* epoch);
 int32_t elisa_navigation_v1_tile_grid(uint32_t slot, uint32_t generation, float* origin_x, float* origin_z,
     float* tile_world, uint32_t* tiles_x, uint32_t* tiles_z);
 
