@@ -1,0 +1,26 @@
+# Draws a UiSettingsPage onto a UiWidgets surface: only the rows in the list's
+# window become slider widgets, so a long page costs at most `rows` widgets,
+# and a click hit-tests back to the row it landed on and focuses it.
+include "./settings_page.elisa"
+include "./widgets.elisa"
+
+module UiSettingsView:
+    public:
+        # Widget ids are row + 1 because surface ids must be positive.
+        def layout(p: UiSettingsPage::Page&, x: i64, y: i64, width: i64, row_height: i64, rows: i64) -> UiWidgets::Surface:
+            ws: mutable UiWidgets::Widget[16] = zeroed
+            first: i64 = UiListModel::window_first(&p.list, rows)
+            shown: i64 = UiListModel::window_count(&p.list, rows) if rows > 0 and rows <= 16 else 0
+            for k in 0..<16:
+                if k.i64() < shown:
+                    row: i64 = p.list.ids[first + k.i64()]
+                    ws[k] <- UiWidgets::Widget{id: row + 1, kind: UiWidgets::WidgetKind.Slider, x: x, y: y + k.i64() * row_height, width: width, height: row_height, value: p.value[row], minimum: p.low[row], maximum: p.high[row], enabled: true, visible: true}
+            UiWidgets::Surface{widgets: ws, count: shown.usize()}
+
+        # Focuses the row under (px, py); a miss leaves the page unchanged.
+        def click(p: UiSettingsPage::Page, s: UiWidgets::Surface&, px: i64, py: i64) -> UiSettingsPage::Page:
+            hit: i64 = UiWidgets::hit_test(s, px, py)
+            return p if hit <= 0
+            l: mutable UiListModel::List = p.list
+            return p if not UiListModel::focus(&l, hit - 1)
+            UiSettingsPage::Page{list: l, binding: p.binding, field: p.field, low: p.low, high: p.high, step: p.step, default: p.default, value: p.value, recovered: p.recovered}

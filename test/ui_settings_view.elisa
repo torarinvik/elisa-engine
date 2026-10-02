@@ -1,0 +1,30 @@
+include "../src/ui/settings_view.elisa"
+
+def main() -> i32:
+    p: mutable UiSettingsPage::Page = UiSettingsPage::new_page()
+    for k in 0..<12:
+        p <- UiSettingsPage::add_row(p, k.i64(), 300 + k.i64(), 0, 100, 10, 50)
+    # Only the 4-row window becomes widgets, and the surface is valid.
+    s: UiWidgets::Surface = UiSettingsView::layout(&p, 10, 20, 200, 30, 4)
+    return 1 if s.count != 4 or not UiWidgets::surface_valid(&s)
+    return 2 if s.widgets[3].id != 4 or s.widgets[3].y != 110 or s.widgets[0].value != 50 or s.widgets[0].maximum != 100
+    # Clicking the third widget focuses row 2; a miss changes nothing.
+    p <- UiSettingsView::click(p, &s, 50, 85)
+    return 3 if UiSettingsPage::focused(&p) != 2
+    p <- UiSettingsView::click(p, &s, 5, 5)
+    return 4 if UiSettingsPage::focused(&p) != 2
+    # Scrolling to row 10 shows rows 7..10; widgets carry the row values.
+    l: mutable UiListModel::List = p.list
+    _ = UiListModel::focus(&l, 10)
+    _ = UiListModel::reveal_focus(&l, 4)
+    p <- UiSettingsPage::Page{list: l, binding: p.binding, field: p.field, low: p.low, high: p.high, step: p.step, default: p.default, value: p.value, recovered: p.recovered}
+    p <- UiSettingsPage::nudge(p, 1)
+    t: UiWidgets::Surface = UiSettingsView::layout(&p, 10, 20, 200, 30, 4)
+    return 5 if t.count != 4 or t.widgets[0].id != 8 or t.widgets[3].id != 11 or t.widgets[3].value != 60
+    # A removed row disappears from the next layout.
+    p <- UiSettingsPage::remove_row(p, 10)
+    u: UiWidgets::Surface = UiSettingsView::layout(&p, 10, 20, 200, 30, 4)
+    return 6 if u.count != 4 or not UiWidgets::surface_valid(&u) or UiWidgets::hit_test(&u, 50, 110) == 11
+    # Bad window sizes draw nothing rather than overflowing the surface.
+    return 7 if UiSettingsView::layout(&p, 0, 0, 10, 10, 0).count != 0 or UiSettingsView::layout(&p, 0, 0, 10, 10, 17).count != 0
+    return 0
