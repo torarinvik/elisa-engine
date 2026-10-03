@@ -422,6 +422,28 @@ module GlbDocument:
             _ = try build(&doc)
             return move doc
 
+        # An independent copy of `doc` (bytes, index and edit count) without
+        # re-reading or re-parsing: what a fresh `load` of the saved bytes
+        # would index, byte for byte.
+        def copy(doc: Document&) -> Document:
+            mutable out: Document = empty_document()
+            for k in 0..<doc.bytes.count |k, doc, out|:
+                out.bytes.push(doc.bytes[k])
+            for k in 0..<doc.nodes.count |k, doc, out|:
+                out.nodes.push(doc.nodes[k])
+            for k in 0..<doc.animations.count |k, doc, out|:
+                out.animations.push(doc.animations[k])
+            for k in 0..<doc.channels.count |k, doc, out|:
+                out.channels.push(doc.channels[k])
+            for k in 0..<doc.tracks.count |k, doc, out|:
+                out.tracks.push(doc.tracks[k])
+            for k in 0..<doc.values.count |k, doc, out|:
+                out.values.push(doc.values[k])
+            out.bin_start <- doc.bin_start
+            out.bin_length <- doc.bin_length
+            out.edits <- doc.edits
+            return move out
+
         def load(path: cstr) -> Document error[GlbDocumentError]:
             mutable doc: Document = empty_document()
             can Blocking.IO, Memory.Allocate, Memory.Release:
