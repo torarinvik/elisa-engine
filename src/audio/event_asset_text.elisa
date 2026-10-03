@@ -106,8 +106,9 @@ module SoundEventAssets:
                 invariant start <= found and found <= stop
                 found <- index if found == stop and source.bytes[index] == NEWLINE
 
-        # Space, tab and carriage return are tested inline: a Boolean helper called in
-        # these loops costs the prover about 40 s per call site.
+        # Space, tab and carriage return are tested inline, and a separator test is written
+        # as `not (.. != .. and ..)`. A Boolean helper call or a positive `or` chain in these
+        # loop updates makes the prover's kernel grow about tenfold and costs minutes.
         def skip_spaces(source: Source&, start: usize, stop: usize) -> usize:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             ensure start <= result and result <= stop
@@ -120,7 +121,7 @@ module SoundEventAssets:
             ensure start <= result and result <= stop
             for index in start..<stop |found: usize = stop| -> found:
                 invariant start <= found and found <= stop
-                found <- index if found == stop and (source.bytes[index] == 32 or source.bytes[index] == 9 or source.bytes[index] == 13 or source.bytes[index] == HASH)
+                found <- index if found == stop and not (source.bytes[index] != 32 and source.bytes[index] != 9 and source.bytes[index] != 13 and source.bytes[index] != HASH)
 
         # "seed" and "event" in ASCII.
         def is_seed(source: Source&, start: usize, stop: usize) -> bool:
