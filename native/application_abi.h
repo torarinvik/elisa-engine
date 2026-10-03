@@ -134,6 +134,8 @@ int32_t elisa_application_v1_asset_stream_reset(void);
 // Test-only real SDL window lifecycle requests used by native SDL3 smoke tests.
 int32_t elisa_application_v1_test_set_minimized(int32_t minimized);
 int32_t elisa_application_v1_test_set_window_size(int32_t width, int32_t height);
+void elisa_application_v1_test_trace_stress(int32_t iteration, int64_t instances,
+    int64_t navmeshes, int64_t voices, int64_t streams, int64_t heap_bytes);
 int32_t elisa_application_v1_test_fail_capture_device(void);
 int32_t elisa_application_v1_test_capture_resource_count(void);
 int32_t elisa_application_v1_test_push_pointer_event(

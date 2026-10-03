@@ -16,6 +16,9 @@
         # Test-probe hook: resizes the real SDL window and syncs it.
         @callconv(c)
         extern elisa_application_v1_test_set_window_size(width: i32, height: i32) -> i32
+        # Test-probe hook: one retained trace line per stress iteration.
+        @callconv(c)
+        extern elisa_application_v1_test_trace_stress(iteration: i32, instances: i64, navmeshes: i64, voices: i64, streams: i64, heap_bytes: i64)
 
         # Resizes the OS window, pumps one frame and checks that the frame
         # reports the requested logical size and a new resize serial.
@@ -53,6 +56,9 @@
                 value: value
                 error failure: 999
             StressCounts{instances: RenderScene::instance_count(), navmeshes: NavMesh::live_count(), voices: voices, streams: streams}
+
+        def trace(iteration: i32, counts: StressCounts, heap_bytes: u64):
+            elisa_application_v1_test_trace_stress(iteration, counts.instances.i64(), counts.navmeshes.i64(), counts.voices.i64(), counts.streams.i64(), heap_bytes.i64())
 
         def same_counts(left: StressCounts, right: StressCounts) -> bool:
             left.instances == right.instances and left.navmeshes == right.navmeshes and left.voices == right.voices and left.streams == right.streams
@@ -134,6 +140,7 @@
             warm: ProgressOutcome = try stress_cycle(session, character, 0)
             return warm if warm.status != 0
             baseline: StressCounts = stress_counts(session)
+            trace(0, baseline, RenderScene::heap_bytes_in_use())
             current: mutable PhysicsRuntime::CharacterHandle = warm.character
             status: mutable i32 = 0
             previous: mutable PhysicsRuntime::CharacterHandle = character
@@ -147,10 +154,12 @@
                     current <- cycled.character
                     counts: StressCounts = stress_counts(session)
                     status <- cycled.status
+                    trace(iteration.i32(), counts, RenderScene::heap_bytes_in_use())
                     status <- 180 + iteration.i32() if status == 0 and not same_counts(counts, baseline)
                     heap_settled <- RenderScene::heap_bytes_in_use() if iteration == HEAP_SETTLED_ITERATION
             return ProgressOutcome{status: status, character: current} if status != 0
             heap_end: u64 = settled_heap(session)
+            trace(-1, stress_counts(session), heap_end)
             return ProgressOutcome{status: 194, character: current} if heap_settled == 0 or heap_end == 0
             return ProgressOutcome{status: 193, character: current} if heap_end > heap_settled + HEAP_GROWTH_LIMIT
             logical_width: i32 = frame.logical_width if frame.logical_width > 0 else 320

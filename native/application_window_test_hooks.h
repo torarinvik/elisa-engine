@@ -31,4 +31,13 @@ extern "C" int32_t elisa_application_v1_test_set_window_size(int32_t width, int3
         return ELISA_APPLICATION_FRAME_FAILED;
     return ELISA_APPLICATION_OK;
 }
+
+// One stress-trace line on stderr, retained in the smoke's log artifact.
+extern "C" void elisa_application_v1_test_trace_stress(int32_t iteration, int64_t instances,
+    int64_t navmeshes, int64_t voices, int64_t streams, int64_t heap_bytes) {
+    std::fprintf(stderr, "stress iteration=%d instances=%lld navmeshes=%lld voices=%lld streams=%lld heap=%lld\n",
+        iteration, static_cast<long long>(instances), static_cast<long long>(navmeshes),
+        static_cast<long long>(voices), static_cast<long long>(streams), static_cast<long long>(heap_bytes));
+    std::fflush(stderr);
+}
 #endif

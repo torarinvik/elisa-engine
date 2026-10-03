@@ -100,6 +100,22 @@ Under ASan the heap sample reads `__sanitizer_get_current_allocated_bytes`,
 because ASan replaces the malloc zones; the zone statistics grew past the
 256 KiB limit while live allocations did not.
 
+## Trace
+
+Each iteration writes one line to stderr through the test-probe hook
+`elisa_application_v1_test_trace_stress`, which the smoke runner keeps in
+`build/native-smoke/character-course-smoke.log`. Iteration 0 is warm-up and
+-1 is the settled final sample. A passing run on 2026-10-03:
+
+```
+stress iteration=0 instances=18 navmeshes=1 voices=0 streams=0 heap=170922600
+stress iteration=3 instances=18 navmeshes=1 voices=0 streams=0 heap=170994364
+stress iteration=11 instances=18 navmeshes=1 voices=0 streams=0 heap=171001620
+stress iteration=-1 instances=18 navmeshes=1 voices=0 streams=0 heap=170960244
+```
+
+The sanitized run writes the same 13 lines.
+
 ## Negative controls
 
 - **Iteration 5 skips the beacon release.** The self-test fails at 185, which
@@ -126,4 +142,3 @@ All controls were reverted.
   (Q06).
 - The OS window is resized through SDL on a hidden window, so no user drag
   or display change is driven.
-- The trace is an exit code, not a retained log.
