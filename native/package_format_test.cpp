@@ -2,6 +2,7 @@
 #include "cooked_collision_geometry.h"
 #include "package_manifest.h"
 #include "cooked_geometry_fuzz.h"
+#include "image_header_fuzz.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -88,10 +89,25 @@ bool fuzz_checks(const char* path, const probe::BinaryPackageIndex& index) {
         whole.accepted, whole.refused, whole.broken);
     return whole.digest == whole_again.digest && whole.broken == 0 && whole.accepted > 0 && whole.refused > 0;
 }
+// The three seeds must pass unmutated, so the corpus starts from accepted images.
+bool image_fuzz_checks() {
+    namespace fz = elisa::assets::fuzz;
+    for (const auto& seed : {fz::png_seed(), fz::jpeg_seed(), fz::ktx2_seed()}) {
+        elisa::assets::EncodedImageHeader header;
+        std::string error;
+        if (!elisa::assets::inspect_encoded_image(seed, header, error)) return false;
+    }
+    const auto first = fz::fuzz_image_headers(20261003u, 4096);
+    const auto again = fz::fuzz_image_headers(20261003u, 4096);
+    std::printf("image header fuzz: %zu accepted, %zu refused, %zu broken\n",
+        first.accepted, first.refused, first.broken);
+    return first.digest == again.digest && first.broken == 0 && first.accepted > 0 && first.refused > 0;
+}
 } // namespace
 
 int main(int argc, char** argv) {
     if (!collision_package_checks()) return 14;
+    if (!image_fuzz_checks()) return 18;
     if (argc != 2 && argc != FULL_FIXTURE_ARGUMENT_COUNT && argc != 6 && argc != 7) return 2;
     const probe::BinaryPackageIndex index = probe::read_binary_package_index(argv[1]);
     if (!index.valid || index.sections.size() < 2) return 3;
