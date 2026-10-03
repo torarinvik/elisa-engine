@@ -2,8 +2,11 @@
 # charged as a byte allocation before the header is read, the chunk table
 # costs one work unit per chunk, and each BIN read is charged before it is
 # copied, so an oversized or hostile file is refused with a named reason. A
-# refused charge leaves the budget unchanged.
+# refused charge leaves the budget unchanged. The JSON chunk costs one work
+# unit per byte before it is tokenized; its token table and nesting depth are
+# then checked against the limits, and an over-limit table is cleared.
 include "./glb_container.elisa"
+include "./glb_json.elisa"
 include "./import_limits.elisa"
 
 module GlbImport:
@@ -13,6 +16,22 @@ module GlbImport:
             catch GlbContainer::parse(bytes):
                 value: value
                 error failure: GlbContainer::Layout{total: 0, json_start: 0, json_length: 0, bin_start: -1, bin_length: -1}
+
+        # Bytes one token occupies in the table: a kind and four counters.
+        const TOKEN_BYTES: i64 = 40
+
+        # The deepest object/array nesting in a tokenized document.
+        def nesting(tokens: darray[GlbJson::Token]&) -> i64:
+            open_after: mutable darray[usize] = []
+            deepest: mutable i64 = 0
+            for i in 0..<tokens.count |tokens, open_after, deepest|:
+                while open_after.count > 0 and open_after[open_after.count - 1] <= i:
+                    _ = open_after.pop()
+                kind: u8 = tokens[i].kind
+                if kind == GlbJson::KIND_OBJECT or kind == GlbJson::KIND_ARRAY:
+                    open_after.push(tokens[i].after)
+                    deepest <- open_after.count.i64() if open_after.count.i64() > deepest
+            deepest
 
     public:
         error GlbImportError:
@@ -35,3 +54,17 @@ module GlbImport:
             catch GlbContainer::read_bin(bytes, layout, offset, count):
                 value: value
                 error failure: []
+
+        # Tokenizes the JSON chunk after charging one work unit per byte, then
+        # charges the token table and checks nesting against `max_depth`.
+        def tokenize_limited(bytes: darray[u8]&, layout: GlbContainer::Layout&, tokens: mutable darray[GlbJson::Token]&, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> usize error[GlbImportError]:
+            tokens.clear()
+            raise GlbImportError.OverBudget if AssetImportLimits::charge_work(budget, limits, layout.json_length) != AssetImportLimits::Verdict.Ok
+            start: usize = layout.json_start.usize()
+            raise GlbImportError.Malformed if not GlbJson::tokenize(bytes, start, start + layout.json_length.usize(), tokens)
+            deep: bool = nesting(tokens) > limits.max_depth
+            charged: bool = not deep and AssetImportLimits::charge_alloc(budget, limits, tokens.count.i64(), TOKEN_BYTES) == AssetImportLimits::Verdict.Ok
+            if not charged:
+                tokens.clear()
+            raise GlbImportError.OverBudget if not charged
+            tokens.count

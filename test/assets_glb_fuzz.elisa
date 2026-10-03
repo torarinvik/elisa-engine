@@ -96,6 +96,19 @@ def read_code(bytes: darray[u8]&, layout: GlbContainer::Layout&, offset: i64, co
         value: value.count.i64()
         error failure: -1
 
+# Token count, -1 over budget, -2 malformed; `left` must hold no tokens on refusal.
+def tok_code(bytes: darray[u8]&, layout: GlbContainer::Layout&, budget: mutable AssetImportLimits::Budget&, l: AssetImportLimits::Limits&) -> i64:
+    tokens: mutable darray[GlbJson::Token] = []
+    code: i64 = tok_inner(bytes, layout, &tokens, budget, l)
+    return -9 if code < 0 and tokens.count != 0
+    code
+
+def tok_inner(bytes: darray[u8]&, layout: GlbContainer::Layout&, tokens: mutable darray[GlbJson::Token]&, budget: mutable AssetImportLimits::Budget&, l: AssetImportLimits::Limits&) -> i64:
+    catch GlbImport::tokenize_limited(bytes, layout, tokens, budget, l):
+        value: value.i64()
+        GlbImport::GlbImportError.OverBudget: -1
+        error failure: -2
+
 def zeros() -> darray[i64]:
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
@@ -131,4 +144,26 @@ def main() -> i32:
     # A read outside the payload is refused before anything is charged.
     o: AssetImportLimits::Budget = AssetImportLimits::start()
     return 11 if read_code(&base, &layout, 12, 8, &o, &exact) != -1 or o.bytes != 0
+    # The JSON chunk tokenizes inside the budget: work per byte, bytes per token.
+    t: AssetImportLimits::Budget = AssetImportLimits::start()
+    wide: AssetImportLimits::Limits = limits_wide()
+    count: i64 = tok_code(&base, &layout, &t, &wide)
+    return 12 if count <= 0 or t.work != layout.json_length
+    # Nesting past max_depth is refused and leaves no tokens.
+    shallow: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 100000, max_elements: 100000, max_depth: 1, max_work: 100000}
+    sd: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 13 if tok_code(&base, &layout, &sd, &shallow) != -1
+    # Work below the chunk length refuses before tokenizing.
+    lazy: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 100000, max_elements: 100000, max_depth: 4, max_work: layout.json_length - 1}
+    sw: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 14 if tok_code(&base, &layout, &sw, &lazy) != -1 or sw.work != 0
+    # Too few token elements refuses after tokenizing.
+    narrow: AssetImportLimits::Limits = AssetImportLimits::Limits{max_bytes: 100000, max_elements: count - 1, max_depth: 4, max_work: 100000}
+    se: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 15 if tok_code(&base, &layout, &se, &narrow) != -1
+    # A broken JSON chunk is malformed.
+    bad: mutable darray[u8] = image(16)
+    bad[layout.json_start.usize()] <- 93
+    sb: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 16 if tok_code(&bad, &layout, &sb, &wide) != -2
     0

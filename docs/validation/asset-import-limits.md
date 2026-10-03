@@ -58,6 +58,12 @@ Negative controls:
 | Drop the size charge | 5 |
 | Drop the range precheck | 11 |
 | Charge before the range check (first draft) | 11 |
+| Skip the JSON nesting check in `tokenize_limited` | 13 |
+
+`GlbImport::tokenize_limited` tokenizes the JSON chunk under the same budget. It charges one
+work unit per JSON byte before tokenizing. Nesting deeper than `max_depth` is refused, and so is
+a token table larger than the element or byte budget (40 bytes per token); a refusal leaves no
+tokens. The fuzz test covers acceptance, depth, work, element and malformed cases (12-16).
 
 Still open: model, image and animation importers beyond the container, out-of-process
 workers, and timeouts.
