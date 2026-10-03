@@ -43,7 +43,7 @@ def main():
     ap.add_argument("--remote", default=os.environ.get("ELISA_PROOF_REMOTE"),
                     help="HOST:PATH of a Linux prover built from the same revision (env ELISA_PROOF_REMOTE)")
     ap.add_argument("--remote-prover-sha", help="cache identity of the remote prover (default: local prover's)")
-    ap.add_argument("-r", type=int, default=16, help="max workers per remote")
+    ap.add_argument("-r", type=int, default=128, help="max workers per remote (capped by its cores and free GB)")
     ap.add_argument("--no-cache", action="store_true")
     a = ap.parse_args()
 
