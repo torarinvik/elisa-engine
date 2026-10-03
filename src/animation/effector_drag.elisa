@@ -43,7 +43,20 @@ module EffectorDrag:
                 origin <- [positions[EffectorDragIndex::slot(effector, 0, joints).usize()],
                     positions[EffectorDragIndex::slot(effector, 1, joints).usize()],
                     positions[EffectorDragIndex::slot(effector, 2, joints).usize()]]
-            Session{live: ok, mode: mode, basis: basis, origin: origin, press: press, chain: chain, saved: Gizmo::begin(mode, positions)}
+            Session{live: ok, mode: mode, basis: drag_copy_reals(basis), origin: origin, press: drag_copy_reals(press), chain: drag_copy_joints(chain), saved: Gizmo::begin(mode, positions)}
+
+        # Owned copies of borrowed arrays for a stored Session.
+        def drag_copy_reals(values: darray[f64]&) -> darray[f64]:
+            mutable out: darray[f64] = []
+            for v in values |out|:
+                out.push(v)
+            out
+
+        def drag_copy_joints(values: darray[i64]&) -> darray[i64]:
+            mutable out: darray[i64] = []
+            for v in values |out|:
+                out.push(v)
+            out
 
         # Effector target for cursor ray `now`: its start position plus the
         # constrained drag. The start position when the drag cannot be
