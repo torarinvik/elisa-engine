@@ -99,3 +99,28 @@ The hosted cook job now runs `native_smoke_artifacts.py --self-test` on all thre
 systems. The hosted macOS native job runs `test_crash_report.py`. Both steps go through
 `ci_stage.py`, and both passed locally through `ci_stage.py`. They have not yet run on a hosted
 runner, because nothing has been pushed from this checkout.
+
+## Recovery checks (2026-10-03; Q01 remains open)
+
+The toolchain was rebuilt and pinned for this engine snapshot: Stage1 compiler
+`98abcee` (`bin/elisac-stage1` SHA-256
+`734fad7984b0c6de3b50e6d57585e3c8573f975c33e4560f647a1209f9ed828d`), proof
+assistant `6d6b665`, and ElisaScript `6769aebb`. The fresh `build/validation.json`
+records these identities against the engine source manifest with a clean tree.
+`scripts/check.elisascript` passed: 210/210 Elisa tests, the SDL3 and Godot
+probes, and 67/67 proofs.
+
+Commit `1991f284` stages Wicked's executable-relative `libdxcompiler.dylib`
+and optional `libmetalirconverter.dylib` beside development executables. This
+matches Wicked's shader loader, which looks beside the running binary. The
+build-run tests pass 28/28, and the focused `world-save-physics-smoke` passes
+on SDL3/Metal; its artifact is `build/native-smoke/world-save-physics-smoke.json`.
+
+The first expanded full-gate attempt initialized Wicked and passed the first
+seven application cases, then stopped at `world-save-physics-smoke`: that
+fixture explicitly includes runtime modules while the wrapper injected them a
+second time. The harness now uses `--no-public-runtime` for this fixture, and
+the focused rerun passes. The full 30-case gate has not been rerun after this
+correction. The strict source-length check still reports
+`native/render_scene_abi.h` at 604 lines; until that separate cleanup lands,
+source policy fails and no `hardware_verification=verified` claim is made.
