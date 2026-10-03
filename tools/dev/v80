@@ -1,0 +1,2 @@
+#!/bin/sh
+exec ssh -o LogLevel=ERROR -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-%C -o ControlPersist=300 -p 15803 root@ssh9.vast.ai "$@"
