@@ -10,9 +10,7 @@ SOURCE_SUFFIXES = (".elisa", ".elisascript", ".cpp", ".h", ".inc", ".py", ".gd",
 
 
 def source_files(root: Path):
-    plan = root / "Elisa_Engine_Architecture_and_Plan.md"
-    if plan.is_file():
-        yield plan
+    yield from sorted(root.glob("*.md"))
     for directory in SOURCE_ROOTS:
         base = root / directory
         if base.is_dir():
