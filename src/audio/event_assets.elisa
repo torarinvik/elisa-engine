@@ -9,6 +9,8 @@
 # left out are zero. `define_from` checks the whole asset against a scratch
 # board before it writes anything to the caller's board, so a malformed asset
 # never leaves a partial event set behind.
+# This source intentionally extends the SoundEventAssets module declared by
+# event_asset_text.elisa, keeping the proved bounded text reader separate.
 include "./events.elisa"
 include "./event_asset_text.elisa"
 

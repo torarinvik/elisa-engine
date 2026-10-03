@@ -15,7 +15,9 @@ EXAMPLE_ROOT = Path("examples")
 TEST_ROOT = Path("test")
 ELISA_SUFFIX = ".elisa"
 PUBLIC_INCLUDE_BUNDLES = {Path("src/runtime/public.elisa")}
+MODULE_EXTENSIONS = {Path("src/audio/event_assets.elisa"): "SoundEventAssets"}
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*:")
+TOP_LEVEL_EXTENSION = re.compile(r"^extend\s+([A-Za-z_][A-Za-z0-9_:]*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
 INCLUDE_DIRECTIVE = re.compile(r'^\s*include\s+"([^"\r\n]+)"\s*$')
 LEGACY_CONSTRUCTOR = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_new\s*\(")
@@ -136,7 +138,53 @@ def policy(root: Path) -> dict[str, object]:
                     None,
                 )
                 if module is None:
-                    violations.append(f"{relative}: missing top-level module declaration")
+                    extension_name = MODULE_EXTENSIONS.get(relative)
+                    if extension_name is None:
+                        violations.append(f"{relative}: missing top-level module declaration")
+                    else:
+                        # A small number of production files deliberately extend a
+                        # module declared in an included source file. Keep that
+                        # shape explicit: only includes plus the one approved
+                        # extension may appear at top level, and the target module
+                        # must be supplied by one of those includes.
+                        extension_matches = [
+                            match for line in lines
+                            if (match := TOP_LEVEL_EXTENSION.match(line))
+                        ]
+                        allowed_extension = len(extension_matches) == 1 and extension_matches[0].group(1) == extension_name
+                        include_targets = []
+                        for line_number, line in enumerate(lines, start=1):
+                            stripped = line.strip()
+                            if not stripped or stripped.startswith("#"):
+                                continue
+                            include = INCLUDE_DIRECTIVE.match(line)
+                            if include is not None:
+                                target = (path.parent / include.group(1)).resolve()
+                                if not target.is_relative_to(source_root.resolve()) or not target.is_file():
+                                    violations.append(
+                                        f"{relative}:{line_number}: include must resolve to a source file under src/"
+                                    )
+                                else:
+                                    include_targets.append(target)
+                                continue
+                            if TOP_LEVEL_EXTENSION.match(line):
+                                continue
+                            if not line[:1].isspace():
+                                violations.append(
+                                    f"{relative}:{line_number}: module extension bundles may contain only includes and the approved extension"
+                                )
+                        if not allowed_extension:
+                            violations.append(
+                                f"{relative}: expected exactly one top-level extension of {extension_name}"
+                            )
+                        if not any(
+                            any(TOP_LEVEL_MODULE.match(source_line) and TOP_LEVEL_MODULE.match(source_line).group(1) == extension_name
+                                for source_line in target.read_text(encoding="utf-8").splitlines())
+                            for target in include_targets
+                        ):
+                            violations.append(
+                                f"{relative}: extension target {extension_name} must be declared by an included source"
+                            )
                 else:
                     name = module.group(1)
                     previous = module_names.get(name)
