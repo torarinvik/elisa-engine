@@ -213,10 +213,44 @@ The restart path had been exiting after W movement. It now creates the
 replacement character before retiring the old one, advances physics once, and
 refreshes the grounded state before the next gameplay frame queries it. In a
 fresh isolated package (`org.elisa.character-course.restartfix6`), ten W inputs
-visibly moved the character; R returned it to the entrance, and the app stayed
-open. Closing the test window then produced `process_exit_status=0` in the
-package log. This verifies movement and restart in the packaged build; it does
-not cover the remaining gameplay paths listed above.
+visibly moved the character; R restarted it, and the app stayed open. Closing
+the test window then produced `process_exit_status=0` in the package log. This
+verifies movement and restart in the packaged build; it does not cover the
+remaining gameplay paths listed above.
+
+### Restart self-test (2026-10-04)
+
+The hidden course self-test was rebuilt from committed source `ab02c727` with
+`--native-test-probes`, which enables the SDL window-resize hook used by its
+lifecycle stress checks. Build provenance is
+`examples/character_course/build/character-course-selftest.provenance.json`
+(build identity `2b97565c360d1e32`, executable SHA-256
+`d351b3286f8ca45ff680af896ed648f855692ce73e08740eae5315652e0fd5c1`). The
+package at `/private/tmp/CharacterCourseSelfTestRestartFix2.app` passed two
+relocated launches with source and Homebrew access denied:
+
+```bash
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/elisa_build_run.py build --project examples/character_course \
+  --main self_test_main.elisa --output build/character-course-selftest \
+  --compiler /private/tmp/elisac-stage1-direct.sh \
+  --runtime-object /Users/torarinvikbjarko/.elisac/stage1/build/runtime/elisacore_runtime.o \
+  --native-test-probes
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-selftest \
+  --output /private/tmp/CharacterCourseSelfTestRestartFix2.app \
+  --name 'Character Course Self Test Restart Fix 2' \
+  --bundle-id org.elisa.character-course.selftest.restartfix2 --version 0.1.0 \
+  --shader-root ../elisa-boxing-wickedengine/WickedEngine/shaders
+python3 scripts/validate_standalone_macos_app.py \
+  --app /private/tmp/CharacterCourseSelfTestRestartFix2.app --runs 2
+```
+
+The first attempt omitted `--native-test-probes` and exited 195 because that
+build intentionally stubs the window-size test hook. The passing run used a
+temporary direct compiler wrapper and the Command Line Tools linker to work
+around workstation toolchain state after the macOS upgrade; a clean-checkout
+compiler build remains part of Q01.
 
 The validator now waits for the full launcher process group before removing its
 temporary home. `scripts/test_interactive_macos_app.py` holds a child open after
