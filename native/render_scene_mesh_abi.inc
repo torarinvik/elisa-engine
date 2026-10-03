@@ -37,6 +37,7 @@ int64_t install_cooked_mesh_asset(RenderSceneService& state,
     instance.imported_camera_entities.clear(); instance.imported_light_handles.clear();
     instance.joint_entities.clear();
     instance.skin_joints.clear();
+    for (auto& region : instance.skin_contact_regions) region.vertices.clear();
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};

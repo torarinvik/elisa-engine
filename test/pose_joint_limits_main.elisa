@@ -1,0 +1,66 @@
+include "../src/animation/pose_joint_limits.elisa"
+
+def same(a: Geometry::Transform, b: Geometry::Transform) -> bool:
+    dot: f32 = a.rotation.x*b.rotation.x+a.rotation.y*b.rotation.y+a.rotation.z*b.rotation.z+a.rotation.w*b.rotation.w
+    Geometry::vec3_distance(a.position,b.position) < 0.00001 and Geometry::vec3_distance(a.scale,b.scale) < 0.00001 and (dot > 0.99999 or dot < -0.99999)
+
+def exact(a: Geometry::Transform, b: Geometry::Transform) -> bool:
+    a.position.x == b.position.x and a.position.y == b.position.y and a.position.z == b.position.z and a.scale.x == b.scale.x and a.scale.y == b.scale.y and a.scale.z == b.scale.z and a.rotation.x == b.rotation.x and a.rotation.y == b.rotation.y and a.rotation.z == b.rotation.z and a.rotation.w == b.rotation.w
+
+def exercise() -> i32 error[Pose::PoseError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    local: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton, -1, local)
+    local.position <- Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton, -1, local)
+    local.position <- Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+    local.rotation <- Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}
+    return 1 if not Pose::skeleton_add(&skeleton, 0, local)
+    local.rotation <- Geometry::quat_identity()
+    return 1 if not Pose::skeleton_add(&skeleton, 1, local)
+    return 1 if not Pose::skeleton_add(&skeleton, 2, local)
+    return 1 if not Pose::skeleton_add(&skeleton, 4, local)
+    source: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    settings: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(6)
+    settings.enabled[2] <- true
+    settings.limits[2] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.0,maximum_twist: 0.785398163}
+    corrected: mutable Pose::Pose = source
+    changed: bool = try PoseJointLimits::project(&corrected, skeleton, settings)
+    return 2 if not changed
+    return 3 if Geometry::vec3_distance(corrected.models[4].position,Geometry::Vec3{x: 1.70710678,y: 0.70710678,z: 0.0}) > 0.00001
+    return 4 if Geometry::vec3_distance(corrected.models[5].position,Geometry::Vec3{x: 2.41421356,y: 1.41421356,z: 0.0}) > 0.00001
+    for index in 0..<6:
+        return 5 if (index == 0 or index == 1 or index == 3) and not exact(source.models[index], corrected.models[index])
+    return 6 if Geometry::vec3_distance(corrected.models[4].position,corrected.models[2].position) < 0.99999 or Geometry::vec3_distance(corrected.models[4].position,corrected.models[2].position) > 1.00001
+    # Disabled slots may contain invalid zeroed limits and must not modify FK.
+    settings.enabled[2] <- false
+    untouched: mutable Pose::Pose = source
+    disabled: bool = try PoseJointLimits::project(&untouched, skeleton, settings)
+    return 7 if disabled or not exact(untouched.models[4],source.models[4])
+    # A later invalid slot rejects without publishing an earlier valid change.
+    settings.enabled[2] <- true
+    settings.enabled[5] <- true
+    invalid: bool = catch PoseJointLimits::project(&untouched, skeleton, settings):
+        value: false
+        error failure: true
+    return 8 if not invalid
+    for index in 0..<6:
+        return 9 if not exact(source.models[index],untouched.models[index])
+    settings.enabled[5] <- false
+    settings.count <- 5
+    shape: bool = catch PoseJointLimits::project(&untouched,skeleton,settings):
+        value: false
+        error failure: true
+    return 10 if not shape
+    settings.count <- 6
+    untouched.models[3].scale.x <- 0.0
+    scale: bool = catch PoseJointLimits::project(&untouched,skeleton,settings):
+        value: false
+        error failure: true
+    return 11 if not scale
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 20

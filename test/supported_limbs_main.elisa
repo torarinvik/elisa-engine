@@ -1,0 +1,104 @@
+include "../src/animation/supported_limbs.elisa"
+
+def same_pose(a: Pose::Pose&, b: Pose::Pose&) -> bool:
+    return false if a.count != b.count
+    for joint in 0..<a.count:
+        x: Geometry::Transform = a.models[joint]
+        y: Geometry::Transform = b.models[joint]
+        return false if Geometry::vec3_distance(x.position,y.position) != 0.0 or Geometry::vec3_distance(x.scale,y.scale) != 0.0 or x.rotation.x != y.rotation.x or x.rotation.y != y.rotation.y or x.rotation.z != y.rotation.z or x.rotation.w != y.rotation.w
+    true
+
+def same_state(a: ControlledLimbs::State&, b: ControlledLimbs::State&) -> bool:
+    return false if a.count != b.count or a.skeleton_count != b.skeleton_count
+    for slot in 0..<4:
+        return false if a.uppers[slot] != b.uppers[slot] or a.lowers[slot] != b.lowers[slot] or a.ends[slot] != b.ends[slot] or a.bends[slot].initialized != b.bends[slot].initialized or Geometry::vec3_distance(a.bends[slot].direction,b.bends[slot].direction) != 0.0 or Geometry::vec3_distance(a.bends[slot].bend,b.bends[slot].bend) != 0.0
+    for joint in 0..<AnimationLimits::MAX_JOINTS:
+        return false if a.parents[joint] != b.parents[joint]
+    true
+
+def exercise() -> i32 error[SupportedLimbs::SupportError, SupportReach::ReachError, ControlledLimbs::BatchError, IkFk::BlendError, Pose::PoseError, ConstrainedLimb::SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    local: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton,-1,local)
+    local.position <- Geometry::Vec3{x: 0.0,y: 1.1,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    for side in 0..<2:
+        local.position <- Geometry::Vec3{x: -0.25 if side == 0 else 0.25,y: 0.0,z: 0.0}
+        return 1 if not Pose::skeleton_add(&skeleton,1,local)
+    local.position <- Geometry::Vec3{x: 0.0,y: -0.5,z: 0.1}
+    for side in 0..<2:
+        return 1 if not Pose::skeleton_add(&skeleton,(side+2).i64(),local)
+    local.position <- Geometry::Vec3{x: 0.0,y: -0.5,z: -0.1}
+    for side in 0..<2:
+        return 1 if not Pose::skeleton_add(&skeleton,(side+4).i64(),local)
+    local.position <- Geometry::Vec3{x: 0.0,y: 0.5,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,1,local)
+    local.position <- Geometry::Vec3{x: 0.4,y: 0.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    local.position <- Geometry::Vec3{x: 0.0,y: 0.0,z: 0.2}
+    return 1 if not Pose::skeleton_add(&skeleton,6,local)
+    source: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    pose: mutable Pose::Pose = source
+    requests: mutable ControlledLimbs::Requests = ControlledLimbs::requests()
+    requests.count <- 2
+    supports: mutable SupportedLimbs::Supports = SupportedLimbs::supports()
+    for side in 0..<2 |requests, supports|:
+        requests.limbs[side] <- ControlledLimbs::Limb{upper: side+2,lower: side+4,end: side+6,target: Geometry::Vec3{x: -0.23 if side == 0 else 0.25,y: 0.0,z: 0.0},orientation: Geometry::quat_identity(),position_weight: 1.0,orientation_weight: 0.0,bend_hint: Geometry::Vec3{x: 0.0,y: -0.5,z: 0.1},tolerance: 0.00002,budget: 32}
+        supports.enabled[side] <- true
+        supports.minimum_distance[side] <- 0.2
+        supports.maximum_distance[side] <- 1.0
+    good: ControlledLimbs::Requests = requests
+    limits: PoseJointLimits::Constraints = PoseJointLimits::constraints(source.count)
+    state: mutable ControlledLimbs::State = ControlledLimbs::state()
+    axis: Geometry::Vec3 = Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0}
+    result: mutable SupportedLimbs::Result = try SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state)
+    return 2 if not result.accepted or result.reach.offset >= -0.1 or result.reach.offset < -0.101 or state.count != 2
+    for side in 0..<2:
+        return 3 if Geometry::vec3_distance(pose.models[side+6].position,requests.limbs[side].target) > 0.00002 or not state.bends[side].initialized
+        return 4 if Geometry::vec3_distance(pose.models[side+2].position,Geometry::vec3_add(source.models[side+2].position,Geometry::vec3_scale(axis,result.reach.offset))) > 0.000002
+    return 5 if Geometry::vec3_distance(pose.models[9].position,source.models[9].position) != 0.0 or Geometry::vec3_distance(pose.models[0].position,source.models[0].position) != 0.0
+    return 6 if Geometry::vec3_distance(pose.models[8].position,Geometry::vec3_add(source.models[8].position,Geometry::vec3_scale(axis,result.reach.offset))) > 0.000002
+    return 7 if Geometry::vec3_distance(pose.models[10].position,Geometry::vec3_add(requests.limbs[0].target,Geometry::Vec3{x: 0.0,y: 0.0,z: 0.2})) > 0.00002
+    saved: ControlledLimbs::State = ControlledLimbs::snapshot(state)
+    # Last leg error after staged pelvis shift and first leg solve, bound history.
+    pose <- source
+    requests.limbs[1].orientation_weight <- 1.1
+    code: i32 = catch SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state):
+        value: 0
+        IkFk::BlendError.InvalidWeight: 1
+        error failure: 9
+    return 8 if code != 1 or not same_pose(pose,source) or not same_state(state,saved)
+    # The same failure must not bind an empty history either.
+    state <- ControlledLimbs::state()
+    empty: ControlledLimbs::State = ControlledLimbs::snapshot(state)
+    fresh: i32 = catch SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state):
+        value: 0
+        IkFk::BlendError.InvalidWeight: 1
+        error failure: 9
+    return 9 if fresh != 1 or not same_pose(pose,source) or not same_state(state,empty)
+    requests <- good
+    requests.limbs[0].position_weight <- 0.5
+    result <- try SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state)
+    return 10 if result.accepted or result.limbs.count != 2 or result.limbs.limbs[0].converged or not same_pose(pose,source) or not same_state(state,empty)
+    requests <- good
+    requests.limbs[0].target.x <- 10.0
+    result <- try SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state)
+    return 11 if result.accepted or result.reach.feasible or not same_pose(pose,source) or not same_state(state,empty)
+    requests <- good
+    invalid_root: i32 = catch SupportedLimbs::solve(&pose,skeleton,9,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state):
+        value: 0
+        SupportedLimbs::SupportError.InvalidBodyRoot: 1
+        error failure: 9
+    return 12 if invalid_root != 1 or not same_pose(pose,source) or not same_state(state,empty)
+    supports.maximum_distance[1] <- 2.0
+    invalid_band: i32 = catch SupportedLimbs::solve(&pose,skeleton,1,requests,supports,limits,axis,-0.2,0.2,0.0,0.000001,&state):
+        value: 0
+        SupportedLimbs::SupportError.InvalidSupport: 1
+        error failure: 9
+    return 13 if invalid_band != 1 or not same_pose(pose,source) or not same_state(state,empty)
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 30

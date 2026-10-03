@@ -1,0 +1,177 @@
+include "../src/animation/controlled_limbs.elisa"
+
+def same_pose(a: Pose::Pose&, b: Pose::Pose&) -> bool:
+    return false if a.count != b.count
+    for joint in 0..<a.count:
+        left: Geometry::Transform = a.models[joint]
+        right: Geometry::Transform = b.models[joint]
+        return false if Geometry::vec3_distance(left.position,right.position) != 0.0 or Geometry::vec3_distance(left.scale,right.scale) != 0.0
+        return false if left.rotation.x != right.rotation.x or left.rotation.y != right.rotation.y or left.rotation.z != right.rotation.z or left.rotation.w != right.rotation.w
+    true
+
+def same_state(a: ControlledLimbs::State&, b: ControlledLimbs::State&) -> bool:
+    return false if a.count != b.count or a.skeleton_count != b.skeleton_count
+    for slot in 0..<4:
+        return false if a.uppers[slot] != b.uppers[slot] or a.lowers[slot] != b.lowers[slot] or a.ends[slot] != b.ends[slot]
+        return false if a.bends[slot].initialized != b.bends[slot].initialized or Geometry::vec3_distance(a.bends[slot].direction,b.bends[slot].direction) != 0.0 or Geometry::vec3_distance(a.bends[slot].bend,b.bends[slot].bend) != 0.0
+    for joint in 0..<AnimationLimits::MAX_JOINTS:
+        return false if a.parents[joint] != b.parents[joint]
+    true
+
+def exercise() -> i32 error[ControlledLimbs::BatchError, IkFk::BlendError, Pose::PoseError, ConstrainedLimb::SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    local: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton,-1,local)
+    for slot in 0..<4:
+        local.position <- Geometry::Vec3{x: slot.f32()*5.0,y: 0.0,z: 0.0}
+        return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    local.position <- Geometry::Vec3{x: 1.0,y: 0.0,z: 0.0}
+    for slot in 0..<4:
+        return 1 if not Pose::skeleton_add(&skeleton,(slot+1).i64(),local)
+    for slot in 0..<4:
+        return 1 if not Pose::skeleton_add(&skeleton,(slot+5).i64(),local)
+    local.position <- Geometry::Vec3{x: 0.25,y: 0.0,z: 0.0}
+    for slot in 0..<4:
+        return 1 if not Pose::skeleton_add(&skeleton,(slot+9).i64(),local)
+    local.position <- Geometry::Vec3{x: 0.0,y: 3.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    local.position <- Geometry::Vec3{x: 0.25,y: 0.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,13,local)
+    source: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    pose: mutable Pose::Pose = source
+    requests: mutable ControlledLimbs::Requests = ControlledLimbs::requests()
+    requests.count <- 4
+    limits: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(skeleton.count)
+    for slot in 0..<4:
+        requests.limbs[slot] <- ControlledLimbs::Limb{upper: slot+1,lower: slot+5,end: slot+9,
+            target: Geometry::Vec3{x: slot.f32()*5.0+1.0,y: 1.0,z: 0.0},
+            orientation: Geometry::Quat{x: 0.0,y: 0.0,z: 0.70710678,w: 0.70710678},
+            position_weight: 1.0,orientation_weight: 1.0,bend_hint: Geometry::Vec3{x: 0.0,y: 1.0,z: 0.0},tolerance: 0.0001,budget: 32}
+        limits.enabled[slot+5] <- true
+        limits.limits[slot+5] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: -1.570796327,maximum_twist: 0.0}
+    state: mutable ControlledLimbs::State = ControlledLimbs::state()
+    full: ControlledLimbs::Result = try ControlledLimbs::solve(&pose,skeleton,requests,limits,&state)
+    return 2 if full.count != 4 or state.count != 4
+    for slot in 0..<4:
+        return (40+slot).i32() if Geometry::vec3_distance(pose.models[slot+9].position,requests.limbs[slot].target) > 0.0001
+        return (50+slot).i32() if not full.limbs[slot].converged
+        return 3 if full.limbs[slot].iterations > 32
+        return 4 if Geometry::vec3_distance(pose.models[slot+9].position,requests.limbs[slot].target) > 0.0001
+        return 5 if Geometry::vec3_distance(pose.models[slot+13].position,Geometry::vec3_add(requests.limbs[slot].target,Geometry::Vec3{x: 0.0,y: 0.25,z: 0.0})) > 0.0001
+    return 6 if Geometry::vec3_distance(pose.models[17].position,source.models[17].position) != 0.0
+    good: ControlledLimbs::Requests = requests
+    saved_pose: Pose::Pose = pose
+    saved_state: ControlledLimbs::State = state
+    # Last-limb failure occurs after three private solves; no partial publication.
+    requests.limbs[0].target <- Geometry::Vec3{x: 1.5,y: 0.75,z: 0.0}
+    requests.limbs[3].position_weight <- 1.1
+    code: mutable i32 = catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        IkFk::BlendError.InvalidWeight: 1
+        error failure: 9
+    return 7 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,saved_state)
+    # Failure on the first transaction must not bind or initialize any state.
+    state <- ControlledLimbs::state()
+    empty: ControlledLimbs::State = state
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        IkFk::BlendError.InvalidWeight: 1
+        error failure: 9
+    return 8 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,empty)
+    requests <- good
+    requests.limbs[3] <- requests.limbs[0]
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.OverlappingBranches: 1
+        error failure: 9
+    return 9 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,empty)
+    requests <- good
+    requests.count <- 2
+    requests.limbs[1].upper <- 9
+    requests.limbs[1].lower <- 13
+    requests.limbs[1].end <- 18
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.OverlappingBranches: 1
+        error failure: 9
+    return 10 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,empty)
+    requests <- good
+    limits.enabled[0] <- true
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.UnownedConstraint: 1
+        error failure: 9
+    return 11 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,empty)
+    limits.enabled[0] <- false
+    state <- saved_state
+    requests.limbs[0] <- good.limbs[1]
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.StateMismatch: 1
+        error failure: 9
+    return 12 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,saved_state)
+    requests <- good
+    requests.count <- 5
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.InvalidCount: 1
+        error failure: 9
+    return 13 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,saved_state)
+    requests <- good
+    skeleton.joints[17].parent <- -1
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.StateMismatch: 1
+        error failure: 9
+    return 14 if code != 1 or not same_pose(pose,saved_pose) or not same_state(state,saved_state)
+    skeleton.joints[17].parent <- 0
+    # A geometrically unreachable limb is bounded, with a truthful final residual.
+    requests.limbs[3].target <- Geometry::Vec3{x: 99.0,y: 0.0,z: 0.0}
+    outside: ControlledLimbs::Result = try ControlledLimbs::solve(&pose,skeleton,requests,limits,&state)
+    return 15 if outside.limbs[3].converged or outside.limbs[3].geometric_reach or outside.limbs[3].residual < 80.0
+    return 16 if not outside.limbs[0].converged or Geometry::vec3_distance(pose.models[9].position,good.limbs[0].target) > 0.0001
+    pose <- source
+    state <- ControlledLimbs::snapshot(saved_state)
+    requests <- good
+    requests.limbs[0].position_weight <- 0.0
+    requests.limbs[0].orientation_weight <- 0.0
+    requests.limbs[0].target <- Geometry::Vec3{x: 99.0,y: 0.0,z: 0.0}
+    requests.limbs[1].position_weight <- 0.0
+    requests.limbs[1].target <- Geometry::Vec3{x: 99.0,y: 0.0,z: 0.0}
+    requests.limbs[2].orientation_weight <- 0.0
+    requests.limbs[3].position_weight <- 0.5
+    requests.limbs[3].orientation_weight <- 0.25
+    mixed: ControlledLimbs::Result = try ControlledLimbs::solve(&pose,skeleton,requests,limits,&state)
+    return 17 if mixed.limbs[0].positional_active or mixed.limbs[1].positional_active or mixed.limbs[3].converged
+    return 18 if Geometry::vec3_distance(pose.models[5].position,source.models[5].position) != 0.0 or Geometry::vec3_distance(pose.models[9].position,source.models[9].position) != 0.0 or Geometry::vec3_distance(pose.models[13].position,source.models[13].position) != 0.0
+    return 19 if Geometry::vec3_distance(state.bends[0].bend,saved_state.bends[0].bend) != 0.0 or Geometry::vec3_distance(state.bends[1].direction,saved_state.bends[1].direction) != 0.0
+    return 20 if Geometry::vec3_distance(pose.models[14].position,Geometry::vec3_add(source.models[10].position,Geometry::Vec3{x: 0.0,y: 0.25,z: 0.0})) > 0.0001 or pose.models[11].rotation.w < 0.9999
+    return 21 if mixed.limbs[3].residual < 0.0001 or Geometry::vec3_distance(pose.models[12].position,requests.limbs[3].target)-mixed.limbs[3].residual > 0.0001
+    requests <- good
+    requests.count <- 0
+    code <- catch ControlledLimbs::solve(&pose,skeleton,requests,limits,&state):
+        value: 0
+        ControlledLimbs::BatchError.InvalidCount: 1
+        error failure: 9
+    return 22 if code != 1
+    requests <- good
+    state <- ControlledLimbs::snapshot(saved_state)
+    # Near-straight moving limbs with singular hints keep transported bend sides.
+    for frame in 0..<41:
+        phase: f32 = frame.f32()/40.0
+        x: f32 = 1.99-phase*0.49
+        y: f32 = 0.02+phase*0.78
+        pose <- source
+        for slot in 0..<4:
+            requests.limbs[slot].target <- Geometry::Vec3{x: slot.f32()*5.0+x,y: y,z: 0.0}
+            requests.limbs[slot].bend_hint <- Geometry::Vec3{x: x,y: y,z: 0.0}
+        moving: ControlledLimbs::Result = try ControlledLimbs::solve(&pose,skeleton,requests,limits,&state)
+        for slot in 0..<4:
+            return 23 if not moving.limbs[slot].converged or moving.limbs[slot].iterations > 32
+            return 24 if state.bends[slot].bend.y <= 0.0
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 30

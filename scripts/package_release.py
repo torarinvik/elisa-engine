@@ -13,10 +13,13 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import platform
+import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 from pathlib import Path
 
 # A release names only the platform this tree has actually been validated on.
@@ -57,12 +60,72 @@ def git_commit(root: Path) -> dict:
     return {"commit": commit, "short": commit[:12], "dirty": dirty}
 
 
+def compiler_runtime_object(compiler: str) -> Path | None:
+    configured = os.environ.get("ELISA_RUNTIME_OBJ")
+    if configured:
+        return None if configured == "none" else Path(configured).expanduser().resolve()
+    compiler_path_text = shutil.which(compiler) if "/" not in compiler else compiler
+    if compiler_path_text is None:
+        return None
+    compiler_path = Path(compiler_path_text).expanduser().resolve()
+    if compiler_path.name == "elisac_stage1.sh":
+        compiler_root = compiler_path.parent.parent
+    elif compiler_path.name == "elisac-stage1":
+        compiler_root = compiler_path.parent.parent
+    else:
+        return None
+    candidate = compiler_root / "build/runtime/elisacore_runtime.o"
+    return candidate if candidate.is_file() else None
+
+
+def duplicate_lsp_labels(runtime_object: Path) -> list[str]:
+    nm = shutil.which("nm") or "/usr/bin/nm"
+    result = subprocess.run([nm, "-g", str(runtime_object)], text=True,
+        capture_output=True, check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"could not inspect compiler runtime symbols: {result.stderr.strip()}")
+    labels = []
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and len(fields[-2]) == 1 and fields[-2].upper() != "U":
+            symbol = fields[-1]
+            if symbol == "___lsp_decl_name" or symbol.startswith("___lsp_decl_name."):
+                labels.append(symbol)
+    return sorted(set(labels))
+
+
 def build_game(root: Path, compiler: str, output: Path) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [compiler, "-emit", "exe", "-o", str(output), str(root / "examples/maze/main.elisa")],
-        capture_output=True, text=True, check=False,
-    )
+    command = [compiler, "-emit", "exe", "-o", str(output), str(root / "examples/maze/main.elisa")]
+    environment = dict(os.environ)
+    runtime_object = compiler_runtime_object(compiler)
+    if runtime_object and runtime_object.is_file() and runtime_object.stat().st_size:
+        labels = duplicate_lsp_labels(runtime_object)
+    else:
+        labels = []
+    try:
+        if labels:
+            # These per-module LSP labels are compiler metadata, not runtime state;
+            # stripping them from a temporary runtime copy avoids cross-module clashes.
+            nmedit = shutil.which("nmedit") or "/usr/bin/nmedit"
+            if not Path(nmedit).is_file():
+                raise RuntimeError("duplicate compiler LSP labels require macOS nmedit")
+            with tempfile.TemporaryDirectory(prefix="elisa-release-runtime-", dir=output.parent) as temporary:
+                temporary_root = Path(temporary)
+                staged_runtime = temporary_root / "elisacore_runtime.o"
+                symbol_list = temporary_root / "duplicate_lsp_symbols.txt"
+                shutil.copyfile(runtime_object, staged_runtime)
+                symbol_list.write_text("".join(f"{symbol}\n" for symbol in labels), encoding="utf-8")
+                edited = subprocess.run([nmedit, "-R", str(symbol_list), str(staged_runtime)],
+                    capture_output=True, text=True, check=False)
+                if edited.returncode != 0:
+                    raise RuntimeError(f"could not stage compiler runtime for release: {edited.stderr.strip()}")
+                environment["ELISA_RUNTIME_OBJ"] = str(staged_runtime)
+                result = subprocess.run(command, env=environment, capture_output=True, text=True, check=False)
+        else:
+            result = subprocess.run(command, env=environment, capture_output=True, text=True, check=False)
+    except OSError as error:
+        raise RuntimeError(f"could not start packaged game build: {error}") from error
     if result.returncode != 0:
         raise RuntimeError(f"packaged game build failed: {result.stderr.strip() or result.stdout.strip()}")
 

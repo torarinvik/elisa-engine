@@ -268,6 +268,7 @@ extern "C" int32_t elisa_render_scene_v1_snapshot_commit(void) {
             instance.snapshot_placement_entities = std::move(row.created_placement_entities);
             instance.joint_entities = std::move(row.created_joint_entities);
             instance.skin_joints = std::move(row.created_skin_joints);
+            for (auto& region : instance.skin_contact_regions) region.vertices.clear();
             instance.animation_clips = std::move(row.created_animation_clips);
             instance.morph_default_weights = std::move(row.created_morph_default_weights);
             instance.live = true;

@@ -425,6 +425,7 @@ void clear_snapshot_instance(RenderSceneService& state, InstanceSlot& instance) 
     instance.imported_camera_entities.clear();
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();
+    for (auto& region : instance.skin_contact_regions) region.vertices.clear();
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};

@@ -316,7 +316,7 @@ def parse_package(path: Path, expected_source: str, expected_hash: str) -> dict[
                     not 2 <= frame_count <= 3601 or transform_stride != "40":
                 raise ValueError("cooked package has unsupported animation bounds or strides")
             sample_floats = joint_count * frame_count * 10
-            if sample_floats > 2_000_000 - total_sample_floats:
+            if sample_floats > 4_000_000 - total_sample_floats:
                 raise ValueError("cooked package exceeds the bounded animation sample budget")
             sample_data = decode(prefix + "samples_b64")
             if len(sample_data) != sample_floats * 4:

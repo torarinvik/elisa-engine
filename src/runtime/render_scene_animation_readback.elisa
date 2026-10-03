@@ -1,0 +1,89 @@
+# Read the displayed cooked-animation pose without advancing its timeline.
+include "./render_scene.elisa"
+include "../animation/pose.elisa"
+
+module RenderSceneAnimationReadback:
+    public:
+        const API_VERSION: i32 = 1
+
+extend RenderScene:
+    private:
+        struct NativeAnimationReadback:
+            locals: mutable f32[AnimationLimits::MAX_JOINTS * 10]
+            parents: mutable i64[AnimationLimits::MAX_JOINTS]
+            count: mutable u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_read_animation_pose(handle: i64,
+            output: mutable NativeAnimationReadback&) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_override_animation_pose(handle: i64,
+            input: NativeAnimationReadback&) -> i32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_animation_joint_index(handle: i64,
+            joint_name: cstr, index: mutable u32&) -> i32
+
+    public:
+        # Resolve once during character setup; joint ordering is asset-specific.
+        def animation_joint_index(handle: InstanceHandle, joint_name: cstr) -> usize error[RenderSceneError]:
+            index: mutable u32 = 0
+            try check_status(elisa_render_scene_v1_animation_joint_index(handle.native_value, joint_name, &index))
+            index.usize()
+
+        struct AnimationSnapshot:
+            skeleton: mutable Pose::Skeleton
+            pose: mutable Pose::Pose
+
+        # Model transforms exclude the instance's placement. Local transforms
+        # include the current crossfade and horizontal root-motion removal.
+        # Pending root motion is untouched; reading twice returns the same pose.
+        def read_animation_pose(handle: InstanceHandle) -> AnimationSnapshot error[RenderSceneError]:
+            native: mutable NativeAnimationReadback = zeroed
+            try check_status(elisa_render_scene_v1_read_animation_pose(handle.native_value, &native))
+            raise RenderSceneError.Capacity if native.count.usize() > AnimationLimits::MAX_JOINTS
+            skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+            for index in 0..<native.count.usize() |native, skeleton|:
+                base: usize = index * 10
+                local: Geometry::Transform = Geometry::Transform{
+                    position: Geometry::Vec3{x: native.locals[base], y: native.locals[base + 1], z: native.locals[base + 2]},
+                    rotation: Geometry::Quat{x: native.locals[base + 3], y: native.locals[base + 4], z: native.locals[base + 5], w: native.locals[base + 6]},
+                    scale: Geometry::Vec3{x: native.locals[base + 7], y: native.locals[base + 8], z: native.locals[base + 9]},
+                }
+                raise RenderSceneError.InvalidValue if not Geometry::transform_is_valid(local)
+                raise RenderSceneError.InvalidValue if not Pose::skeleton_add(&skeleton, native.parents[index], local)
+            pose: Pose::Pose = catch Pose::pose_evaluate(skeleton):
+                value: value
+                error failure: Pose::Pose{models: zeroed, count: 0}
+            raise RenderSceneError.InvalidValue if pose.count == 0
+            AnimationSnapshot{skeleton: skeleton, pose: pose}
+
+        # Submit model-space IK/FK corrections to this frame's displayed pose.
+        # Clip clocks, pending root movement and morphs remain unchanged. Apply
+        # after advance_animation; the next advance samples the source again.
+        def override_animation_pose(handle: InstanceHandle, snapshot: AnimationSnapshot&) -> void error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if snapshot.pose.count == 0 or snapshot.pose.count != snapshot.skeleton.count
+            raise RenderSceneError.Capacity if snapshot.pose.count > AnimationLimits::MAX_JOINTS
+            raise RenderSceneError.InvalidValue if not Pose::skeleton_valid(snapshot.skeleton)
+            native: mutable NativeAnimationReadback = zeroed
+            native.count <- snapshot.pose.count.u32()
+            for index in 0..<snapshot.pose.count |native|:
+                parent: i64 = snapshot.skeleton.joints[index].parent
+                model: Geometry::Transform = snapshot.pose.models[index]
+                raise RenderSceneError.InvalidValue if not Geometry::transform_is_valid(model)
+                local: Geometry::Transform = model if parent < 0 else Geometry::transform_apply_inverse(snapshot.pose.models[parent.usize()], model)
+                raise RenderSceneError.InvalidValue if not Geometry::transform_is_valid(local)
+                base: usize = index * 10
+                native.parents[index] <- parent
+                native.locals[base] <- local.position.x
+                native.locals[base + 1] <- local.position.y
+                native.locals[base + 2] <- local.position.z
+                native.locals[base + 3] <- local.rotation.x
+                native.locals[base + 4] <- local.rotation.y
+                native.locals[base + 5] <- local.rotation.z
+                native.locals[base + 6] <- local.rotation.w
+                native.locals[base + 7] <- local.scale.x
+                native.locals[base + 8] <- local.scale.y
+                native.locals[base + 9] <- local.scale.z
+            try check_status(elisa_render_scene_v1_override_animation_pose(handle.native_value, native))

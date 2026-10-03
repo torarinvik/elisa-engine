@@ -1,0 +1,123 @@
+# Atomic corrections for independent arm/leg branches of one displayed pose.
+include "./controlled_limb.elisa"
+
+module ControlledLimbs:
+    private:
+        def descends(skeleton: Pose::Skeleton&, joint: usize, root: usize) -> bool:
+            cursor: mutable i64 = joint.i64()
+            for step in 0..<skeleton.count:
+                return false if cursor < 0
+                return true if cursor == root.i64()
+                cursor <- skeleton.joints[cursor.usize()].parent
+            false
+
+    public:
+        const MAX_LIMBS: usize = 4
+
+        error BatchError:
+            InvalidCount
+            OverlappingBranches
+            UnownedConstraint
+            StateMismatch
+
+        struct Limb:
+            upper: usize
+            lower: usize
+            end: usize
+            target: Geometry::Vec3
+            orientation: Geometry::Quat
+            position_weight: f32
+            orientation_weight: f32
+            bend_hint: Geometry::Vec3
+            tolerance: f32
+            budget: usize
+
+        struct Requests:
+            limbs: mutable Limb[4]
+            count: mutable usize
+
+        struct State:
+            bends: mutable Ik::BendMemory[4]
+            uppers: mutable usize[4]
+            lowers: mutable usize[4]
+            ends: mutable usize[4]
+            parents: mutable i64[AnimationLimits::MAX_JOINTS]
+            skeleton_count: mutable usize
+            count: mutable usize
+
+        struct Result:
+            limbs: mutable ControlledLimb::Result[4]
+            count: usize
+
+        def requests() -> Requests:
+            Requests{limbs: zeroed, count: 0}
+
+        # Each actor owns its state. Reset on teleport, coordinate-space changes,
+        # rest calibration or skeleton replacement. Chain/order and hierarchy
+        # changes reject rather than transporting memory to another limb.
+        def state() -> State:
+            State{bends: zeroed, uppers: zeroed, lowers: zeroed, ends: zeroed,
+                parents: zeroed, skeleton_count: 0, count: 0}
+
+        # Stage native publication without advancing the actor's live history.
+        def snapshot(value: State&) -> State:
+            State{bends: value.bends, uppers: value.uppers, lowers: value.lowers,
+                ends: value.ends, parents: value.parents,
+                skeleton_count: value.skeleton_count, count: value.count}
+
+        # This transaction coordinates publication, not whole-body priorities.
+        # Branch roots must be unrelated: shared pelvis/shoulder solving belongs
+        # upstream. Every enabled constraint must belong to a requested chain.
+        # Errors publish neither pose nor bend history. Unreachable targets are
+        # successful bounded results with truthful per-limb residuals.
+        def solve(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&,
+            requests: Requests&, settings: PoseJointLimits::Constraints&,
+            state: mutable State&) -> Result error[BatchError, IkFk::BlendError, Pose::PoseError, ConstrainedLimb::SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+            raise BatchError.InvalidCount if requests.count == 0 or requests.count > MAX_LIMBS
+            raise ConstrainedLimb::SolveError.InvalidInput if pose.count == 0 or pose.count != skeleton.count or settings.count != pose.count or not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            raise BatchError.StateMismatch if state.count != 0 and state.count != requests.count
+            if state.count != 0:
+                raise BatchError.StateMismatch if state.skeleton_count != skeleton.count
+                for joint in 0..<skeleton.count:
+                    raise BatchError.StateMismatch if state.parents[joint] != skeleton.joints[joint].parent
+            owned: mutable bool[AnimationLimits::MAX_JOINTS] = zeroed
+            for slot in 0..<requests.count:
+                limb: Limb = requests.limbs[slot]
+                raise ConstrainedLimb::SolveError.InvalidChain if limb.upper >= pose.count or limb.lower >= pose.count or limb.end >= pose.count
+                raise ConstrainedLimb::SolveError.InvalidChain if skeleton.joints[limb.lower].parent != limb.upper.i64() or skeleton.joints[limb.end].parent != limb.lower.i64()
+                if state.count != 0:
+                    raise BatchError.StateMismatch if state.uppers[slot] != limb.upper or state.lowers[slot] != limb.lower or state.ends[slot] != limb.end
+                for prior in 0..<slot:
+                    other: Limb = requests.limbs[prior]
+                    raise BatchError.OverlappingBranches if descends(skeleton,limb.upper,other.upper) or descends(skeleton,other.upper,limb.upper)
+                owned[limb.upper] <- true
+                owned[limb.lower] <- true
+                owned[limb.end] <- true
+            for joint in 0..<pose.count:
+                raise BatchError.UnownedConstraint if settings.enabled[joint] and not owned[joint]
+            candidate: mutable Pose::Pose = pose
+            history: mutable State = snapshot(state)
+            results: mutable ControlledLimb::Result[4] = zeroed
+            for slot in 0..<requests.count |candidate, history, results|:
+                limb: Limb = requests.limbs[slot]
+                limits: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(pose.count)
+                for joint in 0..<pose.count:
+                    if joint == limb.upper or joint == limb.lower or joint == limb.end:
+                        limits.enabled[joint] <- settings.enabled[joint]
+                        limits.limits[joint] <- settings.limits[joint]
+                bend: mutable Ik::BendMemory = history.bends[slot]
+                result: ControlledLimb::Result = try ControlledLimb::solve(&candidate,skeleton,limb.upper,limb.lower,limb.end,
+                    limb.target,limb.orientation,limb.position_weight,limb.orientation_weight,
+                    limb.bend_hint,&bend,limits,limb.tolerance,limb.budget)
+                results[slot] <- result
+                history.bends[slot] <- bend
+                history.uppers[slot] <- limb.upper
+                history.lowers[slot] <- limb.lower
+                history.ends[slot] <- limb.end
+            history.count <- requests.count
+            history.skeleton_count <- skeleton.count
+            for joint in 0..<skeleton.count:
+                history.parents[joint] <- skeleton.joints[joint].parent
+            pose <- candidate
+            state <- history
+            Result{limbs: results, count: requests.count}

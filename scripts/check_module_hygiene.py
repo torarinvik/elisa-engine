@@ -17,6 +17,7 @@ ELISA_SUFFIX = ".elisa"
 PUBLIC_INCLUDE_BUNDLES = {Path("src/runtime/public.elisa")}
 TOP_LEVEL_EXTEND = re.compile(r"^extend\s+([A-Za-z_][A-Za-z0-9_]*)\s*:")
 TOP_LEVEL_MODULE = re.compile(r"^module\s+([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)\s*:")
+TOP_LEVEL_EXTENSION = re.compile(r"^extend\s+([A-Za-z_][A-Za-z0-9_:]*)\s*:")
 USING_DIRECTIVE = re.compile(r"^\s*using\s+[A-Za-z_][A-Za-z0-9_]*\s*$")
 INCLUDE_DIRECTIVE = re.compile(r'^\s*include\s+"([^"\r\n]+)"\s*$')
 LEGACY_CONSTRUCTOR = re.compile(r"\b[A-Za-z_][A-Za-z0-9_]*_new\s*\(")

@@ -1,0 +1,80 @@
+# Independent IK/FK and end orientation with authored upper/lower/end limits.
+include "./ik_fk.elisa"
+include "./constrained_limb.elisa"
+
+module ControlledLimb:
+    public:
+        struct Result:
+            positional_active: bool
+            converged: bool
+            residual: f32
+            iterations: usize
+            limits_encountered: bool
+            geometric_reach: bool
+
+        # Zero positional weight preserves FK upper/lower joints even outside
+        # limits. Positive weights project the final blended pose: anatomical
+        # safety can override that weight when the source FK violates limits.
+        # End limits apply after independent model-space orientation weighting.
+        # Residual/convergence describe the published pose against the FULL
+        # target, not the analytic seed. Partial weights need not converge.
+        # Inactive targets are finite but need not be reachable. No allocation;
+        # pose and actual published bend memory commit atomically on success.
+        def solve(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&,
+            upper: usize, lower: usize, end: usize, target: Geometry::Vec3,
+            orientation: Geometry::Quat, position_weight: f32, orientation_weight: f32,
+            bend_hint: Geometry::Vec3, memory: mutable Ik::BendMemory&,
+            settings: PoseJointLimits::Constraints&, tolerance: f32, budget: usize) -> Result error[IkFk::BlendError, Pose::PoseError, ConstrainedLimb::SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+            raise IkFk::BlendError.InvalidWeight if position_weight != position_weight or position_weight < 0.0 or position_weight > 1.0 or orientation_weight != orientation_weight or orientation_weight < 0.0 or orientation_weight > 1.0
+            raise ConstrainedLimb::SolveError.InvalidInput if pose.count == 0 or pose.count != skeleton.count or settings.count != pose.count or not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            raise ConstrainedLimb::SolveError.InvalidChain if upper >= pose.count or lower >= pose.count or end >= pose.count
+            raise ConstrainedLimb::SolveError.InvalidChain if skeleton.joints[lower].parent != upper.i64() or skeleton.joints[end].parent != lower.i64()
+            norm: f32 = Geometry::quat_length(orientation)
+            raise ConstrainedLimb::SolveError.InvalidInput if not Geometry::quat_is_finite(orientation) or norm < 0.999 or norm > 1.001 or not Geometry::vec3_is_finite(target) or not Geometry::vec3_is_finite(bend_hint) or tolerance-tolerance != 0.0 or tolerance <= 0.0 or budget == 0 or budget > 32
+            for index in 0..<pose.count:
+                if settings.enabled[index]:
+                    raise ConstrainedLimb::SolveError.InvalidConstraints if index != upper and index != lower and index != end
+                    limit: JointLimits::SwingTwist = settings.limits[index]
+                    raise JointLimits::LimitError.InvalidLimit if not JointLimits::valid(limit)
+            candidate: mutable Pose::Pose = pose
+            bend: mutable Ik::BendMemory = memory
+            chain_limits: mutable PoseJointLimits::Constraints = settings
+            chain_limits.enabled[end] <- false
+            iterations: mutable usize = 0
+            limited: mutable bool = false
+            reachable: mutable bool = false
+            if position_weight > 0.0:
+                full: ConstrainedLimb::Result = try ConstrainedLimb::solve_stable(&candidate, skeleton, upper, lower, end, target, bend_hint, &bend, chain_limits, tolerance, budget)
+                iterations <- full.iterations
+                limited <- full.limits_encountered
+                reachable <- full.geometric_reach
+                weights: mutable f32[AnimationLimits::MAX_JOINTS] = zeroed
+                weights[upper] <- position_weight
+                weights[lower] <- position_weight
+                candidate <- try IkFk::blend_rotations(skeleton, pose, candidate, weights)
+                projected: bool = try PoseJointLimits::project(&candidate, skeleton, chain_limits)
+                limited <- limited or projected
+                # Memory must track the blended/projected visible elbow/knee,
+                # rather than the full-weight seed hidden from the player.
+                direction: Geometry::Vec3 = Geometry::vec3_sub(candidate.models[end].position, candidate.models[upper].position)
+                if Geometry::vec3_length(direction) > 0.0001:
+                    preferred: Geometry::Vec3 = Ik::stable_bend(&bend, direction, bend_hint)
+                    offset: Geometry::Vec3 = Geometry::vec3_sub(candidate.models[lower].position, candidate.models[upper].position)
+                    planar: Geometry::Vec3 = Geometry::vec3_sub(offset, Geometry::vec3_scale(bend.direction, Geometry::vec3_dot(offset, bend.direction)))
+                    if Geometry::vec3_length(planar) > 0.0001:
+                        actual: Geometry::Vec3 = Geometry::vec3_normalize(planar)
+                        raise ConstrainedLimb::SolveError.BendConflict if Geometry::vec3_dot(actual, preferred) < -0.001
+                        bend.bend <- actual
+            desired: Geometry::Quat = Rotation::slerp(pose.models[end].rotation, orientation, orientation_weight)
+            oriented: bool = try Pose::pose_orient_joint(&candidate, skeleton, end, desired, 1.0)
+            raise ConstrainedLimb::SolveError.InvalidInput if not oriented
+            end_limits: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(pose.count)
+            end_limits.enabled[end] <- settings.enabled[end]
+            end_limits.limits[end] <- settings.limits[end]
+            end_projected: bool = try PoseJointLimits::project(&candidate, skeleton, end_limits)
+            limited <- limited or end_projected
+            residual: f32 = Geometry::vec3_distance(candidate.models[end].position, target)
+            raise ConstrainedLimb::SolveError.InvalidInput if residual-residual != 0.0
+            pose <- candidate
+            memory <- bend
+            Result{positional_active: position_weight > 0.0, converged: position_weight > 0.0 and residual <= tolerance, residual: residual, iterations: iterations, limits_encountered: limited, geometric_reach: reachable}

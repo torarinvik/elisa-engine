@@ -1,0 +1,49 @@
+# Bounded CPU skin samples from the current displayed scene pose.
+include "./render_scene.elisa"
+
+module RenderSceneSkinReadback:
+    public:
+        const MAX_VERTICES: usize = 64
+
+extend RenderScene:
+    private:
+        struct NativeSkinIndices:
+            indices: mutable u32[RenderSceneSkinReadback::MAX_VERTICES]
+
+        struct NativeSkinReadback:
+            points: mutable f32[RenderSceneSkinReadback::MAX_VERTICES * 6]
+            count: mutable u32
+
+        @callconv(c)
+        extern elisa_render_scene_v1_read_skinned_vertices(handle: i64,
+            placement: u32, vertices: NativeSkinIndices&, count: u32,
+            output: mutable NativeSkinReadback&) -> i32
+
+    public:
+        struct SkinnedVertices:
+            models: mutable Geometry::Vec3[RenderSceneSkinReadback::MAX_VERTICES]
+            worlds: mutable Geometry::Vec3[RenderSceneSkinReadback::MAX_VERTICES]
+            count: mutable usize
+
+        # Vertex IDs are local to one cooked mesh placement. Zero selects the
+        # primary placement. Model points exclude actor placement; world points
+        # include it. Reads do not advance clips or consume pending root motion.
+        # Active morphs currently fail explicitly rather than returning bind skin.
+        def read_skinned_vertices(handle: InstanceHandle, placement: u32,
+            vertices: u32[RenderSceneSkinReadback::MAX_VERTICES]&, count: usize) -> SkinnedVertices error[RenderSceneError]:
+            raise RenderSceneError.InvalidValue if count == 0
+            raise RenderSceneError.Capacity if count > RenderSceneSkinReadback::MAX_VERTICES
+            indices: mutable NativeSkinIndices = zeroed
+            for index in 0..<count |indices|:
+                indices.indices[index] <- vertices[index]
+            native: mutable NativeSkinReadback = zeroed
+            try check_status(elisa_render_scene_v1_read_skinned_vertices(handle.native_value,
+                placement, indices, count.u32(), &native))
+            raise RenderSceneError.InvalidValue if native.count.usize() != count
+            result: mutable SkinnedVertices = zeroed
+            result.count <- count
+            for index in 0..<count |result|:
+                base: usize = index * 6
+                result.models[index] <- Geometry::Vec3{x: native.points[base], y: native.points[base + 1], z: native.points[base + 2]}
+                result.worlds[index] <- Geometry::Vec3{x: native.points[base + 3], y: native.points[base + 4], z: native.points[base + 5]}
+            result

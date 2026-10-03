@@ -1,0 +1,80 @@
+include "../src/animation/constrained_limb.elisa"
+
+def exercise() -> i32 error[Pose::PoseError,ConstrainedLimb::SolveError,PoseJointLimits::ConstraintError,JointLimits::LimitError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    local: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton,-1,local)
+    local.position <- Geometry::Vec3{x: 5.0,y: 0.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,-1,local)
+    local.position <- Geometry::Vec3{x: 1.0,y: 0.0,z: 0.0}
+    return 1 if not Pose::skeleton_add(&skeleton,0,local)
+    return 1 if not Pose::skeleton_add(&skeleton,1,local)
+    return 1 if not Pose::skeleton_add(&skeleton,2,local)
+    return 1 if not Pose::skeleton_add(&skeleton,4,local)
+    original: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    pose: mutable Pose::Pose = original
+    settings: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(6)
+    target: Geometry::Vec3 = Geometry::Vec3{x: 1.0,y: 1.0,z: 0.0}
+    result: ConstrainedLimb::Result = try ConstrainedLimb::solve(&pose,skeleton,0,2,4,target,settings,0.00001,32)
+    return 2 if not result.converged or result.residual > 0.00001
+    return 3 if Geometry::vec3_distance(pose.models[2].position,pose.models[0].position)<0.99999 or Geometry::vec3_distance(pose.models[4].position,pose.models[2].position)<0.99999
+    return 4 if pose.models[4].rotation.w != original.models[4].rotation.w or pose.models[4].rotation.z != original.models[4].rotation.z
+    return 5 if pose.models[1].position.x != 5.0 or pose.models[3].position.x != 6.0
+    settings.enabled[0] <- true
+    settings.enabled[2] <- true
+    lock: JointLimits::SwingTwist = JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.0,maximum_twist: 0.0}
+    settings.limits[0] <- lock
+    settings.limits[2] <- lock
+    pose <- original
+    blocked: ConstrainedLimb::Result = try ConstrainedLimb::solve(&pose,skeleton,0,2,4,target,settings,0.00001,32)
+    return 6 if blocked.converged or not blocked.geometric_reach or not blocked.limits_encountered or not blocked.stalled
+    return 7 if Geometry::vec3_distance(pose.models[4].position,original.models[4].position)>0.00001
+    # Invalid enabled slot is rejected without publishing a partial pose.
+    settings.enabled[3] <- true
+    invalid: bool = catch ConstrainedLimb::solve(&pose,skeleton,0,2,4,target,settings,0.00001,32):
+        value: false
+        error failure: true
+    return 8 if not invalid or Geometry::vec3_distance(pose.models[4].position,original.models[4].position)>0.00001
+    settings.enabled[3] <- false
+    # Partial hinge limits permit a reachable right-angle elbow target.
+    settings.limits[0] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.0,maximum_twist: 1.047197551}
+    settings.limits[2] <- JointLimits::SwingTwist{reference: Geometry::quat_identity(),axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.0,minimum_twist: 0.0,maximum_twist: 1.745329252}
+    pose <- original
+    partial: ConstrainedLimb::Result = try ConstrainedLimb::solve(&pose,skeleton,0,2,4,target,settings,0.0001,32)
+    return 9 if not partial.converged
+    settings.enabled[0] <- false
+    settings.enabled[2] <- false
+    pose <- original
+    straight: ConstrainedLimb::Result = try ConstrainedLimb::solve(&pose,skeleton,0,2,4,Geometry::Vec3{x: 1.0,y: 0.0,z: 0.0},settings,0.0001,32)
+    return 10 if not straight.converged
+    pose <- original
+    far: ConstrainedLimb::Result = try ConstrainedLimb::solve(&pose,skeleton,0,2,4,Geometry::Vec3{x: 3.0,y: 0.0,z: 0.0},settings,0.0001,32)
+    return 11 if far.converged or far.geometric_reach or far.residual < 0.9999
+    # Invalid iteration budget cannot publish the previously solved candidate.
+    before: Pose::Pose = pose
+    bad_budget: bool = catch ConstrainedLimb::solve(&pose,skeleton,0,2,4,target,settings,0.0001,33):
+        value: false
+        error failure: true
+    return 12 if not bad_budget or Geometry::vec3_distance(pose.models[4].position,before.models[4].position)>0.0
+    placed: mutable Pose::Pose = original
+    placement: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: 2.0,y: -1.0,z: 3.0},rotation: Geometry::Quat{x: 0.0,y: 0.70710678,z: 0.0,w: 0.70710678},scale: Geometry::Vec3{x: 1.5,y: 1.5,z: 1.5}}
+    for index in 0..<placed.count |placed|:
+        placed.models[index] <- Geometry::transform_compose(placement,original.models[index])
+    placed_source: Pose::Pose = placed
+    placed_target: Geometry::Vec3 = Geometry::transform_apply_point(placement,target)
+    transformed: ConstrainedLimb::Result = try ConstrainedLimb::solve(&placed,skeleton,0,2,4,placed_target,settings,0.0001,32)
+    return 13 if not transformed.converged or Geometry::vec3_distance(placed.models[4].position,placed_target)>0.0001
+    return 14 if Geometry::vec3_distance(placed.models[1].position,placed_source.models[1].position)>0.0
+    return 15 if Geometry::vec3_distance(placed.models[2].position,placed.models[0].position)<1.4999 or Geometry::vec3_distance(placed.models[2].position,placed.models[0].position)>1.5001
+    # Reject a non-chain without changing the current solved pose.
+    solved: Pose::Pose = placed
+    bad_chain: bool = catch ConstrainedLimb::solve(&placed,skeleton,1,2,4,placed_target,settings,0.0001,32):
+        value: false
+        error failure: true
+    return 16 if not bad_chain or Geometry::vec3_distance(placed.models[4].position,solved.models[4].position)>0.0
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 20

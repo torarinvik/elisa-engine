@@ -112,7 +112,64 @@ def skinning_test() -> i32:
     return 70 if binding_weight_sum(&blended) != 1.0
     0
 
+def rotational_ik_tests() -> i32:
+    skeleton: mutable Skeleton = Skeleton()
+    _ = skeleton_add(&skeleton, -1, keyed(0.0))
+    _ = skeleton_add(&skeleton, -1, keyed(100.0))
+    _ = skeleton_add(&skeleton, 0, keyed(1.0))
+    _ = skeleton_add(&skeleton, -1, keyed(200.0))
+    _ = skeleton_add(&skeleton, 2, keyed(1.0))
+    _ = skeleton_add(&skeleton, 4, keyed(0.2))
+    _ = skeleton_add(&skeleton, 0, keyed(0.5))
+    pose: mutable Pose = catch pose_evaluate(&skeleton):
+        value: value
+        error failure: return 80
+    solved: bool = catch pose_correct_limb(&pose, &skeleton, 0, 2, 4, Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0, y: 0.0, z: 1.0}):
+        value: value
+        error failure: false
+    return 81 if not solved or not pose_valid(&pose)
+    return 82 if not near(pose.models[2].position.z, 0.866) or not near(pose.models[4].position.x, 1.0)
+    upper_axis: Vec3 = quat_rotate(pose.models[0].rotation, Vec3{x: 1.0, y: 0.0, z: 0.0})
+    lower_axis: Vec3 = quat_rotate(pose.models[2].rotation, Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 83 if not near(upper_axis.x, 0.5) or not near(upper_axis.z, 0.866)
+    return 84 if not near(lower_axis.x, 0.5) or not near(lower_axis.z, 0.0 - 0.866)
+    return 85 if not near(pose.models[5].position.x, 1.2) or not near(pose.models[5].position.z, 0.0)
+    return 86 if not near(pose.models[6].position.x, 0.25) or not near(pose.models[6].position.z, 0.433)
+    return 87 if pose.models[1].position.x != 100.0 or pose.models[3].position.x != 200.0 or pose.models[4].rotation.w != 1.0
+    rejected: bool = catch pose_correct_limb(&pose, &skeleton, 0, 2, 4, Vec3{x: 4.0, y: 0.0, z: 0.0}, vec3_zero()):
+        value: value
+        error failure: true
+    return 88 if rejected or not near(pose.models[4].position.x, 1.0)
+    wrong_chain: bool = catch pose_correct_limb(&pose, &skeleton, 0, 3, 4, Vec3{x: 1.0, y: 0.0, z: 0.0}, vec3_zero()):
+        value: value
+        error failure: true
+    return 89 if wrong_chain or not near(pose.models[5].position.x, 1.2)
+    missing: i32 = catch pose_correct_limb(&pose, &skeleton, 0, 2, 99, vec3_zero(), vec3_zero()):
+        value: 0
+        PoseError.JointOutOfBounds: 1
+        error failure: 2
+    return 91 if missing != 1
+    short: mutable Skeleton = Skeleton()
+    mismatch: i32 = catch pose_correct_limb(&pose, &short, 0, 2, 4, vec3_zero(), vec3_zero()):
+        value: 0
+        PoseError.ShapeMismatch: 1
+        error failure: 2
+    return 92 if mismatch != 1
+    floor_corrected: bool = catch pose_correct_floor_limb(&pose, &skeleton, 0, 2, 4, Vec3{x: 1.0, y: 0.0 - 0.03, z: 0.0}, 0.0, Vec3{x: 0.0, y: 0.0, z: 1.0}):
+        value: value
+        error failure: false
+    return 93 if not floor_corrected or not near(pose.models[4].position.y, 0.03) or not near(pose.models[5].position.y, 0.03)
+    flight: bool = catch pose_correct_floor_limb(&pose, &skeleton, 0, 2, 4, Vec3{x: 1.0, y: 0.1, z: 0.0}, 0.0, vec3_zero()):
+        value: value
+        error failure: false
+    return 94 if not flight or not near(pose.models[4].position.y, 0.03)
+    reversed: Vec3 = quat_rotate(direction_rotation(Vec3{x: 1.0, y: 0.0, z: 0.0}, Vec3{x: 0.0 - 1.0, y: 0.0, z: 0.0}), Vec3{x: 1.0, y: 0.0, z: 0.0})
+    return 90 if not near(reversed.x, 0.0 - 1.0)
+    0
+
 def main() -> i32:
+    limb_tests: i32 = rotational_ik_tests()
+    return limb_tests if limb_tests != 0
     asset_tests: i32 = run_animation_asset_tests()
     return asset_tests if asset_tests != 0
     first_clip: i32 = clip_tests()

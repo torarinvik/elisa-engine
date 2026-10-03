@@ -1,0 +1,127 @@
+include "../src/animation/ik_fk.elisa"
+
+def near(a: f32, b: f32) -> bool:
+    difference: f32 = a - b
+    difference > -0.0001 and difference < 0.0001
+
+def exercise() -> i32 error[IkFk::BlendError, Pose::PoseError]:
+    skeleton: mutable Pose::Skeleton = Pose::Skeleton()
+    joint: mutable Geometry::Transform = Geometry::transform_identity()
+    return 1 if not Pose::skeleton_add(&skeleton, -1, joint)
+    joint.position <- Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}
+    return 2 if not Pose::skeleton_add(&skeleton, -1, joint)
+    joint.position <- Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+    return 3 if not Pose::skeleton_add(&skeleton, 0, joint)
+    return 10 if not Pose::skeleton_add(&skeleton, 1, joint)
+    return 11 if not Pose::skeleton_add(&skeleton, 2, joint)
+    fk: Pose::Pose = try Pose::pose_evaluate(skeleton)
+    turned: mutable Pose::Skeleton = skeleton
+    turned.joints[0].local.rotation <- Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}
+    ik: Pose::Pose = try Pose::pose_evaluate(turned)
+    weights: mutable f32[AnimationLimits::MAX_JOINTS] = zeroed
+    zero: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, ik, weights)
+    return 4 if not near(zero.models[4].position.x, 2.0) or not near(zero.models[4].position.y, 0.0)
+    weights[0] <- 0.25
+    quarter: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, ik, weights)
+    return 16 if not near(quarter.models[4].position.x, 1.84775907) or not near(quarter.models[4].position.y, 0.76536686)
+    weights[0] <- 0.5
+    half: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, ik, weights)
+    first_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(half.models[2].position, half.models[0].position))
+    second_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(half.models[4].position, half.models[2].position))
+    return 5 if not near(first_length, 1.0) or not near(second_length, 1.0)
+    return 6 if not near(half.models[4].position.x, 1.41421356) or not near(half.models[4].position.y, 1.41421356)
+    weights[0] <- 1.0
+    full: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, ik, weights)
+    return 7 if not near(full.models[4].position.x, ik.models[4].position.x) or not near(full.models[4].position.y, ik.models[4].position.y)
+    corrected: mutable Pose::Pose = fk
+    target: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 1.0, z: 0.0}
+    solved: bool = try Pose::pose_correct_limb(&corrected, skeleton, 0, 2, 4, target, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+    return 12 if not solved
+    weights[2] <- 1.0
+    weights[4] <- 1.0
+    constrained: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, corrected, weights)
+    return 13 if not near(constrained.models[4].position.x, target.x) or not near(constrained.models[4].position.y, target.y)
+    return 14 if not near(constrained.models[3].position.x, fk.models[3].position.x) or not near(constrained.models[3].position.y, fk.models[3].position.y)
+    weights[0] <- 0.5
+    weights[2] <- 0.5
+    weights[4] <- 0.5
+    partial: Pose::Pose = try IkFk::blend_rotations(skeleton, fk, corrected, weights)
+    upper_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(partial.models[2].position, partial.models[0].position))
+    lower_length: f32 = Geometry::vec3_length(Geometry::vec3_sub(partial.models[4].position, partial.models[2].position))
+    return 15 if not near(upper_length, 1.0) or not near(lower_length, 1.0)
+    memory: mutable Ik::BendMemory = Ik::bend_memory()
+    seeded: bool = try Pose::pose_correct_limb_stable(&corrected, skeleton, 0, 2, 4, target, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &memory)
+    return 21 if not seeded
+    index: mutable i32 = 0
+    while index < 100:
+        straight_target: Geometry::Vec3 = Geometry::Vec3{x: 1.999, y: 0.0, z: 0.0}
+        noise: f32 = 0.000001 if index % 2 == 0 else -0.000001
+        frame: mutable Pose::Pose = fk
+        success: bool = try Pose::pose_correct_limb_stable(&frame, skeleton, 0, 2, 4, straight_target, Geometry::Vec3{x: 1.0, y: noise, z: 0.0}, &memory)
+        return 22 if not success or frame.models[2].position.y <= 0.0
+        first: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[2].position, frame.models[0].position))
+        second: f32 = Geometry::vec3_length(Geometry::vec3_sub(frame.models[4].position, frame.models[2].position))
+        return 23 if not near(first, 1.0) or not near(second, 1.0)
+        index <- index + 1
+    before_memory: Ik::BendMemory = memory
+    before_pose: Pose::Pose = corrected
+    impossible: bool = try Pose::pose_correct_limb_stable(&corrected, skeleton, 0, 2, 4, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0}, Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}, &memory)
+    return 24 if impossible or Geometry::vec3_dot(before_memory.bend, memory.bend) < 0.9999
+    return 25 if not near(before_pose.models[4].position.x, corrected.models[4].position.x)
+    # A finger descendant follows the independently controlled wrist while
+    # the other root remains unchanged. Test orientation-only, positional-only,
+    # partial orientation and failed target atomicity.
+    oriented_skeleton: mutable Pose::Skeleton = skeleton
+    finger: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: 0.25, y: 0.0, z: 0.0}, rotation: Geometry::quat_identity(), scale: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}}
+    return 26 if not Pose::skeleton_add(&oriented_skeleton, 4, finger)
+    source: Pose::Pose = try Pose::pose_evaluate(oriented_skeleton)
+    wrist_turn: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0, z: 0.70710678, w: 0.70710678}
+    controlled: mutable Pose::Pose = source
+    control_memory: mutable Ik::BendMemory = Ik::bend_memory()
+    oriented: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, Geometry::Vec3{x: 99.0, y: 0.0, z: 0.0}, wrist_turn, 0.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 27 if not oriented or not near(controlled.models[4].position.x, 2.0) or not near(controlled.models[5].position.x, 2.0) or not near(controlled.models[5].position.y, 0.25)
+    return 28 if not near(controlled.models[3].position.x, source.models[3].position.x)
+    controlled <- source
+    positional: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, wrist_turn, 1.0, 0.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 29 if not positional or not near(controlled.models[4].position.x, 1.0) or not near(controlled.models[4].position.y, 1.0) or not near(controlled.models[4].rotation.w, 1.0)
+    controlled <- source
+    mixed: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, wrist_turn, 1.0, 0.5, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 30 if not mixed or not near(controlled.models[5].position.x, 1.1767767) or not near(controlled.models[5].position.y, 1.1767767)
+    control_before: Pose::Pose = controlled
+    memory_before: Ik::BendMemory = control_memory
+    invalid_orientation: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, target, Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 2.0}, 1.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 31 if invalid_orientation or not near(controlled.models[5].position.x, control_before.models[5].position.x) or Geometry::vec3_dot(memory_before.bend, control_memory.bend) < 0.9999
+    unreachable: bool = try IkFk::solve_limb(&controlled, oriented_skeleton, 0, 2, 4, Geometry::Vec3{x: 99.0, y: 0.0, z: 0.0}, wrist_turn, 1.0, 1.0, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0}, &control_memory)
+    return 32 if unreachable or not near(controlled.models[5].position.y, control_before.models[5].position.y)
+    weights[1] <- 1.1
+    rejected: bool = catch IkFk::blend_rotations(skeleton, fk, ik, weights):
+        value pose: false
+        IkFk::BlendError.InvalidWeight: true
+        error failure: false
+    return 8 if not rejected
+    mismatched: mutable Pose::Pose = corrected
+    mismatched.count <- mismatched.count - 1
+    shape_rejected: bool = catch IkFk::blend_rotations(skeleton, fk, mismatched, weights):
+        value pose: false
+        IkFk::BlendError.ShapeMismatch: true
+        error failure: false
+    return 19 if not shape_rejected
+    weights[1] <- 0.0
+    invalid_pose: mutable Pose::Pose = corrected
+    invalid_root: Geometry::Transform = invalid_pose.models[0]
+    invalid_pose.models[0] <- Geometry::Transform{position: invalid_root.position, rotation: Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: 2.0}, scale: invalid_root.scale}
+    pose_rejected: bool = catch IkFk::blend_rotations(skeleton, fk, invalid_pose, weights):
+        value pose: false
+        IkFk::BlendError.InvalidPose: true
+        error failure: false
+    return 20 if not pose_rejected
+    same_rotation: Geometry::Quat = Rotation::slerp(Geometry::quat_identity(), Geometry::Quat{x: 0.0, y: 0.0, z: 0.0, w: -1.0}, 0.5)
+    return 17 if not near(same_rotation.w, 1.0)
+    nearly_equal: Geometry::Quat = Rotation::slerp(Geometry::quat_identity(), Geometry::Quat{x: 0.0, y: 0.0, z: 0.0001, w: 1.0}, 0.5)
+    return 18 if not near(nearly_equal.z, 0.00005) or not near(nearly_equal.w, 1.0)
+    0
+
+def main() -> i32:
+    catch exercise():
+        value: value
+        error failure: 9

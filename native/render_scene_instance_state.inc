@@ -1,5 +1,11 @@
 struct OzzAnimationLibrary;  // render_scene_ozz_animation.inc
+struct SkinContactRegion {
+    uint32_t placement = 0;
+    std::vector<uint32_t> vertices;
+};
+
 struct InstanceSlot {
+    SkinContactRegion skin_contact_regions[8];
     wi::ecs::Entity entity = wi::ecs::INVALID_ENTITY;
     uint64_t generation = 0;
     int64_t gameplay_epoch = 0;
@@ -24,6 +30,7 @@ struct InstanceSlot {
     std::vector<probe::PickBinding> pick_bindings;
     std::vector<elisa::assets::CookedGeometry::SkinJoint> skin_joints;
     std::vector<elisa::assets::CookedGeometry::AnimationClip> animation_clips;
+    std::vector<uint8_t> animation_curve_modes;
     std::vector<float> morph_default_weights;
     probe::NativeAnimationHandle animation_submission{};
     // Decoded cooked asset shared by an animated source and its clones.
@@ -38,7 +45,10 @@ struct InstanceSlot {
     float previous_animation_speed = 1.0f;
     // Visible pose retained when a new request interrupts an unfinished fade.
     std::vector<float> displayed_joint_pose;
+    bool animation_pose_overridden = false;
     std::vector<float> interrupted_joint_pose;
+    bool interrupted_pose_follows_source = false;
+    float interrupted_source_time = 0.0f;
     std::vector<float> displayed_morph_pose;
     std::vector<float> interrupted_morph_pose;
     float blend_elapsed = 0.0f;

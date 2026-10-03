@@ -54,7 +54,16 @@ def brew_prefix(formula: str | None = None) -> Path | None:
 def resolve_native_paths(args: argparse.Namespace) -> dict[str, Path]:
     wicked_root = configured_path(args.wicked_root, "WICKED_ROOT")
     if wicked_root is None:
-        wicked_root = (ENGINE_ROOT.parent / "amazing-labyrinth-wickedengine").resolve()
+        manifest_path = ENGINE_ROOT / "native/dependency-manifest.json"
+        try:
+            dependencies = json.loads(manifest_path.read_text(encoding="utf-8"))
+            wicked = next(library for library in dependencies["libraries"]
+                          if library["name"] == "WickedEngine")
+            wicked_root = (ENGINE_ROOT / wicked["path_default"]).resolve()
+        except (OSError, ValueError, KeyError, StopIteration, TypeError) as error:
+            raise BuildConfigurationError(
+                f"Cannot resolve pinned WickedEngine default from {manifest_path}: {error}"
+            ) from error
     wicked_build = configured_path(args.wicked_build, "WICKED_BUILD") or wicked_root / "build-elisa-sdl3"
 
     brew_root = configured_path(args.brew_prefix, "WICKED_BREW_PREFIX", "HOMEBREW_PREFIX")
@@ -365,7 +374,71 @@ def write_entry_wrapper(destination: Path, main_source: Path,
 
 
 def compile_archive(compiler: str, wrapper: Path, archive: Path) -> int:
-    return run_command([compiler, "-emit", "c-archive", "-o", str(archive), str(wrapper)])
+    # The engine linker adds the compiler's runtime object as a separate input.
+    # Prevent `-emit c-archive` from bundling that same object into the app archive;
+    # current compiler builds include global source metadata there, so linking both
+    # copies produces duplicate symbols.
+    archive_env = dict(os.environ)
+    archive_env["ELISA_RUNTIME_OBJ"] = "none"
+    return run_command([compiler, "-emit", "c-archive", "-o", str(archive), str(wrapper)],
+        env=archive_env)
+
+
+def parse_defined_global_symbols(output: str) -> set[str]:
+    symbols: set[str] = set()
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+        kind, name = fields[-2], fields[-1]
+        if len(kind) == 1 and kind.upper() != "U":
+            symbols.add(name)
+    return symbols
+
+
+def defined_global_symbols(path: Path) -> set[str]:
+    nm = shutil.which("nm") or "/usr/bin/nm"
+    result = subprocess.run([nm, "-g", str(path)], text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise BuildConfigurationError(f"Could not inspect Elisa object symbols in {path}: {result.stderr.strip()}")
+    return parse_defined_global_symbols(result.stdout)
+
+
+def runtime_object_for_link(runtime_object: Path, archive: Path, build_dir: Path) -> Path:
+    """Remove only duplicated compiler LSP labels from a staged runtime copy."""
+    if runtime_object.stat().st_size == 0:
+        return runtime_object
+    runtime_symbols = defined_global_symbols(runtime_object)
+    archive_symbols = defined_global_symbols(archive)
+    lsp_prefix = "___lsp_decl_name"
+    duplicates = sorted(symbol for symbol in runtime_symbols & archive_symbols
+        if symbol == lsp_prefix or symbol.startswith(lsp_prefix + "."))
+    if not duplicates:
+        return runtime_object
+
+    nmedit = shutil.which("nmedit") or "/usr/bin/nmedit"
+    if not Path(nmedit).is_file():
+        raise BuildConfigurationError(
+            "The Elisa compiler emitted duplicate LSP declaration labels in the runtime and "
+            "application archive, and macOS nmedit is unavailable to remove them."
+        )
+    staged_runtime = build_dir / "elisacore_runtime_link.o"
+    symbol_list = build_dir / "elisacore_runtime_duplicate_symbols.txt"
+    shutil.copyfile(runtime_object, staged_runtime)
+    symbol_list.write_text("".join(f"{symbol}\n" for symbol in duplicates), encoding="utf-8")
+    result = subprocess.run([nmedit, "-R", str(symbol_list), str(staged_runtime)],
+        text=True, capture_output=True, check=False)
+    if result.returncode != 0:
+        raise BuildConfigurationError(
+            f"Could not remove duplicate Elisa LSP labels from the staged runtime: {result.stderr.strip()}"
+        )
+    remaining = set(duplicates) & defined_global_symbols(staged_runtime)
+    if remaining:
+        raise BuildConfigurationError(
+            "Duplicate Elisa LSP labels remain after staging the runtime object: "
+            + ", ".join(sorted(remaining))
+        )
+    return staged_runtime
 
 
 def audit_archive(archive: Path) -> None:
@@ -440,7 +513,7 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
         "-Wl,-rpath," + str(wicked_source),
     ])
     if native_test_probes:
-        command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1"])
+        command.extend(["-DELISA_APPLICATION_TEST_PROBE=1", "-DELISA_AUDIO_TEST_PROBE=1", "-DELISA_PHYSICS_TEST_PROBE=1", "-DELISA_RENDER_SCENE_TEST_PROBE=1"])
     for framework in FRAMEWORKS:
         command.extend(["-framework", framework])
     command.extend(["-o", str(staged_output)])
@@ -542,7 +615,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return status, None, None
         command = native_link_command(cxx, archive, staged_output, build_dir, paths,
             args.native_test_probes, args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1",
-            runtime_object, build_identity)
+            runtime_object_for_link(runtime_object, archive, build_dir), build_identity)
         stage_started = time.perf_counter()
         status = run_command(command, cwd=project)
         print(f"Native link: {time.perf_counter() - stage_started:.2f}s", flush=True)

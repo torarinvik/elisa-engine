@@ -302,6 +302,8 @@ int32_t elisa_render_scene_v1_register_snapshot_mesh_texture(
     uint64_t mesh_high, uint64_t mesh_low, uint32_t index, uint64_t high, uint64_t low);
 int32_t elisa_render_scene_v1_has_animation_clip(
     int64_t handle, const char* clip_name, int32_t* found);
+// Interpolation: 0 linear/SLERP; 1 shape-preserving cubic (non-looping only).
+int32_t elisa_render_scene_v1_set_animation_interpolation(int64_t handle, const char* clip_name, int32_t mode);
 int32_t elisa_render_scene_v1_play_animation(
     int64_t handle, const char* clip_name, int32_t loop, float speed, float blend_seconds);
 int32_t elisa_render_scene_v1_play_animation_blended(
@@ -320,6 +322,40 @@ enum {
     ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS = 32u,
     ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS = 16u,
 };
+// Displayed locals are in Elisa asset space after horizontal root extraction.
+// Reading does not advance animation or consume pending root motion.
+typedef struct ElisaRenderSceneAnimationReadback {
+    float locals[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * 10u];
+    int64_t parents[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES];
+    uint32_t count;
+} ElisaRenderSceneAnimationReadback;
+int32_t elisa_render_scene_v1_read_animation_pose(
+    int64_t handle, ElisaRenderSceneAnimationReadback* output);
+int32_t elisa_render_scene_v1_animation_joint_index(
+    int64_t handle, const char* joint_name, uint32_t* index);
+int32_t elisa_render_scene_v1_override_animation_pose(
+    int64_t handle, const ElisaRenderSceneAnimationReadback* input);
+// Up to 64 requested vertices; each record is model xyz then world xyz.
+typedef struct ElisaRenderSceneSkinReadback {
+    float points[64u * 6u];
+    uint32_t count;
+} ElisaRenderSceneSkinReadback;
+int32_t elisa_render_scene_v1_read_skinned_vertices(
+    int64_t handle, uint32_t placement, const uint32_t* vertices, uint32_t count,
+    ElisaRenderSceneSkinReadback* output);
+typedef struct ElisaRenderSceneSkinContact {
+    float model_point[3];
+    float world_point[3];
+    float world_center[3];
+    float clearance;
+    uint32_t vertices;
+} ElisaRenderSceneSkinContact;
+int32_t elisa_render_scene_v1_set_skin_contact_region(int64_t handle,
+    uint32_t region, uint32_t placement, const uint32_t* vertices, uint32_t count);
+int32_t elisa_render_scene_v1_set_skin_contact_joints(int64_t handle,
+    uint32_t region, uint32_t placement, const uint32_t* joints, uint32_t count, float threshold);
+int32_t elisa_render_scene_v1_read_skin_contact(int64_t handle, uint32_t region,
+    float nx, float ny, float nz, float offset, ElisaRenderSceneSkinContact* output);
 typedef struct ElisaRenderSceneAnimationSubmission {
     float bones[ELISA_RENDER_SCENE_MAX_ANIMATION_BONES * ELISA_RENDER_SCENE_ANIMATION_MATRIX_ELEMENTS];
     float morphs[ELISA_RENDER_SCENE_MAX_ANIMATION_MORPHS];

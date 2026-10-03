@@ -1,0 +1,32 @@
+include "../src/animation/ik.elisa"
+
+def exercise() -> i32:
+    memory: mutable Ik::BendMemory = Ik::bend_memory()
+    direction: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+    first: Geometry::Vec3 = Ik::stable_bend(&memory, direction, Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+    return 1 if first.y < 0.999
+    index: mutable i32 = 0
+    while index < 100:
+        noise: f32 = 0.000001 if index % 2 == 0 else -0.000001
+        bend: Geometry::Vec3 = Ik::stable_bend(&memory, direction, Geometry::Vec3{x: 1.0, y: noise, z: 0.0})
+        return 2 if bend.y < 0.999
+        index <- index + 1
+    opposite: Geometry::Vec3 = Ik::stable_bend(&memory, direction, Geometry::Vec3{x: 0.0, y: -1.0, z: 0.0})
+    return 3 if opposite.y < 0.999
+    height: mutable f32 = 0.0
+    previous: mutable Geometry::Vec3 = opposite
+    index <- 0
+    while index < 100:
+        target: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: height, z: 0.0}
+        bend: Geometry::Vec3 = Ik::stable_bend(&memory, target, target)
+        return 4 if Geometry::vec3_dot(previous, bend) < 0.99
+        return 5 if Geometry::vec3_dot(Geometry::vec3_normalize(target), bend) > 0.0001
+        height <- height + 0.01
+        previous <- bend
+        index <- index + 1
+    ignored: Geometry::Vec3 = Ik::stable_bend(&memory, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, direction)
+    return 6 if Geometry::vec3_dot(ignored, previous) < 0.999
+    0
+
+def main() -> i32:
+    exercise()

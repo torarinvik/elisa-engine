@@ -50,13 +50,13 @@ inline bool parse_geometry_animations(const probe::PackageIndex& package,
         }
         const size_t transforms_per_frame = joint_count * 10;
         const size_t morphs_per_frame = has_morphs ? placement_count * morph_count : 0;
-        if (transforms_per_frame > 2'000'000 || morphs_per_frame > 2'000'000 - transforms_per_frame) {
+        if (transforms_per_frame > MAX_GEOMETRY_ANIMATION_SAMPLE_FLOATS || morphs_per_frame > MAX_GEOMETRY_ANIMATION_SAMPLE_FLOATS - transforms_per_frame) {
             error = "cooked geometry animation samples exceed the runtime bound";
             return false;
         }
         const size_t sample_floats_per_frame = transforms_per_frame + morphs_per_frame;
         if (sample_floats_per_frame == 0 || size_t(frames) >
-                (2'000'000 - total_sample_floats) / sample_floats_per_frame) {
+                (MAX_GEOMETRY_ANIMATION_SAMPLE_FLOATS - total_sample_floats) / sample_floats_per_frame) {
             error = "cooked geometry animation samples exceed the runtime bound";
             return false;
         }

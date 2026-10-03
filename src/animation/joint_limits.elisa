@@ -1,0 +1,85 @@
+# Authored joint-local swing/twist constraints. All angles are radians.
+# Axes live in the reference rotation's frame, independent of mesh bone names.
+include "../math/rotation.elisa"
+
+module JointLimits:
+    private:
+        const PI: f32 = 3.141592653589793
+        @callconv(c)
+        extern atan2f(y: f32, x: f32) -> f32
+        @callconv(c)
+        extern sinf(value: f32) -> f32
+        @callconv(c)
+        extern cosf(value: f32) -> f32
+
+        def unit(rotation: Geometry::Quat) -> bool:
+            length: f32 = Geometry::quat_length(rotation)
+            Geometry::quat_is_finite(rotation) and length - length == 0.0 and length >= 0.999 and length <= 1.001
+
+        def clamp(value: f32, minimum: f32, maximum: f32) -> f32:
+            minimum if value < minimum else (maximum if value > maximum else value)
+
+        # Exact antipodal quaternions use the same representative, including
+        # the 180-degree case where w is zero. This does not remove the unavoidable
+        # branch cut of signed twist at +/- pi; authors must account for it.
+        def canonical(rotation: Geometry::Quat) -> Geometry::Quat:
+            flip: bool = rotation.w < 0.0 or (rotation.w == 0.0 and
+                (rotation.x < 0.0 or (rotation.x == 0.0 and
+                    (rotation.y < 0.0 or (rotation.y == 0.0 and rotation.z < 0.0)))))
+            sign: f32 = -1.0 if flip else 1.0
+            Geometry::Quat{x: rotation.x*sign, y: rotation.y*sign, z: rotation.z*sign, w: rotation.w*sign}
+
+    public:
+        error LimitError:
+            InvalidLimit
+            InvalidRotation
+
+        struct SwingTwist:
+            reference: Geometry::Quat
+            axis: Geometry::Vec3
+            maximum_swing: f32
+            minimum_twist: f32
+            maximum_twist: f32
+
+        struct Projection:
+            rotation: Geometry::Quat
+            source_swing: f32
+            source_twist: f32
+            swing: f32
+            twist: f32
+            limited: bool
+
+        def valid(limit: SwingTwist&) -> bool:
+            axis_length: f32 = Geometry::vec3_length(limit.axis)
+            return false if not unit(limit.reference) or not Geometry::vec3_is_finite(limit.axis)
+            return false if axis_length - axis_length != 0.0 or axis_length < 0.000001
+            return false if limit.maximum_swing - limit.maximum_swing != 0.0 or limit.minimum_twist - limit.minimum_twist != 0.0 or limit.maximum_twist - limit.maximum_twist != 0.0
+            limit.maximum_swing >= 0.0 and limit.maximum_swing <= PI and limit.minimum_twist >= -PI and limit.maximum_twist <= PI and limit.minimum_twist <= limit.maximum_twist
+
+        # A zero swing cone is a hinge about axis. No source or pose is mutated;
+        # callers can solve into a candidate and commit all constraints atomically.
+        # At 180-degree swing the twist decomposition is singular. Its deterministic
+        # identity-twist convention is safe for projection but not temporal proof.
+        def project(rotation: Geometry::Quat, limit: SwingTwist&) -> Projection error[LimitError]:
+            raise LimitError.InvalidLimit if not valid(limit)
+            raise LimitError.InvalidRotation if not unit(rotation)
+            axis: Geometry::Vec3 = Geometry::vec3_normalize(limit.axis)
+            relative: Geometry::Quat = canonical(Geometry::quat_normalize(Geometry::quat_mul(Geometry::quat_conjugate(limit.reference), rotation)))
+            along: f32 = relative.x*axis.x + relative.y*axis.y + relative.z*axis.z
+            norm: f32 = Geometry::sqrt_f32(along*along + relative.w*relative.w)
+            twist_rotation: Geometry::Quat = Geometry::Quat{x: axis.x*along/norm, y: axis.y*along/norm, z: axis.z*along/norm, w: relative.w/norm} if norm > 0.000001 else Geometry::quat_identity()
+            swing_rotation: Geometry::Quat = canonical(Geometry::quat_normalize(Geometry::quat_mul(relative, Geometry::quat_conjugate(twist_rotation))))
+            source_twist: f32 = 2.0*atan2f(twist_rotation.x*axis.x + twist_rotation.y*axis.y + twist_rotation.z*axis.z, twist_rotation.w)
+            vector_length: f32 = Geometry::sqrt_f32(swing_rotation.x*swing_rotation.x + swing_rotation.y*swing_rotation.y + swing_rotation.z*swing_rotation.z)
+            source_swing: f32 = 2.0*atan2f(vector_length, swing_rotation.w)
+            twist: f32 = clamp(source_twist, limit.minimum_twist, limit.maximum_twist)
+            swing: f32 = clamp(source_swing, 0.0, limit.maximum_swing)
+            limited: bool = twist != source_twist or swing != source_swing
+            # Exact valid source retention matters for untouched FK branches.
+            return Projection{rotation: rotation, source_swing: source_swing, source_twist: source_twist, swing: swing, twist: twist, limited: false} if not limited
+            half: f32 = twist*0.5
+            sine: f32 = sinf(half)
+            constrained_twist: Geometry::Quat = Geometry::Quat{x: axis.x*sine, y: axis.y*sine, z: axis.z*sine, w: cosf(half)}
+            constrained_swing: Geometry::Quat = Rotation::slerp(Geometry::quat_identity(), swing_rotation, swing/source_swing) if source_swing > 0.000001 else Geometry::quat_identity()
+            result: Geometry::Quat = Geometry::quat_normalize(Geometry::quat_mul(limit.reference, Geometry::quat_mul(constrained_swing, constrained_twist)))
+            Projection{rotation: result, source_swing: source_swing, source_twist: source_twist, swing: swing, twist: twist, limited: true}

@@ -1,0 +1,50 @@
+# Apply authored local rotation limits to a displayed model-space pose.
+include "./pose.elisa"
+include "./joint_limits.elisa"
+
+module PoseJointLimits:
+    public:
+        error ConstraintError:
+            InvalidPose
+            ShapeMismatch
+
+        struct Constraints:
+            limits: mutable JointLimits::SwingTwist[AnimationLimits::MAX_JOINTS]
+            enabled: mutable bool[AnimationLimits::MAX_JOINTS]
+            count: mutable usize
+
+        def constraints(count: usize) -> Constraints:
+            Constraints{limits: zeroed, enabled: zeroed, count: count}
+
+        # Rotation projection follows IK/FK weighting, before a native override.
+        # This can change the end target/orientation: it is not a constrained IK
+        # target solve. Retrying that solve requires an explicit reach policy.
+        # Local offsets/scales come from the current pose, not bind pose. Only
+        # affected branches are rebuilt; unrelated model transforms stay exact.
+        # Every validation/projection succeeds before the caller's pose changes.
+        def project(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&, settings: Constraints&) -> bool error[ConstraintError, JointLimits::LimitError]:
+            raise ConstraintError.ShapeMismatch if pose.count != skeleton.count or pose.count != settings.count
+            raise ConstraintError.InvalidPose if pose.count == 0 or not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            for index in 0..<pose.count:
+                model: Geometry::Transform = pose.models[index]
+                norm: f32 = Geometry::quat_length(model.rotation)
+                raise ConstraintError.InvalidPose if not Geometry::transform_is_valid(model) or norm < 0.999 or norm > 1.001 or norm - norm != 0.0
+            candidate: mutable Pose::Pose = pose
+            affected: mutable bool[AnimationLimits::MAX_JOINTS] = zeroed
+            changed: mutable bool = false
+            for index in 0..<pose.count |candidate, affected, changed|:
+                parent: i64 = skeleton.joints[index].parent
+                local: mutable Geometry::Transform = pose.models[index] if parent < 0 else Geometry::transform_apply_inverse(pose.models[parent.usize()], pose.models[index])
+                own_change: mutable bool = false
+                if settings.enabled[index]:
+                    limit: JointLimits::SwingTwist = settings.limits[index]
+                    result: JointLimits::Projection = try JointLimits::project(local.rotation, limit)
+                    own_change <- result.limited
+                    local.rotation <- result.rotation
+                affected[index] <- own_change or (parent >= 0 and affected[parent.usize()])
+                if affected[index]:
+                    candidate.models[index] <- local if parent < 0 else Geometry::transform_compose(candidate.models[parent.usize()], local)
+                    raise ConstraintError.InvalidPose if not Geometry::transform_is_valid(candidate.models[index])
+                changed <- changed or own_change
+            pose <- candidate if changed
+            changed

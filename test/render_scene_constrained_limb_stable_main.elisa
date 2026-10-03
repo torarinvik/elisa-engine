@@ -1,0 +1,114 @@
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene_animation_readback.elisa"
+include "../src/animation/constrained_limb.elisa"
+
+extend RenderScene:
+    public:
+        def joint_limit_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+@callconv(c)
+extern elisa_render_scene_v1_test_animation_joint_position(handle: i64, index: u32, x: f32, y: f32, z: f32) -> i32
+
+def joint_name(index: usize) -> cstr:
+    match index:
+        0: "mixamorig:LeftForeArm"
+        1: "mixamorig:RightForeArm"
+        2: "mixamorig:LeftLeg"
+        _: "mixamorig:RightLeg"
+
+def descendant(skeleton: Pose::Skeleton&, index: usize, ancestor: usize) -> bool:
+    parent: mutable i64 = index.i64()
+    for _ in 0..<skeleton.count |parent|:
+        return true if parent == ancestor.i64()
+        return false if parent < 0
+        parent <- skeleton.joints[parent.usize()].parent
+    false
+
+def same(a: Geometry::Transform, b: Geometry::Transform) -> bool:
+    dot: f32 = a.rotation.x*b.rotation.x+a.rotation.y*b.rotation.y+a.rotation.z*b.rotation.z+a.rotation.w*b.rotation.w
+    Geometry::vec3_distance(a.position,b.position) < 0.00005 and Geometry::vec3_distance(a.scale,b.scale) < 0.00005 and (dot > 0.99999 or dot < -0.99999)
+
+def exercise() -> i32 error[RenderScene::RenderSceneError, Pose::PoseError, PoseJointLimits::ConstraintError, JointLimits::LimitError,ConstrainedLimb::SolveError]:
+    try RenderScene::initialize(320,200,10.0)
+    placement: Geometry::Transform = Geometry::Transform{position: Geometry::Vec3{x: 2.0,y: 0.0,z: -1.0},rotation: Geometry::Quat{x: 0.0,y: 0.38268343,z: 0.0,w: 0.92387953},scale: Geometry::Vec3{x: 1.5,y: 1.5,z: 1.5}}
+    rig: RenderScene::InstanceHandle = try RenderScene::create_mesh("rig.pkg",placement,RenderScene::Color{red: 1.0,green: 1.0,blue: 1.0,alpha: 1.0})
+    for phase in 0..<4:
+        try RenderScene::play_animation(rig,"idle_guard",true,1.0,0.0)
+        try RenderScene::set_animation_root_motion(rig,RenderScene::AnimationRootMotionMode.InPlace,"mixamorig:Hips")
+        try RenderScene::advance_animation(rig,0.25)
+        if phase != 0:
+            try RenderScene::play_animation_blended(rig,"step_forward" if phase == 2 else "jab",false,2.6,0.1,RenderScene::AnimationTransition{eased: true,phase_matched: false,continue_same_clip: false})
+            if phase == 2:
+                try RenderScene::set_animation_root_motion(rig,RenderScene::AnimationRootMotionMode.Horizontal,"mixamorig:Hips")
+            try RenderScene::advance_animation(rig,0.04 if phase == 3 else 0.2)
+            if phase == 3:
+                try RenderScene::play_animation_blended(rig,"block_left",false,1.0,0.1,RenderScene::AnimationTransition{eased: true,phase_matched: false,continue_same_clip: false})
+                try RenderScene::advance_animation(rig,0.03)
+        consumed: Geometry::Vec3 = try RenderScene::consume_animation_root_motion(rig)
+        memories: mutable Ik::BendMemory[4] = zeroed
+        for sample in 0..<24 |memories|:
+            try RenderScene::advance_animation(rig,0.008333333)
+            sample_root: Geometry::Vec3 = try RenderScene::consume_animation_root_motion(rig)
+            for limb in 0..<4:
+                try RenderScene::advance_animation(rig,0.0)
+                snapshot: mutable RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(rig)
+                source: Pose::Pose = snapshot.pose
+                index: usize = try RenderScene::animation_joint_index(rig,joint_name(limb))
+                locals: mutable Pose::Skeleton = Pose::Skeleton()
+                for joint in 0..<source.count |locals|:
+                    parent: i64 = snapshot.skeleton.joints[joint].parent
+                    local: Geometry::Transform = source.models[joint] if parent < 0 else Geometry::transform_apply_inverse(source.models[parent.usize()],source.models[joint])
+                    return 2 if not Pose::skeleton_add(&locals,parent,local)
+                upper: usize = snapshot.skeleton.joints[index].parent.usize()
+                end_name: cstr = "mixamorig:LeftHand" if limb == 0 else ("mixamorig:RightHand" if limb == 1 else ("mixamorig:LeftFoot" if limb == 2 else "mixamorig:RightFoot"))
+                end_index: usize = try RenderScene::animation_joint_index(rig,end_name)
+                target: Geometry::Vec3 = Geometry::vec3_add(source.models[end_index].position,Geometry::Vec3{x: 0.003,y: 0.002,z: 0.0})
+                settings: mutable PoseJointLimits::Constraints = PoseJointLimits::constraints(source.count)
+                settings.enabled[upper] <- true
+                settings.enabled[index] <- true
+                settings.limits[upper] <- JointLimits::SwingTwist{reference: locals.joints[upper].local.rotation,axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.2,minimum_twist: -0.2,maximum_twist: 0.2}
+                settings.limits[index] <- JointLimits::SwingTwist{reference: locals.joints[index].local.rotation,axis: Geometry::Vec3{x: 0.0,y: 0.0,z: 1.0},maximum_swing: 0.2,minimum_twist: -0.2,maximum_twist: 0.2}
+                candidate: mutable Pose::Pose = source
+                hint: Geometry::Vec3 = Geometry::vec3_sub(source.models[index].position,source.models[upper].position)
+                result: ConstrainedLimb::Result = try ConstrainedLimb::solve_stable(&candidate,snapshot.skeleton,upper,index,end_index,target,hint,&memories[limb],settings,0.0001,32)
+                measured: f32 = Geometry::vec3_distance(candidate.models[end_index].position,target)
+                return 3 if measured-result.residual > 0.00001 or measured-result.residual < -0.00001 or measured > 0.00362
+                return 4 if not same(Geometry::Transform{position: source.models[end_index].position,rotation: candidate.models[end_index].rotation,scale: candidate.models[end_index].scale},source.models[end_index])
+                for joint in 0..<source.count:
+                    return 5 if not descendant(snapshot.skeleton,joint,upper) and not same(candidate.models[joint],source.models[joint])
+                    parent: i64 = snapshot.skeleton.joints[joint].parent
+                    if parent >= 0:
+                        old_length: f32 = Geometry::vec3_distance(source.models[joint].position,source.models[parent.usize()].position)
+                        new_length: f32 = Geometry::vec3_distance(candidate.models[joint].position,candidate.models[parent.usize()].position)
+                        return 6 if old_length-new_length > 0.00005 or old_length-new_length < -0.00005
+                constrained_again: mutable Pose::Pose = candidate
+                reapplied: bool = try PoseJointLimits::project(&constrained_again,snapshot.skeleton,settings)
+                for joint in 0..<source.count:
+                    return 11 if not same(candidate.models[joint],constrained_again.models[joint])
+                clock: f32 = try RenderScene::animation_progress(rig)
+                snapshot.pose <- candidate
+                try RenderScene::override_animation_pose(rig,snapshot)
+                progress: f32 = try RenderScene::animation_progress(rig)
+                return 7 if clock != progress
+                pending: Geometry::Vec3 = try RenderScene::consume_animation_root_motion(rig)
+                return 8 if Geometry::vec3_length(pending) > 0.000001
+                for joint in 0..<source.count:
+                    point: Geometry::Vec3 = Geometry::transform_apply_point(placement,candidate.models[joint].position)
+                    return 9 if elisa_render_scene_v1_test_animation_joint_position(RenderScene::joint_limit_handle(rig),joint.u32(),point.x,point.y,point.z) != 1
+                retained: RenderScene::AnimationSnapshot = try RenderScene::read_animation_pose(rig)
+                for joint in 0..<source.count:
+                    return 10 if not same(retained.pose.models[joint],candidate.models[joint])
+    try RenderScene::destroy(rig)
+    0
+
+def main() -> i32:
+    return 1 if Application::initialize(Application::Config{title: "Joint limits",width: 320,height: 200,hidden: true}) != Application::InitializeStatus.Ready
+    result: i32 = catch exercise():
+        value: value
+        error failure: 20
+    stopped: bool = catch RenderScene::shutdown():
+        ok: true
+        error failure: false
+    closed: bool = Application::shutdown()
+    return 21 if not stopped or not closed
+    result

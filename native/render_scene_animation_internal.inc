@@ -1,7 +1,11 @@
 // Private implementation fragment: internal animation sampling and pose submission.
 void clear_animation_state(InstanceSlot& instance) {
+    instance.animation_curve_modes.clear();
     instance.displayed_joint_pose.clear();
+    instance.animation_pose_overridden = false;
     instance.interrupted_joint_pose.clear();
+    instance.interrupted_pose_follows_source = false;
+    instance.interrupted_source_time = 0.0f;
     instance.displayed_morph_pose.clear();
     instance.interrupted_morph_pose.clear();
     instance.animation_clip = -1;
@@ -36,6 +40,23 @@ void clear_animation_state(InstanceSlot& instance) {
 // an unfinished recovery just because the next destination has a short fade.
 float preserve_interrupted_pose(InstanceSlot& instance, float requested_seconds) {
     const float remaining = instance.blend_duration - instance.blend_elapsed;
+    instance.interrupted_pose_follows_source = false;
+    if (requested_seconds > 0.f && instance.animation_pose_overridden) {
+        // A completed source clip can keep moving under its captured correction.
+        // Freeze genuinely interrupted mixtures/root exits as before: they do
+        // not have a single outgoing FK trajectory to follow safely.
+        instance.interrupted_pose_follows_source = remaining <= 0.f && !instance.root_motion_exit_pending &&
+            instance.animation_clip >= 0 && instance.animation_clip < int32_t(instance.animation_clips.size());
+#if defined(ELISA_RENDER_SCENE_TEST_PROBE)
+        const char* freeze_corrected = std::getenv("ELISA_TEST_FREEZE_CORRECTED_BLEND");
+        if (freeze_corrected && freeze_corrected[0] == '1') instance.interrupted_pose_follows_source = false;
+#endif
+        instance.interrupted_source_time = instance.animation_time;
+        instance.root_motion_exit_pending = false;
+        instance.interrupted_joint_pose = instance.displayed_joint_pose;
+        instance.interrupted_morph_pose = instance.displayed_morph_pose;
+        return std::max(requested_seconds, remaining);
+    }
     if (instance.root_motion_exit_pending) {
         instance.root_motion_exit_pending = false;
         if (requested_seconds > 0.0f) {
@@ -85,25 +106,44 @@ void interpolate_transform(const float* first, const float* second, float weight
     for (size_t component = 0; component < 3; ++component) {
         output[component] = first[component] + (second[component] - first[component]) * weight;
     }
-    float dot = 0.0f;
-    for (size_t component = 0; component < 4; ++component) dot += first[component + 3] * second[component + 3];
-    const float direction = dot < 0.0f ? -1.0f : 1.0f;
-    float length_squared = 0.0f;
-    for (size_t component = 0; component < 4; ++component) {
-        const float value = first[component + 3] +
-            (second[component + 3] * direction - first[component + 3]) * weight;
-        output[component + 3] = value;
-        length_squared += value * value;
-    }
-    if (length_squared > 1.0e-12f && std::isfinite(length_squared)) {
-        const float inverse_length = 1.0f / std::sqrt(length_squared);
-        for (size_t component = 0; component < 4; ++component) output[component + 3] *= inverse_length;
-    } else {
-        for (size_t component = 0; component < 4; ++component) output[component + 3] = first[component + 3];
-    }
+    elisa::animation::interpolate_rotation(first + 3, second + 3, weight, output + 3);
     for (size_t component = 7; component < 10; ++component) {
         output[component] = first[component] + (second[component] - first[component]) * weight;
     }
+}
+
+void sample_animation_pose(const InstanceSlot& instance, int32_t clip_index, float time,
+    bool loop, size_t joint_index, float* output) {
+    if (clip_index < 0) {
+        const auto& rest = instance.skin_joints[joint_index].rest_local;
+        std::copy(rest.begin(), rest.end(), output);
+        return;
+    }
+    const auto& clip = instance.animation_clips[size_t(clip_index)];
+    const float clamped_time = animation_time(clip, time, loop);
+    const float frame_position = std::min(clamped_time * float(clip.sample_rate), float(clip.frame_count - 1));
+    const uint32_t first_frame = uint32_t(std::floor(frame_position));
+    const uint32_t second_frame = std::min(first_frame + 1, clip.frame_count - 1);
+    const float weight = frame_position - float(first_frame);
+    const size_t joint_count = instance.skin_joints.size();
+    const float* first = clip.local_transforms.data() + (size_t(first_frame) * joint_count + joint_index) * 10;
+    const float* second = clip.local_transforms.data() + (size_t(second_frame) * joint_count + joint_index) * 10;
+    if (size_t(clip_index) < instance.animation_curve_modes.size() &&
+        instance.animation_curve_modes[size_t(clip_index)] == 1) {
+        const uint32_t before = first_frame > 0 ? first_frame - 1 : 0;
+        const uint32_t after = std::min(second_frame + 1, clip.frame_count - 1);
+        const float* previous = clip.local_transforms.data() + (size_t(before) * joint_count + joint_index) * 10;
+        const float* following = clip.local_transforms.data() + (size_t(after) * joint_count + joint_index) * 10;
+        // The setup API validates all keys before enabling this path.
+        elisa::animation::interpolate_shape_transform(previous, first, second, following, weight, output);
+        return;
+    }
+    interpolate_transform(first, second, weight, output);
+}
+
+bool cubic_clip(const InstanceSlot& instance, int32_t clip_index) {
+    return clip_index >= 0 && size_t(clip_index) < instance.animation_curve_modes.size() &&
+        instance.animation_curve_modes[size_t(clip_index)] == 1;
 }
 
 // Root tracks are local to their joint. Resolve their linear transform through
@@ -181,9 +221,34 @@ void store_joint_pose(wi::scene::TransformComponent& transform, const float* pos
     transform.SetDirty();
 }
 
+bool apply_displayed_joint_transforms(RenderSceneService& state, size_t slot) {
+    InstanceSlot& instance = state.instances[slot];
+    if (instance.displayed_joint_pose.size() != instance.joint_entities.size() * 10) return false;
+    for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
+        const float* pose = instance.displayed_joint_pose.data() + joint_index * 10;
+        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
+        if (transform == nullptr) return false;
+        if (instance.skin_joints[joint_index].parent_index < 0) {
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
+            if (parent == nullptr) return false;
+            store_joint_pose(*transform, pose);
+            transform->UpdateTransform_Parented(*parent);
+        } else {
+            const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
+            if (parent_index >= joint_index) return false;
+            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
+            if (parent == nullptr) return false;
+            store_joint_pose(*transform, pose);
+            transform->UpdateTransform_Parented(*parent);
+        }
+    }
+    return true;
+}
+
 bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     InstanceSlot& instance = state.instances[slot];
     if (instance.joint_entities.size() != instance.skin_joints.size()) return false;
+    instance.animation_pose_overridden = false;
     const bool has_joints = !instance.skin_joints.empty();
     float blend = 1.0f;
     if (instance.blend_duration > 0.0f) {
@@ -203,11 +268,32 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
     }
     for (size_t joint_index = 0; joint_index < instance.joint_entities.size(); ++joint_index) {
         float pose[10]{};
+        float cubic_current[10];
         const float* current = instance.ozz_current_pose.data() + joint_index * 10;
+        if (cubic_clip(instance, instance.animation_clip)) {
+            // Shape-preserving cubic clips sample the cooked keys directly.
+            sample_animation_pose(instance, instance.animation_clip, instance.animation_time,
+                instance.animation_loop, joint_index, cubic_current);
+            current = cubic_current;
+        }
         if (blend < 1.0f) {
-            const float* previous = interrupted
-                ? instance.interrupted_joint_pose.data() + joint_index * 10
-                : instance.ozz_previous_pose.data() + joint_index * 10;
+            float previous[10];
+            if (interrupted) {
+                std::copy_n(instance.interrupted_joint_pose.data() + joint_index * 10, 10, previous);
+                if (instance.interrupted_pose_follows_source) {
+                    float reference[10], moving[10];
+                    sample_animation_pose(instance, instance.previous_animation_clip, instance.interrupted_source_time,
+                        instance.previous_animation_loop, joint_index, reference);
+                    sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
+                        instance.previous_animation_loop, joint_index, moving);
+                    if (!elisa::animation::rebase_local_correction(previous, reference, moving, previous)) return false;
+                }
+            } else if (cubic_clip(instance, instance.previous_animation_clip)) {
+                sample_animation_pose(instance, instance.previous_animation_clip, instance.previous_animation_time,
+                    instance.previous_animation_loop, joint_index, previous);
+            } else {
+                std::copy_n(instance.ozz_previous_pose.data() + joint_index * 10, 10, previous);
+            }
             interpolate_transform(previous, current, blend, pose);
         } else {
             std::copy_n(current, 10, pose);
@@ -263,22 +349,9 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
             pose[2] -= local_horizontal.z;
         }
         std::copy_n(pose, 10, instance.displayed_joint_pose.data() + joint_index * 10);
-        wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(instance.joint_entities[joint_index]);
-        if (transform == nullptr) return false;
-        if (instance.skin_joints[joint_index].parent_index < 0) {
-            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.entity);
-            if (parent == nullptr) return false;
-            store_joint_pose(*transform, pose);
-            transform->UpdateTransform_Parented(*parent);
-        } else {
-            const uint32_t parent_index = uint32_t(instance.skin_joints[joint_index].parent_index);
-            if (parent_index >= joint_index) return false;
-            const wi::scene::TransformComponent* parent = state.scene->transforms.GetComponent(instance.joint_entities[parent_index]);
-            if (parent == nullptr) return false;
-            store_joint_pose(*transform, pose);
-            transform->UpdateTransform_Parented(*parent);
-        }
     }
+    if (!apply_displayed_joint_transforms(state, slot)) return false;
+
     const auto& children = instance.snapshot_placement_entities.empty()
         ? instance.imported_mesh_entities : instance.snapshot_placement_entities;
     const size_t placement_count = children.size() + 1;
@@ -298,7 +371,7 @@ bool apply_animation_pose(RenderSceneService& state, size_t slot) {
                     instance.animation_time, instance.animation_loop, placement, target, placement_count, morph_count);
                 float weight = current;
                 if (blend < 1.0f) {
-                    const float previous = instance.interrupted_morph_pose.size() == placement_count * morph_count
+                    const float previous = !instance.interrupted_pose_follows_source && instance.interrupted_morph_pose.size() == placement_count * morph_count
                         ? instance.interrupted_morph_pose[placement * morph_count + target]
                         : sample_animation_morph_weight(instance, instance.previous_animation_clip,
                         instance.previous_animation_time, instance.previous_animation_loop, placement, target,

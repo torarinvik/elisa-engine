@@ -1,13 +1,9 @@
 #include "render_scene_abi.h"
-#if defined(__APPLE__)
-#include <malloc/malloc.h>
-#endif
-#if defined(__has_feature)
-#if __has_feature(address_sanitizer)
-#define ELISA_RENDER_SCENE_ASAN 1
-#include <sanitizer/allocator_interface.h>
-#endif
-#endif
+#include "render_scene_heap_probe.h"
+#include <chrono>
+#include <cstdio>
+#include "animation_rotation_interpolation.h"
+#include "animation_cubic_interpolation.h"
 #include "adaptive_resolution.h"
 #include "Utility/meshoptimizer/meshoptimizer.h"
 #include "application_abi.h"
@@ -320,6 +316,9 @@ void release_animation_submission(RenderSceneService& state, InstanceSlot& insta
 #include "render_scene_imported_scene_internal.inc"
 #include "render_scene_ozz_animation.inc"
 #include "render_scene_animation_internal.inc"
+#include "render_scene_animation_readback.inc"
+#include "render_scene_skin_readback.inc"
+#include "render_scene_skin_contact.inc"
 #include "render_scene_selection_internal.inc"
 size_t find_free_slot(const RenderSceneService& state) {
     for (size_t index = 0; index < MAX_INSTANCES; ++index) {
@@ -456,6 +455,24 @@ int32_t update_transform_unlocked(RenderSceneService& state, size_t slot,
     wi::scene::TransformComponent* transform = state.scene->transforms.GetComponent(state.instances[slot].entity);
     if (transform == nullptr) return ELISA_RENDER_SCENE_BACKEND_FAILED;
     apply_transform(*transform, px, py, pz, qx, qy, qz, qw, sx, sy, sz);
+    // Contact/IK reads can occur before Scene::Update. Refresh the retained
+    // visible pose without resampling animation or consuming root motion.
+    const auto& instance = state.instances[slot];
+    for (size_t joint = 0; joint < instance.joint_entities.size(); ++joint) {
+        if (joint >= instance.skin_joints.size()) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        const auto parent_index = instance.skin_joints[joint].parent_index;
+        if (parent_index >= 0 && size_t(parent_index) >= joint) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        const auto parent_entity = parent_index < 0 ? instance.entity : instance.joint_entities[size_t(parent_index)];
+        const auto* parent = state.scene->transforms.GetComponent(parent_entity);
+        auto* child = state.scene->transforms.GetComponent(instance.joint_entities[joint]);
+        if (!parent || !child) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        child->UpdateTransform_Parented(*parent);
+    }
+    for (const auto child : state.instances[slot].imported_mesh_entities) {
+        auto* child_transform = state.scene->transforms.GetComponent(child);
+        if (!child_transform) return ELISA_RENDER_SCENE_BACKEND_FAILED;
+        child_transform->UpdateTransform_Parented(*transform);
+    }
     return ELISA_RENDER_SCENE_OK;
 }
 #include "render_scene_snapshot_internal.inc"
@@ -499,6 +516,7 @@ extern "C" int64_t elisa_render_scene_v1_create(
     instance.imported_camera_entities.clear();
     instance.imported_light_handles.clear();
     instance.skin_joints.clear();
+    for (auto& region : instance.skin_contact_regions) region.vertices.clear();
     instance.animation_clips.clear();
     instance.morph_default_weights.clear();
     instance.animation_submission = {};

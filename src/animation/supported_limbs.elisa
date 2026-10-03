@@ -1,0 +1,83 @@
+# Stage shared body reach and independent limb IK as one pose transaction.
+include "./controlled_limbs.elisa"
+include "./support_reach.elisa"
+
+module SupportedLimbs:
+    private:
+        def descends(skeleton: Pose::Skeleton&, joint: usize, root: usize) -> bool:
+            cursor: mutable i64 = joint.i64()
+            for step in 0..<skeleton.count:
+                return false if cursor < 0
+                return true if cursor == root.i64()
+                cursor <- skeleton.joints[cursor.usize()].parent
+            false
+
+        def absolute(value: f32) -> f32:
+            -value if value < 0.0 else value
+
+    public:
+        error SupportError:
+            InvalidBodyRoot
+            InvalidSupport
+
+        struct Supports:
+            enabled: mutable bool[4]
+            minimum_distance: mutable f32[4]
+            maximum_distance: mutable f32[4]
+
+        struct Result:
+            accepted: bool
+            reach: SupportReach::Result
+            limbs: ControlledLimbs::Result
+
+        def supports() -> Supports:
+            Supports{enabled: zeroed,minimum_distance: zeroed,maximum_distance: zeroed}
+
+        # Supports address request slots, not skeleton indices. A supported
+        # limb requires positive positional IK weight and a calibrated distance
+        # band within its physical two-segment reach. Partial IK can fail final
+        # target convergence and then publishes nothing. All requested branches
+        # must descend strictly from the shared body root. The shifted subtree
+        # retains rotations, scales and relative positions before limb solving.
+        # Reach infeasibility or any active limb residual returns accepted=false;
+        # typed errors also leave pose/history unchanged. Orientation targets,
+        # skin clearance and external contact priorities remain caller policy.
+        def solve(pose: mutable Pose::Pose&, skeleton: Pose::Skeleton&,
+            body_root: usize, requests: ControlledLimbs::Requests&, supports: Supports&,
+            settings: PoseJointLimits::Constraints&, axis: Geometry::Vec3,
+            minimum_offset: f32, maximum_offset: f32, preferred_offset: f32,
+            reach_tolerance: f32, state: mutable ControlledLimbs::State&) -> Result error[SupportError, SupportReach::ReachError, ControlledLimbs::BatchError, IkFk::BlendError, Pose::PoseError, ConstrainedLimb::SolveError, PoseJointLimits::ConstraintError, JointLimits::LimitError]:
+            raise ConstrainedLimb::SolveError.InvalidInput if pose.count == 0 or pose.count != skeleton.count or settings.count != pose.count or not Pose::skeleton_valid(skeleton) or not Pose::pose_valid(pose)
+            raise SupportError.InvalidBodyRoot if body_root >= pose.count
+            raise ControlledLimbs::BatchError.InvalidCount if requests.count == 0 or requests.count > 4
+            reach_requests: mutable SupportReach::Requests = SupportReach::requests()
+            for slot in 0..<requests.count |reach_requests|:
+                limb: ControlledLimbs::Limb = requests.limbs[slot]
+                raise ConstrainedLimb::SolveError.InvalidChain if limb.upper >= pose.count or limb.lower >= pose.count or limb.end >= pose.count
+                raise ConstrainedLimb::SolveError.InvalidChain if skeleton.joints[limb.lower].parent != limb.upper.i64() or skeleton.joints[limb.end].parent != limb.lower.i64()
+                raise SupportError.InvalidBodyRoot if limb.upper == body_root or not descends(skeleton,limb.upper,body_root)
+                if supports.enabled[slot]:
+                    raise SupportError.InvalidSupport if limb.position_weight <= 0.0 or limb.position_weight-limb.position_weight != 0.0
+                    upper_length: f32 = Geometry::vec3_distance(pose.models[limb.upper].position,pose.models[limb.lower].position)
+                    lower_length: f32 = Geometry::vec3_distance(pose.models[limb.lower].position,pose.models[limb.end].position)
+                    minimum: f32 = supports.minimum_distance[slot]
+                    maximum: f32 = supports.maximum_distance[slot]
+                    raise SupportError.InvalidSupport if minimum-minimum != 0.0 or maximum-maximum != 0.0 or minimum < absolute(upper_length-lower_length) or maximum > upper_length+lower_length
+                    reach_requests.supports[reach_requests.count] <- SupportReach::Support{origin: pose.models[limb.upper].position,target: limb.target,minimum_distance: minimum,maximum_distance: maximum}
+                    reach_requests.count <- reach_requests.count+1
+            raise SupportError.InvalidSupport if reach_requests.count == 0
+            reach: SupportReach::Result = try SupportReach::solve(reach_requests,axis,minimum_offset,maximum_offset,preferred_offset,reach_tolerance)
+            empty: ControlledLimbs::Result = ControlledLimbs::Result{limbs: zeroed,count: 0}
+            return Result{accepted: false,reach: reach,limbs: empty} if not reach.feasible
+            candidate: mutable Pose::Pose = pose
+            history: mutable ControlledLimbs::State = ControlledLimbs::snapshot(state)
+            translation: Geometry::Vec3 = Geometry::vec3_scale(Geometry::vec3_normalize(axis),reach.offset)
+            for joint in 0..<pose.count |candidate|:
+                if descends(skeleton,joint,body_root):
+                    candidate.models[joint].position <- Geometry::vec3_add(candidate.models[joint].position,translation)
+            limbs: ControlledLimbs::Result = try ControlledLimbs::solve(&candidate,skeleton,requests,settings,&history)
+            for slot in 0..<limbs.count:
+                return Result{accepted: false,reach: reach,limbs: limbs} if limbs.limbs[slot].positional_active and not limbs.limbs[slot].converged
+            pose <- candidate
+            state <- history
+            Result{accepted: true,reach: reach,limbs: limbs}

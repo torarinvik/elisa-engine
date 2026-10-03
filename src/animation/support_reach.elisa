@@ -1,0 +1,98 @@
+# Bounded shared-body translation for fixed support targets in model space.
+include "../math/geometry.elisa"
+
+module SupportReach:
+    private:
+        def finite(value: f32) -> bool:
+            value-value == 0.0
+
+        def absolute(value: f32) -> f32:
+            -value if value < 0.0 else value
+
+        def clamp(value: f32, low: f32, high: f32) -> f32:
+            low if value < low else (high if value > high else value)
+
+        def residual(requests: Requests&, axis: Geometry::Vec3, offset: f32) -> f32:
+            worst: mutable f32 = 0.0
+            for slot in 0..<requests.count |worst|:
+                support: Support = requests.supports[slot]
+                delta: Geometry::Vec3 = Geometry::vec3_sub(Geometry::vec3_add(support.origin,Geometry::vec3_scale(axis,offset)),support.target)
+                distance: f32 = Geometry::vec3_length(delta)
+                violation: f32 = support.minimum_distance-distance if distance < support.minimum_distance else (distance-support.maximum_distance if distance > support.maximum_distance else 0.0)
+                worst <- violation if violation > worst
+            worst
+
+    public:
+        error ReachError:
+            InvalidInput
+
+        struct Support:
+            origin: Geometry::Vec3
+            target: Geometry::Vec3
+            minimum_distance: f32
+            maximum_distance: f32
+
+        struct Requests:
+            supports: mutable Support[4]
+            count: mutable usize
+
+        struct Result:
+            feasible: bool
+            offset: f32
+            maximum_distance_error: f32
+
+        def requests() -> Requests:
+            Requests{supports: zeroed,count: 0}
+
+        # Caller derives each distance band from calibrated limb geometry and
+        # allowed bend, selects supports, and applies the result to a private
+        # pose before limb IK. No pose or persistent state is mutated here.
+        # Unit axis and all origins/targets must share one coordinate space.
+        # Both inner and outer reach spheres matter: inner spheres can split
+        # the feasible set into disjoint intervals. At most19 candidates cover
+        # their boundaries, translation caps and the preferred offset.
+        # Infeasibility returns the bounded preference and its truthful error;
+        # it does not silently clamp an effector or claim a minimax solution.
+        def solve(requests: Requests&, axis: Geometry::Vec3, minimum_offset: f32,
+            maximum_offset: f32, preferred_offset: f32, tolerance: f32) -> Result error[ReachError]:
+            raise ReachError.InvalidInput if requests.count == 0 or requests.count > 4 or not Geometry::vec3_is_finite(axis)
+            raise ReachError.InvalidInput if not finite(minimum_offset) or not finite(maximum_offset) or not finite(preferred_offset) or not finite(tolerance) or minimum_offset > maximum_offset or tolerance < 0.0
+            length: f32 = Geometry::vec3_length(axis)
+            raise ReachError.InvalidInput if not finite(length) or absolute(length-1.0) > 0.0001
+            direction: Geometry::Vec3 = Geometry::vec3_normalize(axis)
+            preferred: f32 = clamp(preferred_offset,minimum_offset,maximum_offset)
+            candidates: mutable f32[19] = zeroed
+            candidates[0] <- preferred
+            candidates[1] <- minimum_offset
+            candidates[2] <- maximum_offset
+            count: mutable usize = 3
+            for slot in 0..<requests.count |candidates, count|:
+                support: Support = requests.supports[slot]
+                raise ReachError.InvalidInput if not Geometry::vec3_is_finite(support.origin) or not Geometry::vec3_is_finite(support.target) or not finite(support.minimum_distance) or not finite(support.maximum_distance) or support.minimum_distance < 0.0 or support.maximum_distance <= 0.0 or support.minimum_distance > support.maximum_distance
+                delta: Geometry::Vec3 = Geometry::vec3_sub(support.origin,support.target)
+                parallel: f32 = Geometry::vec3_dot(delta,direction)
+                transverse: Geometry::Vec3 = Geometry::vec3_sub(delta,Geometry::vec3_scale(direction,parallel))
+                perpendicular_squared: f32 = Geometry::vec3_length_squared(transverse)
+                raise ReachError.InvalidInput if not finite(parallel) or not finite(perpendicular_squared)
+                for boundary in 0..<2 |candidates, count|:
+                    radius: f32 = support.minimum_distance if boundary == 0 else support.maximum_distance
+                    remaining: f32 = radius*radius-perpendicular_squared
+                    raise ReachError.InvalidInput if not finite(remaining)
+                    if remaining >= 0.0:
+                        extent: f32 = Geometry::sqrt_f32(remaining)
+                        candidates[count] <- -parallel-extent
+                        candidates[count+1] <- -parallel+extent
+                        count <- count+2
+            found: mutable bool = false
+            best: mutable f32 = preferred
+            best_distance: mutable f32 = 0.0
+            for index in 0..<count |found, best, best_distance|:
+                candidate: f32 = candidates[index]
+                if candidate >= minimum_offset and candidate <= maximum_offset:
+                    violation: f32 = residual(requests,direction,candidate)
+                    distance: f32 = absolute(candidate-preferred)
+                    if violation <= tolerance and (not found or distance < best_distance or (distance == best_distance and candidate < best)):
+                        found <- true
+                        best <- candidate
+                        best_distance <- distance
+            Result{feasible: found,offset: best,maximum_distance_error: residual(requests,direction,best)}
