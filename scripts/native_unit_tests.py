@@ -51,7 +51,29 @@ def main() -> int:
         if test_result.returncode != 0:
             print("Native gamepad mapping test failed.", file=sys.stderr)
             return test_result.returncode
+    probe_status = run_application_test_probe_fallback_test(compiler)
+    if probe_status != 0:
+        return probe_status
     return run_ozz_service_test(compiler)
+
+
+def run_application_test_probe_fallback_test(compiler: list[str]) -> int:
+    """Ordinary game entries retain dormant course stress helpers without enabling probes."""
+    with tempfile.TemporaryDirectory(prefix="elisa-application-probe-fallback-") as temporary_directory:
+        executable = Path(temporary_directory) / "application-test-probe-fallback-test"
+        compile_result = subprocess.run(
+            [*compiler, "-std=c++17", "-O0", "-I", str(ROOT / "native"),
+             str(ROOT / "native/application_test_probe.cpp"),
+             str(ROOT / "test/application_test_probe_fallback_test.cpp"),
+             "-o", str(executable)],
+            check=False)
+        if compile_result.returncode != 0:
+            print("Production application test-probe fallbacks did not compile.", file=sys.stderr)
+            return compile_result.returncode
+        test_result = subprocess.run([str(executable)], check=False)
+        if test_result.returncode != 0:
+            print("Production application test-probe fallbacks did not fail closed.", file=sys.stderr)
+        return test_result.returncode
 
 
 def run_ozz_service_test(compiler: list[str]) -> int:

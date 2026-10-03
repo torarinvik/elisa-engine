@@ -1,4 +1,6 @@
 #include "application_abi.h"
+
+#if defined(ELISA_APPLICATION_TEST_PROBE)
 #include "shader_path_validation.h"
 
 #include <chrono>
@@ -7,7 +9,6 @@
 #include <fstream>
 #include <string>
 
-#if defined(ELISA_APPLICATION_TEST_PROBE)
 namespace {
 
 std::string shader_manifest_test_json(uint64_t schema, const std::string& backend,
@@ -124,4 +125,16 @@ extern "C" int32_t elisa_application_v1_test_save_screenshot_indexed(
     if (path.size() > 4096) return 0;
     return elisa_application_v1_save_screenshot(path.c_str()) == ELISA_APPLICATION_OK ? 1 : 0;
 }
+#else
+// The character-course module keeps its lifecycle stress helpers beside the
+// gameplay code, so the Elisa archive references these hooks even when the
+// ordinary game entry never calls them. Resolve those dormant references in
+// production builds without enabling any test behavior.
+extern "C" __attribute__((visibility("hidden"))) int32_t
+elisa_application_v1_test_set_window_size(int32_t, int32_t) {
+    return ELISA_APPLICATION_UNSUPPORTED;
+}
+
+extern "C" __attribute__((visibility("hidden"))) void
+elisa_application_v1_test_trace_stress(int32_t, int64_t, int64_t, int64_t, int64_t, int64_t) {}
 #endif

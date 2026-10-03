@@ -116,3 +116,34 @@ validator now gives each run a disposable `HOME`, so game saves, launcher logs,
 and crash reports stay out of the developer's profile. This reruns the finite
 self-test package; clean-machine validation, release signing, and interactive
 play remain open.
+
+## Ordinary game entry build and startup (2026-10-03)
+
+Building `main.elisa` without test probes exposed two unresolved references to
+the course's dormant lifecycle-stress helpers. `native/application_test_probe.cpp`
+now supplies hidden, fail-closed link stubs when test probes are disabled; the
+actual SDL resize and stress-trace hooks remain compiled only in probe builds.
+`scripts/native_unit_tests.py` compiles and calls that production branch, checking
+that resize reports `UNSUPPORTED` and the trace hook has no effect.
+
+The ordinary, non-optimized project build passed with `native_test_probes=false`:
+
+```bash
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
+ELISA_RUNTIME_OBJ=../Elisa-compiler/build/runtime/elisacore_runtime.o \
+WICKED_ROOT=../elisa-boxing-wickedengine \
+WICKED_BUILD=../elisa-boxing-wickedengine/build-elisa-sdl3 \
+ELISA_SDL3_LIB_DIR=/opt/homebrew/lib \
+python3 scripts/elisa_build_run.py build --project examples/character_course \
+  --main main.elisa --output build/character-course-manual
+```
+
+The resulting binary is
+`examples/character_course/build/character-course-manual`, SHA-256
+`28afb561c5488b63bd64f248068075b7026cb27290c92dcb01406402010fbd45`; its
+build identity and native dependency hashes are in the adjacent
+`character-course-manual.provenance.json`. Launching it initialized SDL3,
+Wicked/Metal, Jolt, audio and the shader compiler, and drew the course with its
+controls panel. Keyboard movement, pause and restart were not exercised in this
+launch, so Q07a's interactive-play acceptance remains open.
