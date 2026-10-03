@@ -9,6 +9,9 @@
         const HEAP_SETTLED_ITERATION: usize = 3
         # Allowed heap growth over the remaining iterations; measured < 16 KiB.
         const HEAP_GROWTH_LIMIT: u64 = 262144
+        # Frames pumped before the final heap sample; the lowest sample counts,
+        # so allocations held briefly by worker threads under load drain first.
+        const HEAP_SETTLE_FRAMES: usize = 8
 
         # Test-probe hook: resizes the real SDL window and syncs it.
         @callconv(c)
@@ -28,6 +31,19 @@
             navmeshes: usize
             voices: usize
             streams: usize
+
+        def pumped_heap(session: mutable RuntimeServices::Session&) -> u64 error[RuntimeServices::RuntimeServicesError]:
+            _ = try RuntimeServices::pump(session)
+            RenderScene::heap_bytes_in_use()
+
+        def settled_heap(session: mutable RuntimeServices::Session&) -> u64:
+            lowest: mutable u64 = RenderScene::heap_bytes_in_use()
+            for frame in 0..<HEAP_SETTLE_FRAMES |session, lowest|:
+                sample: u64 = catch pumped_heap(session):
+                    value: value
+                    error failure: lowest
+                lowest <- sample if sample < lowest
+            lowest
 
         def stress_counts(session: RuntimeServices::Session&) -> StressCounts:
             voices: usize = catch RuntimeServices::audio_active_voice_count(session):
@@ -134,7 +150,7 @@
                     status <- 180 + iteration.i32() if status == 0 and not same_counts(counts, baseline)
                     heap_settled <- RenderScene::heap_bytes_in_use() if iteration == HEAP_SETTLED_ITERATION
             return ProgressOutcome{status: status, character: current} if status != 0
-            heap_end: u64 = RenderScene::heap_bytes_in_use()
+            heap_end: u64 = settled_heap(session)
             return ProgressOutcome{status: 194, character: current} if heap_settled == 0 or heap_end == 0
             return ProgressOutcome{status: 193, character: current} if heap_end > heap_settled + HEAP_GROWTH_LIMIT
             logical_width: i32 = frame.logical_width if frame.logical_width > 0 else 320

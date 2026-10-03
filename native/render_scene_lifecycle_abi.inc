@@ -48,7 +48,11 @@ extern "C" uint64_t elisa_render_scene_v1_instance_count(void) {
 // Process heap bytes in use, for lifecycle stress memory sampling. Zero means
 // the platform has no sampler, and callers must treat it as unsupported.
 extern "C" uint64_t elisa_render_scene_v1_heap_bytes_in_use(void) {
-#if defined(__APPLE__)
+#if defined(ELISA_RENDER_SCENE_ASAN)
+    // ASan replaces the malloc zones, so their statistics count its own
+    // bookkeeping; its allocator reports live user allocations directly.
+    return static_cast<uint64_t>(__sanitizer_get_current_allocated_bytes());
+#elif defined(__APPLE__)
     malloc_statistics_t stats{};
     malloc_zone_statistics(nullptr, &stats);
     return static_cast<uint64_t>(stats.size_in_use);

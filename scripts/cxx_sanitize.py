@@ -16,10 +16,16 @@ AddressSanitizer reports that leak detection is unsupported; use `leaks
 runs successfully under both UBSan and ASan+UBSan with the SDL3-native Wicked
 build; the boundary harness runs the same sanitizer pair over the smaller FFI
 surface.
+
+`sanitizers/wicked_ignorelist.txt` skips only the null check inside Wicked's
+bundled metal-cpp headers, which call members through nil Objective-C objects.
 """
 
 import os
 import sys
+from pathlib import Path
+
+IGNORELIST = Path(__file__).resolve().parent / "sanitizers/wicked_ignorelist.txt"
 
 SANITIZER_FLAVORS = {
     "address,undefined": ["-fsanitize=address,undefined"],
@@ -33,7 +39,8 @@ def main() -> int:
     if flags is None:
         print(f"unknown ELISA_SANITIZER '{flavor}'; use {', '.join(SANITIZER_FLAVORS)}", file=sys.stderr)
         return 2
-    os.execvp("c++", ["c++", *flags, "-fno-sanitize-recover=all", "-g", *sys.argv[1:]])
+    os.execvp("c++", ["c++", *flags, "-fno-sanitize-recover=all",
+        f"-fsanitize-ignorelist={IGNORELIST}", "-g", *sys.argv[1:]])
     return 127
 
 

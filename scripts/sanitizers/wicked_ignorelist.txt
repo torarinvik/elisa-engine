@@ -1,0 +1,5 @@
+# metal-cpp wrappers in the read-only Wicked tree call members through nil
+# Objective-C objects (NS::Object::retain/release on nullptr), which ObjC
+# defines as a no-op. Only the null check is skipped, only for those headers.
+[null]
+src:*/WickedEngine/Utility/metal/*

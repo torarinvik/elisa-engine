@@ -47,7 +47,9 @@ self-test.
   (`malloc_zone_statistics` over all zones on macOS; zero elsewhere). The
   test samples it after iteration 3 and again after iteration 11. Growth over
   those eight iterations must stay within 256 KiB. On 2026-10-03 it measured
-  under 16 KiB. A zero sample fails, because the gate is macOS-only.
+  under 16 KiB. A zero sample fails, because the gate is macOS-only. The
+  final sample is the lowest of eight pumped frames: with a load average near
+  660 a single sample once exceeded the limit, then passed alone.
 - **Final count.** It must still equal the baseline.
 
 ## Checks
@@ -80,6 +82,24 @@ elisascript scripts/native_gate.elisascript native
 On 2026-09-28 the course self-test exited 0 under lldb, and the course and
 relaunch smokes, `check` and the native gate each exited 0.
 
+## Sanitizers
+
+`PYTHONPATH=scripts python3 scripts/run_course_sanitized.py` builds every
+native translation unit through `cxx_sanitize.py` (ASan+UBSan, aborting on
+the first report) and runs the self-test and relaunch smokes. Both passed on
+2026-10-03. Two checks are narrowed, each for a reason seen in this run:
+
+- `scripts/sanitizers/wicked_ignorelist.txt` skips the UBSan null check
+  inside Wicked's bundled metal-cpp headers, which call members through nil
+  Objective-C objects at startup.
+- `detect_container_overflow=0`: the prebuilt Wicked library is not
+  instrumented, so `std::vector` growth in `Scene::Entity_CreateSphere` was
+  reported across the instrumented boundary.
+
+Under ASan the heap sample reads `__sanitizer_get_current_allocated_bytes`,
+because ASan replaces the malloc zones; the zone statistics grew past the
+256 KiB limit while live allocations did not.
+
 ## Negative controls
 
 - **Iteration 5 skips the beacon release.** The self-test fails at 185, which
@@ -92,7 +112,7 @@ relaunch smokes, `check` and the native gate each exited 0.
 
 - **The resize check expects width + 1.** The self-test fails at 195
   (2026-10-03).
-- **The heap limit is 1 byte.** The self-test fails at 193 (2026-10-03).
+- **A 512 KiB native leak per heap sample.** The self-test fails at 193 (2026-10-03). A 1-byte limit no longer fails: the settled final heap sits at or below the iteration-3 sample when nothing leaks.
 
 All controls were reverted.
 
@@ -103,7 +123,7 @@ All controls were reverted.
   entities, plus a process heap sample. GPU memory and Jolt body counts are
   not sampled.
 - The run is 12 iterations inside the finite self-test, not a multi-hour soak
-  (Q06). There is no ASan/UBSan run of the course binary itself.
+  (Q06).
 - The OS window is resized through SDL on a hidden window, so no user drag
   or display change is driven.
 - The trace is an exit code, not a retained log.
