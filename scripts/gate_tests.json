@@ -1,0 +1,1685 @@
+[
+ {
+  "name": "entity-id",
+  "source": "test/entity_id.elisa",
+  "flags": [],
+  "binary": "build/entity-id-test",
+  "args": [],
+  "message": "Entity identity runtime tests passed."
+ },
+ {
+  "name": "world",
+  "source": "test/world.elisa",
+  "flags": [
+   "-O0"
+  ],
+  "binary": "build/world-test",
+  "args": [],
+  "message": "Checked world lifecycle tests passed.",
+  "note": "-O0 keeps this large fixture inside the 120-second process limit."
+ },
+ {
+  "name": "world-storage",
+  "source": "test/world_storage.elisa",
+  "flags": [],
+  "binary": "build/world-storage-test",
+  "args": [],
+  "message": "General typed world storage tests passed."
+ },
+ {
+  "name": "geometry",
+  "source": "test/geometry.elisa",
+  "flags": [],
+  "binary": "build/geometry-test",
+  "args": [],
+  "message": "Geometry value tests passed."
+ },
+ {
+  "name": "assets",
+  "source": "test/assets.elisa",
+  "flags": [],
+  "binary": "build/assets-test",
+  "args": [],
+  "message": "Portable asset descriptor tests passed."
+ },
+ {
+  "name": "asset-lod",
+  "source": "test/asset_lod.elisa",
+  "flags": [],
+  "binary": "build/asset-lod-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "asset-loader",
+  "source": "test/asset_loader.elisa",
+  "flags": [],
+  "binary": "build/asset-loader-test",
+  "args": [],
+  "message": "Asynchronous asset-loader contract tests passed."
+ },
+ {
+  "name": "input",
+  "source": "test/input.elisa",
+  "flags": [],
+  "binary": "build/input-test",
+  "args": [],
+  "message": "Portable input mapping tests passed."
+ },
+ {
+  "name": "capabilities",
+  "source": "test/capabilities.elisa",
+  "flags": [],
+  "binary": "build/capabilities-test",
+  "args": [],
+  "message": "Backend capability tests passed."
+ },
+ {
+  "name": "fake-bridge",
+  "source": "test/fake_bridge.elisa",
+  "flags": [],
+  "binary": "build/fake-bridge-test",
+  "args": [],
+  "message": "Fake native bridge lifecycle tests passed."
+ },
+ {
+  "name": "contracts",
+  "source": "test/contracts.elisa",
+  "flags": [],
+  "binary": "build/contracts-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "recording",
+  "source": "test/recording.elisa",
+  "flags": [],
+  "binary": "build/recording-test",
+  "args": [],
+  "message": "Recording backend command tests passed."
+ },
+ {
+  "name": "clock",
+  "source": "test/clock.elisa",
+  "flags": [],
+  "binary": "build/clock-test",
+  "args": [],
+  "message": "Fixed-step clock tests passed."
+ },
+ {
+  "name": "headless-game",
+  "source": "test/headless_game.elisa",
+  "flags": [],
+  "binary": "build/headless-game-test",
+  "args": [],
+  "message": "Deterministic headless game tests passed."
+ },
+ {
+  "name": "scene-bridge",
+  "source": "test/scene_bridge.elisa",
+  "flags": [],
+  "binary": "build/scene-bridge-test",
+  "args": [],
+  "message": "Canonical scene bridge tests passed."
+ },
+ {
+  "name": "render-snapshot",
+  "source": "test/render_snapshot.elisa",
+  "flags": [],
+  "binary": "build/render-snapshot-test",
+  "args": [],
+  "message": "Persistent render snapshot and world-render extraction tests passed."
+ },
+ {
+  "name": "hierarchy",
+  "source": "test/hierarchy.elisa",
+  "flags": [],
+  "binary": "build/hierarchy-test",
+  "args": [],
+  "message": "Transform hierarchy tests passed."
+ },
+ {
+  "name": "world-commands",
+  "source": "test/world_commands.elisa",
+  "flags": [],
+  "binary": "build/world-commands-test",
+  "args": [],
+  "message": "Deferred world command tests passed."
+ },
+ {
+  "name": "prefab",
+  "source": "test/prefab.elisa",
+  "flags": [],
+  "binary": "build/prefab-test",
+  "args": [],
+  "message": "Prefab instance tests passed."
+ },
+ {
+  "name": "prefab-world",
+  "source": "test/prefab_world.elisa",
+  "flags": [],
+  "binary": "build/prefab-world-test",
+  "args": [],
+  "message": "Primary-world prefab instance tests passed."
+ },
+ {
+  "name": "prefab-scene",
+  "source": "test/prefab_scene.elisa",
+  "flags": [],
+  "binary": "build/prefab-scene-test",
+  "args": [],
+  "message": "Nested prefab scene tests passed."
+ },
+ {
+  "name": "cell-stream",
+  "source": "test/cell_streaming.elisa",
+  "flags": [],
+  "binary": "build/cell-stream-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "save-schema",
+  "source": "test/save_schema.elisa",
+  "flags": [],
+  "binary": "build/save-schema-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "cell-world",
+  "source": "test/cell_world.elisa",
+  "flags": [],
+  "binary": "build/cell-world-test",
+  "args": [],
+  "message": "Primary-world cell streaming tests passed."
+ },
+ {
+  "name": "cell-assets",
+  "source": "test/cell_assets.elisa",
+  "flags": [],
+  "binary": "build/cell-assets-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "cell-asset-stages",
+  "source": "test/cell_asset_stages.elisa",
+  "flags": [],
+  "binary": "build/cell-asset-stages-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "cell-visuals",
+  "source": "test/cell_visuals.elisa",
+  "flags": [],
+  "binary": "build/cell-visuals-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world-events",
+  "source": "test/world_events.elisa",
+  "flags": [],
+  "binary": "build/world-events-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "render-resources",
+  "source": "test/render_resources.elisa",
+  "flags": [],
+  "binary": "build/render-resources-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "camera",
+  "source": "test/camera.elisa",
+  "flags": [],
+  "binary": "build/camera-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics-bodies",
+  "source": "test/physics_bodies.elisa",
+  "flags": [],
+  "binary": "build/physics-bodies-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "asset-scene",
+  "source": "test/asset_scene.elisa",
+  "flags": [],
+  "binary": "build/asset-scene-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics-interpolation",
+  "source": "test/physics_interpolation.elisa",
+  "flags": [],
+  "binary": "build/physics-interpolation-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "material",
+  "source": "test/material.elisa",
+  "flags": [],
+  "binary": "build/material-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "quality",
+  "source": "test/quality.elisa",
+  "flags": [],
+  "binary": "build/quality-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "render-graph",
+  "source": "test/render_graph.elisa",
+  "flags": [],
+  "binary": "build/render-graph-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "replay",
+  "source": "test/replay.elisa",
+  "flags": [],
+  "binary": "build/replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "image-compare",
+  "source": "test/image_compare.elisa",
+  "flags": [],
+  "binary": "build/image-compare-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "package",
+  "source": "test/package.elisa",
+  "flags": [],
+  "binary": "build/package-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "maze",
+  "source": "test/maze.elisa",
+  "flags": [],
+  "binary": "build/maze-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "maze-game",
+  "source": "test/maze_game.elisa",
+  "flags": [],
+  "binary": "build/maze-game-test",
+  "args": [],
+  "message": "Complete maze game tests passed."
+ },
+ {
+  "name": "anim-state",
+  "source": "test/anim_state.elisa",
+  "flags": [],
+  "binary": "build/anim-state-test",
+  "args": [],
+  "message": "Animation state tests passed."
+ },
+ {
+  "name": "grid-nav",
+  "source": "test/grid_nav.elisa",
+  "flags": [],
+  "binary": "build/grid-nav-test",
+  "args": [],
+  "message": "Grid navigation tests passed."
+ },
+ {
+  "name": "inspector",
+  "source": "test/inspector.elisa",
+  "flags": [],
+  "binary": "build/inspector-test",
+  "args": [],
+  "message": "Inspector and performance counter tests passed."
+ },
+ {
+  "name": "replication",
+  "source": "test/replication.elisa",
+  "flags": [],
+  "binary": "build/replication-test",
+  "args": [],
+  "message": "Replication and determinism scope tests passed."
+ },
+ {
+  "name": "physics-policy",
+  "source": "test/physics_policy.elisa",
+  "flags": [],
+  "binary": "build/physics-policy-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action-input",
+  "source": "test/action_input.elisa",
+  "flags": [],
+  "binary": "build/action-input-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "schedule",
+  "source": "test/schedule.elisa",
+  "flags": [],
+  "binary": "build/schedule-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "editor",
+  "source": "test/editor.elisa",
+  "flags": [],
+  "binary": "build/editor-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "editor-session",
+  "source": "test/editor_session.elisa",
+  "flags": [],
+  "binary": "build/editor-session-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "session",
+  "source": "test/session.elisa",
+  "flags": [],
+  "binary": "build/session-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "maze-bundle",
+  "source": "test/maze_bundle.elisa",
+  "flags": [],
+  "binary": "build/maze-bundle-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio-policy",
+  "source": "test/audio_policy.elisa",
+  "flags": [],
+  "binary": "build/audio-policy-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "anim-codec",
+  "source": "test/anim_codec.elisa",
+  "flags": [],
+  "binary": "build/anim-codec-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_spatial",
+  "source": "test/audio_spatial.elisa",
+  "flags": [],
+  "binary": "build/audio_spatial-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_spatial_scale",
+  "source": "test/audio_spatial_scale.elisa",
+  "flags": [],
+  "binary": "build/audio_spatial_scale-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_events",
+  "source": "test/audio_events.elisa",
+  "flags": [],
+  "binary": "build/audio_events-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_event_assets",
+  "source": "test/audio_event_assets.elisa",
+  "flags": [],
+  "binary": "build/audio_event_assets-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_mixer",
+  "source": "test/audio_mixer.elisa",
+  "flags": [],
+  "binary": "build/audio_mixer-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_virtual",
+  "source": "test/audio_virtual.elisa",
+  "flags": [],
+  "binary": "build/audio_virtual-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_triggers",
+  "source": "test/audio_triggers.elisa",
+  "flags": [],
+  "binary": "build/audio_triggers-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "nav_agent",
+  "source": "test/nav_agent.elisa",
+  "flags": [],
+  "binary": "build/nav_agent-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "catalogue",
+  "source": "test/catalogue.elisa",
+  "flags": [],
+  "binary": "build/catalogue-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "visual_shelf",
+  "source": "test/visual_shelf.elisa",
+  "flags": [],
+  "binary": "build/visual_shelf-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_semantics",
+  "source": "test/ui_semantics.elisa",
+  "flags": [],
+  "binary": "build/ui_semantics-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ai_brain",
+  "source": "test/ai_brain.elisa",
+  "flags": [],
+  "binary": "build/ai_brain-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_protocol",
+  "source": "test/net_protocol.elisa",
+  "flags": [],
+  "binary": "build/net_protocol-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_interest",
+  "source": "test/net_interest.elisa",
+  "flags": [],
+  "binary": "build/net_interest-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "edit_transactions",
+  "source": "test/edit_transactions.elisa",
+  "flags": [],
+  "binary": "build/edit_transactions-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_lag",
+  "source": "test/net_lag.elisa",
+  "flags": [],
+  "binary": "build/net_lag-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_server",
+  "source": "test/net_server.elisa",
+  "flags": [],
+  "binary": "build/net_server-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_lab",
+  "source": "test/net_lab.elisa",
+  "flags": [],
+  "binary": "build/net_lab-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_locale",
+  "source": "test/ui_locale.elisa",
+  "flags": [],
+  "binary": "build/ui_locale-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_touch",
+  "source": "test/ui_touch.elisa",
+  "flags": [],
+  "binary": "build/ui_touch-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_frame_report",
+  "source": "test/backend_frame_report.elisa",
+  "flags": [],
+  "binary": "build/backend_frame_report-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_diagnostics",
+  "source": "test/runtime_diagnostics.elisa",
+  "flags": [],
+  "binary": "build/runtime_diagnostics-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_download",
+  "source": "test/net_download.elisa",
+  "flags": [],
+  "binary": "build/net_download-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "net_session_ui",
+  "source": "test/net_session_ui.elisa",
+  "flags": [],
+  "binary": "build/net_session_ui-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_voice",
+  "source": "test/audio_voice.elisa",
+  "flags": [],
+  "binary": "build/audio_voice-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_regression",
+  "source": "test/audio_regression.elisa",
+  "flags": [],
+  "binary": "build/audio_regression-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_spatial_regression",
+  "source": "test/audio_spatial_regression.elisa",
+  "flags": [],
+  "binary": "build/audio_spatial_regression-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_vector",
+  "source": "test/ui_vector.elisa",
+  "flags": [],
+  "binary": "build/ui_vector-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_origin",
+  "source": "test/physics_origin.elisa",
+  "flags": [],
+  "binary": "build/physics_origin-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_budget",
+  "source": "test/animation_budget.elisa",
+  "flags": [],
+  "binary": "build/animation_budget-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "nav_crowd",
+  "source": "test/nav_crowd.elisa",
+  "flags": [],
+  "binary": "build/nav_crowd-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_vehicle",
+  "source": "test/physics_vehicle.elisa",
+  "flags": [],
+  "binary": "build/physics_vehicle-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_perf_budget",
+  "source": "test/runtime_perf_budget.elisa",
+  "flags": [],
+  "binary": "build/runtime_perf_budget-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "nav_stream",
+  "source": "test/nav_stream.elisa",
+  "flags": [],
+  "binary": "build/nav_stream-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_lod",
+  "source": "test/backend_lod.elisa",
+  "flags": [],
+  "binary": "build/backend_lod-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_residency",
+  "source": "test/backend_residency.elisa",
+  "flags": [],
+  "binary": "build/backend_residency-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_texture_gpu_budget",
+  "source": "test/backend_texture_gpu_budget.elisa",
+  "flags": [],
+  "binary": "build/backend_texture_gpu_budget-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_recovery",
+  "source": "test/backend_recovery.elisa",
+  "flags": [],
+  "binary": "build/backend_recovery-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_recovery_rebuild",
+  "source": "test/backend_recovery_rebuild.elisa",
+  "flags": [],
+  "binary": "build/backend_recovery_rebuild-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_surfaces",
+  "source": "test/backend_surfaces.elisa",
+  "flags": [],
+  "binary": "build/backend_surfaces-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_pipeline_cache",
+  "source": "test/backend_pipeline_cache.elisa",
+  "flags": [],
+  "binary": "build/backend_pipeline_cache-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_stability",
+  "source": "test/physics_stability.elisa",
+  "flags": [],
+  "binary": "build/physics_stability-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_foot_plant",
+  "source": "test/animation_foot_plant.elisa",
+  "flags": [],
+  "binary": "build/animation_foot_plant-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_retarget",
+  "source": "test/animation_retarget.elisa",
+  "flags": [],
+  "binary": "build/animation_retarget-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_contrast",
+  "source": "test/ui_contrast.elisa",
+  "flags": [],
+  "binary": "build/ui_contrast-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_edit_field",
+  "source": "test/ui_edit_field.elisa",
+  "flags": [],
+  "binary": "build/ui_edit_field-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_import_limits",
+  "source": "test/assets_import_limits.elisa",
+  "flags": [],
+  "binary": "build/assets_import_limits-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_glb_fuzz",
+  "source": "test/assets_glb_fuzz.elisa",
+  "flags": [],
+  "binary": "build/assets_glb_fuzz-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_list_model",
+  "source": "test/ui_list_model.elisa",
+  "flags": [],
+  "binary": "build/ui_list_model-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_slider",
+  "source": "test/ui_slider.elisa",
+  "flags": [],
+  "binary": "build/ui_slider-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_tree_model",
+  "source": "test/ui_tree_model.elisa",
+  "flags": [],
+  "binary": "build/ui_tree_model-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_binding",
+  "source": "test/ui_binding.elisa",
+  "flags": [],
+  "binary": "build/ui_binding-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_settings_page",
+  "source": "test/ui_settings_page.elisa",
+  "flags": [],
+  "binary": "build/ui_settings_page-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_settings_view",
+  "source": "test/ui_settings_view.elisa",
+  "flags": [],
+  "binary": "build/ui_settings_view-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_quality_page",
+  "source": "test/ui_quality_page.elisa",
+  "flags": [],
+  "binary": "build/ui_quality_page-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_audio_page",
+  "source": "test/ui_audio_page.elisa",
+  "flags": [],
+  "binary": "build/ui_audio_page-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_inspector",
+  "source": "test/ui_inspector.elisa",
+  "flags": [],
+  "binary": "build/ui_inspector-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_replay_subsystems",
+  "source": "test/runtime_replay_subsystems.elisa",
+  "flags": [],
+  "binary": "build/runtime_replay_subsystems-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_device_choice",
+  "source": "test/runtime_device_choice.elisa",
+  "flags": [],
+  "binary": "build/runtime_device_choice-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "backend_shadow_cascades",
+  "source": "test/backend_shadow_cascades.elisa",
+  "flags": [],
+  "binary": "build/backend_shadow_cascades-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_buoyancy",
+  "source": "test/physics_buoyancy.elisa",
+  "flags": [],
+  "binary": "build/physics_buoyancy-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_fabrik",
+  "source": "test/animation_fabrik.elisa",
+  "flags": [],
+  "binary": "build/animation_fabrik-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_circles2d",
+  "source": "test/physics_circles2d.elisa",
+  "flags": [],
+  "binary": "build/physics_circles2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_graph",
+  "source": "test/animation_graph.elisa",
+  "flags": [],
+  "binary": "build/animation_graph-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_layers",
+  "source": "test/animation_layers.elisa",
+  "flags": [],
+  "binary": "build/animation_layers-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_drivetrain",
+  "source": "test/physics_drivetrain.elisa",
+  "flags": [],
+  "binary": "build/physics_drivetrain-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_sweep2d",
+  "source": "test/physics_sweep2d.elisa",
+  "flags": [],
+  "binary": "build/physics_sweep2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_world2d",
+  "source": "test/physics_world2d.elisa",
+  "flags": [],
+  "binary": "build/physics_world2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_query2d",
+  "source": "test/physics_query2d.elisa",
+  "flags": [],
+  "binary": "build/physics_query2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_mailbox",
+  "source": "test/world_mailbox.elisa",
+  "flags": [],
+  "binary": "build/world_mailbox-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_sleep2d",
+  "source": "test/physics_sleep2d.elisa",
+  "flags": [],
+  "binary": "build/physics_sleep2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_world2d_sleep",
+  "source": "test/physics_world2d_sleep.elisa",
+  "flags": [],
+  "binary": "build/physics_world2d_sleep-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_hot_reload",
+  "source": "test/assets_hot_reload.elisa",
+  "flags": [],
+  "binary": "build/assets_hot_reload-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_message_format",
+  "source": "test/ui_message_format.elisa",
+  "flags": [],
+  "binary": "build/ui_message_format-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "save_migrations",
+  "source": "test/save_migrations.elisa",
+  "flags": [],
+  "binary": "build/save_migrations-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_ragdoll_handoff",
+  "source": "test/physics_ragdoll_handoff.elisa",
+  "flags": [],
+  "binary": "build/physics_ragdoll_handoff-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_ragdoll_mapping",
+  "source": "test/physics_ragdoll_mapping.elisa",
+  "flags": [],
+  "binary": "build/physics_ragdoll_mapping-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_ccd2d",
+  "source": "test/physics_ccd2d.elisa",
+  "flags": [],
+  "binary": "build/physics_ccd2d-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_decision_log",
+  "source": "test/runtime_decision_log.elisa",
+  "flags": [],
+  "binary": "build/runtime_decision_log-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_decision_log_codec",
+  "source": "test/runtime_decision_log_codec.elisa",
+  "flags": [],
+  "binary": "build/runtime_decision_log_codec-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_localized_label",
+  "source": "test/ui_localized_label.elisa",
+  "flags": [],
+  "binary": "build/ui_localized_label-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_decision_replay",
+  "source": "test/runtime_decision_replay.elisa",
+  "flags": [],
+  "binary": "build/runtime_decision_replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_ccd2d_ramp",
+  "source": "test/physics_ccd2d_ramp.elisa",
+  "flags": [],
+  "binary": "build/physics_ccd2d_ramp-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_world2d_presets",
+  "source": "test/physics_world2d_presets.elisa",
+  "flags": [],
+  "binary": "build/physics_world2d_presets-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_events_logged",
+  "source": "test/audio_events_logged.elisa",
+  "flags": [],
+  "binary": "build/audio_events_logged-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_decision_chunks",
+  "source": "test/runtime_decision_chunks.elisa",
+  "flags": [],
+  "binary": "build/runtime_decision_chunks-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_locale_data",
+  "source": "test/ui_locale_data.elisa",
+  "flags": [],
+  "binary": "build/ui_locale_data-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "runtime_replay_subsystems_codec",
+  "source": "test/runtime_replay_subsystems_codec.elisa",
+  "flags": [],
+  "binary": "build/runtime_replay_subsystems_codec-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_layer_diagnostics",
+  "source": "test/physics_layer_diagnostics.elisa",
+  "flags": [],
+  "binary": "build/physics_layer_diagnostics-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_bidi",
+  "source": "test/ui_bidi.elisa",
+  "flags": [],
+  "binary": "build/ui_bidi-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "physics_ragdoll_cook",
+  "source": "test/physics_ragdoll_cook.elisa",
+  "flags": [],
+  "binary": "build/physics_ragdoll_cook-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_graph_replay",
+  "source": "test/animation_graph_replay.elisa",
+  "flags": [],
+  "binary": "build/animation_graph_replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ai_brain_replay",
+  "source": "test/ai_brain_replay.elisa",
+  "flags": [],
+  "binary": "build/ai_brain_replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_bidi_utf8",
+  "source": "test/ui_bidi_utf8.elisa",
+  "flags": [],
+  "binary": "build/ui_bidi_utf8-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_arabic_shaping",
+  "source": "test/ui_arabic_shaping.elisa",
+  "flags": [],
+  "binary": "build/ui_arabic_shaping-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_command_primary",
+  "source": "test/world_command_primary.elisa",
+  "flags": [],
+  "binary": "build/world_command_primary-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_phase_iteration",
+  "source": "test/world_phase_iteration.elisa",
+  "flags": [],
+  "binary": "build/world_phase_iteration-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_access_serials",
+  "source": "test/world_access_serials.elisa",
+  "flags": [],
+  "binary": "build/world_access_serials-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_anim_events",
+  "source": "test/audio_anim_events.elisa",
+  "flags": [],
+  "binary": "build/audio_anim_events-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "audio_music",
+  "source": "test/audio_music.elisa",
+  "flags": [],
+  "binary": "build/audio_music-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_save",
+  "source": "test/world_save.elisa",
+  "flags": [],
+  "binary": "build/world_save-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_save_rendering",
+  "source": "test/world_save_rendering.elisa",
+  "flags": [],
+  "binary": "build/world_save_rendering-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "world_save_swap",
+  "source": "test/world_save_swap.elisa",
+  "flags": [],
+  "binary": "build/world_save_swap-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_input_replay",
+  "source": "test/action_input_replay.elisa",
+  "flags": [],
+  "binary": "build/action_input_replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_input_recording",
+  "source": "test/action_input_recording.elisa",
+  "flags": [],
+  "binary": "build/action_input_recording-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_pointer_axes",
+  "source": "test/action_pointer_axes.elisa",
+  "flags": [],
+  "binary": "build/action_pointer_axes-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_input_profile",
+  "source": "test/action_input_profile.elisa",
+  "flags": [],
+  "binary": "build/action_input_profile-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_pointer_replay",
+  "source": "test/action_pointer_replay.elisa",
+  "flags": [],
+  "binary": "build/action_pointer_replay-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_input_physical",
+  "source": "test/action_input_physical.elisa",
+  "flags": [],
+  "binary": "build/action_input_physical-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "action_input_players",
+  "source": "test/action_input_players.elisa",
+  "flags": [],
+  "binary": "build/action_input_players-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_motion_filters",
+  "source": "test/animation_motion_filters.elisa",
+  "flags": [],
+  "binary": "build/animation_motion_filters-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_motion_quat",
+  "source": "test/animation_motion_quat.elisa",
+  "flags": [],
+  "binary": "build/animation_motion_quat-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_mocap_clip",
+  "source": "test/animation_mocap_clip.elisa",
+  "flags": [],
+  "binary": "build/animation_mocap_clip-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_pose_fade",
+  "source": "test/animation_pose_fade.elisa",
+  "flags": [],
+  "binary": "build/animation_pose_fade-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_pose_playback",
+  "source": "test/animation_pose_playback.elisa",
+  "flags": [],
+  "binary": "build/animation_pose_playback-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_pose_playback_render",
+  "source": "test/animation_pose_playback_render.elisa",
+  "flags": [],
+  "binary": "build/animation_pose_playback_render-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_leg_chain",
+  "source": "test/animation_leg_chain.elisa",
+  "flags": [],
+  "binary": "build/animation_leg_chain-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_leg_chain_reference",
+  "source": "test/animation_leg_chain_reference.elisa",
+  "flags": [],
+  "binary": "build/animation_leg_chain_reference-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_foot_pivot",
+  "source": "test/animation_foot_pivot.elisa",
+  "flags": [],
+  "binary": "build/animation_foot_pivot-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_foot_pivot_reference",
+  "source": "test/animation_foot_pivot_reference.elisa",
+  "flags": [],
+  "binary": "build/animation_foot_pivot_reference-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_pelvis_smoothing",
+  "source": "test/animation_pelvis_smoothing.elisa",
+  "flags": [],
+  "binary": "build/animation_pelvis_smoothing-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_pelvis_smoothing_reference",
+  "source": "test/animation_pelvis_smoothing_reference.elisa",
+  "flags": [],
+  "binary": "build/animation_pelvis_smoothing_reference-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_glb_container",
+  "source": "test/assets_glb_container.elisa",
+  "flags": [],
+  "binary": "build/assets_glb_container-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_animation_map",
+  "source": "test/assets_gltf_animation_map.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_animation_map-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_key_track",
+  "source": "test/assets_gltf_key_track.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_key_track-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_skeleton",
+  "source": "test/assets_gltf_skeleton.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_skeleton-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_track_sample",
+  "source": "test/assets_gltf_track_sample.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_track_sample-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_number",
+  "source": "test/assets_gltf_number.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_number-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_rest_pose",
+  "source": "test/assets_gltf_rest_pose.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_rest_pose-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_world_pose",
+  "source": "test/assets_gltf_world_pose.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_world_pose-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_cubic_sample",
+  "source": "test/assets_gltf_cubic_sample.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_cubic_sample-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_gltf_matrix_trs",
+  "source": "test/assets_gltf_matrix_trs.elisa",
+  "flags": [],
+  "binary": "build/assets_gltf_matrix_trs-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_skeleton_pick",
+  "source": "test/animation_skeleton_pick.elisa",
+  "flags": [],
+  "binary": "build/animation_skeleton_pick-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_gizmo",
+  "source": "test/animation_gizmo.elisa",
+  "flags": [],
+  "binary": "build/animation_gizmo-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_overlay_trail",
+  "source": "test/animation_overlay_trail.elisa",
+  "flags": [],
+  "binary": "build/animation_overlay_trail-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_foot_contact",
+  "source": "test/animation_foot_contact.elisa",
+  "flags": [],
+  "binary": "build/animation_foot_contact-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_overlay_lines",
+  "source": "test/animation_overlay_lines.elisa",
+  "flags": [],
+  "binary": "build/animation_overlay_lines-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_skeleton_display",
+  "source": "test/animation_skeleton_display.elisa",
+  "flags": [],
+  "binary": "build/animation_skeleton_display-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_gizmo_display",
+  "source": "test/animation_gizmo_display.elisa",
+  "flags": [],
+  "binary": "build/animation_gizmo_display-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_effector_drag",
+  "source": "test/animation_effector_drag.elisa",
+  "flags": [],
+  "binary": "build/animation_effector_drag-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_effector_pose",
+  "source": "test/animation_effector_pose.elisa",
+  "flags": [],
+  "binary": "build/animation_effector_pose-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_gizmo_cursor",
+  "source": "test/animation_gizmo_cursor.elisa",
+  "flags": [],
+  "binary": "build/animation_gizmo_cursor-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_glb_document",
+  "source": "test/assets_glb_document.elisa",
+  "flags": [],
+  "binary": "build/assets_glb_document-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_long_clip",
+  "source": "test/animation_long_clip.elisa",
+  "flags": [],
+  "binary": "build/animation_long_clip-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_mocap_pipeline",
+  "source": "test/assets_mocap_pipeline.elisa",
+  "flags": [],
+  "binary": "build/assets_mocap_pipeline-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "viewport_camera",
+  "source": "test/viewport_camera.elisa",
+  "flags": [],
+  "binary": "build/viewport_camera-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "viewport_skeleton",
+  "source": "test/viewport_skeleton.elisa",
+  "flags": [],
+  "binary": "build/viewport_skeleton-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "viewport_gizmo",
+  "source": "test/viewport_gizmo.elisa",
+  "flags": [],
+  "binary": "build/viewport_gizmo-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "prefab_scene_diagnostics",
+  "source": "test/prefab_scene_diagnostics.elisa",
+  "flags": [],
+  "binary": "build/prefab_scene_diagnostics-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "quality_cost",
+  "source": "test/quality_cost.elisa",
+  "flags": [],
+  "binary": "build/quality_cost-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "animation_cooked_contract",
+  "source": "test/animation_cooked_contract.elisa",
+  "flags": [],
+  "binary": "build/animation_cooked_contract-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "nav_cook_plan",
+  "source": "test/nav_cook_plan.elisa",
+  "flags": [],
+  "binary": "build/nav_cook_plan-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_clip",
+  "source": "test/ui_clip.elisa",
+  "flags": [],
+  "binary": "build/ui_clip-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "ui_focus_nav",
+  "source": "test/ui_focus_nav.elisa",
+  "flags": [],
+  "binary": "build/ui_focus_nav-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "assets_glb_resize",
+  "source": "test/assets_glb_resize.elisa",
+  "flags": [],
+  "binary": "build/assets_glb_resize-test",
+  "args": [],
+  "message": null
+ },
+ {
+  "name": "viewport_mesh",
+  "source": "test/viewport_mesh.elisa",
+  "flags": [],
+  "binary": "build/viewport_mesh-test",
+  "args": [],
+  "message": null
+ }
+]
