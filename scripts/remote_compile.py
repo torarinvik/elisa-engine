@@ -45,7 +45,7 @@ class Remote:
     def probe(self, local_sha, triple):
         """Size the host's pool and hash its compiler. Returns an error string or None."""
         probe = (f"mkdir -p ~/{REMOTE_TREE} && "
-                 "awk '{print ($1==\"max\") ? n : int($1/$2)}' n=$(nproc) /sys/fs/cgroup/cpu.max 2>/dev/null || nproc; "
+                 "{ awk '{print ($1==\"max\") ? n : int($1/$2)}' n=$(nproc) /sys/fs/cgroup/cpu.max 2>/dev/null || { q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null); p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null); if [ -n \"$q\" ] && [ \"$q\" -gt 0 ]; then echo $((q / p)); else nproc; fi; }; }; "
                  "m=$(awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo); "
                  "l=$(cat /sys/fs/cgroup/memory.max 2>/dev/null); c=$(cat /sys/fs/cgroup/memory.current 2>/dev/null); "
                  "if [ -n \"$l\" ] && [ \"$l\" != max ]; then g=$(( (l - c) / 1073741824 )); [ $g -lt $m ] && m=$g; fi; echo $m; "

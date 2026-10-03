@@ -72,7 +72,7 @@ def main():
                                        "l=$(cat /sys/fs/cgroup/memory.max 2>/dev/null); c=$(cat /sys/fs/cgroup/memory.current 2>/dev/null); "
                                        "if [ -n \"$l\" ] && [ \"$l\" != max ]; then g=$(( (l - c) / 1073741824 )); [ $g -lt $m ] && m=$g; fi; echo $m; "
                                        # cgroup quota, not nproc: rented containers report host cores
-                                       "awk '{print ($1==\"max\") ? n : int($1/$2)}' n=$(nproc) /sys/fs/cgroup/cpu.max 2>/dev/null || nproc"],
+                                       "{ awk '{print ($1==\"max\") ? n : int($1/$2)}' n=$(nproc) /sys/fs/cgroup/cpu.max 2>/dev/null || { q=$(cat /sys/fs/cgroup/cpu/cpu.cfs_quota_us 2>/dev/null); p=$(cat /sys/fs/cgroup/cpu/cpu.cfs_period_us 2>/dev/null); if [ -n \"$q\" ] && [ \"$q\" -gt 0 ]; then echo $((q / p)); else nproc; fi; }; }"],
                                capture_output=True, text=True)
         try:
             mem, cores = (int(x) for x in probe.stdout.split()[-2:])
