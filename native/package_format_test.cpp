@@ -3,11 +3,13 @@
 #include "package_manifest.h"
 #include "cooked_geometry_fuzz.h"
 #include "image_header_fuzz.h"
+#include "import_worker_process.h"
 
 #include <algorithm>
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -103,6 +105,55 @@ bool image_fuzz_checks() {
         first.accepted, first.refused, first.broken);
     return first.digest == again.digest && first.broken == 0 && first.accepted > 0 && first.refused > 0;
 }
+// Isolated imports: a good package imports, corrupt bytes are refused with a
+// reason, a crash and a hang become diagnostics, and the package is untouched.
+bool worker_checks(const char* path) {
+    namespace ea = elisa::assets;
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<uint8_t> before{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    const std::string package(path);
+    auto import_package = [&package](const std::string& target) {
+        return [package, target](std::string& out) {
+            const probe::BinaryPackageIndex index = probe::read_binary_package_index(target);
+            if (!index.valid) {
+                out = index.error.empty() ? "index rejected" : index.error;
+                return false;
+            }
+            out = std::to_string(index.sections.size()) + " sections";
+            return true;
+        };
+    };
+    const auto good = ea::run_import_worker("good", import_package(package), std::chrono::seconds(20));
+    const std::string corrupt_path = package + ".worker";
+    {
+        std::ofstream corrupt(corrupt_path, std::ios::binary);
+        corrupt << "not a package";
+    }
+    const auto bad = ea::run_import_worker("corrupt", import_package(corrupt_path), std::chrono::seconds(20));
+    std::remove(corrupt_path.c_str());
+    const auto crash = ea::run_import_worker("crash", [](std::string&) -> bool {
+        volatile int* null_pointer = nullptr;
+        return *null_pointer == 0;
+    }, std::chrono::seconds(20));
+    const auto started = std::chrono::steady_clock::now();
+    const auto hang = ea::run_import_worker("hang", [](std::string&) -> bool {
+        for (;;) pause();
+    }, std::chrono::milliseconds(200));
+    const auto waited = std::chrono::steady_clock::now() - started;
+    const auto thrown = ea::run_import_worker("throw", [](std::string&) -> bool {
+        throw std::runtime_error("bad");
+    }, std::chrono::seconds(20));
+    std::ifstream again(path, std::ios::binary);
+    const std::vector<uint8_t> after{std::istreambuf_iterator<char>(again), std::istreambuf_iterator<char>()};
+    std::printf("%s | %s | %s | %s | %s\n", good.diagnostic.c_str(), bad.diagnostic.c_str(),
+        crash.diagnostic.c_str(), hang.diagnostic.c_str(), thrown.diagnostic.c_str());
+    return good.outcome == ea::ImportWorkerOutcome::Imported && good.payload.find("sections") != std::string::npos &&
+        bad.outcome == ea::ImportWorkerOutcome::Refused && !bad.payload.empty() &&
+        crash.outcome == ea::ImportWorkerOutcome::Crashed &&
+        hang.outcome == ea::ImportWorkerOutcome::TimedOut && waited < std::chrono::seconds(10) &&
+        thrown.outcome == ea::ImportWorkerOutcome::Refused && thrown.payload == "import threw" &&
+        before == after && !before.empty();
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -135,6 +186,7 @@ int main(int argc, char** argv) {
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
         geometry.indices.empty() || geometry.indices.size() % 3 != 0) return 9;
     if (!fuzz_checks(argv[1], index)) return 17;
+    if (!worker_checks(argv[1])) return 19;
     if (argc == FULL_FIXTURE_ARGUMENT_COUNT && geometry.positions.size() == 9 &&
         (geometry.positions[0] != 0.0f || geometry.positions[3] != 1.0f ||
             geometry.positions[7] != 1.0f || geometry.normals[2] != 1.0f ||
