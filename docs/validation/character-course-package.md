@@ -98,8 +98,10 @@ status to its caller. This does not collect a CrashReporter stack trace.
 - **Signing:** the packager ad-hoc signs copied dynamic libraries after their
   load commands change. The outer `.app` bundle is unsigned; release signing
   and notarization are not done.
-- **Manual play:** the packaged executable is the finite self-test. Interactive
-  play of `examples/character_course/main.elisa` by a person is still open.
+- **Manual play:** the packaged interactive game has only partial gameplay
+  coverage. Movement, controls rebinding and restart are verified below;
+  traversal, jumping, crouching, win/fall outcomes and a physical controller
+  remain unchecked.
 
 ## macOS 27 relocation rerun (2026-10-03)
 
@@ -206,6 +208,15 @@ manual interaction was outside the relocation sandbox. The relocated report
 still establishes offline startup only. Manual traversal, jumping, crouching,
 and reaching the win/fall outcomes remain unchecked; no physical controller
 was tested.
+
+The restart path had been exiting after W movement. It now creates the
+replacement character before retiring the old one, advances physics once, and
+refreshes the grounded state before the next gameplay frame queries it. In a
+fresh isolated package (`org.elisa.character-course.restartfix6`), ten W inputs
+visibly moved the character; R returned it to the entrance, and the app stayed
+open. Closing the test window then produced `process_exit_status=0` in the
+package log. This verifies movement and restart in the packaged build; it does
+not cover the remaining gameplay paths listed above.
 
 The validator now waits for the full launcher process group before removing its
 temporary home. `scripts/test_interactive_macos_app.py` holds a child open after

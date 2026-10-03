@@ -321,8 +321,12 @@ module CharacterCourse:
 
         def restart_character(session: mutable RuntimeServices::Session&,
             character: PhysicsRuntime::CharacterHandle) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            # Keep the current attempt alive if allocating its replacement
+            # fails. Checkpoint restore follows the same create-then-retire
+            # ordering so restart and load have identical failure behavior.
+            restarted: PhysicsRuntime::CharacterHandle = try create_character(session)
             try RuntimeServices::physics_character_destroy(session, character)
-            try create_character(session)
+            restarted
 
         def checkpoint_of(state: GameState&, pose: PhysicsRuntime::BodyPose,
             crouched: bool) -> CourseProgress::Checkpoint:
@@ -481,7 +485,9 @@ module CharacterCourse:
                     value: value
                     error failure: -1
                 return 34 if started != 0
-                played: i32 = interactive_loop(session, character, avatar, instruction, guide, mode, cells, cell_runtime, cell_world, beacons)
+                played: i32 = interactive_loop(session, character, avatar,
+                    instruction, guide, mode, cells, cell_runtime, cell_world,
+                    beacons)
                 _ = devices_quit(&devices)
                 played
 

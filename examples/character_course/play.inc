@@ -26,6 +26,60 @@
             state: GameState&, crouched: bool) -> void error[RenderScene::RenderSceneError]:
             try RenderScene::set_overlay_text(handle, status_text(state, crouched))
 
+        # A failed restart should leave the game running with a status message.
+        # Character creation is transactional, so allocation failure preserves
+        # the current attempt.
+        def restart_live(session: mutable RuntimeServices::Session&,
+            character: mutable PhysicsRuntime::CharacterHandle&,
+            state: mutable GameState&, sounds: mutable CourseSounds::Sounds&,
+            beacons: mutable CourseBeacons::Beacons&, grounded: mutable bool&,
+            crouched: mutable bool&, jump_queued: mutable bool&,
+            clock: mutable Runtime::StepClock&, previous_elapsed_nanos: mutable u64&,
+            elapsed_nanos: u64, avatar: RenderScene::InstanceHandle,
+            instruction: RenderScene::OverlayTextHandle,
+            look: CourseLook::Look) -> bool:
+            restarted: PhysicsRuntime::CharacterHandle = catch restart_character(session, character):
+                value: value
+                error failure: return false
+            character <- restarted
+            restart(state)
+            CourseSounds::reset_scene(sounds)
+            _ = CourseSounds::restart_music(sounds)
+            _ = CourseSounds::set_paused(sounds, false)
+            beacon_status: i32 = catch CourseBeacons::reset(beacons):
+                value: value
+                error failure: return false
+            return false if beacon_status != 0
+            crouched <- false
+            jump_queued <- false
+            clock <- Runtime::StepClock()
+            previous_elapsed_nanos <- elapsed_nanos
+            stepped: bool = catch RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds()):
+                value: true
+                error failure: false
+            return false if not stepped
+            ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(session, character):
+                value: value
+                error failure: return false
+            grounded <- ground.state == PhysicsRuntime::CharacterGroundState.OnGround
+            pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(session, character):
+                value: value
+                error failure: return false
+            avatar_updated: bool = catch update_avatar(avatar, pose, crouched):
+                ok: true
+                error failure: false
+            return false if not avatar_updated
+            camera_updated: bool = catch update_camera_look(pose, look):
+                ok: true
+                error failure: false
+            return false if not camera_updated
+            status_updated: bool = catch refresh_status(instruction, state, crouched):
+                ok: true
+                error failure: false
+            return false if not status_updated
+            true
+
         def load_message(status: CourseProgress::LoadStatus) -> cstr:
             if status == CourseProgress::LoadStatus.Missing:
                 "No checkpoint saved yet | Q save"
@@ -445,21 +499,15 @@
                             _ = announce_row(keymap, pads, settings, menu.selected)
                             _ = try RenderScene::set_overlay_text(instruction, menu_hint())
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_RESTART):
-                            character <- try restart_character(session, character)
-                            restart(&state)
-                            CourseSounds::reset_scene(&sounds)
-                            _ = CourseSounds::restart_music(&sounds)
-                            _ = CourseSounds::set_paused(&sounds, false)
-                            _ = try CourseBeacons::reset(beacons)
-                            grounded <- true
-                            crouched <- false
-                            jump_queued <- false
-                            clock <- Runtime::StepClock()
-                            previous_elapsed_nanos <- frame.elapsed_nanos
-                            pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
-                            _ = try update_avatar(avatar, pose, crouched)
-                            _ = try update_camera_look(pose, look)
-                            _ = try refresh_status(instruction, state, crouched)
+                            restarted: bool = restart_live(session, &character,
+                                state, sounds, beacons, &grounded, &crouched,
+                                &jump_queued, &clock, &previous_elapsed_nanos,
+                                frame.elapsed_nanos, avatar, instruction, look)
+                            if not restarted:
+                                _ = catch RenderScene::set_overlay_text(instruction,
+                                    "Restart incomplete; see the application log"):
+                                    ok: true
+                                    error failure: false
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_SAVE):
                             saved_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
                             checkpoint: CourseProgress::Checkpoint = checkpoint_of(state, saved_pose, crouched)
