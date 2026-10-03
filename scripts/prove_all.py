@@ -8,7 +8,7 @@ proof/ and src/ are rsynced to HOST:~/work/elisa-engine-runner/tree. Each report
 build/<name>-proof.json exactly as scripts/check.elisascript expects. Exit status is the first
 failing proof's status, else 0.
 """
-import argparse, concurrent.futures as cf, hashlib, os, re, subprocess, sys, threading
+import argparse, concurrent.futures as cf, hashlib, os, re, subprocess, sys, threading, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -96,18 +96,19 @@ def main():
                 cmd = ssh + [host, f"cd {REMOTE_TREE} && {path} --json proof/{n}.elisa"]
             else:
                 cmd = [a.prover, "--json", str(ROOT / "proof" / f"{n}.elisa")]
+            t0 = time.time()
             p = subprocess.run(cmd, capture_output=True, text=True)
+            took = time.time() - t0
             where = remote[0] if remote else "local"
             with lock:
                 results[n] = (p.returncode, p.stdout, p.stderr, where)
-                print(f"{'ok ' if p.returncode == 0 else 'FAIL'} {n} [{where}]", flush=True)
+                print(f"{'ok ' if p.returncode == 0 else 'FAIL'} {n} [{where}] {took:.1f}s", flush=True)
             if p.returncode == 0:
                 (cache / f"{key}.json").write_text(p.stdout)
 
-    with cf.ThreadPoolExecutor() as ex:
-        futs = [ex.submit(worker, None) for _ in range(min(a.j, len(todo)))]
-        for remote in remotes:
-            futs += [ex.submit(worker, remote) for _ in range(min(remote[3], len(todo)))]
+    slots = [None] * min(a.j, len(todo)) + [r for r in remotes for _ in range(min(r[3], len(todo)))]
+    with cf.ThreadPoolExecutor(max_workers=max(1, len(slots))) as ex:
+        futs = [ex.submit(worker, slot) for slot in slots]
         for f in futs:
             f.result()
 
