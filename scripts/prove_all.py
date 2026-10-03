@@ -65,7 +65,8 @@ def main():
     for spec in (a.remote.split(",") if a.remote and todo else []):
         target, path = spec.split(":", 1)
         host, _, port = target.partition("#")
-        ssh = ["ssh", "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR"] + (["-p", port] if port else [])
+        ssh = ["ssh", "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR", "-o", "ControlMaster=auto",
+               "-o", f"ControlPath={os.path.expanduser('~')}/.ssh/cm-%C", "-o", "ControlPersist=120"] + (["-p", port] if port else [])
         probe = subprocess.run(ssh + [host, "awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo; nproc"],
                                capture_output=True, text=True)
         try:
@@ -97,7 +98,10 @@ def main():
             else:
                 cmd = [a.prover, "--json", str(ROOT / "proof" / f"{n}.elisa")]
             t0 = time.time()
-            p = subprocess.run(cmd, capture_output=True, text=True)
+            for _ in range(3):  # 255 is ssh itself failing (connection limits), not the prover
+                p = subprocess.run(cmd, capture_output=True, text=True)
+                if not remote or p.returncode != 255:
+                    break
             took = time.time() - t0
             where = remote[0] if remote else "local"
             with lock:
