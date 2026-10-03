@@ -70,5 +70,13 @@ and JSON pass those checks, then charges the document's byte copy, 64 bytes per 
 per decoded f32. `test/assets_glb_document.elisa` (cases 80-84) checks the exact byte total, depth
 and copy refusals and a truncated file; dropping the decoded-value charge fails at 81.
 
+The native cooked-model loader (`load_cooked_geometry_bytes`) has a seeded corpus in
+`native/cooked_geometry_fuzz.h`: 2048 mutants of the decoded mesh section (bit flips, extreme 32-bit
+fields, truncation, duplicated spans), run twice for a matching digest by
+`native/package_format_test.cpp` (exit 17) in `scripts/test_elisa_package.py`. Every mutant is
+refused with a message or keeps the stream invariants (positions, normals, UVs, triangle indices in
+range): 259 accepted, 1789 refused, 0 broken, also clean under ASan+UBSan. Disabling the index range
+check lets 11 broken mutants through and fails with 17.
+
 Still open: model, image and animation importers beyond the container, out-of-process
 workers, and timeouts.

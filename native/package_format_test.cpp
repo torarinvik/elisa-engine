@@ -1,6 +1,7 @@
 #include "cooked_geometry_package.h"
 #include "cooked_collision_geometry.h"
 #include "package_manifest.h"
+#include "cooked_geometry_fuzz.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -63,6 +64,20 @@ bool collision_package_checks() {
         geometry.indices.size() != 6) return false;
     return true;
 }
+// A12: 2048 seeded mutants of the decoded mesh section; each run must be
+// reproducible, refuse with a message or keep the invariants, and see both
+// outcomes.
+bool fuzz_checks(const char* path, const probe::BinaryPackageIndex& index) {
+    std::vector<uint8_t> base;
+    std::string error;
+    if (!probe::read_binary_package_section(path, index, "mesh", base, error) || base.empty()) return false;
+    const auto first = elisa::assets::fuzz::fuzz_cooked_geometry(base, 20261003u, 2048);
+    const auto again = elisa::assets::fuzz::fuzz_cooked_geometry(base, 20261003u, 2048);
+    std::printf("cooked geometry fuzz: %u accepted, %u refused, %u broken\n",
+        first.accepted, first.refused, first.broken);
+    return first.digest == again.digest && first.broken == 0 && first.refused > 0 && first.accepted > 0 &&
+        first.accepted + first.refused == 2048;
+}
 } // namespace
 
 int main(int argc, char** argv) {
@@ -93,6 +108,7 @@ int main(int argc, char** argv) {
         geometry.normals.size() != geometry.positions.size() ||
         geometry.uvs.size() != geometry.positions.size() / 3 * 2 ||
         geometry.indices.empty() || geometry.indices.size() % 3 != 0) return 9;
+    if (!fuzz_checks(argv[1], index)) return 17;
     if (argc == FULL_FIXTURE_ARGUMENT_COUNT && geometry.positions.size() == 9 &&
         (geometry.positions[0] != 0.0f || geometry.positions[3] != 1.0f ||
             geometry.positions[7] != 1.0f || geometry.normals[2] != 1.0f ||
