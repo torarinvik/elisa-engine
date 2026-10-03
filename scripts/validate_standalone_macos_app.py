@@ -33,6 +33,8 @@ def main() -> int:
             base = Path(folder).resolve()
             app = base / source.name
             shutil.copytree(source, app)
+            isolated_home = base / "home"
+            isolated_home.mkdir()
             profile = base / "deny-build-machine.sb"
             def quote(path: Path) -> str:
                 return str(path).replace("\\", "\\\\").replace('"', '\\"')
@@ -50,6 +52,8 @@ def main() -> int:
                     raise ValueError(f"sandbox unexpectedly allowed reading {control}")
             environment = {key: value for key, value in os.environ.items()
                 if not key.startswith(("ELISA_", "WICKED_", "DYLD_"))}
+            # Keep packaged saves, logs, and crash reports inside the disposable run.
+            environment["HOME"] = str(isolated_home)
             launcher = app / "Contents/MacOS" / executable
             for index in range(args.runs):
                 result = subprocess.run(["/usr/bin/sandbox-exec", "-f", str(profile), str(launcher)],

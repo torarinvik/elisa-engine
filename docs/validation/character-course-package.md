@@ -99,3 +99,20 @@ status to its caller. This does not collect a CrashReporter stack trace.
   not done.
 - **Manual play:** the packaged executable is the finite self-test. Interactive
   play of `examples/character_course/main.elisa` by a person is still open.
+
+## macOS 27 relocation rerun (2026-10-03)
+
+The existing `CourseValidation.app` was copied to a path with spaces and
+launched twice with source, Homebrew, and outbound network denied:
+
+```text
+python3 scripts/validate_standalone_macos_app.py --app build/CourseValidation.app --runs 2
+```
+
+Both launches exited successfully on macOS 27.0.1, Apple M5 (arm64). The
+packaged game executable SHA-256 was
+`26c6e0858bfc1ae88f1fba41ef6971cb2de4718e3b3c43e5a02555ca349d8f7b`. The
+validator now gives each run a disposable `HOME`, so game saves, launcher logs,
+and crash reports stay out of the developer's profile. This reruns the finite
+self-test package; clean-machine validation, release signing, and interactive
+play remain open.
