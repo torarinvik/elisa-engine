@@ -14,7 +14,7 @@ module MotionQuatGuard:
         # x / length, or 0 when length is zero, tiny, negative or NaN.
         def unit(x: f64, length: f64) -> f64:
             return 0.0 if not (length > EPSILON)
-            scale(x, length)
+            x / length
 
         # True when `normalize` divides; false sends it to the identity.
         def divides(length: f64) -> bool:
