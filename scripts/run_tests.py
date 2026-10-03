@@ -81,7 +81,16 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     scratch = tempfile.mkdtemp(prefix="run-tests-", dir=ROOT / "build")
     remotes, linker = setup_remotes(a, scratch, compiler_sha)
-    identities = [compiler_sha] + sorted({r.identity for r in remotes})
+    # Remember every remote compiler seen with this local one, so a host that is slow or down on a
+    # later run does not invalidate the binaries it built (a remote identity embeds compiler_sha).
+    known_path = cache / "remote-identities.json"
+    try:
+        known = set(json.loads(known_path.read_text()))
+    except (OSError, ValueError):
+        known = set()
+    known = {k for k in known if k.startswith(compiler_sha + "+")} | {r.identity for r in remotes}
+    known_path.write_text(json.dumps(sorted(known)))
+    identities = [compiler_sha] + sorted(known)
 
     durations_path = cache / "durations.json"
     try:
