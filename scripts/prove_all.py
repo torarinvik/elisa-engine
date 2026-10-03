@@ -40,9 +40,10 @@ def main():
     ap.add_argument("prover")
     ap.add_argument("names", nargs="*", help="proof names (default: all of proof/)")
     ap.add_argument("-j", type=int, default=os.cpu_count())
-    ap.add_argument("--remote", help="HOST:PATH of a Linux prover built from the same revision")
+    ap.add_argument("--remote", default=os.environ.get("ELISA_PROOF_REMOTE"),
+                    help="HOST:PATH of a Linux prover built from the same revision (env ELISA_PROOF_REMOTE)")
     ap.add_argument("--remote-prover-sha", help="cache identity of the remote prover (default: local prover's)")
-    ap.add_argument("-r", type=int, default=6, help="remote workers")
+    ap.add_argument("-r", type=int, default=16, help="max workers per remote")
     ap.add_argument("--no-cache", action="store_true")
     a = ap.parse_args()
 
@@ -59,12 +60,27 @@ def main():
         else:
             todo.append((n, key))
 
-    remote_host = None
-    if a.remote and todo:
-        remote_host, remote_prover = a.remote.split(":", 1)
-        subprocess.run(["ssh", remote_host, f"mkdir -p {REMOTE_TREE}"], check=True)
-        subprocess.run(["rsync", "-az", "--delete", "--include=*/", "--include=*.elisa", "--exclude=*",
-                        "proof", "src", f"{remote_host}:{REMOTE_TREE}/"], cwd=ROOT, check=True)
+    # Remotes: comma-separated HOST[#PORT]:PATH entries; each gets workers sized to its free memory.
+    remotes = []
+    for spec in (a.remote.split(",") if a.remote and todo else []):
+        target, path = spec.split(":", 1)
+        host, _, port = target.partition("#")
+        ssh = ["ssh", "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR"] + (["-p", port] if port else [])
+        probe = subprocess.run(ssh + [host, "awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo; nproc"],
+                               capture_output=True, text=True)
+        try:
+            mem, cores = (int(x) for x in probe.stdout.split()[-2:])
+        except ValueError:
+            print(f"remote {host} unreachable; skipping", flush=True)
+            continue
+        workers = min(a.r, mem - 1, cores)
+        if workers <= 0:
+            print(f"remote {host} short of memory; skipping", flush=True)
+            continue
+        subprocess.run(ssh + [host, f"mkdir -p {REMOTE_TREE}"], check=True)
+        subprocess.run(["rsync", "-az", "--delete", "-e", " ".join(ssh), "--include=*/", "--include=*.elisa",
+                        "--exclude=*", "proof", "src", f"{host}:{REMOTE_TREE}/"], cwd=ROOT, check=True)
+        remotes.append((host, ssh, path, workers))
 
     queue, lock = list(todo), threading.Lock()
 
@@ -76,11 +92,12 @@ def main():
         while (item := take()):
             n, key = item
             if remote:
-                cmd = ["ssh", remote_host, f"cd {REMOTE_TREE} && {remote_prover} --json proof/{n}.elisa"]
+                host, ssh, path, _ = remote
+                cmd = ssh + [host, f"cd {REMOTE_TREE} && {path} --json proof/{n}.elisa"]
             else:
                 cmd = [a.prover, "--json", str(ROOT / "proof" / f"{n}.elisa")]
             p = subprocess.run(cmd, capture_output=True, text=True)
-            where = remote_host if remote else "local"
+            where = remote[0] if remote else "local"
             with lock:
                 results[n] = (p.returncode, p.stdout, p.stderr, where)
                 print(f"{'ok ' if p.returncode == 0 else 'FAIL'} {n} [{where}]", flush=True)
@@ -88,9 +105,9 @@ def main():
                 (cache / f"{key}.json").write_text(p.stdout)
 
     with cf.ThreadPoolExecutor() as ex:
-        futs = [ex.submit(worker, False) for _ in range(min(a.j, len(todo)))]
-        if remote_host:
-            futs += [ex.submit(worker, True) for _ in range(min(a.r, len(todo)))]
+        futs = [ex.submit(worker, None) for _ in range(min(a.j, len(todo)))]
+        for remote in remotes:
+            futs += [ex.submit(worker, remote) for _ in range(min(remote[3], len(todo)))]
         for f in futs:
             f.result()
 
