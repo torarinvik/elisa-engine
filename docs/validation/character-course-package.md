@@ -193,3 +193,25 @@ report and launcher log are retained at the paths above. The validator stops
 the still-running game with SIGTERM after startup; graceful shutdown and manual
 gameplay input remain unverified. A clean-machine run, release signing, and
 Q07a manual play remain open.
+
+## Manual controls check (2026-10-04)
+
+The packaged app opened from the workspace was exercised in a visible window.
+Pause opened the controls menu; Forward was rebound from W to H, the menu showed
+the saved binding, and rebinding it to W again restored the original setting.
+Escape then closed the game process. This verifies the local package's pause,
+rebind, save, and quit flow. The CUA app selector could not attach to the
+validator's shell-launched relocated copy by its temporary bundle path, so this
+manual interaction was outside the relocation sandbox. The relocated report
+still establishes offline startup only. Manual traversal, jumping, crouching,
+and reaching the win/fall outcomes remain unchecked; no physical controller
+was tested.
+
+The validator now waits for the full launcher process group before removing its
+temporary home. `scripts/test_interactive_macos_app.py` holds a child open after
+its launcher exits and verifies the validator stops that child before cleanup.
+The relocated offline startup check passed again with this teardown guard.
+The final report, `build/validation/character-course-process-group.json`, records
+the offline startup result, all five non-empty resource groups, and denied
+source, Homebrew, and network access. Shutdown remains a validator SIGTERM; the
+test verifies the process group is gone before temporary files are removed.

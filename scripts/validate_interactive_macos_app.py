@@ -41,19 +41,49 @@ def read_log(path: Path) -> str:
         return ""
 
 
-def stop_process_group(process: subprocess.Popen[bytes], force: bool = False) -> int | None:
-    if process.poll() is not None:
-        return process.returncode
+def process_group_exists(process_group: int) -> bool:
     try:
-        os.killpg(process.pid, signal.SIGKILL if force else signal.SIGTERM)
+        os.killpg(process_group, 0)
     except ProcessLookupError:
-        pass
-    try:
-        return process.wait(timeout=5 if force else 10)
-    except subprocess.TimeoutExpired:
-        if not force:
-            return stop_process_group(process, force=True)
-        return process.poll()
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def wait_for_process_group(process_group: int, timeout: float) -> bool:
+    deadline = time.monotonic() + timeout
+    while process_group_exists(process_group):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.05)
+    return True
+
+
+def stop_process_group(process: subprocess.Popen[bytes], force: bool = False) -> int | None:
+    process_group = process.pid
+    if process.poll() is not None:
+        return_code = process.returncode
+    else:
+        try:
+            os.killpg(process_group, signal.SIGKILL if force else signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        try:
+            return_code = process.wait(timeout=5 if force else 10)
+        except subprocess.TimeoutExpired:
+            if not force:
+                return stop_process_group(process, force=True)
+            return_code = process.poll()
+
+    if not wait_for_process_group(process_group, 5 if force else 10):
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        if not wait_for_process_group(process_group, 5):
+            raise subprocess.TimeoutExpired(str(process_group), 5)
+    return return_code
 
 
 def run_validation(app_source: Path, log_copy: Path,
