@@ -54,7 +54,7 @@ def git_state(path: Path) -> Optional[dict]:
 
 
 def source_manifest(root: Path) -> dict:
-    paths = [root / name for name in ("README.md", "dependencies.md", "Elisa_Engine_Architecture_and_Plan.md")]
+    paths = [root / name for name in ("README.md", "dependencies.md", "IMPLEMENTATION_PLAN.md")]
     for directory in ("src", "test", "proof", "scripts", "docs", "examples"):
         paths.extend(path for path in (root / directory).rglob("*") if path.is_file())
     files = {}
@@ -405,11 +405,7 @@ def native_package_test(root: Path) -> str:
 
 
 MAX_SOURCE_LINES = 600
-# The boxing branch's stable render-scene C ABI exposes bounded animation
-# readback, skin contacts, and interpolation controls needed by Elisa IK/FK.
-# Keep the general source limit strict while allowing that public declaration
-# surface a small, explicit margin.
-SOURCE_LINE_LIMIT_OVERRIDES = {Path("native/render_scene_abi.h"): 640}
+SOURCE_LINE_LIMIT_OVERRIDES: dict = {}
 SOURCE_TREES = ("src", "test", "examples", "proof", "scripts", "native", "backends")
 SOURCE_SUFFIXES = (".elisa", ".py", ".gd", ".cpp", ".h", ".mm", ".elisascript")
 
