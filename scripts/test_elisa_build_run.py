@@ -75,6 +75,8 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertEqual(status, 0)
             self.assertTrue(abi_check.called)
             self.assertTrue(output.is_file())
+            self.assertEqual((output.parent / "libdxcompiler.dylib").resolve(),
+                (wicked_root / "WickedEngine/libdxcompiler.dylib").resolve())
             provenance_path = output.with_name(output.name + ".provenance.json")
             self.assertTrue(provenance_path.is_file())
             provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
@@ -106,6 +108,63 @@ class BuildRunCliTests(unittest.TestCase):
         self.assertIn(str((wicked_root / "WickedEngine/Utility/DirectXMath").resolve()), linker_args)
         self.assertIn(str(runtime_object.resolve()), linker_args)
         self.assertIn("-fno-rtti", linker_args)
+
+    def test_wicked_runtime_staging_is_idempotent_and_tracks_selected_checkout(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Wicked runtime staging ") as temporary_directory:
+            root = Path(temporary_directory)
+            executable = root / "game-build/game"
+            touch(executable)
+            first_source = root / "first checkout/WickedEngine"
+            second_source = root / "second checkout/WickedEngine"
+            touch(first_source / "libdxcompiler.dylib")
+            touch(first_source / "libmetalirconverter.dylib")
+            touch(second_source / "libdxcompiler.dylib")
+
+            staged = runner.stage_wicked_runtime_libraries(executable, first_source)
+            self.assertEqual(len(staged), 2)
+            self.assertTrue(all(path.is_symlink() for path in staged))
+            self.assertEqual(runner.stage_wicked_runtime_libraries(executable, first_source), [])
+
+            runner.stage_wicked_runtime_libraries(executable, second_source)
+            self.assertEqual((executable.parent / "libdxcompiler.dylib").resolve(),
+                (second_source / "libdxcompiler.dylib").resolve())
+            self.assertFalse((executable.parent / "libmetalirconverter.dylib").exists())
+
+    def test_wicked_runtime_staging_rejects_unmanaged_collision(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Wicked runtime collision ") as temporary_directory:
+            root = Path(temporary_directory)
+            executable = root / "build/game"
+            source = root / "WickedEngine"
+            touch(executable)
+            touch(source / "libdxcompiler.dylib")
+            collision = executable.parent / "libdxcompiler.dylib"
+            touch(collision)
+            with self.assertRaisesRegex(runner.WickedRuntimeError, "refusing to replace"):
+                runner.stage_wicked_runtime_libraries(executable, source)
+
+    def test_wicked_runtime_staging_requires_dxc(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Wicked runtime missing DXC ") as temporary_directory:
+            root = Path(temporary_directory)
+            executable = root / "build/game"
+            touch(executable)
+            (root / "WickedEngine").mkdir()
+            with self.assertRaisesRegex(runner.WickedRuntimeError, "shader compiler is missing"):
+                runner.stage_wicked_runtime_libraries(executable, root / "WickedEngine")
+
+    def test_wicked_runtime_staging_rejects_orphaned_converter_file(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Wicked runtime orphan ") as temporary_directory:
+            root = Path(temporary_directory)
+            executable = root / "build/game"
+            source = root / "WickedEngine"
+            touch(executable)
+            touch(source / "libdxcompiler.dylib")
+            touch(executable.parent / "libmetalirconverter.dylib")
+            with self.assertRaisesRegex(runner.WickedRuntimeError, "is absent from this Wicked checkout"):
+                runner.stage_wicked_runtime_libraries(executable, source)
 
     def test_runtime_object_is_discovered_beside_compiler(self) -> None:
         runner = __import__("elisa_build_run")

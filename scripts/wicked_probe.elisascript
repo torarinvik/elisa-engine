@@ -236,6 +236,12 @@ def main(arguments: darray[sview]) -> i64:
         _ = write_stderr(compile_result.stderr)
         if compile_result.exit_status != 0:
             return compile_result.exit_status
+        runtime_stage_status: i64 = run_visible(
+            get_environment_or("PYTHON_BIN", "python3"),
+            [str(root.joinpath("scripts/wicked_runtime.py")), "--executable", str(output),
+                "--source", str(wicked_source)])
+        if runtime_stage_status != 0:
+            return runtime_stage_status
         ktx2_upload_status: i64 = run_visible(str(output), [str(wicked_source), str(manifest), str(root.joinpath("build/wicked-ktx2-upload.png")), "ktx2only"])
         if ktx2_upload_status != 0:
             return ktx2_upload_status
@@ -259,6 +265,13 @@ def main(arguments: darray[sview]) -> i64:
             if render_scene_smoke_status != 0:
                 return render_scene_smoke_status
     return 0 if phase == "build" or phase == "build-gate"
+
+    runtime_stage_status: i64 = run_visible(
+        get_environment_or("PYTHON_BIN", "python3"),
+        [str(root.joinpath("scripts/wicked_runtime.py")), "--executable", str(output),
+            "--source", str(wicked_source)])
+    if runtime_stage_status != 0:
+        return runtime_stage_status
 
     screenshot: sview = str(root.joinpath("build/wicked-frame.png"))
     rerun_screenshot: sview = str(root.joinpath("build/wicked-frame-rerun.png"))

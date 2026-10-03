@@ -368,7 +368,7 @@ def main() -> int:
     status = run(command)
     if status != 0:
         return status
-
+    elisa_build_run.stage_wicked_runtime_libraries(executable, wicked_source)
     runtime_env = dict(os.environ)
     runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(wicked_source / "shaders")
     runtime_env["ELISA_PROJECT_ROOT"] = str(ROOT)

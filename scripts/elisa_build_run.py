@@ -18,6 +18,7 @@ import asset_cooks
 from asset_cooks import BuildConfigurationError
 from build_provenance import compute_build_identity, write_build_provenance
 from elisa_build_config import (parse_arguments, load_project_config, application_settings, project_host, parse_defined_global_symbols, defined_global_symbols, configured_path)
+from wicked_runtime import WickedRuntimeError, stage_wicked_runtime_libraries
 
 
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
@@ -517,6 +518,7 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
         os.replace(staged_output, output)
+    stage_wicked_runtime_libraries(output, paths["wicked_source"])
     try:
         provenance = write_build_provenance(output=output, project=project,
             main_source=main_source, engine_root=ENGINE_ROOT,
@@ -554,7 +556,7 @@ def main(argv: list[str] | None = None) -> int:
         runtime_env["ELISA_PROJECT_HIDDEN"] = "1" if app["hidden"] else "0"
         runtime_env["ELISA_PROJECT_ROOT"] = str(project)
         return run_command([str(output), *program_args], cwd=project, env=runtime_env)
-    except BuildConfigurationError as error:
+    except (BuildConfigurationError, WickedRuntimeError) as error:
         print(f"elisa-build-run: {error}", file=sys.stderr)
         return 2
 

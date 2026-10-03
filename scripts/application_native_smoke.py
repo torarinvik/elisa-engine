@@ -292,7 +292,9 @@ def main() -> int:
             (project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
             command = [sys.executable, str(runner), "run", "--project", str(project),
                 "--native-test-probes"]
-            if name == "world-hierarchy-render-smoke":
+            # These fixtures include their runtime modules explicitly; avoid
+            # importing the whole public bundle a second time through the wrapper.
+            if name in ("world-hierarchy-render-smoke", "world-save-physics-smoke"):
                 command.append("--no-public-runtime")
             environment = dict(os.environ)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
