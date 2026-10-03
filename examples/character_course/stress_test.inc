@@ -10,6 +10,19 @@
         # Allowed heap growth over the remaining iterations; measured < 16 KiB.
         const HEAP_GROWTH_LIMIT: u64 = 262144
 
+        # Test-probe hook: resizes the real SDL window and syncs it.
+        @callconv(c)
+        extern elisa_application_v1_test_set_window_size(width: i32, height: i32) -> i32
+
+        # Resizes the OS window, pumps one frame and checks that the frame
+        # reports the requested logical size and a new resize serial.
+        def window_resized(session: mutable RuntimeServices::Session&, width: i32, height: i32) -> bool error[RuntimeServices::RuntimeServicesError]:
+            before: Application::FrameInfo = try RuntimeServices::frame_info(session)
+            return false if elisa_application_v1_test_set_window_size(width, height) != 0
+            _ = try RuntimeServices::pump(session)
+            after: Application::FrameInfo = try RuntimeServices::frame_info(session)
+            after.logical_width == width and after.logical_height == height and after.resize_serial > before.resize_serial
+
         struct StressCounts:
             instances: usize
             navmeshes: usize
@@ -57,6 +70,8 @@
             start: Geometry::Vec3 = Geometry::Vec3{x: Tune::START_X, y: Tune::START_Y, z: Tune::START_Z}
             return ProgressOutcome{status: 172, character: restarted} if not stale_character(session, character) or not pose_matches(pose, start)
             width: i32 = stress_width(iteration)
+            window_ok: bool = try window_resized(session, width * 3 / 8, width * 15 / 64)
+            return ProgressOutcome{status: 195, character: restarted} if not window_ok
             try RenderScene::resize(width, width * 5 / 8)
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
@@ -122,6 +137,10 @@
             heap_end: u64 = RenderScene::heap_bytes_in_use()
             return ProgressOutcome{status: 194, character: current} if heap_settled == 0 or heap_end == 0
             return ProgressOutcome{status: 193, character: current} if heap_end > heap_settled + HEAP_GROWTH_LIMIT
+            logical_width: i32 = frame.logical_width if frame.logical_width > 0 else 320
+            logical_height: i32 = frame.logical_height if frame.logical_height > 0 else 200
+            restored: bool = try window_resized(session, logical_width, logical_height)
+            return ProgressOutcome{status: 196, character: current} if not restored
             try RenderScene::resize(width, height)
             injected: i32 = injected_test(session, previous, width, height)
             final: StressCounts = stress_counts(session)

@@ -15,6 +15,10 @@ self-test.
 - **Iterations.** It runs a bounded 12 iterations. Each one:
   - restarts the character and checks that the old handle is stale and the
     new one is at the start;
+  - resizes the real SDL window to 240×150, 720×450 or 384×240 through the
+    `elisa_application_v1_test_set_window_size` test-probe hook, pumps a
+    frame, and checks that the frame reports that logical size and a newer
+    resize serial;
   - resizes the view to 640, 1920 or 1024 pixels wide (16:10);
   - builds the beacon World and its renders, lights one beacon and releases
     everything;
@@ -59,6 +63,8 @@ self-test.
 | 178 | an injected stream failure is reported and fully released, and sound works again |
 | 179 | a stale character destroy is rejected |
 | 181–191 | the resource counts after iteration 1–11 differ from the warm-up baseline |
+| 195 | an OS window resize did not report its size and a new resize serial |
+| 196 | restoring the original OS window size failed |
 | 192 | the counts after the injected failures differ from the baseline |
 | 193 | heap growth from iteration 3 to 11 exceeds 256 KiB |
 | 194 | the heap sampler returned zero |
@@ -84,6 +90,8 @@ relaunch smokes, `check` and the native gate each exited 0.
   detected only through this capacity, because `AudioRuntime` has no clip
   count.
 
+- **The resize check expects width + 1.** The self-test fails at 195
+  (2026-10-03).
 - **The heap limit is 1 byte.** The self-test fails at 193 (2026-10-03).
 
 All controls were reverted.
@@ -96,6 +104,6 @@ All controls were reverted.
   not sampled.
 - The run is 12 iterations inside the finite self-test, not a multi-hour soak
   (Q06). There is no ASan/UBSan run of the course binary itself.
-- Resize goes through `RenderScene::resize` on a hidden window. An OS-level
-  window resize and a display change are not driven.
+- The OS window is resized through SDL on a hidden window, so no user drag
+  or display change is driven.
 - The trace is an exit code, not a retained log.
