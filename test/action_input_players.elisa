@@ -18,7 +18,7 @@ def player() -> ActionInput::Input:
         code: south, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
     ActionInput::bind_checked(&input, ActionInput::Binding{action: JUMP, device: ActionInput::Device.Keyboard,
         code: space, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
-    input
+    return move input
 
 def route(one: mutable ActionInput::Input&, two: mutable ActionInput::Input&, event: Application::InputEvent) -> void:
     ActionInputRuntime::apply_player_event(one, event, 1, true)

@@ -19,7 +19,7 @@ def bound() -> ActionInput::Input:
     ActionInput::bind_checked(&input, ActionInput::Binding{action: LABEL_A, device: ActionInput::Device.Keyboard,
         code: Application::keyboard_key_code(Application::KeyboardKeyCode.A), chord_code: 0, deadzone: 0.0,
         context: ActionInput::Context.Gameplay, live: true})
-    input
+    return move input
 
 def main() -> i32:
     a: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.A)

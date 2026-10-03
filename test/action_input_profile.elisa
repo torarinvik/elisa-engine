@@ -19,7 +19,7 @@ def bound_input() -> ActionInput::Input:
     ActionInput::bind_checked(&input, binding(JUMP, ActionInput::Device.Keyboard, KEY_SPACE, 0.0, ActionInput::Context.Gameplay))
     ActionInput::bind_checked(&input, binding(MOVE, ActionInput::Device.Gamepad, STICK_X, 0.2, ActionInput::Context.Gameplay))
     ActionInput::bind_checked(&input, binding(MENU, ActionInput::Device.Keyboard, KEY_ESC, 0.0, ActionInput::Context.UI))
-    input
+    return move input
 
 def key(code: i64, down: bool) -> ActionInput::Event:
     ActionInput::Event{device: ActionInput::Device.Keyboard, code: code,

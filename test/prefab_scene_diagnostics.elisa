@@ -24,7 +24,7 @@ def diag_scene_with(second: PrefabScene::Link) -> PrefabScene::Scene:
     _ = PrefabScene::add_definition(&scene, 7, diag_definition())
     _ = PrefabScene::add_link(&scene, diag_link(100, 7, 1000, PrefabScene::ROOT, 0))
     _ = PrefabScene::add_link(&scene, second)
-    scene
+    return move scene
 
 # Diagnostics agree with scene_valid: a problem exactly when it is invalid.
 def diag_scene_case(second: PrefabScene::Link, problem: PrefabScene::Problem, subject: i64, detail: i64) -> bool:

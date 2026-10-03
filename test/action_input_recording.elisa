@@ -20,7 +20,7 @@ def bound_input() -> ActionInput::Input:
         code: stick, chord_code: 0, deadzone: 0.2, context: ActionInput::Context.Gameplay, live: true})
     ActionInput::bind_checked(&input, ActionInput::Binding{action: FIRE, device: ActionInput::Device.Mouse,
         code: 1, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
-    input
+    return move input
 
 def bit(flag: bool, weight: i64) -> i64:
     weight if flag else 0

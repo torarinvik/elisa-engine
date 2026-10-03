@@ -9,7 +9,7 @@ module ActionInputStoreProbe:
             mutable input: ActionInput::Input = ActionInput::Input()
             ActionInput::bind_checked(&input, ActionInput::Binding{action: 1, device: ActionInput::Device.Keyboard, code: 44, chord_code: 0, deadzone: 0.0, context: ActionInput::Context.Gameplay, live: true})
             ActionInput::bind_checked(&input, ActionInput::Binding{action: 2, device: ActionInput::Device.Gamepad, code: 900, chord_code: 0, deadzone: 0.25, context: ActionInput::Context.Gameplay, live: true})
-            input
+            return move input
 
         def store_probe_axes() -> ActionPointerAxes::Axes:
             mutable axes: ActionPointerAxes::Axes = ActionPointerAxes::Axes()

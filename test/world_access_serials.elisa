@@ -33,13 +33,13 @@ def main() -> i32:
     first: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
         value: value
         error failure: return 3
-    # Stage1 accepts this copy of an affine token; the frame must not.
-    duplicate: mutable WorldAccess::Token = first
+    # A copy of the token is a compile error; the frame still refuses a replayed release.
+    duplicate: mutable WorldAccess::Token = move first
     second: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
         value: value
         error failure: return 4
     return 5 if WorldAccess::frame_live_tokens(&frame) != 2
-    _ = catch WorldAccess::release(&frame, &first):
+    _ = catch WorldAccess::release(&frame, &duplicate):
         ok: 0
         error failure: return 6
     replay: i32 = catch WorldAccess::release(&frame, &duplicate):

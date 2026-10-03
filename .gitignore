@@ -13,3 +13,4 @@ Elisa_Engine_Architecture_and_Plan.md
 log.txt
 examples/maze/assets/*.elpk
 /shaders/
+/examples/character_course/third_party
