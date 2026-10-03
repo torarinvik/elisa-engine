@@ -58,7 +58,9 @@ class Remote:
         lines = p.stdout.split()
         if p.returncode != 0 or len(lines) != 3:
             return f"probe failed rc={p.returncode}: {p.stderr.strip()[-200:]}"
-        self.slots = max(0, min(int(lines[0]), (int(lines[1]) - 1) // PEAK_GB))
+        # ELISA_REMOTE_CAP: our agreed share of a host other sessions also use.
+        cap = int(os.environ.get("ELISA_REMOTE_CAP", "0")) or int(lines[0])
+        self.slots = max(0, min(int(lines[0]), cap, (int(lines[1]) - 1) // PEAK_GB))
         if self.slots == 0:
             return "no free CPU or memory"
         # Tied to the local compiler too, so a new local compiler invalidates remote builds.

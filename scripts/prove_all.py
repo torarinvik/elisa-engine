@@ -79,7 +79,8 @@ def main():
         except ValueError:
             print(f"remote {host} unreachable; skipping", flush=True)
             continue
-        workers = min(a.r, mem - 1, cores)
+        cap = int(os.environ.get("ELISA_REMOTE_CAP", "0")) or cores  # agreed share of a shared host
+        workers = min(a.r, mem - 1, cores, cap)
         if workers <= 0:
             print(f"remote {host} short of memory; skipping", flush=True)
             continue

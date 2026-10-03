@@ -83,6 +83,12 @@ def main():
     remotes, linker = setup_remotes(a, scratch, compiler_sha)
     identities = [compiler_sha] + sorted({r.identity for r in remotes})
 
+    durations_path = cache / "durations.json"
+    try:
+        durations = json.loads(durations_path.read_text())
+    except (OSError, ValueError):
+        durations = {}
+    began = {}
     stage, results, todo = {}, {}, []
     for i, t in enumerate(tests):
         binary, stamp = ROOT / t["binary"], cache / (Path(t["binary"]).name + ".key")
@@ -93,8 +99,9 @@ def main():
             stamp.unlink(missing_ok=True)
             files = set()
             closure(ROOT / t["source"], files)
-            todo.append((sum(f.stat().st_size for f in files), i, keys))
-    todo.sort(reverse=True)  # biggest first: remotes take from the front, local workers from the back
+            # Last measured compile seconds, else include bytes as a proxy (scaled far below any timing).
+            todo.append((durations.get(t["name"], sum(f.stat().st_size for f in files) * 1e-9), i, keys))
+    todo.sort(reverse=True)  # slowest first: remotes take from the front, local workers from the back
     local_only = collections.deque()
     queue, lock = collections.deque((i, keys) for _, i, keys in todo), threading.Lock()
     pending, settled = len(queue), threading.Condition(lock)  # compiles not yet built or failed
@@ -116,6 +123,7 @@ def main():
             settled.notify_all()
 
     def done(i, keys, ident, how):
+        durations[tests[i]["name"]] = round(time.monotonic() - began.get(i, time.monotonic()), 1)
         (cache / (Path(tests[i]["binary"]).name + ".key")).write_text(keys[ident])
         stage[i] = how
         futures[i] = runner.submit(run, i)
@@ -131,6 +139,7 @@ def main():
                 if not local_only and (retries_only or not queue):
                     return
                 i, keys = local_only.pop() if local_only else queue.pop()
+                began[i] = time.monotonic()
             t = tests[i]
             cmd = [a.compiler, "-emit", "exe", *t["flags"], "-o", str(ROOT / t["binary"]), str(ROOT / t["source"])]
             for attempt in range(3):  # 126 with no output = spawn failure under swap pressure
@@ -165,6 +174,7 @@ def main():
                 if not queue:
                     return
                 i, keys = queue.popleft()
+                began[i] = time.monotonic()
             rc, log, obj = r.compile(w, tests[i]["flags"], tests[i]["source"], triple)
             ok = False
             if rc is None:
@@ -214,6 +224,7 @@ def main():
         f.unlink()
     os.rmdir(scratch)
 
+    durations_path.write_text(json.dumps(durations, indent=0, sort_keys=True))
     status, hits = 0, 0
     for i in range(len(tests)):
         t, rc, out, err, how = results[i]
