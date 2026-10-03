@@ -9,19 +9,18 @@ This audit checks the [implementation backlog](../../IMPLEMENTATION_PLAN.md) aga
 - **Other files over the limit.** `native/render_scene_abi.h` (604 lines, previously allowed up to 640) now keeps its animation declarations in `native/render_scene_animation_abi.h`, and the override is removed. `scripts/elisa_build_run.py` (672 lines) now keeps native toolchain resolution in `scripts/native_toolchain.py`. Every tracked source is now within 600 lines with no overrides.
 - **A12** now links its worker design, [a12-import-workers.md](a12-import-workers.md).
 
-## Open: completed items without a validation note (rule 10)
+## Completed items without a validation note (rule 10)
 
-These are `[x]` items with no linked `docs/validation/` note. Their completion text cites commands or commits, but rule 10 requires a linked note that names the commit, command, result, artifact, limitations and proof file.
+Five `[x]` items had no linked `docs/validation/` note. Four have existing evidence, now linked from the plan:
 
-| Item | Likely evidence to link or write up |
+| Item | Evidence |
 |---|---|
-| F01 | `docs/native-integration-inventory.md` |
-| F03 | the dependency manifest and `scripts/fetch_dependencies.py` hash checks |
-| W02 | `src/world/hierarchy.elisa` tests and proof |
-| A01 | asset identity and schema tests |
-| A13 | the Godot companion-package validation report |
+| F01 | `docs/native-integration-inventory.md` (recorded as F01 evidence) |
+| W02 | `docs/validation/transform-hierarchy.md` |
+| A01 | `docs/validation/asset-catalogue.md` (the cache key combines source identity and content hash) |
+| A13 | `docs/validation/godot-cooked-winding.md` (Godot loads the explicit `*-godot.pkg` companion, no source-import fallback) |
 
-None of these items has been unchecked. Re-verifying them is a separate task.
+**Still open: F03.** No note records the dependency-lock evidence (manifest, checksums, clean-checkout build). The item stays checked but needs a note or re-verification.
 
 ## Open: other references
 
