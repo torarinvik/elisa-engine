@@ -171,6 +171,25 @@ build identity is `40d5eb7b0efd8803` in
 `Contents/Resources/build-provenance.json`. That sidecar records the source
 snapshot used for the build; its changes are now committed as `dee6b7c5`.
 `codesign --verify --strict` passes for the executable. The outer bundle is
-unsigned, and this interactive bundle has not yet been sandbox-launched outside
-the source and Homebrew paths. Q02 and Q07a remain open for that check, release
-signing, and manual play.
+unsigned.
+
+The interactive bundle then passed a relocated startup with the engine and
+Homebrew trees unreadable and outbound networking denied. The sandbox controls
+were verified by attempting to read files from both denied locations. Run the
+same check with:
+
+```bash
+python3 scripts/validate_interactive_macos_app.py --app build/CharacterCourse.app \
+  --report build/validation/character-course-interactive-package.json \
+  --log build/validation/character-course-interactive-package.log \
+  --resource-group cells --resource-group fonts --resource-group rigs \
+  --resource-group sounds --resource-group text \
+  --marker 'wi::physics Initialized [Jolt Physics'
+```
+
+On macOS 27.0.1/arm64, the relocated launcher initialized Metal, Jolt, and
+Wicked in 1.629 seconds. All five declared resource groups were present. The
+report and launcher log are retained at the paths above. The validator stops
+the still-running game with SIGTERM after startup; graceful shutdown and manual
+gameplay input remain unverified. A clean-machine run, release signing, and
+Q07a manual play remain open.
