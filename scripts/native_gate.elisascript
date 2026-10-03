@@ -67,14 +67,20 @@ def main(arguments: darray[sview]) -> i64:
         native_status <- run_native_stage("build-gate", launcher, [str(root.joinpath("scripts/wicked_probe.elisascript")), "build-gate"])
         smoke_cases: darray[sview] = [
             "physics-pose-inertia-smoke", "physics-material-smoke",
-            "world-physics-pose-smoke", "world-physics-cadence-smoke",
-            "world-hierarchy-render-smoke", "world-audio-physics-smoke",
+            "physics-ccd3d-smoke", "world-physics-pose-smoke",
+            "render-resource-churn-smoke", "cell-streaming-smoke",
+            "render-many-instances-smoke", "world-save-physics-smoke",
+            "world-physics-cadence-smoke", "world-hierarchy-render-smoke",
+            "world-picking-smoke", "bounds-view-smoke",
+            "world-audio-physics-smoke", "world-audio-scale-smoke",
             "quality-settings-native-smoke", "physics-primitives-smoke",
             "physics-runtime-query-smoke", "physics-constraints-smoke",
             "physics-interactables-smoke", "character-course-smoke",
+            "character-course-relaunch-smoke", "character-course-cells-smoke",
             "physics-collision-layers-smoke",
             "physics-mesh-shapes-smoke", "physics-render-capture-smoke",
-            "application-native-smoke", "application-async-capture-smoke",
+            "application-native-smoke", "application-gamepad-rumble-smoke",
+            "application-async-capture-smoke",
             "application-error-message-smoke", "application-failure-cleanup-smoke",
         ]
         application_script: sview = str(root.joinpath("scripts/application_native_smoke.py"))
@@ -82,7 +88,14 @@ def main(arguments: darray[sview]) -> i64:
             application_status <- 0i64
             for smoke_case in smoke_cases:
                 if application_status == 0:
-                    application_status <- run_visible(smoke_case, python, [application_script, "--only", smoke_case])
+                    # The runner enforces this pair and launches each project as a child.
+                    if smoke_case != "character-course-relaunch-smoke":
+                        if smoke_case == "character-course-smoke":
+                            application_status <- run_visible(
+                                "character-course-smoke-and-relaunch", python,
+                                [application_script, "--only", "character-course-smoke,character-course-relaunch-smoke"])
+                        else:
+                            application_status <- run_visible(smoke_case, python, [application_script, "--only", smoke_case])
         native_status <- -1i64 if native_status == 0 and application_status > 0
         if native_status == 0 and application_status == 0:
             render_script: sview = str(root.joinpath("scripts/render_scene_native_smoke.py"))

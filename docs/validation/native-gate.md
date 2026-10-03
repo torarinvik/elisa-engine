@@ -24,10 +24,13 @@ deterministic-frame gate.
 
 The launcher resolves every repository check from its own source path, so it
 works when invoked from outside the checkout. Native mode runs the Wicked build
-gate first to validate the toolchain, then each of the 19 PhysicsRuntime and
-gameplay application cases in its own child process. The matrix includes the
-character-course state-transition, character-restart, and traversal smoke. It
-then runs the render-scene, frame, rerun, and artifact verification stages.
+gate first to validate the toolchain, then each of the 30 application regression
+cases in its own child process. The matrix includes PhysicsRuntime, world/save,
+render-resource and streaming, audio, input, and character-course checks. The
+course state-transition and relaunch checks run in order through one runner
+selection, with each check in its own child process; the relaunch check reads
+the saved state from the first. The streamed-cell traversal check follows. The
+gate then runs the render-scene, frame, rerun, and artifact verification stages.
 Individual application children stay
 within ElisaScript's default two-minute process deadline and report their own
 exit status. Each case builds a temporary app harness, so the matrix takes several
