@@ -12,6 +12,7 @@ module World::Rollback:
         error RollbackError:
             InvalidSnapshot
             WrongWorld
+            StructureRevisionExhausted
 
         struct Snapshot:
             epoch: mutable i64
@@ -149,6 +150,7 @@ module World::Rollback:
         def restore(world: mutable World::World&, snapshot: Snapshot&) -> void error[RollbackError]:
             raise RollbackError.InvalidSnapshot if not snapshot_valid(snapshot)
             raise RollbackError.WrongWorld if world.epoch != snapshot.epoch
+            raise RollbackError.StructureRevisionExhausted if world.structure_revision >= World::MAX_STRUCTURE_REVISION
             for index in 0..<Bounds::MAX_ENTITIES |world, snapshot|:
                 world.registry[index] <- snapshot.registry[index]
                 world.live_ids[index] <- snapshot.live_ids[index]
@@ -163,6 +165,7 @@ module World::Rollback:
             world.actor_count <- snapshot.actor_count
             world.enemy_count <- snapshot.enemy_count
             world.static_object_count <- snapshot.static_object_count
+            world.structure_revision <- world.structure_revision + 1
 
         # Replace is the load boundary for a complete in-memory runtime world.
         # Validate and stage the current world first so a rejected replacement

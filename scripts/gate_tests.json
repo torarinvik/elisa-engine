@@ -19,6 +19,14 @@
   "note": "-O0 keeps this large fixture inside the 120-second process limit."
  },
  {
+  "name": "world-structure-revision",
+  "source": "test/world_structure_revision.elisa",
+  "flags": [],
+  "binary": "build/world-structure-revision-test",
+  "args": [],
+  "message": "World structural revision and atomic overflow rejection tests passed."
+ },
+ {
   "name": "world-storage",
   "source": "test/world_storage.elisa",
   "flags": [],

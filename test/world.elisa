@@ -28,6 +28,13 @@ module World::Tests:
             WorldError.IdentityInvalid: 3
             error failure: 9
         return 71 if corrupt_code != 3
+        exhausted_structure: mutable World = world_at(EntityId::WorldEdge::allocator_at(0), 1)
+        exhausted_structure.structure_revision <- World::MAX_STRUCTURE_REVISION
+        revision_code: i32 = catch world_spawn(&exhausted_structure, Actor.Player):
+            value: 0
+            WorldError.StructureRevisionExhausted: 4
+            error failure: 9
+        return 72 if revision_code != 4 or world_last_issued(&exhausted_structure) != 0
         0
 
     def world_error_code(failure: WorldError) -> i64:
@@ -48,6 +55,8 @@ module World::Tests:
                 7
             WorldError.InvalidValue:
                 8
+            WorldError.StructureRevisionExhausted:
+                9
 
     def invalid_world() -> World:
         world_at(EntityIdAllocator(), -1)
@@ -61,6 +70,7 @@ module World::Tests:
             live_count: 0,
             live_ids: zeroed,
             live_ids_count: 0,
+            structure_revision: 0,
             actors: zeroed,
             actor_count: 0,
             enemies: zeroed,
@@ -174,6 +184,7 @@ module World::Tests:
                         WorldError.InvalidReference: EntityRef{world_epoch: -6, id: -6}
                         WorldError.StorageMismatch: EntityRef{world_epoch: -7, id: -7}
                         WorldError.InvalidValue: EntityRef{world_epoch: -8, id: -8}
+                        WorldError.StructureRevisionExhausted: EntityRef{world_epoch: -9, id: -9}
                     return 60 - reference.id if reference.id <= 0
                     references[slot] <- reference
                     live[slot] <- true
@@ -268,6 +279,7 @@ module World::Tests:
             value: value
             error failure: World::Rollback::Snapshot{epoch: -1, registry: zeroed, registry_count: 0, live_count: 0, live_ids: zeroed, live_ids_count: 0, actors: zeroed, actor_count: 0, enemies: zeroed, enemy_count: 0, static_objects: zeroed, static_object_count: 0, hierarchy: WorldHierarchy::Snapshot()}
         allocator_before: i64 = world_last_issued(&world)
+        structure_before_restore: i64 = world_structure_revision(&world)
         _ = catch world_despawn(&world, actor):
             ok: true
             error failure: false
@@ -286,6 +298,7 @@ module World::Tests:
             value: value
             error failure: StaticObjectRecord{id: -1, live: false}
         return 1 if restored != 0 or not world_is_valid(&world) or not actor_after.live or not structure_after.live
+        return 10 if world_structure_revision(&world) <= structure_before_restore
         return 2 if world_last_issued(&world) != allocator_before
         third: EntityRef = catch world_spawn(&world, Actor.Player):
             value: value

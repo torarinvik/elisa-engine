@@ -74,23 +74,29 @@ despawn is applied).
 
 `src/world/phase_iteration.elisa` adds `WorldPhaseIteration::Cursor`, the
 supported way to walk live entities during a phase. Opening a cursor acquires a
-schedule read token and records the world epoch and live-column length; the
-token stays held until `close_cursor`. While a cursor is open the frame cannot
+schedule read token and records the world epoch, structural revision, and
+live-column length; the token stays held until `close_cursor`. The revision
+advances on spawn, despawn, reparent, and rollback restore. This detects a
+despawn followed by a spawn even when the live count and world epoch are
+unchanged. While a cursor is open the frame cannot
 advance, end, or commit structural commands, so an iteration borrow cannot
 outlive its phase and a deferred despawn cannot interleave with it. A cursor
-that observes a world changed behind the schedule (different epoch or live
-length) raises `WorldChanged` instead of yielding a reference. Closing against
+that observes a world changed behind the schedule (different epoch, structural
+revision, or live length) raises `WorldChanged` instead of yielding a reference. Closing against
 another frame is rejected and leaves the owning frame locked; a closed cursor
 cannot be read or closed again. The step rule lives in
 `src/world/iteration_bounds.elisa` and is proved by
 `proof/world_iteration_bounds.elisa` (reads only below the recorded length,
 each step stays within it).
 
-`test/world_phase_iteration.elisa` runs in the gate's unit-test list. Negative
-controls: dropping the live-length check fails with 27 (a reference is yielded
-after a bypassing spawn); closing without releasing the token fails with 21
-(the deferred despawn stays blocked). Weakening the step proof's ensure fails
-the prover.
+`test/world_phase_iteration.elisa` runs in the gate's unit-test list. It
+bypasses the scheduler with a despawn and replacement spawn, verifies that the
+world epoch and live count stay unchanged while the structural revision moves,
+then requires the cursor to reject the stale traversal. Negative controls:
+dropping the revision check fails with 27; closing without releasing the token
+fails with 21 (the deferred despawn stays blocked). Weakening the step proof's
+ensure fails the prover. `test/world.elisa` also verifies that restoring a
+rollback snapshot advances the structural revision.
 
 Stage1 does not enforce affinity for affine structs with only scalar fields: a
 probe copying a `WorldAccess::Token` (or a cursor) from a reference, and a
@@ -122,3 +128,23 @@ not by the compiler.
 
 The full `scripts/check.elisascript` gate passed on 2026-10-01 with both slices
 (ending "Validation report written.").
+
+## 2026-10-03: detect equal-count structural churn
+
+The cursor also records `World::world_structure_revision`. Spawn, despawn,
+reparent, and rollback restore advance it, so an out-of-schedule despawn plus
+replacement spawn is rejected even though the world epoch and live count are
+unchanged. A bounded exhaustion error prevents the revision from wrapping;
+world command commits reserve one additional revision for atomic rollback.
+`test/world_phase_iteration.elisa` covers the equal-count bypass, and
+`test/world.elisa` checks that rollback restore advances the revision.
+
+Focused compile-and-run checks passed for `world`, `world_phase_iteration`,
+`world_commands`, `world_command_primary`, and `world_events`. The full
+`scripts/check.elisascript` gate then passed on macOS 27.0.1 / Apple M5: 211
+tests, SDL3 platform checks, Godot probes, native unit tests, and 67 proofs.
+The recorded compiler product is Stage1 commit `b903bd1e` (SHA-256
+`734fad7984b0c6de3b50e6d57585e3c8573f975c33e4560f647a1209f9ed828d`); prover
+commit `6d6b6652` (SHA-256
+`827f274506a9aa4b2d43b36728ad48a853cdfe232ce25b20202a04239e5d4982`). The
+validation report is `build/validation.json`.

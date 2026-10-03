@@ -1,6 +1,4 @@
-# The first checked world keeps identity, liveness, and storage ownership in one
-# value.  The registry is deliberately bounded and serial for this milestone;
-# later phases can replace the physical stores without changing EntityRef.
+# Checked bounded world storage keeps entity identity independent of its backend.
 
 include "../entity_id.elisa"
 include "./reference.elisa"
@@ -10,9 +8,9 @@ include "../math/geometry.elisa"
 module World:
     public:
         const MAX_ENTITIES: usize = 256
+        const MAX_STRUCTURE_REVISION: i64 = 9223372036854775807
 
-        # Entity is an upward-composed hierarchy. Callers match the leaf while
-        # the world stores a checked reference to the root type.
+        # Callers match the leaf while World stores the composed root type.
         enum Entity:
             Unknown
 
@@ -34,6 +32,7 @@ module World:
             InvalidReference
             StorageMismatch
             InvalidValue
+            StructureRevisionExhausted
 
     private:
         const module Bounds:
@@ -287,17 +286,17 @@ module World:
 
         affine struct World:
             private:
-                # The allocator is only advanced by world_spawn.  World is affine
-                # so callers cannot copy the owner while references remain live.
+                # This affine owner alone advances the entity allocator.
                 allocator: mutable EntityId::EntityIdAllocator
                 epoch: i64
                 registry: mutable RegistryRow[World::MAX_ENTITIES]
                 registry_count: mutable usize
                 live_count: mutable usize
-                # Compact live-entity column: the ids of live entities in a dense
-                # array, so iteration is O(live) rather than O(registry capacity).
+                # Dense live-ID column keeps iteration O(live), not O(capacity).
                 live_ids: mutable i64[World::MAX_ENTITIES]
                 live_ids_count: mutable usize
+                # Detect structural changes during a phase-bound entity walk.
+                structure_revision: mutable i64
                 actors: mutable ActorRecord[World::MAX_ENTITIES]
                 actor_count: mutable usize
                 enemies: mutable EnemyRecord[World::MAX_ENTITIES]
@@ -316,6 +315,7 @@ module World:
                 live_count: 0,
                 live_ids: zeroed,
                 live_ids_count: 0,
+                structure_revision: 0,
                 actors: zeroed,
                 actor_count: 0,
                 enemies: zeroed,
@@ -327,6 +327,7 @@ module World:
 
         def world_spawn(world: mutable World&, kind: Entity) -> EntityRef error[WorldError]:
             raise WorldError.InvalidKind if not entity_kind_is_spawnable(kind)
+            raise WorldError.StructureRevisionExhausted if world.structure_revision >= World::MAX_STRUCTURE_REVISION
             registry_index: usize = free_registry_slot(world)
             raise WorldError.Capacity if registry_index == Sentinel::WORLD_INVALID_SLOT
             raise WorldError.Capacity if WorldHierarchy::hierarchy_count(&world.hierarchy) >= WorldHierarchy::MAX_NODES
@@ -346,6 +347,7 @@ module World:
             raise WorldError.IdentityExhausted if allocation_status == 2
             id: i64 = EntityId::entity_id_last_issued(&world.allocator)
             raise WorldError.Capacity if not WorldHierarchy::hierarchy_spawn(&world.hierarchy, id, Geometry::transform_identity())
+            world.structure_revision <- world.structure_revision + 1
             world.registry[registry_index] <- RegistryRow{
                 id: id,
                 kind: kind,
@@ -376,6 +378,9 @@ module World:
         def world_epoch(world: World&) -> i64:
             world.epoch
 
+        def world_structure_revision(world: World&) -> i64:
+            world.structure_revision
+
         def world_live_count(world: World&) -> usize:
             world.live_count
 
@@ -394,7 +399,9 @@ module World:
         def world_despawn(world: mutable World&, reference: EntityRef) -> void error[WorldError]:
             index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
+            raise WorldError.StructureRevisionExhausted if world.structure_revision >= World::MAX_STRUCTURE_REVISION
             raise WorldError.InvalidReference if not WorldHierarchy::hierarchy_remove(&world.hierarchy, reference.id)
+            world.structure_revision <- world.structure_revision + 1
             storage: StorageKind = world.registry[index].storage
             removed: mutable bool = false
             if storage == StorageKind.Actor:
@@ -440,6 +447,7 @@ module World:
 
         def world_reparent(world: mutable World&, child: EntityRef, parent: EntityRef,
             keep_world: bool) -> void error[WorldError]:
+            raise WorldError.StructureRevisionExhausted if world.structure_revision >= World::MAX_STRUCTURE_REVISION
             child_index: usize = registry_slot(world, child)
             raise WorldError.InvalidReference if child_index == Sentinel::WORLD_INVALID_SLOT
             raise WorldError.InvalidReference if not WorldReference::epoch_matches(world.epoch, parent.world_epoch)
@@ -448,13 +456,13 @@ module World:
                 raise WorldError.InvalidReference if registry_slot(world, parent) == Sentinel::WORLD_INVALID_SLOT
             raise WorldError.InvalidReference if not WorldHierarchy::hierarchy_set_parent(
                 &world.hierarchy, child.id, parent.id, keep_world)
+            world.structure_revision <- world.structure_revision + 1
             WorldHierarchy::hierarchy_update(&world.hierarchy)
             raise WorldError.InvalidReference if not sync_registry_from_hierarchy(world)
 
-        # Command buffers use this read-only preflight so an invalid reference
-        # is rejected before any earlier command in the same batch can mutate
-        # the primary world.
+        # Preflight lets a command batch reject invalid references atomically.
         def world_can_reparent(world: World&, child: EntityRef, parent: EntityRef) -> bool:
+            return false if world.structure_revision >= World::MAX_STRUCTURE_REVISION
             return false if registry_slot(world, child) == Sentinel::WORLD_INVALID_SLOT
             return false if not WorldReference::epoch_matches(world.epoch, parent.world_epoch)
             return false if parent.id != WorldHierarchy::ROOT and registry_slot(world, parent) == Sentinel::WORLD_INVALID_SLOT
@@ -472,9 +480,7 @@ module World:
             raise WorldError.InvalidReference if index == Sentinel::WORLD_INVALID_SLOT
             EntityLookup{reference: reference, kind: world.registry[index].kind}
 
-        # Typed snapshots keep storage ownership inside World while giving a
-        # system a checked value for its access phase. The registry is checked
-        # first, so a dead or wrong-world reference never reaches a column.
+        # Registry checks prevent stale references reaching typed storage.
         def world_actor_record(world: World&, reference: EntityRef) -> ActorRecord error[WorldError]:
             registry_index: usize = registry_slot(world, reference)
             raise WorldError.InvalidReference if registry_index == Sentinel::WORLD_INVALID_SLOT
@@ -529,10 +535,8 @@ module World:
         def world_reference_epoch_matches(world_epoch: i64, reference_epoch: i64) -> bool:
             WorldReference::epoch_matches(world_epoch, reference_epoch)
 
-        # Upward composition: Enemy is an Actor, so a Guard is both an enemy and
-        # an actor, while a Player is only an actor. The cases are listed
-        # explicitly rather than wildcarded, so adding a descendant forces this
-        # case-complete query to be updated instead of silently matching.
+        # Upward composition: a Guard is both an enemy and actor; a Player is
+        # only an actor. Explicit cases expose new descendants to review.
         def entity_is_actor(kind: Entity) -> bool:
             match kind:
                 Actor.Player:
@@ -558,16 +562,14 @@ module World:
         def world_live_ids_count(world: World&) -> usize:
             world.live_ids_count
 
-        # Dense iteration returns a checked world-branded reference instead of
-        # making each caller reconstruct provenance from a raw numeric ID.
+        # Return a branded reference rather than expose a raw live ID.
         def world_live_reference_at(world: World&, index: usize) -> EntityRef error[WorldError]:
             raise WorldError.InvalidReference if not WorldReference::index_valid(index, world.live_ids_count)
             reference: EntityRef = EntityRef{world_epoch: world.epoch, id: world.live_ids[index]}
             raise WorldError.InvalidReference if not world_is_live(world, reference)
             reference
 
-        # The compact column is consistent when it holds exactly the live ids,
-        # once each, and nothing else.
+        # The compact column contains every live ID exactly once.
         def world_live_column_valid(world: World&) -> bool:
             return false if world.live_ids_count != world.live_count
             for index in 0..<world.live_ids_count |valid: bool = true| -> valid:
@@ -579,7 +581,7 @@ module World:
                 valid <- valid and unique
 
         def world_is_valid(world: World&) -> bool:
-            return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.registry_count > World::MAX_ENTITIES or world.actor_count > World::MAX_ENTITIES or world.enemy_count > World::MAX_ENTITIES or world.static_object_count > World::MAX_ENTITIES or world.live_count > world.registry_count
+            return false if world.epoch < Bounds::WORLD_FIRST_EPOCH or world.structure_revision < 0 or world.structure_revision > World::MAX_STRUCTURE_REVISION or world.registry_count > World::MAX_ENTITIES or world.actor_count > World::MAX_ENTITIES or world.enemy_count > World::MAX_ENTITIES or world.static_object_count > World::MAX_ENTITIES or world.live_count > world.registry_count
             return false if not hierarchy_matches_registry(world)
             registry: RegistryCheck = registry_check(world)
             return false if not registry.valid

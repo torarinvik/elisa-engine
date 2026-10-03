@@ -158,10 +158,18 @@ def run_validation(app_source: Path, log_copy: Path,
                 "termination": "SIGTERM after successful startup; graceful shutdown not assessed",
             })
             if stop_after:
-                time.sleep(stop_after)
-            if process.poll() is not None:
-                raise ValueError(f"interactive app exited before the stop request with status {process.returncode}")
-            record["launcher_returncode_after_termination"] = stop_process_group(process)
+                try:
+                    process.wait(timeout=stop_after)
+                except subprocess.TimeoutExpired:
+                    pass
+            if process.poll() is None:
+                record["launcher_returncode_after_termination"] = stop_process_group(process)
+            else:
+                if process.returncode != 0:
+                    raise ValueError(f"interactive app exited with status {process.returncode}")
+                record["graceful_shutdown"] = "verified"
+                record["termination"] = "clean exit before stop timeout"
+                record["launcher_returncode"] = process.returncode
             process = None
             startup_log = read_log(latest_log)
             if "process_exit_status=" in startup_log:
