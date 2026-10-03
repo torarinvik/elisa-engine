@@ -68,7 +68,7 @@ def main():
     ap.add_argument("compiler")
     ap.add_argument("--manifest", default=str(ROOT / "scripts/gate_tests.json"))
     ap.add_argument("-j", type=int, default=os.cpu_count(), help="parallel test runs (and local compiles without remotes)")
-    ap.add_argument("--local-compiles", type=int, help="local compile workers beside live remotes (default 0)")
+    ap.add_argument("--local-compiles", type=int, help="local compile workers beside live remotes (default: idle local cores)")
     ap.add_argument("--remote", default=os.environ.get("ELISA_COMPILE_REMOTE"),
                     help="HOST[#PORT]:STAGE1PATH,... Linux stage1 compilers (env ELISA_COMPILE_REMOTE)")
     ap.add_argument("--no-cache", action="store_true")
@@ -191,7 +191,8 @@ def main():
         futures[i] = runner.submit(run, i)
     workers = [threading.Thread(target=remote_host, args=(r,), daemon=True) for r in remotes]
     if remotes:  # the Mac only links, unless asked to compile too
-        workers += [threading.Thread(target=local_worker, daemon=True) for _ in range(a.local_compiles or 0)]
+        workers += [threading.Thread(target=local_worker, daemon=True) for _ in range(a.local_compiles if a.local_compiles is not None
+                                                                            else max(0, int(os.cpu_count() - os.getloadavg()[0])))]
     for w in workers:  # daemon: a host stuck in rsync must not hold the run once everything is built
         w.start()
     while True:
