@@ -1,0 +1,53 @@
+# A12: GLB animation-document import under `AssetImportLimits`. The container
+# and JSON chunk are charged and checked by `GlbImport` (image bytes, chunk
+# walk, work per JSON byte, token table, nesting depth) before the document is
+# built, so `GlbDocument` never indexes a file the budget refuses. The built
+# document's copy of the bytes, its nodes and its decoded f32 track values are
+# then charged as allocations; a refusal returns no document.
+include "./glb_document.elisa"
+include "./glb_import.elisa"
+
+module GlbDocumentImport:
+    private:
+        # Bytes one indexed node occupies: name range, parent, rest TRS, flag.
+        const NODE_BYTES: i64 = 64
+
+        # A document that failed to build comes back empty.
+        def built(bytes: darray[u8]&) -> GlbDocument::Document:
+            catch GlbDocument::from_bytes(bytes):
+                value: value
+                error failure: GlbDocument::Document()
+
+        def decoded_values(doc: GlbDocument::Document&) -> i64:
+            total: mutable i64 = 0
+            for slot in 0..<GlbDocument::track_count(doc) |total, doc|:
+                track: GlbDocument::Track = GlbDocument::track(doc, slot)
+                total <- total + (track.count * track.components).i64()
+            total
+
+        def prechecked(bytes: darray[u8]&, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> i64:
+            catch GlbImport::parse_limited(bytes, budget, limits):
+                value: tokenized(bytes, value, budget, limits)
+                GlbImport::GlbImportError.OverBudget: 1
+                error failure: 2
+
+        def tokenized(bytes: darray[u8]&, layout: GlbContainer::Layout, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> i64:
+            tokens: mutable darray[GlbJson::Token] = []
+            catch GlbImport::tokenize_limited(bytes, &layout, &tokens, budget, limits):
+                value: 0
+                GlbImport::GlbImportError.OverBudget: 1
+                error failure: 2
+
+    public:
+        # Builds a `GlbDocument` from `bytes` inside the budget.
+        def from_bytes_limited(bytes: darray[u8]&, budget: mutable AssetImportLimits::Budget&, limits: AssetImportLimits::Limits&) -> GlbDocument::Document error[GlbImport::GlbImportError]:
+            pre: i64 = prechecked(bytes, budget, limits)
+            raise GlbImport::GlbImportError.OverBudget if pre == 1
+            raise GlbImport::GlbImportError.Malformed if pre != 0
+            doc: GlbDocument::Document = built(bytes)
+            raise GlbImport::GlbImportError.Malformed if GlbDocument::byte_count(&doc) == 0
+            raise GlbImport::GlbImportError.OverBudget if AssetImportLimits::charge_alloc(budget, limits, bytes.count.i64(), 1) != AssetImportLimits::Verdict.Ok
+            raise GlbImport::GlbImportError.OverBudget if AssetImportLimits::charge_alloc(budget, limits, GlbDocument::node_count(&doc).i64(), NODE_BYTES) != AssetImportLimits::Verdict.Ok
+            values: i64 = decoded_values(&doc)
+            raise GlbImport::GlbImportError.OverBudget if values > 0 and AssetImportLimits::charge_alloc(budget, limits, values, 4) != AssetImportLimits::Verdict.Ok
+            doc

@@ -65,5 +65,10 @@ work unit per JSON byte before tokenizing. Nesting deeper than `max_depth` is re
 a token table larger than the element or byte budget (40 bytes per token); a refusal leaves no
 tokens. The fuzz test covers acceptance, depth, work, element and malformed cases (12-16).
 
+`GlbDocumentImport::from_bytes_limited` builds an animation `GlbDocument` only after the container
+and JSON pass those checks, then charges the document's byte copy, 64 bytes per node and 4 bytes
+per decoded f32. `test/assets_glb_document.elisa` (cases 80-84) checks the exact byte total, depth
+and copy refusals and a truncated file; dropping the decoded-value charge fails at 81.
+
 Still open: model, image and animation importers beyond the container, out-of-process
 workers, and timeouts.

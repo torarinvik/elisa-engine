@@ -1,4 +1,5 @@
 include "../src/assets/glb_document.elisa"
+include "../src/assets/glb_document_import.elisa"
 
 # Plan M06: GLB load, edit and byte-exact export. Synthetic buffers cover
 # every rejection path; the boxing game's exported character, when present
@@ -287,7 +288,54 @@ def real_file() -> i32:
     return 71 if GlbDocument::track_value(&edited, held.output, 0, 3) != -GlbDocument::track_value(&pristine, held.output, 0, 3)
     0
 
+# A12: node count of a budgeted import, -1 over budget, -2 malformed.
+def limited_code(bytes: darray[u8]&, budget: mutable AssetImportLimits::Budget&, l: AssetImportLimits::Limits&) -> i64:
+    catch GlbDocumentImport::from_bytes_limited(bytes, budget, l):
+        value: GlbDocument::node_count(&value).i64()
+        GlbImport::GlbImportError.OverBudget: -1
+        error failure: -2
+
+def limits(bytes: i64, depth: i64) -> AssetImportLimits::Limits:
+    AssetImportLimits::Limits{max_bytes: bytes, max_elements: 1000000, max_depth: depth, max_work: 1000000}
+
+def json_tokens(bytes: darray[u8]&) -> i64:
+    tokens: mutable darray[GlbJson::Token] = []
+    length: usize = (bytes[12].u32() | (bytes[13].u32() << 8) | (bytes[14].u32() << 16) | (bytes[15].u32() << 24)).usize()
+    return -1 if not GlbJson::tokenize(bytes, 20, 20 + length, &tokens)
+    tokens.count.i64()
+
+def decoded(doc: GlbDocument::Document&) -> i64:
+    total: mutable i64 = 0
+    for slot in 0..<GlbDocument::track_count(doc) |total, doc|:
+        total <- total + (GlbDocument::track(doc, slot).count * GlbDocument::track(doc, slot).components).i64()
+    total
+
+def limited() -> i32:
+    bytes: darray[u8] = valid()
+    n: i64 = bytes.count.i64()
+    wide: AssetImportLimits::Limits = limits(1000000, 8)
+    b: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 80 if limited_code(&bytes, &b, &wide) != 2
+    # Charged: the image twice (parse, document copy), the token table, two
+    # nodes and every decoded f32.
+    doc: GlbDocument::Document = load_or_empty(&bytes)
+    return 81 if b.bytes != 2 * n + json_tokens(&bytes) * 40 + 2 * 64 + decoded(&doc) * 4
+    shallow: AssetImportLimits::Limits = limits(1000000, 2)
+    s: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 82 if limited_code(&bytes, &s, &shallow) != -1
+    # The container fits but the document copy does not.
+    small: AssetImportLimits::Limits = limits(n + json_tokens(&bytes) * 40 + 8, 8)
+    c: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 83 if limited_code(&bytes, &c, &small) != -1
+    cut: mutable darray[u8] = valid()
+    _ = cut.pop()
+    m: AssetImportLimits::Budget = AssetImportLimits::start()
+    return 84 if limited_code(&cut, &m, &wide) != -2
+    0
+
 def main() -> i32:
+    bounded: i32 = limited()
+    return bounded if bounded != 0
     status: i32 = synthetic()
     return status if status != 0
     rejected: i32 = adversarial()
