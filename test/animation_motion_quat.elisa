@@ -56,4 +56,13 @@ def main() -> i32:
     return 16 if not (ns.w == 1.0 and ns.x == 0.0)
     return 17 if MotionQuatGuard::unit(1.0, nan) != 0.0 or MotionQuatGuard::unit(1.0, -2.0) != 0.0 or MotionQuatGuard::unit(3.0, 2.0) != 1.5
     return 18 if MotionQuatGuard::divides(nan) or MotionQuatGuard::divides(0.0) or not MotionQuatGuard::divides(1.0)
+    # Shortest arc maps one direction onto another, including opposites.
+    src_dir: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: 0.2, y: 1.0, z: -0.4})
+    dst_dir: MotionQuat::V = MotionQuat::vnormalize(MotionQuat::V{x: -0.7, y: 0.1, z: 0.5})
+    return 19 if not same_v(MotionQuat::rotate(MotionQuat::between(src_dir, dst_dir), src_dir), dst_dir)
+    flipped: MotionQuat::V = MotionQuat::V{x: -src_dir.x, y: -src_dir.y, z: -src_dir.z}
+    return 20 if not same_v(MotionQuat::rotate(MotionQuat::between(src_dir, flipped), src_dir), flipped)
+    return 21 if not same(MotionQuat::between(src_dir, src_dir), MotionQuat::identity())
+    return 22 if not close(MotionQuat::angle(MotionQuat::axis_angle(z, 0.9)), 0.9)
+    return 23 if not close(MotionQuat::angle(nb), 1.5707963267948966)
     return 0

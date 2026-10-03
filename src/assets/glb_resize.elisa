@@ -1,0 +1,299 @@
+# Key-count changes for an editable GLB document (plan M06 extension).
+# GlbDocument edits keep every accessor's length; retiming or resampling an
+# animation needs tracks with a different number of keys. `replace_tracks`
+# writes the new values as fresh bufferViews appended to the BIN chunk and
+# repoints each replaced accessor at them, patching only its `count`,
+# `bufferView`, `byteOffset`, `min` and `max`, then re-validates the result
+# through GlbDocument::from_bytes. The JSON is edited by splicing token
+# ranges, so every other byte of it is preserved; the old key data stays in
+# the BIN chunk unreferenced. Tracks keep their slot numbers (decode order
+# follows the channels, which do not change).
+include "./glb_document.elisa"
+
+module GlbResize:
+    private:
+        struct Splice:
+            start: usize
+            stop: usize
+            text_start: usize
+            text_stop: usize
+
+        def push_text(out: mutable darray[u8]&, text: sview):
+            for k in 0..<text.len.usize():
+                out.push(text[k.i64()].u8())
+
+        def resize_count(out: mutable darray[u8]&, value: usize):
+            digits: mutable u8[24] = zeroed
+            mutable n: usize = 0
+            mutable rest: usize = value
+            digits[0] <- 48
+            n <- 1 if rest == 0
+            while rest > 0:
+                digits[n] <- (48 + rest % 10).u8()
+                rest <- rest / 10
+                n <- n + 1
+            while n > 0:
+                n <- n - 1
+                out.push(digits[n])
+
+        # Nine significant digits in scientific form: enough that parsing
+        # the text back yields the same f32.
+        def push_float(out: mutable darray[u8]&, value: f32):
+            mutable v: f64 = value.f64()
+            if v == 0.0:
+                out.push(48)
+                return
+            if v < 0.0:
+                out.push(45)
+                v <- -v
+            mutable exponent: i64 = 0
+            while v >= 10.0:
+                v <- v / 10.0
+                exponent <- exponent + 1
+            while v < 1.0:
+                v <- v * 10.0
+                exponent <- exponent - 1
+            mutable mantissa: i64 = (v * 100000000.0).round().i64()
+            if mantissa >= 1000000000:
+                mantissa <- mantissa / 10
+                exponent <- exponent + 1
+            text: mutable u8[12] = zeroed
+            for k in 0..<9:
+                text[8 - k] <- (48 + mantissa % 10).u8()
+                mantissa <- mantissa / 10
+            out.push(text[0])
+            out.push(46)
+            for k in 1..<9:
+                out.push(text[k])
+            out.push(101)
+            if exponent < 0:
+                out.push(45)
+                exponent <- -exponent
+            resize_count(out, exponent.usize())
+
+        def put_u32(bytes: mutable darray[u8]&, value: u32):
+            bytes.push((value & 255).u8())
+            bytes.push(((value >> 8) & 255).u8())
+            bytes.push(((value >> 16) & 255).u8())
+            bytes.push(((value >> 24) & 255).u8())
+
+        def u32_ref(value: u32&) -> u32:
+            value
+
+        def float_bits(value: f32) -> u32:
+            u32_ref((&value).cast[u32&] can Unsafe.PointerCast)
+
+        def le_u32(bytes: darray[u8]&, at: usize) -> u32:
+            bytes[at].u32() | (bytes[at + 1].u32() << 8) | (bytes[at + 2].u32() << 16) | (bytes[at + 3].u32() << 24)
+
+        def add_splice(list: mutable darray[Splice]&, text: mutable darray[u8]&, start: usize, stop: usize, before: usize):
+            list.push(Splice{start: start, stop: stop, text_start: before, text_stop: text.count})
+
+        # `[c0,c1,..]` holding the per-component minimum (or maximum).
+        def push_bound(text: mutable darray[u8]&, values: darray[f32]&, first: usize, stop: usize, components: usize, lowest: bool):
+            text.push(91)
+            for c in 0..<components:
+                text.push(44) if c > 0
+                mutable best: f32 = values[first + c]
+                mutable k: usize = first + c
+                while k < stop:
+                    v: f32 = values[k]
+                    best <- v if (lowest and v < best) or (not lowest and v > best)
+                    k <- k + components
+                push_float(text, best)
+            text.push(93)
+
+    public:
+        # Replace the keys of the tracks in `slots`. Slot `slots[i]` gets
+        # values[starts[i] ..< starts[i + 1]] (so `starts` has one more entry
+        # than `slots`), a whole number of keys of the track's component
+        # count, at least one key. Slots must be distinct. The BIN chunk must
+        # be the file's last chunk. A new, validated document; `doc` is left
+        # unchanged.
+        def replace_tracks(doc: GlbDocument::Document&, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbDocumentError]:
+            return try rewrite(doc, -1, slots, starts, values)
+
+        # Like replace_tracks, but the new keys go to fresh accessors that
+        # only animation `animation`'s samplers are repointed at. Exporters
+        # share identical key accessors between animations; this leaves the
+        # other animations' tracks as they were. Two slots may not share an
+        # accessor.
+        def replace_animation_tracks(doc: GlbDocument::Document&, animation: usize, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbDocumentError]:
+            raise GlbDocument::GlbDocumentError.IndexOutOfRange if animation >= GlbDocument::animation_count(doc)
+            return try rewrite(doc, animation.i64(), slots, starts, values)
+
+    private:
+        def type_name(components: usize) -> sview:
+            return "SCALAR" if components == 1
+            return "VEC2" if components == 2
+            return "VEC3" if components == 3
+            return "VEC4"
+
+        # `animation` < 0 patches the tracks' accessors in place; otherwise
+        # new accessors are appended and that animation's samplers repointed.
+        def rewrite(doc: GlbDocument::Document&, animation: i64, slots: darray[usize]&, starts: darray[usize]&, values: darray[f32]&) -> GlbDocument::Document error[GlbDocument::GlbDocumentError]:
+            raise GlbDocument::GlbDocumentError.AccessorShape if starts.count != slots.count + 1
+            raise GlbDocument::GlbDocumentError.AccessorShape if slots.count > 0 and starts[slots.count] > values.count
+            bin_start: usize = GlbDocument::bin_start(doc)
+            raise GlbDocument::GlbDocumentError.UnsupportedLayout if GlbDocument::bin_length(doc) == 0 or bin_start < 28
+            mutable bytes: darray[u8] = []
+            for k in 0..<GlbDocument::byte_count(doc):
+                bytes.push(GlbDocument::byte_at(doc, k))
+            bin_chunk: usize = le_u32(&bytes, bin_start - 8).usize()
+            raise GlbDocument::GlbDocumentError.UnsupportedLayout if bin_start + bin_chunk != bytes.count
+            json_length: usize = le_u32(&bytes, 12).usize()
+            mutable tokens: darray[GlbJson::Token] = []
+            raise GlbDocument::GlbDocumentError.BadJson if not GlbJson::tokenize(&bytes, 20, 20 + json_length, &tokens)
+            accessors: i64 = GlbJson::member(&bytes, &tokens, 0, "accessors")
+            views: i64 = GlbJson::member(&bytes, &tokens, 0, "bufferViews")
+            buffers: i64 = GlbJson::member(&bytes, &tokens, 0, "buffers")
+            raise GlbDocument::GlbDocumentError.MissingField if GlbJson::kind_of(&tokens, accessors) != GlbJson::KIND_ARRAY or GlbJson::kind_of(&tokens, views) != GlbJson::KIND_ARRAY
+            first_buffer: i64 = GlbJson::element(&tokens, buffers, 0)
+            buffer_length: i64 = GlbJson::member(&bytes, &tokens, first_buffer, "byteLength")
+            raise GlbDocument::GlbDocumentError.MissingField if buffer_length < 0
+            view_count: usize = GlbJson::child_count(&tokens, views)
+            accessor_count: usize = GlbJson::child_count(&tokens, accessors)
+            animations: i64 = GlbJson::member(&bytes, &tokens, 0, "animations")
+            mutable splices: darray[Splice] = []
+            mutable text: darray[u8] = []
+            mutable appended: darray[u8] = []
+            mutable base: usize = bin_chunk
+            while base % 4 != 0:
+                base <- base + 1
+            for s in 0..<slots.count:
+                for t in 0..<s:
+                    raise GlbDocument::GlbDocumentError.AccessorShape if slots[t] == slots[s]
+                raise GlbDocument::GlbDocumentError.IndexOutOfRange if slots[s] >= GlbDocument::track_count(doc)
+                held: GlbDocument::Track = GlbDocument::track(doc, slots[s])
+                first: usize = starts[s]
+                stop: usize = starts[s + 1]
+                raise GlbDocument::GlbDocumentError.AccessorShape if stop <= first or (stop - first) % held.components != 0
+                count: usize = (stop - first) / held.components
+                accessor: i64 = GlbJson::element(&tokens, accessors, held.accessor)
+                raise GlbDocument::GlbDocumentError.BadJson if GlbJson::kind_of(&tokens, accessor) != GlbJson::KIND_OBJECT
+                offset: usize = base + appended.count
+                for k in first..<stop:
+                    raise GlbDocument::GlbDocumentError.AccessorShape if values[k] != values[k] or values[k] > 3.4e38 or values[k] < -3.4e38
+                    put_u32(&appended, float_bits(values[k]))
+                if animation >= 0:
+                    for t in 0..<s:
+                        raise GlbDocument::GlbDocumentError.AccessorShape if GlbDocument::track(doc, slots[t]).accessor == held.accessor
+                    # Repoint this animation's samplers at accessor_count + s.
+                    sampler_list: i64 = GlbJson::member(&bytes, &tokens, GlbJson::element(&tokens, animations, animation.usize()), "samplers")
+                    raise GlbDocument::GlbDocumentError.MissingField if GlbJson::kind_of(&tokens, sampler_list) != GlbJson::KIND_ARRAY
+                    for m in 0..<GlbJson::child_count(&tokens, sampler_list):
+                        sampler: i64 = GlbJson::element(&tokens, sampler_list, m)
+                        for side in 0..<2:
+                            ref: i64 = GlbJson::member(&bytes, &tokens, sampler, "input" if side == 0 else "output")
+                            if ref >= 0 and GlbJson::index_value(&bytes, &tokens, ref) == held.accessor.i64():
+                                before_ref: usize = text.count
+                                resize_count(&text, accessor_count + s)
+                                add_splice(&splices, &text, tokens[ref.usize()].start, tokens[ref.usize()].stop, before_ref)
+                    continue
+                count_at: i64 = GlbJson::member(&bytes, &tokens, accessor, "count")
+                view_at: i64 = GlbJson::member(&bytes, &tokens, accessor, "bufferView")
+                raise GlbDocument::GlbDocumentError.MissingField if count_at < 0 or view_at < 0
+                mutable before: usize = text.count
+                resize_count(&text, count)
+                add_splice(&splices, &text, tokens[count_at.usize()].start, tokens[count_at.usize()].stop, before)
+                before <- text.count
+                resize_count(&text, view_count + s)
+                add_splice(&splices, &text, tokens[view_at.usize()].start, tokens[view_at.usize()].stop, before)
+                offset_at: i64 = GlbJson::member(&bytes, &tokens, accessor, "byteOffset")
+                if offset_at >= 0:
+                    before <- text.count
+                    text.push(48)
+                    add_splice(&splices, &text, tokens[offset_at.usize()].start, tokens[offset_at.usize()].stop, before)
+                min_at: i64 = GlbJson::member(&bytes, &tokens, accessor, "min")
+                if min_at >= 0:
+                    before <- text.count
+                    push_bound(&text, values, first, stop, held.components, true)
+                    add_splice(&splices, &text, tokens[min_at.usize()].start, tokens[min_at.usize()].stop, before)
+                max_at: i64 = GlbJson::member(&bytes, &tokens, accessor, "max")
+                if max_at >= 0:
+                    before <- text.count
+                    push_bound(&text, values, first, stop, held.components, false)
+                    add_splice(&splices, &text, tokens[max_at.usize()].start, tokens[max_at.usize()].stop, before)
+            # New bufferViews go before the array's closing bracket.
+            if slots.count > 0:
+                before: usize = text.count
+                mutable at: usize = base
+                for s in 0..<slots.count:
+                    text.push(44) if s > 0 or view_count > 0
+                    length: usize = (starts[s + 1] - starts[s]) * 4
+                    push_text(&text, "{\"buffer\":0,\"byteOffset\":")
+                    resize_count(&text, at)
+                    push_text(&text, ",\"byteLength\":")
+                    resize_count(&text, length)
+                    text.push(125)
+                    at <- at + length
+                close: usize = tokens[views.usize()].stop - 1
+                add_splice(&splices, &text, close, close, before)
+            if animation >= 0 and slots.count > 0:
+                before: usize = text.count
+                for s in 0..<slots.count:
+                    components: usize = GlbDocument::track(doc, slots[s]).components
+                    text.push(44) if s > 0 or accessor_count > 0
+                    push_text(&text, "{\"bufferView\":")
+                    resize_count(&text, view_count + s)
+                    push_text(&text, ",\"componentType\":5126,\"count\":")
+                    resize_count(&text, (starts[s + 1] - starts[s]) / components)
+                    push_text(&text, ",\"type\":\"")
+                    push_text(&text, type_name(components))
+                    push_text(&text, "\",\"min\":")
+                    push_bound(&text, values, starts[s], starts[s + 1], components, true)
+                    push_text(&text, ",\"max\":")
+                    push_bound(&text, values, starts[s], starts[s + 1], components, false)
+                    text.push(125)
+                close: usize = tokens[accessors.usize()].stop - 1
+                add_splice(&splices, &text, close, close, before)
+            total_bin: usize = base + appended.count
+            before_length: usize = text.count
+            resize_count(&text, total_bin)
+            add_splice(&splices, &text, tokens[buffer_length.usize()].start, tokens[buffer_length.usize()].stop, before_length)
+            # Apply the splices in file order; none overlap (each replaces a
+            # distinct value token, the insertion is at a closing bracket).
+            for i in 1..<splices.count:
+                mutable j: usize = i
+                while j > 0 and splices[j - 1].start > splices[j].start:
+                    held: Splice = splices[j]
+                    splices[j] <- splices[j - 1]
+                    splices[j - 1] <- held
+                    j <- j - 1
+            mutable json: darray[u8] = []
+            mutable cursor: usize = 20
+            for s in splices:
+                raise GlbDocument::GlbDocumentError.BadJson if s.start < cursor
+                for k in cursor..<s.start:
+                    json.push(bytes[k])
+                for k in s.text_start..<s.text_stop:
+                    json.push(text[k])
+                cursor <- s.stop
+            for k in cursor..<(20 + json_length):
+                json.push(bytes[k])
+            while json.count % 4 != 0:
+                json.push(32)
+            mutable out: darray[u8] = []
+            put_u32(&out, GlbDocument::MAGIC)
+            put_u32(&out, GlbDocument::VERSION)
+            mutable padded_bin: usize = total_bin
+            while padded_bin % 4 != 0:
+                padded_bin <- padded_bin + 1
+            total: usize = 12 + 8 + json.count + 8 + padded_bin
+            raise GlbDocument::GlbDocumentError.Capacity if total > GlbDocument::MAX_BYTES
+            put_u32(&out, total.u32())
+            put_u32(&out, json.count.u32())
+            put_u32(&out, GlbDocument::CHUNK_JSON)
+            for k in 0..<json.count:
+                out.push(json[k])
+            put_u32(&out, padded_bin.u32())
+            put_u32(&out, GlbDocument::CHUNK_BIN)
+            for k in 0..<bin_chunk:
+                out.push(bytes[bin_start + k])
+            for k in bin_chunk..<base:
+                out.push(0)
+            for k in 0..<appended.count:
+                out.push(appended[k])
+            for k in total_bin..<padded_bin:
+                out.push(0)
+            return try GlbDocument::from_bytes(&out)

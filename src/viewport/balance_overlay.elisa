@@ -1,0 +1,131 @@
+# Balance overlay for mocap cleanup (plan M05): the centre of mass as a
+# screen-sized marker, a plumb line down to its ground projection, and the
+# support polygon (the convex hull of the support points, flattened onto the
+# ground plane) as an outline with a translucent fill. The marker and plumb
+# line take the "bad" colour when the caller says balance is impossible.
+#
+# The hull is computed in the ground plane (x, z) with Andrew's monotone
+# chain; points that are not finite are skipped. Everything goes into a
+# ViewportDraw list, so it renders on the GPU and in the CPU rasterizer alike.
+include "./viewport_draw.elisa"
+
+module BalanceOverlay:
+    public:
+        # Support points considered (more are ignored).
+        const MAX_POINTS: usize = 64
+        # The polygon is lifted this far above the ground to avoid z-fighting
+        # with the floor grid.
+        const LIFT: f32 = 0.002
+
+        struct Style:
+            com: u32
+            bad: u32
+            support: u32
+            fill: u32
+            radius_px: f32
+
+        def default_style() -> Style:
+            Style{com: ViewportDraw::rgba(80, 230, 255, 255), bad: ViewportDraw::rgba(255, 60, 60, 255), support: ViewportDraw::rgba(120, 240, 160, 255), fill: ViewportDraw::rgba(120, 240, 160, 70), radius_px: 6.0}
+
+        # Indices into `pts` of the convex hull in the (x, z) plane, in
+        # one consistent winding, without repeating the first point.
+        # One or two distinct points give a degenerate hull of that size.
+        def hull(pts: darray[Geometry::Vec3]&) -> darray[usize]:
+            mutable sorted: darray[usize] = []
+            n: usize = pts.count if pts.count < MAX_POINTS else MAX_POINTS
+            for k in 0..<n:
+                p: Geometry::Vec3 = pts[k]
+                continue if not finite(p)
+                # Insertion sort by (x, z): n is small.
+                sorted.push(k)
+                mutable at: usize = sorted.count - 1
+                while at > 0 and before(pts[sorted[at]], pts[sorted[at - 1]]):
+                    held: usize = sorted[at]
+                    sorted[at] <- sorted[at - 1]
+                    sorted[at - 1] <- held
+                    at <- at - 1
+            # Drop repeated points (equal neighbours after the sort).
+            mutable order: darray[usize] = []
+            for k in 0..<sorted.count:
+                continue if k > 0 and same(pts[sorted[k]], pts[sorted[k - 1]])
+                order.push(sorted[k])
+            mutable out: darray[usize] = []
+            return out if order.count == 0
+            if order.count < 3:
+                for k in 0..<order.count:
+                    out.push(order[k])
+                return out
+            # Lower chain, then upper chain, on a fixed-size stack.
+            mutable st: darray[usize] = []
+            for k in 0..<(2 * order.count):
+                st.push(0)
+            mutable top: usize = 0
+            for k in 0..<order.count:
+                while top >= 2 and turn(pts[st[top - 2]], pts[st[top - 1]], pts[order[k]]) <= 0.0:
+                    top <- top - 1
+                st[top] <- order[k]
+                top <- top + 1
+            lower: usize = top + 1
+            mutable j: usize = order.count - 1
+            while j > 0:
+                j <- j - 1
+                while top >= lower and turn(pts[st[top - 2]], pts[st[top - 1]], pts[order[j]]) <= 0.0:
+                    top <- top - 1
+                st[top] <- order[j]
+                top <- top + 1
+            # The chain ends where it started.
+            for k in 0..<(top - 1):
+                out.push(st[k])
+            out
+
+        # The centre of mass `com`, its plumb line and ground point, and the
+        # support polygon of `support` at height `ground_y`. Returns the
+        # primitives drawn (lines plus triangles plus markers).
+        def draw(list: mutable ViewportDraw::List&, cam: ViewportCamera::Camera&, com: Geometry::Vec3, ground_y: f32, support: darray[Geometry::Vec3]&, balanced: bool, style: Style, layer: i32) -> usize error[ViewportDraw::DrawError]:
+            raise ViewportDraw::DrawError.NotFinite if not finite(com) or ground_y != ground_y
+            mutable drawn: usize = 0
+            idx: darray[usize] = hull(support)
+            y: f32 = ground_y + LIFT
+            m: usize = idx.count
+            if m >= 3:
+                first: Geometry::Vec3 = flat(support[idx[0]], y)
+                for k in 1..<(m - 1):
+                    try ViewportDraw::triangle(list, first, flat(support[idx[k]], y), flat(support[idx[k + 1]], y), style.fill, layer)
+                    drawn <- drawn + 1
+            if m >= 2:
+                for k in 0..<m:
+                    next: usize = k + 1 if k + 1 < m else 0
+                    continue if m == 2 and k == 1
+                    try ViewportDraw::line(list, flat(support[idx[k]], y), flat(support[idx[next]], y), style.support, layer)
+                    drawn <- drawn + 1
+            elif m == 1:
+                try ViewportDraw::marker(list, cam, flat(support[idx[0]], y), style.radius_px * 0.6, style.support, layer)
+                drawn <- drawn + 1
+            color: u32 = style.com if balanced else style.bad
+            foot: Geometry::Vec3 = flat(com, y)
+            try ViewportDraw::line(list, com, foot, color, layer)
+            try ViewportDraw::marker(list, cam, com, style.radius_px, color, layer)
+            try ViewportDraw::marker(list, cam, foot, style.radius_px * 0.5, color, layer)
+            drawn + 3
+
+    private:
+        def finite(p: Geometry::Vec3) -> bool:
+            return false if p.x != p.x or p.y != p.y or p.z != p.z
+            return false if p.x > 1000000.0 or p.x < -1000000.0 or p.z > 1000000.0 or p.z < -1000000.0
+            return false if p.y > 1000000.0 or p.y < -1000000.0
+            true
+
+        def before(a: Geometry::Vec3, b: Geometry::Vec3) -> bool:
+            return a.x < b.x if a.x != b.x
+            a.z < b.z
+
+        def same(a: Geometry::Vec3, b: Geometry::Vec3) -> bool:
+            a.x == b.x and a.z == b.z
+
+        # Cross product of (a -> b) and (a -> c) in the (x, z) plane, signed
+        # so that a positive value is a counter-clockwise turn seen from +y.
+        def turn(a: Geometry::Vec3, b: Geometry::Vec3, c: Geometry::Vec3) -> f32:
+            (b.z - a.z) * (c.x - a.x) - (b.x - a.x) * (c.z - a.z)
+
+        def flat(p: Geometry::Vec3, y: f32) -> Geometry::Vec3:
+            Geometry::Vec3{x: p.x, y: y, z: p.z}

@@ -1,0 +1,25 @@
+# Native open/save panels for AppKit hosts (macOS). Modal: each call returns
+# when the person picks a file or cancels; null means cancelled. Extension
+# lists are ';'-separated without dots, e.g. "glb;gltf". Paths returned are
+# owned by the engine and stay valid for the life of the process.
+# Link native/file_panel_appkit.m with -framework Cocoa
+# -framework UniformTypeIdentifiers.
+module FilePanel:
+    private:
+        @link_name("elisa_file_panel_open")
+        extern c_open(extensions: cstr, title: cstr) -> cstr?
+        @link_name("elisa_file_panel_save")
+        extern c_save(extensions: cstr, suggested: cstr, title: cstr) -> cstr?
+        @link_name("elisa_file_panel_note_recent")
+        extern c_note_recent(path: cstr) -> void
+
+    public:
+        def open(extensions: cstr, title: cstr) -> cstr?:
+            return c_open(extensions, title)
+
+        # `suggested` is a file name or a path whose folder the panel starts in.
+        def save(extensions: cstr, suggested: cstr, title: cstr) -> cstr?:
+            return c_save(extensions, suggested, title)
+
+        def note_recent(path: cstr) -> void:
+            c_note_recent(path)

@@ -1,0 +1,105 @@
+# Skinned mesh display for editor viewports (plan M03): the mesh the
+# skeleton is drawn over.
+#
+# `skin` poses a GlbSkinMesh with linear blend skinning: joint j's matrix is
+# the model matrix of its node times its inverse bind matrix, and a vertex
+# is the weight-blended sum of its (up to four) joint-transformed bind
+# positions. Weights are renormalised; a vertex with no weight keeps its
+# bind position.
+#
+# `draw` appends one flat-shaded triangle per face to a ViewportDraw list.
+# Faces are two-sided and lit by a fixed light from over the viewer's
+# shoulder, over an ambient floor, through the proved SkinMeshPolicy light
+# and shade arithmetic. Degenerate and non-finite faces are skipped.
+include "./viewport_draw.elisa"
+include "../assets/glb_skin_mesh.elisa"
+
+module MeshOverlay:
+    public:
+        error MeshError:
+            ShapeMismatch
+            Draw
+
+        struct Style:
+            red: i64
+            green: i64
+            blue: i64
+            alpha: i64
+            # Permille light floor for faces edge-on to the light.
+            ambient: i64
+            layer: i32
+
+        def default_style() -> Style:
+            Style{red: 176, green: 168, blue: 160, alpha: 255, ambient: 350, layer: ViewportDraw::DEPTH}
+
+        # Pose `mesh` into `out` (cleared first). `joint_models` holds one
+        # model transform per skin joint, in skin joint order.
+        def skin(mesh: GlbSkinMesh::Mesh&, joint_models: darray[Geometry::Transform]&, out: mutable darray[Geometry::Vec3]&) -> usize error[MeshError]:
+            joints: usize = GlbSkinMesh::joint_count(mesh)
+            raise MeshError.ShapeMismatch if joint_models.count != joints
+            mutable matrices: darray[f32] = []
+            for j in 0..<joints:
+                model: f32[16] = Geometry::transform_to_matrix(joint_models[j])
+                for col in 0..<4:
+                    for row in 0..<4:
+                        mutable sum: f32 = 0.0
+                        for k in 0..<4:
+                            sum <- sum + model[k * 4 + row] * mesh.inverse_binds[j * 16 + col * 4 + k]
+                        matrices.push(sum)
+            out.clear()
+            for v in 0..<mesh.positions.count:
+                p: Geometry::Vec3 = mesh.positions[v]
+                mutable x: f32 = 0.0
+                mutable y: f32 = 0.0
+                mutable z: f32 = 0.0
+                mutable total: f32 = 0.0
+                for k in 0..<GlbSkinMesh::INFLUENCES:
+                    w: f32 = mesh.influence_weights[v * GlbSkinMesh::INFLUENCES + k]
+                    if w > 0.0:
+                        m: usize = mesh.influence_joints[v * GlbSkinMesh::INFLUENCES + k].usize() * 16
+                        x <- x + w * (matrices[m] * p.x + matrices[m + 4] * p.y + matrices[m + 8] * p.z + matrices[m + 12])
+                        y <- y + w * (matrices[m + 1] * p.x + matrices[m + 5] * p.y + matrices[m + 9] * p.z + matrices[m + 13])
+                        z <- z + w * (matrices[m + 2] * p.x + matrices[m + 6] * p.y + matrices[m + 10] * p.z + matrices[m + 14])
+                        total <- total + w
+                if total > 0.000001:
+                    out.push(Geometry::Vec3{x: x / total, y: y / total, z: z / total})
+                else:
+                    out.push(p)
+            out.count
+
+        # Permille facing of a unit normal toward the light, sign dropped.
+        def facing(normal: Geometry::Vec3, light: Geometry::Vec3) -> i64:
+            cosine: f32 = Geometry::vec3_dot(normal, light)
+            magnitude: f32 = cosine if cosine >= 0.0 else 0.0 - cosine
+            return SkinMeshPolicy::FULL_LIGHT if magnitude >= 1.0
+            (magnitude * 1000.0).i64()
+
+        # Append the posed mesh (`skinned`, from `skin`) to `list`; the
+        # triangle count drawn.
+        def draw(list: mutable ViewportDraw::List&, mesh: GlbSkinMesh::Mesh&, skinned: darray[Geometry::Vec3]&, light: Geometry::Vec3, style: Style) -> usize error[MeshError]:
+            raise MeshError.ShapeMismatch if skinned.count != mesh.positions.count
+            ambient: i64 = SkinMeshPolicy::FULL_LIGHT if style.ambient > SkinMeshPolicy::FULL_LIGHT else (0 if style.ambient < 0 else style.ambient)
+            unit_light: Geometry::Vec3 = Geometry::vec3_normalize(light)
+            mutable drawn: usize = 0
+            for t in 0..<GlbSkinMesh::triangle_count(mesh):
+                a: Geometry::Vec3 = skinned[mesh.indices[t * 3].usize()]
+                b: Geometry::Vec3 = skinned[mesh.indices[t * 3 + 1].usize()]
+                c: Geometry::Vec3 = skinned[mesh.indices[t * 3 + 2].usize()]
+                cross: Geometry::Vec3 = Geometry::vec3_cross(Geometry::vec3_sub(b, a), Geometry::vec3_sub(c, a))
+                area: f32 = Geometry::vec3_length_squared(cross)
+                if area > 0.0 and Geometry::vec3_is_finite(cross):
+                    d: i64 = facing(Geometry::vec3_scale(cross, 1.0 / Geometry::sqrt_f32(area)), unit_light)
+                    level: i64 = SkinMeshPolicy::light_level(d, ambient)
+                    color: u32 = ViewportDraw::rgba(SkinMeshPolicy::shade(mesh_clamp_byte(style.red), level), SkinMeshPolicy::shade(mesh_clamp_byte(style.green), level), SkinMeshPolicy::shade(mesh_clamp_byte(style.blue), level), mesh_clamp_byte(style.alpha))
+                    failed: i64 = catch ViewportDraw::triangle(list, a, b, c, color, style.layer):
+                        value: 0
+                        error failure: 1
+                    raise MeshError.Draw if failed != 0
+                    drawn <- drawn + 1
+            drawn
+
+    private:
+        def mesh_clamp_byte(value: i64) -> i64:
+            return 0 if value < 0
+            return 255 if value > 255
+            value

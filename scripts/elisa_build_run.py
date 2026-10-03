@@ -251,6 +251,12 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
             help="ignore the asset cook cache and regenerate every declared asset")
         command.add_argument("--optimize", action="store_true",
             help="compile the native runtime with -O2 (or set ELISA_NATIVE_OPTIMIZE=1)")
+        command.add_argument("--console", action="store_true",
+            help="build a headless console executable without the Application host "
+                 "(or set \"host\": \"console\" in the manifest)")
+        if action == "run":
+            command.add_argument("program_args", nargs=argparse.REMAINDER,
+                help="arguments after -- are passed to the program")
     return parser.parse_args(argv)
 
 
@@ -441,12 +447,41 @@ def native_link_command(cxx: str, archive: Path, staged_output: Path,
     return command
 
 
+def project_host(config: dict[str, object], console_flag: bool) -> str:
+    host = config.get("host", "application")
+    if host not in ("application", "console"):
+        raise BuildConfigurationError("project 'host' must be \"application\" or \"console\"")
+    return "console" if console_flag else str(host)
+
+
+def build_console(args: argparse.Namespace, main_source: Path,
+    output: Path) -> tuple[int, Path | None, Path | None]:
+    """Headless tools: compile main() straight to an executable, no native host."""
+    compiler = args.compiler or os.environ.get("ELISA_COMPILER_BIN", "elisac-stage1")
+    command = [compiler]
+    if args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1":
+        command.append("-O2")
+    command.extend(["-emit", "exe", "-o", str(output), str(main_source)])
+    status = run_command(command)
+    if status != 0:
+        return status, None, None
+    if not output.is_file():
+        print("Elisa compiler succeeded without creating the output executable.", file=sys.stderr)
+        return 1, None, None
+    return 0, output, None
+
+
 def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | None]:
+    project, main_source, output = resolve_project_paths(args)
+    config = load_project_config(project)
+    if project_host(config, getattr(args, "console", False)) == "console":
+        status = cook_declared_assets(project, config)
+        if status != 0:
+            return status, None, None
+        return build_console(args, main_source, output)
     if sys.platform != "darwin":
         print("The SDL3/Metal Application host currently supports macOS only.", file=sys.stderr)
         return 2, None, None
-    project, main_source, output = resolve_project_paths(args)
-    config = load_project_config(project)
     paths = resolve_native_paths(args)
     validate_native_files(paths)
     cxx = args.cxx or os.environ.get("CXX", default_native_compiler())
@@ -541,15 +576,20 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Built Elisa application: {output}")
             return 0
         runtime_env = dict(os.environ)
-        runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(shader_path)
         project = Path(args.project).expanduser().resolve()
+        program_args = [a for a in (args.program_args or [])]
+        if program_args[:1] == ["--"]:
+            program_args = program_args[1:]
+        if shader_path is None:
+            return run_command([str(output), *program_args], cwd=project, env=runtime_env)
+        runtime_env["ELISA_ENGINE_SHADER_PATH"] = str(shader_path)
         app = application_settings(load_project_config(project))
         runtime_env["ELISA_PROJECT_TITLE"] = str(app["title"])
         runtime_env["ELISA_PROJECT_WIDTH"] = str(app["width"])
         runtime_env["ELISA_PROJECT_HEIGHT"] = str(app["height"])
         runtime_env["ELISA_PROJECT_HIDDEN"] = "1" if app["hidden"] else "0"
         runtime_env["ELISA_PROJECT_ROOT"] = str(project)
-        return run_command([str(output)], cwd=project, env=runtime_env)
+        return run_command([str(output), *program_args], cwd=project, env=runtime_env)
     except BuildConfigurationError as error:
         print(f"elisa-build-run: {error}", file=sys.stderr)
         return 2
