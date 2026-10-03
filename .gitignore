@@ -14,3 +14,6 @@ log.txt
 examples/maze/assets/*.elpk
 /shaders/
 /examples/character_course/third_party
+
+# Generated prover output
+/proof/*.json
