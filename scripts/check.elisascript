@@ -127,9 +127,14 @@ def main(arguments: darray[sview]) -> i64:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output, true):
             return 1
     # Cached, parallel proofs: unchanged prover + include closure answers from build/proof-cache.
-    proof_status: i64 = run_visible(python, [str(root.joinpath("scripts/prove_all.py")), prover])
-    if proof_status != 0:
-        return proof_status
+    # The script verifier rejects a main that never captures a process itself, so call it directly.
+    proof_run: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), [str(root.joinpath("scripts/prove_all.py")), prover], empty_input)
+    _ = write_stdout(proof_run.stdout)
+    _ = write_stderr(proof_run.stderr)
+    if proof_run.exit_status != 0:
+        return proof_run.exit_status
     launcher: sview = get_environment_or("ELISASCRIPT_BIN", "elisascript")
     validation_status: i64 = run_visible(python, [str(root.joinpath("scripts/record_validation.py")), str(root), compiler, prover, launcher])
     validation_status
