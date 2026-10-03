@@ -581,11 +581,7 @@ def main(arguments: darray[sview]) -> i64:
     for fixture in ["allocator_private_read", "allocator_private_construct", "allocator_private_zeroed", "world_private_write", "recorder_private_read", "bridge_private_write", "queue_private_read"]:
         if not rejects_owner_violation(compiler, str(root.joinpath(f"test/negative/{fixture}.elisa")), rejection_output, true):
             return 1
-    for name in proofs:
-        status: i64 = run_visible(prover, [str(root.joinpath("proof/" + name + ".elisa"))])
-        if status != 0:
-            return status
-    for name in proofs:
+    for name in proofs: # One --json pass per proof; failures name the report holding the findings.
         report: ProcessCapture =
             empty_input: sview = ""
             capture_process_result(executable(prover), ["--json", str(root.joinpath("proof/" + name + ".elisa"))], empty_input)
@@ -593,6 +589,7 @@ def main(arguments: darray[sview]) -> i64:
         report_name: sview = name.replace("_", "-")
         _ = write_text(root.joinpath("build/" + report_name + "-proof.json"), report.stdout)
         if report.exit_status != 0:
+            eprint("proof failed: proof/" + name + ".elisa; findings in build/" + report_name + "-proof.json")
             return report.exit_status
     python: sview = get_environment_or("PYTHON_BIN", "python3")
     launcher: sview = get_environment_or("ELISASCRIPT_BIN", "elisascript")
