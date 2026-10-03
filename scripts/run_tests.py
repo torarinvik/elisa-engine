@@ -101,7 +101,7 @@ def main():
             closure(ROOT / t["source"], files)
             # Last measured compile seconds, else include bytes as a proxy (scaled far below any timing).
             todo.append((durations.get(t["name"], sum(f.stat().st_size for f in files) * 1e-9), i, keys))
-    todo.sort(reverse=True)  # slowest first: remotes take from the front, local workers from the back
+    todo.sort(reverse=True)  # slowest first: local workers (faster per compile) take the front, remotes the back
     local_only = collections.deque()
     queue, lock = collections.deque((i, keys) for _, i, keys in todo), threading.Lock()
     pending, settled = len(queue), threading.Condition(lock)  # compiles not yet built or failed
@@ -138,7 +138,7 @@ def main():
             with lock:
                 if not local_only and (retries_only or not queue):
                     return
-                i, keys = local_only.pop() if local_only else queue.pop()
+                i, keys = local_only.pop() if local_only else queue.popleft()
                 began[i] = time.monotonic()
             t = tests[i]
             cmd = [a.compiler, "-emit", "exe", *t["flags"], "-o", str(ROOT / t["binary"]), str(ROOT / t["source"])]
@@ -173,7 +173,7 @@ def main():
             with lock:
                 if not queue:
                     return
-                i, keys = queue.popleft()
+                i, keys = queue.pop()
                 began[i] = time.monotonic()
             rc, log, obj = r.compile(w, tests[i]["flags"], tests[i]["source"], triple)
             ok = False
@@ -190,7 +190,7 @@ def main():
                 done(i, keys, r.identity, "built remotely")
             elif rc is None:
                 with lock:
-                    queue.appendleft((i, keys))  # the host failed: another host (or local) takes it
+                    queue.append((i, keys))  # the host failed: another host (or local) takes it
                     settled.notify_all()
             else:
                 with lock:
@@ -202,7 +202,7 @@ def main():
     workers = [threading.Thread(target=remote_host, args=(r,), daemon=True) for r in remotes]
     if remotes:  # the Mac only links, unless asked to compile too
         workers += [threading.Thread(target=local_worker, daemon=True) for _ in range(a.local_compiles if a.local_compiles is not None
-                                                                            else max(0, int(os.cpu_count() - os.getloadavg()[0])))]
+                                                                            else max(4, int(os.cpu_count() - os.getloadavg()[0])))]
     for w in workers:  # daemon: a host stuck in rsync must not hold the run once everything is built
         w.start()
     while True:
