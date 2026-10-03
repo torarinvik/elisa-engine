@@ -95,8 +95,9 @@ status to its caller. This does not collect a CrashReporter stack trace.
 
 - **Clean machine:** runs were on the development machine with source and
   Homebrew reads denied. A different, clean Mac has not been tested.
-- **Signing:** only ad-hoc signing is used. Release signing and notarization are
-  not done.
+- **Signing:** the packager ad-hoc signs copied dynamic libraries after their
+  load commands change. The outer `.app` bundle is unsigned; release signing
+  and notarization are not done.
 - **Manual play:** the packaged executable is the finite self-test. Interactive
   play of `examples/character_course/main.elisa` by a person is still open.
 
@@ -147,3 +148,29 @@ build identity and native dependency hashes are in the adjacent
 Wicked/Metal, Jolt, audio and the shader compiler, and drew the course with its
 controls panel. Keyboard movement, pause and restart were not exercised in this
 launch, so Q07a's interactive-play acceptance remains open.
+
+## Interactive client bundle (2026-10-03)
+
+The same packager also produced `build/CharacterCourse.app` from the ordinary
+game executable, using `main.elisa` rather than the finite self-test entry:
+
+```bash
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-manual \
+  --name CharacterCourse --bundle-id org.elisa.character-course \
+  --output build/CharacterCourse.app \
+  --shader-root ../elisa-boxing-wickedengine/build-elisa-sdl3/WickedEngine/shaders
+```
+
+All 28 `scripts/test_package_macos_app.py` tests pass. The 133 MB bundle stages
+the game's `cells`, `fonts`, `rigs`, `sounds`, and `text` resources, 50 notice
+files, its shader library and nine transitive dynamic libraries under
+`Contents/Frameworks`. The packaged executable SHA-256 is
+`8b162dab253e18e0a6386fdab1b97e348dadfdc1b74c3cde118c12c43b36d55d`; its
+build identity is `40d5eb7b0efd8803` in
+`Contents/Resources/build-provenance.json`. That sidecar records the source
+snapshot used for the build; its changes are now committed as `dee6b7c5`.
+`codesign --verify --strict` passes for the executable. The outer bundle is
+unsigned, and this interactive bundle has not yet been sandbox-launched outside
+the source and Homebrew paths. Q02 and Q07a remain open for that check, release
+signing, and manual play.
