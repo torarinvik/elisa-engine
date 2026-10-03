@@ -67,7 +67,10 @@ def main():
         host, _, port = target.partition("#")
         ssh = ["ssh", "-o", "ConnectTimeout=5", "-o", "LogLevel=ERROR", "-o", "ControlMaster=auto",
                "-o", f"ControlPath={os.path.expanduser('~')}/.ssh/cm-%C", "-o", "ControlPersist=120"] + (["-p", port] if port else [])
-        probe = subprocess.run(ssh + [host, "awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo; "
+        probe = subprocess.run(ssh + [host, # free GB = min(MemAvailable, cgroup memory.max - memory.current) when a limit is set
+                                       "m=$(awk '/MemAvailable/{print int($2/1048576)}' /proc/meminfo); "
+                                       "l=$(cat /sys/fs/cgroup/memory.max 2>/dev/null); c=$(cat /sys/fs/cgroup/memory.current 2>/dev/null); "
+                                       "if [ -n \"$l\" ] && [ \"$l\" != max ]; then g=$(( (l - c) / 1073741824 )); [ $g -lt $m ] && m=$g; fi; echo $m; "
                                        # cgroup quota, not nproc: rented containers report host cores
                                        "awk '{print ($1==\"max\") ? n : int($1/$2)}' n=$(nproc) /sys/fs/cgroup/cpu.max 2>/dev/null || nproc"],
                                capture_output=True, text=True)

@@ -92,13 +92,7 @@ module SoundEventAssets:
         def digits(source: Source&, start: usize, stop: usize) -> bool:
             requires stop <= source.length and source.length <= MAX_BYTES
             for index in start..<stop |all: bool = true| -> all:
-                all <- all and is_digit(source.bytes[index])
-
-        def is_digit(byte: u8) -> bool:
-            byte >= ZERO and byte <= NINE
-
-        def is_space(byte: u8) -> bool:
-            byte == 32 or byte == 9 or byte == 13
+                all <- all and source.bytes[index] >= ZERO and source.bytes[index] <= NINE
 
         def line_end(source: Source&, start: usize) -> usize:
             requires start <= source.length and source.length <= MAX_BYTES
@@ -112,19 +106,21 @@ module SoundEventAssets:
                 invariant start <= found and found <= stop
                 found <- index if found == stop and source.bytes[index] == NEWLINE
 
+        # Space, tab and carriage return are tested inline: a Boolean helper called in
+        # these loops costs the prover about 40 s per call site.
         def skip_spaces(source: Source&, start: usize, stop: usize) -> usize:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             ensure start <= result and result <= stop
             for index in start..<stop |found: usize = stop| -> found:
                 invariant start <= found and found <= stop
-                found <- index if found == stop and not is_space(source.bytes[index])
+                found <- index if found == stop and not (source.bytes[index] == 32 or source.bytes[index] == 9 or source.bytes[index] == 13)
 
         def token_end(source: Source&, start: usize, stop: usize) -> usize:
             requires start <= stop and stop <= source.length and source.length <= MAX_BYTES
             ensure start <= result and result <= stop
             for index in start..<stop |found: usize = stop| -> found:
                 invariant start <= found and found <= stop
-                found <- index if found == stop and (is_space(source.bytes[index]) or source.bytes[index] == HASH)
+                found <- index if found == stop and (source.bytes[index] == 32 or source.bytes[index] == 9 or source.bytes[index] == 13 or source.bytes[index] == HASH)
 
         # "seed" and "event" in ASCII.
         def is_seed(source: Source&, start: usize, stop: usize) -> bool:
