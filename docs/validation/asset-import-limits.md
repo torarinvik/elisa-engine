@@ -80,3 +80,5 @@ check lets 11 broken mutants through and fails with 17.
 
 Still open: model, image and animation importers beyond the container, out-of-process
 workers, and timeouts.
+
+`fuzz_binary_package` in the same header mutates whole binary packages (512 seeded mutants, run twice for an identical digest) and reads the index and every section. Sections must stay inside the file, payloads must match their unpacked size, the mesh must hold the geometry invariants, and every refusal must carry an error. It found zstd sections whose frame decoded shorter than the declared size passing the checksum; `virtual_package.h` now refuses them. Result: 288 indexed, 224 refused, 0 broken; clean under ASan+UBSan; without the size check two mutants break and the test exits 17.

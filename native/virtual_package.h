@@ -371,6 +371,11 @@ inline bool read_binary_package_section(const std::string& path, const BinaryPac
         if (!frame_complete) {
             output.clear(); error = "zstd section decompression failed"; return false;
         }
+        // The checksum covers only what was decoded, so a frame shorter than the
+        // declared unpacked size would otherwise pass.
+        if (output.size() != expected_size) {
+            output.clear(); error = "zstd section unpacked size mismatch"; return false;
+        }
         if (cancellation_check && cancellation_check(bytes_read, section_it->size)) {
             output.clear(); error = "binary section decompression cancelled"; return false;
         }

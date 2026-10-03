@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -75,8 +77,16 @@ bool fuzz_checks(const char* path, const probe::BinaryPackageIndex& index) {
     const auto again = elisa::assets::fuzz::fuzz_cooked_geometry(base, 20261003u, 2048);
     std::printf("cooked geometry fuzz: %u accepted, %u refused, %u broken\n",
         first.accepted, first.refused, first.broken);
-    return first.digest == again.digest && first.broken == 0 && first.refused > 0 && first.accepted > 0 &&
-        first.accepted + first.refused == 2048;
+    if (first.digest != again.digest || first.broken != 0 || first.refused == 0 || first.accepted == 0 ||
+        first.accepted + first.refused != 2048) return false;
+    std::ifstream file(path, std::ios::binary);
+    const std::vector<uint8_t> bundle{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    const std::string scratch = std::string(path) + ".fuzz";
+    const auto whole = elisa::assets::fuzz::fuzz_binary_package(bundle, scratch, 20261003u, 512);
+    const auto whole_again = elisa::assets::fuzz::fuzz_binary_package(bundle, scratch, 20261003u, 512);
+    std::printf("binary package fuzz: %u indexed, %u refused, %u broken\n",
+        whole.accepted, whole.refused, whole.broken);
+    return whole.digest == whole_again.digest && whole.broken == 0 && whole.accepted > 0 && whole.refused > 0;
 }
 } // namespace
 

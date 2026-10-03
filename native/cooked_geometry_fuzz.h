@@ -8,6 +8,9 @@
 #include "cooked_geometry_package.h"
 
 #include <cstdint>
+#include <fstream>
+#include <cstdio>
+#include <string>
 #include <vector>
 
 namespace elisa::assets::fuzz {
@@ -74,6 +77,52 @@ inline GeometryFuzzResult fuzz_cooked_geometry(const std::vector<uint8_t>& base,
         }
         result.digest = (result.digest * 31 + code) % 1000000007ull;
     }
+    return result;
+}
+
+// Whole-package mutants, written to `scratch` because the binary reader is
+// path based. A valid index must keep every section inside the file; a section
+// read must fail with a message or return exactly its unpacked size; a mesh
+// section that decodes is then held to the geometry invariants.
+inline GeometryFuzzResult fuzz_binary_package(const std::vector<uint8_t>& base, const std::string& scratch,
+    uint32_t seed, uint32_t rounds) {
+    GeometryFuzzResult result;
+    for (uint32_t round = 0; round < rounds; ++round) {
+        const std::vector<uint8_t> bytes = mutate(base, seed);
+        {
+            std::ofstream out(scratch, std::ios::binary | std::ios::trunc);
+            out.write(reinterpret_cast<const char*>(bytes.data()), std::streamsize(bytes.size()));
+        }
+        uint64_t code = 2;
+        const probe::BinaryPackageIndex index = probe::read_binary_package_index(scratch);
+        if (index.valid) {
+            code = 1;
+            for (const probe::BinaryPackageSection& section : index.sections) {
+                if (section.offset + section.size > bytes.size()) code = 3;
+                std::vector<uint8_t> payload;
+                std::string error;
+                if (probe::read_binary_package_section(scratch, index, section.name, payload, error)) {
+                    if (payload.size() != section.unpacked_size) code = 3;
+                    if (section.name == "mesh") {
+                        CookedGeometry geometry;
+                        std::string mesh_error;
+                        if (load_cooked_geometry_bytes(payload.data(), payload.size(), geometry, mesh_error)) {
+                            if (!geometry_holds(geometry)) code = 3;
+                        } else if (mesh_error.empty()) {
+                            code = 3;
+                        }
+                    }
+                } else if (error.empty()) {
+                    code = 3;
+                }
+            }
+        } else if (index.error.empty()) {
+            code = 3;
+        }
+        if (code == 1) ++result.accepted; else if (code == 2) ++result.refused; else ++result.broken;
+        result.digest = (result.digest * 31 + code) % 1000000007ull;
+    }
+    std::remove(scratch.c_str());
     return result;
 }
 
