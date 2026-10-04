@@ -877,7 +877,7 @@
       ]
     },
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations; wiVideo.cpp.o includes WickedEngine/Utility/h264.h",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations; wiVideo.cpp.o includes WickedEngine/Utility/minimp4.h and h264.h",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -898,7 +898,8 @@
         "FidelityFX-ParallelSort",
         "Wicked-DirectXMath",
         "Wicked-CoreRT-SAL",
-        "Wicked-H264"
+        "Wicked-H264",
+        "Wicked-minimp4"
       ],
       "remaining": [
         "Other per-object embedded and platform-specific vendor closure remains under review."

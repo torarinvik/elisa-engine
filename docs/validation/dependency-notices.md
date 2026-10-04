@@ -64,8 +64,9 @@ while broader vendor, platform, shader and distribution reviews stayed open.
 
 ## Packaged H.264 and shader resources — 2026-10-04
 
-The next archive pass found Wicked's own H.264 parser in `wiVideo.cpp.o`; its
-MIT notice is now included in the `libWickedEngine.a` mapping. The package also
+The next archive pass found both minimp4 and Wicked's own H.264 parser in
+`wiVideo.cpp.o`; both notices are now included in the `libWickedEngine.a` map
+(minimp4 also remains mapped to `libUtility.a`). The package also
 ships the prepared shader directory, including source shaders and compiled
 Metal kernels. `check_bundled_notices.py` now verifies declared resource-tree
 mappings as well as dylibs and static archives. Both bundles map the shader tree
