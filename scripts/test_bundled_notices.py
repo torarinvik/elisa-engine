@@ -17,7 +17,8 @@ class BundledNoticeTests(unittest.TestCase):
             (libraries / "libexample.dylib").write_bytes(b"fixture")
             catalog = {"sources": [{"name": "Example", "sha256": hashlib.sha256(b"notice").hexdigest()}],
                 "complete": False, "statically_linked_components": {
-                    "Example static": {"evidence": "libexample.a", "notices": ["Example"]}},
+                    "Example static": {"evidence": "libexample.a", "notices": ["Example"],
+                        "remaining": ["one unreviewed source"]}},
                 "bundled_libraries": {"libexample.dylib": {"notices": ["Example"]}}}
             initial = audit(app, catalog)
             self.assertFalse(initial["dylib_notice_files_verified"])
@@ -29,6 +30,8 @@ class BundledNoticeTests(unittest.TestCase):
             report = audit(app, catalog)
             self.assertTrue(report["dylib_notice_files_verified"])
             self.assertTrue(report["statically_linked_notice_files_verified"])
+            self.assertEqual(report["statically_linked_components"][0]["remaining"],
+                ["one unreviewed source"])
             self.assertFalse(report["catalog_complete"])
             (notices / "Example.txt").write_bytes(b"modified")
             report = audit(app, catalog)

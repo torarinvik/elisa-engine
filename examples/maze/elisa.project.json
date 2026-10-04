@@ -77,7 +77,10 @@
       "third_party/notices/wicked-stb_truetype.txt",
       "third_party/notices/xatlas.txt",
       "third_party/notices/zstd-gpl-alternative.txt",
-      "third_party/notices/zstd.txt"
+      "third_party/notices/zstd.txt",
+      "third_party/notices/OffsetAllocator.txt",
+      "third_party/notices/SPIRV-Reflect.txt",
+      "third_party/notices/stb_vorbis.txt"
     ]
   }
 }

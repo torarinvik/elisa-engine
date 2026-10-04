@@ -44,7 +44,8 @@ def audit(app: Path, catalog: dict) -> dict:
             if hashlib.sha256(matches[0].read_bytes()).hexdigest() != expected:
                 problems.append(f"notice {name} differs from the catalog")
         static_results.append({"component": component, "evidence": mapping.get("evidence", ""),
-            "notices": names, "problems": problems})
+            "notices": names, "problems": problems,
+            "remaining": mapping.get("remaining", [])})
     return {"schema": 1, "catalog_complete": catalog.get("complete") is True,
         "dylib_notice_files_verified": bool(results) and all(not item["problems"] for item in results),
         "statically_linked_notice_files_verified": all(not item["problems"] for item in static_results),

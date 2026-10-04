@@ -62,7 +62,7 @@
   },
   "complete": false,
   "remaining": [
-    "Additional embedded subcomponent notices and copyright blocks beyond the collected utility headers and Jolt license",
+    "Additional embedded subcomponent notices and copyright blocks beyond mapped archive dependencies, including blue-noise source provenance",
     "Wicked vendored dependency closure across the platform-specific source sets",
     "Completeness review of library-specific copyright notices and distribution obligations"
   ],
@@ -73,6 +73,42 @@
       "path": "LICENSE.txt",
       "root": "wicked",
       "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
+    },
+    {
+      "name": "OffsetAllocator",
+      "origin": {
+        "commit": "3d8a0258b960cc597e3f7a64ecb8e788ca8ec816",
+        "url": "https://raw.githubusercontent.com/sebbbi/OffsetAllocator/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE"
+      },
+      "path": "native/notices/upstream/offset-allocator-LICENSE.txt",
+      "root": "engine",
+      "sha256": "ca618b192cd46bdd230d062c5e407e972ea47b9d98bd16323af1cc2549880858"
+    },
+    {
+      "name": "SPIRV-Reflect",
+      "origin": {
+        "commit": "795778a4da471b1c7bdd8833d5766f4436b3a4a7",
+        "url": "https://raw.githubusercontent.com/KhronosGroup/SPIRV-Reflect/795778a4da471b1c7bdd8833d5766f4436b3a4a7/LICENSE"
+      },
+      "path": "native/notices/upstream/spirv-reflect-LICENSE.txt",
+      "root": "engine",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "excerpt": {
+        "bytes": 2592,
+        "offset": 190198,
+        "sha256": "36df9677aa6a2ae37a01c7aaa39c3206fa02a4e06bb5037ebe89e5828b931f31"
+      },
+      "name": "stb_vorbis",
+      "origin": {
+        "commit": "1ee679ca2ef753a528db5ba6801e1067b40481b8",
+        "sha256": "4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636",
+        "url": "https://raw.githubusercontent.com/nothings/stb/1ee679ca2ef753a528db5ba6801e1067b40481b8/stb_vorbis.c"
+      },
+      "path": "WickedEngine/Utility/stb_vorbis.c",
+      "root": "wicked",
+      "sha256": "4c7cb2ff1f7011e9d67950446b7eb9ca044f2e464d76bfbb0b84dd2e23e65636"
     },
     {
       "name": "Jolt",
@@ -541,10 +577,86 @@
     }
   ],
   "statically_linked_components": {
-    "Jolt": {
+    "Detour/libDetour.a": {
+      "evidence": "dependencies/recast/build/Detour/libDetour.a",
+      "notices": [
+        "recastnavigation"
+      ]
+    },
+    "Recast/libRecast.a": {
+      "evidence": "dependencies/recast/build/Recast/libRecast.a",
+      "notices": [
+        "recastnavigation"
+      ]
+    },
+    "WickedEngine/LUA/libLUA.a": {
+      "evidence": "WickedEngine/LUA/libLUA.a",
+      "notices": [
+        "Lua"
+      ]
+    },
+    "WickedEngine/Utility/FAudio/libFAudio.a": {
+      "evidence": "WickedEngine/Utility/FAudio/libFAudio.a",
+      "notices": [
+        "FAudio",
+        "stb_vorbis"
+      ]
+    },
+    "WickedEngine/Utility/libUtility.a": {
+      "evidence": "Utility CMake source list: meshoptimizer, offsetAllocator.cpp, pugixml.cpp, spirv_reflect.c and stb_vorbis.c",
+      "notices": [
+        "WickedEngine",
+        "meshoptimizer",
+        "wicked-lodepng",
+        "wicked-pugixml",
+        "stb_vorbis",
+        "OffsetAllocator",
+        "SPIRV-Reflect"
+      ],
+      "remaining": [
+        "samplerBlueNoiseErrorDistribution_128x128_OptimizedFor_2d2d2d2d_1spp.cpp provenance/license is not recorded."
+      ]
+    },
+    "WickedEngine/libJolt.a": {
       "evidence": "WickedEngine/Jolt (libJolt.a)",
       "notices": [
         "Jolt"
+      ]
+    },
+    "WickedEngine/libWickedEngine.a": {
+      "evidence": "WickedEngine CMake archive; embedded utility includes confirmed in wiAudio, wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid",
+      "notices": [
+        "WickedEngine",
+        "meshoptimizer",
+        "stb_vorbis",
+        "wicked-lodepng",
+        "wicked-pugixml",
+        "wicked-stb_image",
+        "wicked-stb_image_write",
+        "wicked-stb_rect_pack",
+        "wicked-stb_truetype",
+        "wicked-robin-hood"
+      ],
+      "remaining": [
+        "Full per-object embedded and platform-specific vendor closure remains under review."
+      ]
+    },
+    "ozz_animation_offline_r.a": {
+      "evidence": "dependencies/ozz/.../libozz_animation_offline_r.a",
+      "notices": [
+        "ozz-animation"
+      ]
+    },
+    "ozz_animation_r.a": {
+      "evidence": "dependencies/ozz/.../libozz_animation_r.a",
+      "notices": [
+        "ozz-animation"
+      ]
+    },
+    "ozz_base_r.a": {
+      "evidence": "dependencies/ozz/.../libozz_base_r.a",
+      "notices": [
+        "ozz-animation"
       ]
     }
   }
