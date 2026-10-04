@@ -629,6 +629,39 @@
       }
     },
     {
+      "name": "Wicked-Volk",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/volk.h",
+      "sha256": "9e3849d5b1688ab2bd6410b7becfb6cf97f47b057e61fcabbe5a84c03abd1db3",
+      "excerpt": {
+        "offset": 180530,
+        "bytes": 1148,
+        "sha256": "e107d7008413c79e1cac176d3bec5b4966f28dfc16d26a1c7870b72a6d678023"
+      }
+    },
+    {
+      "name": "Wicked-Vulkan-Memory-Allocator",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/vk_mem_alloc.h",
+      "sha256": "f71e856c89a41158c47b70f267578856a2d5bb4ffa3ff4a51f4e5f59c6fe91a3",
+      "excerpt": {
+        "offset": 3,
+        "bytes": 1194,
+        "sha256": "4e1aca7b2bcbcd0260f461e788c8f456929d1b106b0a0a0486ae7074ab51f3fb"
+      }
+    },
+    {
+      "name": "Wicked-Vulkan-Headers",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/vulkan/vulkan_core.h",
+      "sha256": "ddce3179b8ce71112f0ef0ef166b90952a4815aec6cd28811792be9e7bb27adc",
+      "excerpt": {
+        "offset": 49,
+        "bytes": 97,
+        "sha256": "e14a1f4800e28126a3588ea38aa48351389d9ce33413c6a2e4548c8e030df5df"
+      }
+    },
+    {
       "name": "Wicked-Compressonator-BcnKernel",
       "root": "wicked",
       "path": "WickedEngine/shaders/compressonator/bcn_common_kernel.h",
@@ -743,7 +776,7 @@
   ],
   "statically_linked_components": {
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations; wiVideo.cpp.o includes WickedEngine/Utility/minimp4.h and h264.h",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiGraphicsDevice_Vulkan.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter, Vulkan Memory Allocator/Volk/Vulkan headers and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath and SAL; wiVideo.cpp.o includes minimp4.h and h264.h. DX12 implementation is excluded on macOS by _WIN32 guards.",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -765,7 +798,11 @@
         "Wicked-DirectXMath",
         "Wicked-CoreRT-SAL",
         "Wicked-H264",
-        "Wicked-minimp4"
+        "Wicked-minimp4",
+        "Wicked-Volk",
+        "Wicked-Vulkan-Memory-Allocator",
+        "Wicked-Vulkan-Headers",
+        "Apache-2.0"
       ],
       "remaining": [
         "Other per-object embedded and platform-specific vendor closure remains under review."

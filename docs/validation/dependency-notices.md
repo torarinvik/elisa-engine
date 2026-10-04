@@ -89,15 +89,32 @@ The new license sources are pinned to the upstream
 [stb_vorbis source](https://github.com/nothings/stb/blob/1ee679ca2ef753a528db5ba6801e1067b40481b8/stb_vorbis.c), and
 [FidelityFX SSSR license and source](https://github.com/GPUOpen-Effects/FidelityFX-SSSR/tree/34dcacd1feefcfab2855b82e76c7d711f2020a75).
 
+## Vulkan backend archive audit — 2026-10-04
+
+The pinned Wicked SDL3/Metal macOS build also compiles a Vulkan backend into
+`libWickedEngine.a`. The generated arm64 build rule defines the Apple platform,
+and `wiGraphicsDevice_Vulkan.h` enables `WICKEDENGINE_BUILD_VULKAN` there. The
+archive's `wiGraphicsDevice_Vulkan.cpp.o` contains `GraphicsDevice_Vulkan`
+symbols and compiles Wicked's Volk implementation and Vulkan Memory Allocator.
+The catalog now maps their verified license excerpts, plus Khronos's generated
+Vulkan-Headers attribution and the Apache-2.0 license text, to that archive.
+
+The same build includes `wiGraphicsDevice_DX12.cpp.o` as a CMake source, but its
+implementation is guarded by `_WIN32`; this macOS build does not define it, and
+the object has no DX12 backend symbols. D3D12 Memory Allocator and Windows-only
+DirectX header notices therefore remain in the platform audit, rather than
+being claimed as part of this macOS backend. The Windows archive and package
+still need their own audit.
+
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/course-notices-audit-20261004d --wicked-root ../elisa-boxing-wickedengine` collected 74 hash-verified notices; all 75 project-declared paths were present.
-- The shared catalog collected 73 verified notices for `examples/maze`; the Character Course adds its Noto license for 74 total.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --output /private/tmp/MazeWickedNoticeAudit-2026-10-04f-notices --wicked-root ../elisa-boxing-wickedengine` collected 76 hash-verified notices; the merged Character Course collection adds its Noto license for 77.
+- Both project manifests declare all collected notices plus `sources.json`: 77 paths for `examples/maze` and 78 for `examples/character_course`.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
 - `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 2 tests, including missing/tampered notices, resource-tree presence and unsafe resource paths.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py` reports all nine dylibs, ten static archives and the shader resource mapping verified in both packages. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04d-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04d-notice-report.json`. Both exit statuses remain 1 because `catalog_complete=false`; no declared mapping has a problem.
-- Maze and Character Course bundles were repackaged from their existing executables with the updated notice sets. Every declared notice file is present in `Contents/Resources/Notices`.
+- `scripts/check_bundled_notices.py` verifies all nine dylibs, ten static archives and the shader resource mapping in both bundle snapshots, with no mapping problems. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04f-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04f-notice-report.json`. It exits 1 only because `catalog_complete=false` remains intentional.
+- The existing verified Maze and Character Course bundle snapshots were refreshed with the new notice bytes only. All 77/78 declared notice paths are present under `Contents/Resources/Notices`; these notice-only snapshots were not launched again.
 - The prior 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`; the refreshed notice-only packages were audited but not launched again.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
 - Proof: not applicable; this slice updates distribution metadata and a Python file-hash audit, with no Elisa policy function. Remaining unproved: the full set of embedded/vendor notices and distribution obligations.

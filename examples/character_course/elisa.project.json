@@ -91,7 +91,10 @@
       "third_party/notices/NVIDIA-GaussianSplatting.txt",
       "third_party/notices/GPURealTimeBC6H.txt",
       "third_party/notices/MJP-SHforHLSL.txt",
-      "third_party/notices/Apache-2.0.txt"
+      "third_party/notices/Apache-2.0.txt",
+      "third_party/notices/Wicked-Volk.txt",
+      "third_party/notices/Wicked-Vulkan-Memory-Allocator.txt",
+      "third_party/notices/Wicked-Vulkan-Headers.txt"
     ]
   }
 }
