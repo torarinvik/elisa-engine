@@ -124,6 +124,13 @@ inventory. Those license and copyright texts are now mapped to
 `libWickedEngine.a`. The flat-hash-map attribution is based on symbols present
 in the archive, not only on the build's unordered-map setting.
 
+The generated Ninja dependency database covers 130 engine/utility object
+dependency blocks and 259 unique files under Wicked's `Utility` tree. A scan
+found attribution or license markers in 227 of those files; their vendor
+families match the current archive notice map. This is source-tree evidence for
+the pinned macOS build only, and does not close Windows or unmarked-source
+coverage.
+
 ## Validation
 
 - `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --output /private/tmp/MazeWickedNoticeAudit-2026-10-04g-notices --wicked-root ../elisa-boxing-wickedengine` collected 80 hash-verified notices; the merged Character Course collection adds its Noto license for 81.
