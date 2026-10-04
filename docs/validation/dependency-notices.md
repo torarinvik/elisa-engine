@@ -12,29 +12,32 @@ is collected as `Jolt.txt` in both game notice directories.
 `scripts/check_bundled_notices.py` now verifies declared static-component notices
 alongside the transitive dynamic libraries. Both project manifests ship
 `third_party/notices/Jolt.txt`. A repackaged optimized Character Course app contains
-53 notice text files plus the source catalog. Its additional Noto font notice is
+54 notice text files plus the source catalog. Its additional Noto font notice is
 listed in `examples/character_course/notice-sources.json`, pinned to the Google
 Fonts OFL at commit `a559a6efcfed22bf50219f52ecefcf20b9522408`, and combined with
 the shared catalog by the collector. The shared catalog now records static notice
 mappings for all ten archives in the optimized game's build provenance, including
 FAudio, Lua, Recast/Detour and ozz. `OffsetAllocator`, `SPIRV-Reflect` and
-`stb_vorbis` are added to the collected notices. All nine dynamic-library
-mappings and every declared archive notice verify. The global catalog remains
-incomplete; unrecorded blue-noise source provenance and the wider platform-specific
-vendor closure are still open.
+`stb_vorbis` are added to the collected notices. The Utility archive also uses
+the exact blue-noise sampler source from AMD's FidelityFX SSSR v1.3; its pinned
+MIT license is now included. All nine dynamic-library mappings and every declared
+archive notice verify. The global catalog remains incomplete because the wider
+per-object and platform-specific vendor closure still needs review.
 
 The new license sources are pinned to the upstream
 [OffsetAllocator license](https://github.com/sebbbi/OffsetAllocator/blob/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE),
 [SPIRV-Reflect license](https://github.com/KhronosGroup/SPIRV-Reflect/blob/795778a4da471b1c7bdd8833d5766f4436b3a4a7/LICENSE), and
-[stb_vorbis source](https://github.com/nothings/stb/blob/1ee679ca2ef753a528db5ba6801e1067b40481b8/stb_vorbis.c).
+[stb_vorbis source](https://github.com/nothings/stb/blob/1ee679ca2ef753a528db5ba6801e1067b40481b8/stb_vorbis.c), and
+[FidelityFX SSSR license and source](https://github.com/GPUOpen-Effects/FidelityFX-SSSR/tree/34dcacd1feefcfab2855b82e76c7d711f2020a75).
 
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/elisa-course-notices-static-audit-final-20261004 --wicked-root ../elisa-boxing-wickedengine` collected 53 hash-verified sources into a fresh directory; all 54 project-declared notice paths were present.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/elisa-course-notices-final-20261004 --wicked-root ../elisa-boxing-wickedengine` collected 54 hash-verified sources into a fresh directory; all 55 project-declared notice paths were present.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
 - `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 1 test, including missing and modified static notice rejection.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py` reported `dylib_notice_files_verified=true` for all nine libraries and `statically_linked_notice_files_verified=true` for all ten mapped archives in `/private/tmp/CharacterCourseStaticArchiveAuditFinal-2026-10-04.app`; its exit status remains 1 because `catalog_complete=false`. It also names two open archive-specific source reviews: the Wicked per-object closure and blue-noise provenance.
+- `scripts/check_bundled_notices.py` reported `dylib_notice_files_verified=true` for all nine libraries and `statically_linked_notice_files_verified=true` for all ten mapped archives in `/private/tmp/CharacterCourseNoticeFinal-2026-10-04.app`; its exit status remains 1 because `catalog_complete=false`. The sole archive-specific remainder is Wicked's broader per-object and platform-specific vendor review.
+- The 54-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.22 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present; the validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseNoticeFinal-2026-10-04-validation.json` and `.log`.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
 - Proof: not applicable; this slice updates distribution metadata and a Python file-hash audit, with no Elisa policy function. Remaining unproved: the full set of embedded/vendor notices and distribution obligations.
 
