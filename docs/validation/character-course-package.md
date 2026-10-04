@@ -372,3 +372,59 @@ python3 scripts/validate_interactive_macos_app.py \
   --resource-group rigs --resource-group sounds --resource-group text \
   --marker 'wi::physics Initialized [Jolt Physics'
 ```
+
+## Optimized playable-entry package (2026-10-04)
+
+The ordinary `main.elisa` entry also builds with native `-O2` and test probes
+disabled from clean engine commit `f5b43df7`. The build identity is
+`145d94647bbfbb99`; the pre-package executable hash is
+`b9b305980c7f25fd459f8a3ced2de6818709b713211d20fe84b1db6094d855ed`.
+Provenance is `examples/character_course/build/character-course-visible-optimized.provenance.json`;
+it records the same installed Stage1 compiler, wrapper and runtime object hashes
+as the ordinary-entry build above.
+
+The packaged app is `/private/tmp/CharacterCourseOptimized-main-2026-10-04.app`.
+It includes the five runtime resource groups, 50 notices, Wicked shaders and
+transitive runtime libraries. The relocation-adjusted executable hash is
+`58babd50ff8f28de34f8cf64ccdd78ba36a534560e1530cc3d44711ef24d42c3`. The
+interactive package validator passed on macOS 27.0.1 / arm64 with source-tree
+and Homebrew reads denied, outbound networking denied, and all declared
+resources present. Startup took 2.036 seconds. Its report and launcher log are
+`examples/character_course/build/validation/character-course-optimized-main-2026-10-04.json`
+and `.log`. That offline validator sends SIGTERM after startup, so graceful
+shutdown is not established by that run.
+
+The same packaged executable was then launched visibly outside the sandbox.
+Eight W taps moved the course view, P displayed the paused controls, R
+restarted to the playing state, and Escape exited. The launcher log ends in
+`process_exit_status=0`; its retained copy is
+`examples/character_course/build/validation/character-course-optimized-main-manual.log`
+(SHA-256 `bee8a17912d5fb8cdcead43f6830a702b7be1b203a6dab4b895d283fb3d0b679`).
+This confirms clean local shutdown for the optimized package. Manual traversal,
+jump and crouch presentation, win/fall feedback, controller input, a clean Mac,
+and signing remain open.
+
+Reproduction commands:
+
+```bash
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/elisa_build_run.py build --project examples/character_course \
+  --main main.elisa --output build/character-course-visible-optimized \
+  --compiler /private/tmp/elisac-stage1-direct.sh \
+  --runtime-object /Users/torarinvikbjarko/.elisac/stage1/build/runtime/elisacore_runtime.o \
+  --optimize
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-visible-optimized \
+  --output /private/tmp/CharacterCourseOptimized-main-2026-10-04.app \
+  --name CharacterCourseOptimizedMain20261004 \
+  --bundle-id org.elisa.character-course.optimized.main.20261004 \
+  --shader-root ../elisa-boxing-wickedengine/build-elisa-sdl3/WickedEngine/shaders
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/validate_interactive_macos_app.py \
+  --app /private/tmp/CharacterCourseOptimized-main-2026-10-04.app \
+  --report examples/character_course/build/validation/character-course-optimized-main-2026-10-04.json \
+  --log examples/character_course/build/validation/character-course-optimized-main-2026-10-04.log \
+  --timeout 45 --resource-group cells --resource-group fonts \
+  --resource-group rigs --resource-group sounds --resource-group text \
+  --marker 'wi::physics Initialized [Jolt Physics'
+```
