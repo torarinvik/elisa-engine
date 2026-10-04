@@ -260,3 +260,58 @@ The final report, `build/validation/character-course-process-group.json`, record
 the offline startup result, all five non-empty resource groups, and denied
 source, Homebrew, and network access. Shutdown remains a validator SIGTERM; the
 test verifies the process group is gone before temporary files are removed.
+
+## Full course path self-test (2026-10-04)
+
+`self_test.inc` now drives the Jolt character through the step, crouched tunnel,
+standing and grounded exit, jump, ramp, raised platform, goal lane and win zone.
+A second character starts beyond the corner wall but outside the goal lane, walks
+off the floor and must reach the failure height. The hidden test passed twice
+with distinct temporary homes using SDL3, Metal and Jolt.
+
+The rebuilt test executable has build identity `668c02c4c3b7a496` and SHA-256
+`3e5ba9b0de8ce0a33be0033f8954219055b8bc28d3ac670731dd9ec4fd502895`. It was
+built immediately before source commit `c32a5222`; provenance marks the tree
+dirty because the only tracked delta was the mutable-reference correction in
+that commit. Its recorded diff SHA-256 (`da205a892783309bc7d57953d81cb90f9f9558e3bb5d8d9e98f77f7de298e179`)
+matches `git diff 83536fee..c32a5222`, tying the binary to the committed source.
+The build used `/private/tmp/elisac-stage1-direct.sh` (SHA-256
+`ae225d2612bcceceb12718aa70400281dd19772716fab700e93c474115808e06`), installed
+Stage1 compiler SHA-256
+`7985f8d56570aa6391509b9e2ebc6daa0e042271725cdc29a811de6c44038899`, runtime
+object SHA-256 `b28bf119bdfb7bec852692732c54b0f316f76eb2ea52c0d5879a8ec6d9e569f5`,
+and native test probes. The native build was unoptimized. Build provenance is
+`examples/character_course/build/character-course-selftest.provenance.json`;
+the passing run log is `build/validation/character-course-full-path-2026-10-04.log`
+(SHA-256 `63b396d2e0adde7f93b390e49b71da3b59c8182de798c8386ebbf262002069cd`).
+
+The binary was packaged to
+`/private/tmp/CharacterCourseFullPathSelfTest-c32a5222.app`; the bundle's
+relocation-adjusted payload at `Contents/Resources/Character Course Full Path
+Self Test.bin` has SHA-256
+`beaec2209edf38e153ecd5cc0fdc3214eb261f886f2f129b5c981bd2626f5b61`. Both
+relocated launches passed with the source checkout, Homebrew and outbound
+network denied:
+
+```bash
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/elisa_build_run.py build --project examples/character_course \
+  --main self_test_main.elisa --output build/character-course-selftest \
+  --compiler /private/tmp/elisac-stage1-direct.sh \
+  --runtime-object /Users/torarinvikbjarko/.elisac/stage1/build/runtime/elisacore_runtime.o \
+  --native-test-probes
+test_home=$(mktemp -d /private/tmp/character-course-path.XXXXXX)
+(cd examples/character_course && HOME="$test_home" ./build/character-course-selftest)
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-selftest \
+  --output /private/tmp/CharacterCourseFullPathSelfTest-c32a5222.app \
+  --name 'Character Course Full Path Self Test' \
+  --bundle-id org.elisa.character-course.selftest.fullpath --version 0.1.0 \
+  --shader-root ../elisa-boxing-wickedengine/WickedEngine/shaders
+python3 scripts/validate_standalone_macos_app.py \
+  --app /private/tmp/CharacterCourseFullPathSelfTest-c32a5222.app --runs 2
+```
+
+This closes the hidden movement assertion gap. Manual visible traversal and
+presentation of crouching, jumping, win and fall feedback remain open; the
+relocated run is a finite test package, not a clean-machine release check.
