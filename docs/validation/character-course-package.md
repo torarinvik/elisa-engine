@@ -315,3 +315,60 @@ python3 scripts/validate_standalone_macos_app.py \
 This closes the hidden movement assertion gap. Manual visible traversal and
 presentation of crouching, jumping, win and fall feedback remain open; the
 relocated run is a finite test package, not a clean-machine release check.
+
+## Ordinary entry rebuild and packaged startup (2026-10-04)
+
+After splitting `play_loop.inc` from `play.inc`, the ordinary `main.elisa`
+entry rebuilt from clean commit `37c6cf51` with the installed Stage1 compiler,
+`native_test_probes=false`, and no optimization. The build completed with
+identity `513a9af244193d05`; `character-course-visible` has SHA-256
+`7607913310fbc1738b5294e006aa77e1282a561b345bf5d12f61ee7556881987`.
+Provenance is retained in
+`examples/character_course/build/character-course-visible.provenance.json`.
+It records the installed Stage1 binary hash
+`7985f8d56570aa6391509b9e2ebc6daa0e042271725cdc29a811de6c44038899`, wrapper
+hash `ae225d2612bcceceb12718aa70400281dd19772716fab700e93c474115808e06`, and
+runtime object hash `b28bf119bdfb7bec852692732c54b0f316f76eb2ea52c0d5879a8ec6d9e569f5`.
+
+The executable was packaged with the five declared runtime resource groups,
+Wicked's prepared shader library and transitive dynamic libraries at
+`/private/tmp/CharacterCourseVisibleCurrent-build-artifact-2026-10-04.app`. The
+packaged executable SHA-256 is
+`71ddb8f361c6108a082abaa226a9241987d64c217c91ee884b7e3ca309836dc9`. The
+interactive package validator passed on macOS 27.0.1 / arm64: the relocated
+app started in 2.235 seconds with source-checkout and Homebrew reads denied,
+outbound networking denied, and all five resource groups present. The report
+and launcher log are retained in `examples/character_course/build/validation/`.
+The validator terminates the running app with SIGTERM after startup, so
+graceful shutdown remains unverified.
+
+In a visible run of this exact packaged executable, W taps moved through the
+course, P displayed the paused controls, and R returned the game to the
+playing state. This confirms movement, pause and restart on the post-split
+ordinary entry. The UI automation only taps keys, so it cannot hold C while
+crossing the tunnel; manual jump, crouch, traversal, win/fall feedback,
+controller input, graceful shutdown and a clean-machine run remain open.
+
+Reproduction commands:
+
+```bash
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/elisa_build_run.py build --project examples/character_course \
+  --main main.elisa --output build/character-course-visible \
+  --compiler /private/tmp/elisac-stage1-direct.sh \
+  --runtime-object /Users/torarinvikbjarko/.elisac/stage1/build/runtime/elisacore_runtime.o
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-visible \
+  --output /private/tmp/CharacterCourseVisibleCurrent-build-artifact-2026-10-04.app \
+  --name CharacterCourseVisibleMainShaders20261004 \
+  --bundle-id org.elisa.character-course.visible.main.shaders.20261004 \
+  --shader-root ../elisa-boxing-wickedengine/build-elisa-sdl3/WickedEngine/shaders
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/validate_interactive_macos_app.py \
+  --app /private/tmp/CharacterCourseVisibleCurrent-build-artifact-2026-10-04.app \
+  --report examples/character_course/build/validation/character-course-main-2026-10-04.json \
+  --log examples/character_course/build/validation/character-course-main-2026-10-04.log \
+  --timeout 45 --resource-group cells --resource-group fonts \
+  --resource-group rigs --resource-group sounds --resource-group text \
+  --marker 'wi::physics Initialized [Jolt Physics'
+```
