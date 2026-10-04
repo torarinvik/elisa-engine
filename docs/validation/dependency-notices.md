@@ -33,13 +33,34 @@ embed FidelityFX FSR1, FSR2, and ParallelSort code. Wicked's zstd license has a
 different copyright line from the Homebrew zstd notice, so it is shipped as a
 separate verified text. The source catalog now pins these exact Wicked files and
 license excerpts by SHA-256, and both game manifests declare the additional
-notices. The optimized course bundle contains 59 notice texts plus its source
-catalog (60 declared paths).
+notices. At that checkpoint, the optimized course bundle contained 59 notice
+texts plus its source catalog (60 declared paths).
 
 The archive evidence is specific to the Wicked SDL3/Metal build used by the
 Character Course. Other embedded source members, the rest of the copied shader
 tree, other platforms, and distribution-obligation review remain open; the
 catalog deliberately stays `complete: false`.
+
+## Follow-up header audit — 2026-10-04
+
+A follow-up pass over the same static archives found four more attribution gaps.
+`wiMath.h` falls back to Wicked's vendored DirectXMath on macOS, and DirectXMath
+includes its vendored `sal.h`; both MIT notices are now shipped separately to
+preserve Microsoft's and the .NET Foundation's copyright lines. In Utility,
+`utility_common.cpp.o` compiles `minimp4.h`, whose header carries a CC0 1.0 public
+domain dedication, and `spirv_reflect.h` includes Khronos's generated SPIR-V
+header, which declares MIT. Both project catalogs now ship these verified
+notices. The full texts are pinned to the upstream
+[DirectXMath license](https://github.com/microsoft/DirectXMath/blob/e2f2b9bddbbc4fd0f6f63586f86b2279213b991d/LICENSE),
+[CoreRT license](https://github.com/dotnet/corert/blob/c6af4cfc8b625851b91823d9be746c4f7abdc667/LICENSE.TXT), and
+[SPIRV-Headers license](https://github.com/KhronosGroup/SPIRV-Headers/blob/86f980c731e62ae4eaf383d320449d71687936bf/LICENSE). The minimp4 notice is the exact
+hash-checked excerpt from Wicked's vendored header.
+
+The refreshed Maze bundle contains 62 notice texts plus its source catalog;
+the Character Course bundle contains 63 plus its catalog. The notice checker
+verifies all nine dynamic libraries and ten static archives in both bundles,
+with no unmapped files. Global completeness remains false while broader vendor,
+platform, shader and distribution reviews are still open.
 
 The new license sources are pinned to the upstream
 [OffsetAllocator license](https://github.com/sebbbi/OffsetAllocator/blob/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE),
@@ -49,14 +70,14 @@ The new license sources are pinned to the upstream
 
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/elisa-course-notices-wicked-closure-20261004 --wicked-root ../elisa-boxing-wickedengine` collected 59 hash-verified notices; all 60 project-declared paths were present.
-- The shared catalog collected 58 verified notices for `examples/maze`; the extra Character Course Noto license adds one more notice there.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/course-notices-audit-20261004b --wicked-root ../elisa-boxing-wickedengine` collected 63 hash-verified notices; all 64 project-declared paths were present.
+- The shared catalog collected 62 verified notices for `examples/maze`; the Character Course adds its Noto license for 63 total.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
 - `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 1 test, including missing and modified static notice rejection.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py --app /private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04.app` reports `dylib_notice_files_verified=true` and `statically_linked_notice_files_verified=true` for all nine dynamic libraries and ten static archives. Its exit status remains 1 because `catalog_complete=false`; broader vendor and distribution review remains.
-- The maze package was also rebuilt from its existing executable; its notice audit verified every declared dynamic and static mapping. Report: `/private/tmp/MazeWickedNoticeAudit-2026-10-04-notice-report.json`.
-- The repackaged 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`.
+- `scripts/check_bundled_notices.py` reports `dylib_notice_files_verified=true` and `statically_linked_notice_files_verified=true` for all nine dynamic libraries and ten static archives in both refreshed packages. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04b-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04b-notice-report.json`. Both exit statuses remain 1 because `catalog_complete=false`; no individual notice mapping has a problem.
+- Maze and Character Course bundles were repackaged from their existing executables with the updated notice sets. Every declared notice file is present in `Contents/Resources/Notices`.
+- The prior 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`; the refreshed notice-only packages were audited but not launched again.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
 - Proof: not applicable; this slice updates distribution metadata and a Python file-hash audit, with no Elisa policy function. Remaining unproved: the full set of embedded/vendor notices and distribution obligations.
 

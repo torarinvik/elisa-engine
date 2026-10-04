@@ -76,7 +76,11 @@
       "third_party/notices/Wicked-zstd.txt",
       "third_party/notices/FidelityFX-FSR1.txt",
       "third_party/notices/FidelityFX-SDK.txt",
-      "third_party/notices/FidelityFX-ParallelSort.txt"
+      "third_party/notices/FidelityFX-ParallelSort.txt",
+      "third_party/notices/SPIRV-Headers.txt",
+      "third_party/notices/Wicked-CoreRT-SAL.txt",
+      "third_party/notices/Wicked-DirectXMath.txt",
+      "third_party/notices/Wicked-minimp4.txt"
     ]
   }
 }

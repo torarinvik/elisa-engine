@@ -570,6 +570,52 @@
         "bytes": 1163,
         "sha256": "c03e1d4b6bfa91ee7f01a9215bb9c33338e8280989925a9a42f4318b442c3da8"
       }
+    },
+    {
+      "name": "Wicked-DirectXMath",
+      "root": "engine",
+      "path": "native/notices/upstream/directxmath-LICENSE.txt",
+      "sha256": "c2cfccb812fe482101a8f04597dfc5a9991a6b2748266c47ac91b6a5aae15383",
+      "origin": {
+        "url": "https://raw.githubusercontent.com/microsoft/DirectXMath/e2f2b9bddbbc4fd0f6f63586f86b2279213b991d/LICENSE",
+        "commit": "e2f2b9bddbbc4fd0f6f63586f86b2279213b991d"
+      }
+    },
+    {
+      "name": "Wicked-CoreRT-SAL",
+      "root": "engine",
+      "path": "native/notices/upstream/corert-LICENSE.TXT",
+      "sha256": "18647d26bc4c4d892a5fd29de1264d10906b3124cafa98313300ff300441c7f0",
+      "origin": {
+        "url": "https://raw.githubusercontent.com/dotnet/corert/c6af4cfc8b625851b91823d9be746c4f7abdc667/LICENSE.TXT",
+        "commit": "c6af4cfc8b625851b91823d9be746c4f7abdc667"
+      }
+    },
+    {
+      "name": "SPIRV-Headers",
+      "root": "engine",
+      "path": "native/notices/upstream/spirv-headers-LICENSE.txt",
+      "sha256": "ea43b1de38a6f90c488800d66dec1ed671e68cda530266bc96951fb5b6307613",
+      "origin": {
+        "url": "https://raw.githubusercontent.com/KhronosGroup/SPIRV-Headers/86f980c731e62ae4eaf383d320449d71687936bf/LICENSE",
+        "commit": "86f980c731e62ae4eaf383d320449d71687936bf"
+      },
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1362,
+        "sha256": "56724af6d76732a7a1f36ea69965ed2314ae04073676313a4f94c1e2fe55342a"
+      }
+    },
+    {
+      "name": "Wicked-minimp4",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/minimp4.h",
+      "sha256": "97ab0bdfe0fe6024664fdb2a5bf99a0782993e8dec5bff71e4d8717ce9e82887",
+      "excerpt": {
+        "offset": 36,
+        "bytes": 356,
+        "sha256": "d41510588c96243e459b82620ecb891ec3074217878ce810f5134c46ec721b9d"
+      }
     }
   ],
   "remaining": [
@@ -578,7 +624,7 @@
   ],
   "statically_linked_components": {
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -596,7 +642,9 @@
         "metal-irconverter-runtime",
         "FidelityFX-FSR1",
         "FidelityFX-SDK",
-        "FidelityFX-ParallelSort"
+        "FidelityFX-ParallelSort",
+        "Wicked-DirectXMath",
+        "Wicked-CoreRT-SAL"
       ],
       "remaining": [
         "Other per-object embedded and platform-specific vendor closure remains under review."
@@ -609,7 +657,7 @@
       ]
     },
     "WickedEngine/Utility/libUtility.a": {
-      "evidence": "Utility CMake archive; utility_common.cpp.o compiles Utility/zstd/zstd.c; other confirmed sources include meshoptimizer, offsetAllocator.cpp, pugixml.cpp, spirv_reflect.c, stb_vorbis.c and the FidelityFX SSSR blue-noise sampler",
+      "evidence": "Utility CMake archive; utility_common.cpp.o compiles Utility/zstd/zstd.c; other confirmed sources include meshoptimizer, offsetAllocator.cpp, pugixml.cpp, spirv_reflect.c, stb_vorbis.c and the FidelityFX SSSR blue-noise sampler; utility_common.cpp.o includes minimp4, and spirv_reflect.h includes the vendored SPIRV-Headers spirv.h",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -619,7 +667,9 @@
         "OffsetAllocator",
         "SPIRV-Reflect",
         "FidelityFX-SSSR",
-        "Wicked-zstd"
+        "Wicked-zstd",
+        "SPIRV-Headers",
+        "Wicked-minimp4"
       ]
     },
     "WickedEngine/Utility/FAudio/libFAudio.a": {
