@@ -78,16 +78,24 @@ pinned to [SHforHLSL at commit
 e426058](https://github.com/TheRealMJP/SHforHLSL/blob/e426058959123063e13d61a62df6217259b72cec/LICENSE).
 
 The resource audit confirms the shader directory and all 15 mapped notice files
-are present in both packages. It records the remaining per-file shader and
-platform review instead of marking that closure complete. The refreshed Maze
-bundle contains 73 notice texts plus its source catalog; the Character Course
-contains 74 plus its catalog.
+are present in both packages. The refreshed Maze bundle contains 76 notice
+texts plus its source catalog; the Character Course contains 77 plus its
+catalog. Provenance for shader files with no inline marker and other platform
+backends remains open.
 
 The new license sources are pinned to the upstream
 [OffsetAllocator license](https://github.com/sebbbi/OffsetAllocator/blob/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE),
 [SPIRV-Reflect license](https://github.com/KhronosGroup/SPIRV-Reflect/blob/795778a4da471b1c7bdd8833d5766f4436b3a4a7/LICENSE), and
 [stb_vorbis source](https://github.com/nothings/stb/blob/1ee679ca2ef753a528db5ba6801e1067b40481b8/stb_vorbis.c), and
 [FidelityFX SSSR license and source](https://github.com/GPUOpen-Effects/FidelityFX-SSSR/tree/34dcacd1feefcfab2855b82e76c7d711f2020a75).
+
+A scan of the 799 shader files in the packaged tree checked the first 100 lines
+for copyright, SPDX and license markers. It found 49 marker-bearing files: 8 at
+the tree root, 3 under Compressonator, 2 under FSR1, 31 under FSR2, 1 under
+ParallelSort and 4 under the FidelityFX denoiser. Each group is covered by the
+15 declared shader notices. No separate `LICENSE`, `COPYING` or `NOTICE` file
+is present in the tree. This scan does not establish provenance for files with
+no inline marker, so the shader catalog remains open.
 
 ## Vulkan backend archive audit — 2026-10-04
 
