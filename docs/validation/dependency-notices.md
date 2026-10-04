@@ -20,9 +20,26 @@ mappings for all ten archives in the optimized game's build provenance, includin
 FAudio, Lua, Recast/Detour and ozz. `OffsetAllocator`, `SPIRV-Reflect` and
 `stb_vorbis` are added to the collected notices. The Utility archive also uses
 the exact blue-noise sampler source from AMD's FidelityFX SSSR v1.3; its pinned
-MIT license is now included. All nine dynamic-library mappings and every declared
-archive notice verify. The global catalog remains incomplete because the wider
-per-object and platform-specific vendor closure still needs review.
+MIT license is now included. The global catalog remains incomplete because the
+wider per-object and platform-specific vendor closure still needs review.
+
+## Wicked archive attribution — 2026-10-04
+
+The archive member/source audit found additional shipped code that was not mapped
+to its own notice: `wiAudio.cpp.o` includes Wicked's miniaudio v0.11.25 copy;
+`utility_common.cpp.o` compiles Wicked's vendored `zstd.c`; the Metal objects use
+Metal-cpp and Metal IRConverter headers; and the renderer and GPU sort objects
+embed FidelityFX FSR1, FSR2, and ParallelSort code. Wicked's zstd license has a
+different copyright line from the Homebrew zstd notice, so it is shipped as a
+separate verified text. The source catalog now pins these exact Wicked files and
+license excerpts by SHA-256, and both game manifests declare the additional
+notices. The optimized course bundle contains 59 notice texts plus its source
+catalog (60 declared paths).
+
+The archive evidence is specific to the Wicked SDL3/Metal build used by the
+Character Course. Other embedded source members, the rest of the copied shader
+tree, other platforms, and distribution-obligation review remain open; the
+catalog deliberately stays `complete: false`.
 
 The new license sources are pinned to the upstream
 [OffsetAllocator license](https://github.com/sebbbi/OffsetAllocator/blob/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE),
@@ -32,12 +49,14 @@ The new license sources are pinned to the upstream
 
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/elisa-course-notices-final-20261004 --wicked-root ../elisa-boxing-wickedengine` collected 54 hash-verified sources into a fresh directory; all 55 project-declared notice paths were present.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/elisa-course-notices-wicked-closure-20261004 --wicked-root ../elisa-boxing-wickedengine` collected 59 hash-verified notices; all 60 project-declared paths were present.
+- The shared catalog collected 58 verified notices for `examples/maze`; the extra Character Course Noto license adds one more notice there.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
 - `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 1 test, including missing and modified static notice rejection.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py` reported `dylib_notice_files_verified=true` for all nine libraries and `statically_linked_notice_files_verified=true` for all ten mapped archives in `/private/tmp/CharacterCourseNoticeFinal-2026-10-04.app`; its exit status remains 1 because `catalog_complete=false`. The sole archive-specific remainder is Wicked's broader per-object and platform-specific vendor review.
-- The 54-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.22 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present; the validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseNoticeFinal-2026-10-04-validation.json` and `.log`.
+- `scripts/check_bundled_notices.py --app /private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04.app` reports `dylib_notice_files_verified=true` and `statically_linked_notice_files_verified=true` for all nine dynamic libraries and ten static archives. Its exit status remains 1 because `catalog_complete=false`; broader vendor and distribution review remains.
+- The maze package was also rebuilt from its existing executable; its notice audit verified every declared dynamic and static mapping. Report: `/private/tmp/MazeWickedNoticeAudit-2026-10-04-notice-report.json`.
+- The repackaged 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
 - Proof: not applicable; this slice updates distribution metadata and a Python file-hash audit, with no Elisa policy function. Remaining unproved: the full set of embedded/vendor notices and distribution obligations.
 

@@ -585,6 +585,56 @@
       "path": "native/notices/upstream/FidelityFX-SSSR-license.txt",
       "root": "engine",
       "sha256": "db089274ce766da70f5b7d791029c3486f9f9e27c8c79c652689603d3192e802"
+    },
+    {
+      "excerpt": {
+        "bytes": 2604,
+        "offset": 4105564,
+        "sha256": "3a0fd41237bf8341d1e4cdd89a52ff4a96228c4fad26e272840ed0ee03efcaf7"
+      },
+      "name": "Wicked-miniaudio",
+      "path": "WickedEngine/Utility/miniaudio.h",
+      "root": "wicked",
+      "sha256": "ac7af4de748b7e26b777f37e01cee313a308a7296a3eb080e2906b320cc55c89"
+    },
+    {
+      "name": "Wicked-zstd",
+      "path": "WickedEngine/Utility/zstd/LICENSE",
+      "root": "wicked",
+      "sha256": "2c1a7fa704df8f3a606f6fc010b8b5aaebf403f3aeec339a12048f1ba7331a0b"
+    },
+    {
+      "excerpt": {
+        "bytes": 1180,
+        "offset": 891,
+        "sha256": "f7f20b34eb0ab02fcdd63a4b1b6aeb9cfdd1832a42097eca67e34846b5f6c49a"
+      },
+      "name": "FidelityFX-FSR1",
+      "path": "WickedEngine/shaders/ffx-fsr/ffx_fsr1.h",
+      "root": "wicked",
+      "sha256": "6e303720a8042f264f4e5aa9bb8aecbc1ccc362db0a22f5deeabd2815fe7129b"
+    },
+    {
+      "excerpt": {
+        "bytes": 1191,
+        "offset": 0,
+        "sha256": "2ed80196695ddcccbe096b67382254bcd1396e8fe706488b3f9089a8a39372c4"
+      },
+      "name": "FidelityFX-SDK",
+      "path": "WickedEngine/shaders/ffx-fsr2/ffx_core.h",
+      "root": "wicked",
+      "sha256": "407e255f2f701e049d4a6a6f49f0295708f2dc1ff46c3ae5f21f7dbee68a269a"
+    },
+    {
+      "excerpt": {
+        "bytes": 1163,
+        "offset": 0,
+        "sha256": "c03e1d4b6bfa91ee7f01a9215bb9c33338e8280989925a9a42f4318b442c3da8"
+      },
+      "name": "FidelityFX-ParallelSort",
+      "path": "WickedEngine/shaders/ffx-parallelsort/FFX_ParallelSort.h",
+      "root": "wicked",
+      "sha256": "50d6309459f2e2ce6abd9d48099d4e34d1b126b81a69e824443def0380723d84"
     }
   ],
   "statically_linked_components": {
@@ -614,7 +664,7 @@
       ]
     },
     "WickedEngine/Utility/libUtility.a": {
-      "evidence": "Utility CMake source list: meshoptimizer, offsetAllocator.cpp, pugixml.cpp, spirv_reflect.c and stb_vorbis.c",
+      "evidence": "Utility CMake archive; utility_common.cpp.o compiles Utility/zstd/zstd.c; other confirmed sources include meshoptimizer, offsetAllocator.cpp, pugixml.cpp, spirv_reflect.c, stb_vorbis.c and the FidelityFX SSSR blue-noise sampler",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -623,7 +673,8 @@
         "stb_vorbis",
         "OffsetAllocator",
         "SPIRV-Reflect",
-        "FidelityFX-SSSR"
+        "FidelityFX-SSSR",
+        "Wicked-zstd"
       ]
     },
     "WickedEngine/libJolt.a": {
@@ -633,7 +684,7 @@
       ]
     },
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; embedded utility includes confirmed in wiAudio, wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -644,10 +695,17 @@
         "wicked-stb_image_write",
         "wicked-stb_rect_pack",
         "wicked-stb_truetype",
-        "wicked-robin-hood"
+        "wicked-robin-hood",
+        "Wicked-miniaudio",
+        "metal-cpp",
+        "metal-irconverter",
+        "metal-irconverter-runtime",
+        "FidelityFX-FSR1",
+        "FidelityFX-SDK",
+        "FidelityFX-ParallelSort"
       ],
       "remaining": [
-        "Full per-object embedded and platform-specific vendor closure remains under review."
+        "Other per-object embedded and platform-specific vendor closure remains under review."
       ]
     },
     "ozz_animation_offline_r.a": {

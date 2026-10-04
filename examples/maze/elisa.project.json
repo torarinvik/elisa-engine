@@ -81,7 +81,12 @@
       "third_party/notices/OffsetAllocator.txt",
       "third_party/notices/SPIRV-Reflect.txt",
       "third_party/notices/stb_vorbis.txt",
-      "third_party/notices/FidelityFX-SSSR.txt"
+      "third_party/notices/FidelityFX-SSSR.txt",
+      "third_party/notices/Wicked-miniaudio.txt",
+      "third_party/notices/Wicked-zstd.txt",
+      "third_party/notices/FidelityFX-FSR1.txt",
+      "third_party/notices/FidelityFX-SDK.txt",
+      "third_party/notices/FidelityFX-ParallelSort.txt"
     ]
   }
 }
