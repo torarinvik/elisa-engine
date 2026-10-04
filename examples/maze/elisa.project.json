@@ -104,7 +104,11 @@
       "third_party/notices/Apache-2.0.txt",
       "third_party/notices/Wicked-Volk.txt",
       "third_party/notices/Wicked-Vulkan-Memory-Allocator.txt",
-      "third_party/notices/Wicked-Vulkan-Headers.txt"
+      "third_party/notices/Wicked-Vulkan-Headers.txt",
+      "third_party/notices/Wicked-portable-file-dialogs.txt",
+      "third_party/notices/Wicked-flat-hash-map.txt",
+      "third_party/notices/Boost-Software-License-1.0.txt",
+      "third_party/notices/Wicked-DXC-NCSA.txt"
     ]
   }
 }

@@ -114,15 +114,25 @@ DirectX header notices therefore remain in the platform audit, rather than
 being claimed as part of this macOS backend. The Windows archive and package
 still need their own audit.
 
+The object-level dependency pass also found three omissions in the macOS
+archive. `wiHelper.cpp.o` contains symbols from the portable-file-dialogs
+header (WTFPL); `wiUnorderedSet.h` defaults independently to the vendored
+flat-hash-map templates (Boost Software License 1.0), even though the engine's
+unordered-map alias selects robin_hood; and `wiShaderCompiler.cpp.o` includes
+DXC API headers whose license points to the LLVM/NCSA text in Wicked's vendor
+inventory. Those license and copyright texts are now mapped to
+`libWickedEngine.a`. The flat-hash-map attribution is based on symbols present
+in the archive, not only on the build's unordered-map setting.
+
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --output /private/tmp/MazeWickedNoticeAudit-2026-10-04f-notices --wicked-root ../elisa-boxing-wickedengine` collected 76 hash-verified notices; the merged Character Course collection adds its Noto license for 77.
-- Both project manifests declare all collected notices plus `sources.json`: 77 paths for `examples/maze` and 78 for `examples/character_course`.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --output /private/tmp/MazeWickedNoticeAudit-2026-10-04g-notices --wicked-root ../elisa-boxing-wickedengine` collected 80 hash-verified notices; the merged Character Course collection adds its Noto license for 81.
+- Both project manifests declare all collected notices plus `sources.json`: 81 paths for `examples/maze` and 82 for `examples/character_course`.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
 - `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 2 tests, including missing/tampered notices, resource-tree presence and unsafe resource paths.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py` verifies all nine dylibs, ten static archives and the shader resource mapping in both bundle snapshots, with no mapping problems. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04f-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04f-notice-report.json`. It exits 1 only because `catalog_complete=false` remains intentional.
-- The existing verified Maze and Character Course bundle snapshots were refreshed with the new notice bytes only. All 77/78 declared notice paths are present under `Contents/Resources/Notices`; these notice-only snapshots were not launched again.
+- `scripts/check_bundled_notices.py` verifies all nine dylibs, ten static archives and the shader resource mapping in both bundle snapshots, with no mapping problems. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04g-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04g-notice-report.json`. It exits 1 only because `catalog_complete=false` remains intentional.
+- The existing verified Maze and Character Course bundle snapshots were refreshed with the new notice bytes only. All 81/82 declared notice paths are present under `Contents/Resources/Notices`; these notice-only snapshots were not launched again.
 - The prior 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`; the refreshed notice-only packages were audited but not launched again.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.
 - Proof: not applicable; this slice updates distribution metadata and a Python file-hash audit, with no Elisa policy function. Remaining unproved: the full set of embedded/vendor notices and distribution obligations.

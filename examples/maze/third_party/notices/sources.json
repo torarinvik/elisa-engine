@@ -754,6 +754,50 @@
     },
     {
       "excerpt": {
+        "bytes": 552,
+        "offset": 10917,
+        "sha256": "ceeb115fe20181c338e707562dcf7fcafee08d731a7f017f6af2c5a40a23fe35"
+      },
+      "name": "Wicked-portable-file-dialogs",
+      "path": "third_party_software.txt",
+      "root": "wicked",
+      "sha256": "9027b5109268337ae2461f0d99f03ed186e1f30f320dca5ac321cb4dbddb67e7"
+    },
+    {
+      "excerpt": {
+        "bytes": 154,
+        "offset": 0,
+        "sha256": "7531eb08eea53446a9ae7f7e076d827ce6256a3e9143a1134ffa23e2e6d47d68"
+      },
+      "name": "Wicked-flat-hash-map",
+      "path": "WickedEngine/Utility/flat_hash_map.hpp",
+      "root": "wicked",
+      "sha256": "8ab34a453f917cdb7debe53b26e3b562dcb4aaba420750ea4462e344bcc9096f"
+    },
+    {
+      "excerpt": {
+        "bytes": 1338,
+        "offset": 18608,
+        "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566"
+      },
+      "name": "Boost-Software-License-1.0",
+      "path": "third_party_software.txt",
+      "root": "wicked",
+      "sha256": "9027b5109268337ae2461f0d99f03ed186e1f30f320dca5ac321cb4dbddb67e7"
+    },
+    {
+      "excerpt": {
+        "bytes": 1936,
+        "offset": 31658,
+        "sha256": "b2551288a0381a79527d63c1590ae8bac98de4dafa1afd0702625d6e82524b85"
+      },
+      "name": "Wicked-DXC-NCSA",
+      "path": "third_party_software.txt",
+      "root": "wicked",
+      "sha256": "9027b5109268337ae2461f0d99f03ed186e1f30f320dca5ac321cb4dbddb67e7"
+    },
+    {
+      "excerpt": {
         "bytes": 1871,
         "offset": 0,
         "sha256": "91560152d09094e46033edc1d0ef98a7aca4ce0ad82502422218d6e3abf340a1"
@@ -910,7 +954,7 @@
       ]
     },
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiGraphicsDevice_Vulkan.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter, Vulkan Memory Allocator/Volk/Vulkan headers and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath and SAL; wiVideo.cpp.o includes minimp4.h and h264.h. DX12 implementation is excluded on macOS by _WIN32 guards.",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiGraphicsDevice_Vulkan.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include mapped miniaudio, Metal-cpp/IRConverter, Vulkan Memory Allocator/Volk/Vulkan headers, DXC API and FidelityFX sources; wiHelper.cpp.o contains portable-file-dialogs symbols; the wiUnorderedSet header also compiles flat_hash_map templates. Embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath and SAL; wiVideo.cpp.o includes minimp4.h and h264.h. DX12 implementation is excluded on macOS by _WIN32 guards.",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -936,7 +980,11 @@
         "Wicked-Volk",
         "Wicked-Vulkan-Memory-Allocator",
         "Wicked-Vulkan-Headers",
-        "Apache-2.0"
+        "Apache-2.0",
+        "Wicked-portable-file-dialogs",
+        "Wicked-flat-hash-map",
+        "Boost-Software-License-1.0",
+        "Wicked-DXC-NCSA"
       ],
       "remaining": [
         "Other per-object embedded and platform-specific vendor closure remains under review."
