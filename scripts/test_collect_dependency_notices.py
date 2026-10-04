@@ -22,12 +22,15 @@ class NoticeCollectionTests(unittest.TestCase):
             extra = root / "font.json"
             extra.write_text(json.dumps({"schema": 1, "complete": True, "sources": [{
                 "name": "Font", "root": "engine", "path": "FONT.txt",
-                "sha256": hashlib.sha256(font_notice).hexdigest()}]}))
+                "sha256": hashlib.sha256(font_notice).hexdigest()}],
+                "bundled_resources": {"font": {"path": "Resources/fonts",
+                    "notices": ["Font"]}}}))
             output = root / "notices"
             self.assertEqual(collect(base, {"engine": root}, output, (extra,)), 2)
             self.assertEqual((output / "Font.txt").read_bytes(), font_notice)
             merged = json.loads((output / "sources.json").read_text())
             self.assertEqual([entry["name"] for entry in merged["sources"]], ["Engine", "Font"])
+            self.assertEqual(merged["bundled_resources"]["font"]["notices"], ["Font"])
             self.assertFalse(merged["complete"])
 
     def test_extra_catalog_rejects_changed_source_without_output(self):

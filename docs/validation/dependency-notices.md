@@ -56,11 +56,31 @@ notices. The full texts are pinned to the upstream
 [SPIRV-Headers license](https://github.com/KhronosGroup/SPIRV-Headers/blob/86f980c731e62ae4eaf383d320449d71687936bf/LICENSE). The minimp4 notice is the exact
 hash-checked excerpt from Wicked's vendored header.
 
-The refreshed Maze bundle contains 62 notice texts plus its source catalog;
-the Character Course bundle contains 63 plus its catalog. The notice checker
-verifies all nine dynamic libraries and ten static archives in both bundles,
-with no unmapped files. Global completeness remains false while broader vendor,
-platform, shader and distribution reviews are still open.
+At this checkpoint, the refreshed Maze bundle contained 62 notice texts plus
+its source catalog; the Character Course bundle contained 63 plus its catalog.
+The notice checker verified all nine dynamic libraries and ten static archives
+in both bundles, with no unmapped files. Global completeness remained false
+while broader vendor, platform, shader and distribution reviews stayed open.
+
+## Packaged H.264 and shader resources — 2026-10-04
+
+The next archive pass found Wicked's own H.264 parser in `wiVideo.cpp.o`; its
+MIT notice is now included in the `libWickedEngine.a` mapping. The package also
+ships the prepared shader directory, including source shaders and compiled
+Metal kernels. `check_bundled_notices.py` now verifies declared resource-tree
+mappings as well as dylibs and static archives. Both bundles map the shader tree
+to verified notices for Microsoft's MIT code, Compressonator and BC6H, FidelityFX
+FSR1, FSR2, denoiser and sort sources, MJP's SHforHLSL, NVIDIA FXAA and Gaussian Splatting.
+The Gaussian Splatting source notice is paired with the full [Apache 2.0
+license](https://www.apache.org/licenses/LICENSE-2.0.txt); MJP's MIT notice is
+pinned to [SHforHLSL at commit
+e426058](https://github.com/TheRealMJP/SHforHLSL/blob/e426058959123063e13d61a62df6217259b72cec/LICENSE).
+
+The resource audit confirms the shader directory and all 15 mapped notice files
+are present in both packages. It records the remaining per-file shader and
+platform review instead of marking that closure complete. The refreshed Maze
+bundle contains 73 notice texts plus its source catalog; the Character Course
+contains 74 plus its catalog.
 
 The new license sources are pinned to the upstream
 [OffsetAllocator license](https://github.com/sebbbi/OffsetAllocator/blob/3d8a0258b960cc597e3f7a64ecb8e788ca8ec816/LICENSE),
@@ -70,12 +90,12 @@ The new license sources are pinned to the upstream
 
 ## Validation
 
-- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/course-notices-audit-20261004b --wicked-root ../elisa-boxing-wickedengine` collected 63 hash-verified notices; all 64 project-declared paths were present.
-- The shared catalog collected 62 verified notices for `examples/maze`; the Character Course adds its Noto license for 63 total.
+- `python3 scripts/collect_dependency_notices.py --manifest native/notice-sources.json --extra-manifest examples/character_course/notice-sources.json --output /private/tmp/course-notices-audit-20261004d --wicked-root ../elisa-boxing-wickedengine` collected 74 hash-verified notices; all 75 project-declared paths were present.
+- The shared catalog collected 73 verified notices for `examples/maze`; the Character Course adds its Noto license for 74 total.
 - `python3 -m unittest discover -s scripts -p test_collect_dependency_notices.py` passed 5 tests, including merged project catalogs and hash-drift rejection.
-- `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 1 test, including missing and modified static notice rejection.
+- `python3 -m unittest discover -s scripts -p test_bundled_notices.py` passed 2 tests, including missing/tampered notices, resource-tree presence and unsafe resource paths.
 - `python3 scripts/test_package_macos_app.py` passed 28 tests.
-- `scripts/check_bundled_notices.py` reports `dylib_notice_files_verified=true` and `statically_linked_notice_files_verified=true` for all nine dynamic libraries and ten static archives in both refreshed packages. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04b-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04b-notice-report.json`. Both exit statuses remain 1 because `catalog_complete=false`; no individual notice mapping has a problem.
+- `scripts/check_bundled_notices.py` reports all nine dylibs, ten static archives and the shader resource mapping verified in both packages. Reports: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04d-notice-report.json` and `/private/tmp/MazeWickedNoticeAudit-2026-10-04d-notice-report.json`. Both exit statuses remain 1 because `catalog_complete=false`; no declared mapping has a problem.
 - Maze and Character Course bundles were repackaged from their existing executables with the updated notice sets. Every declared notice file is present in `Contents/Resources/Notices`.
 - The prior 59-notice optimized app passed `validate_interactive_macos_app.py` on macOS 27.0.1/arm64 in 1.237 seconds, with engine source, Homebrew and outbound network denied. All five resource groups were present (`cells`: 20, `fonts`: 1, `rigs`: 2, `sounds`: 13, `text`: 1). The validator stopped it with SIGTERM after startup, so graceful shutdown was not tested. Report and log: `/private/tmp/CharacterCourseWickedNoticeAudit-2026-10-04-startup.json` and `.log`; the refreshed notice-only packages were audited but not launched again.
 - `python3 scripts/check_source_length.py` and `git diff --check` passed.

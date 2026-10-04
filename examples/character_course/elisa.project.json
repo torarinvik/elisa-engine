@@ -80,7 +80,18 @@
       "third_party/notices/SPIRV-Headers.txt",
       "third_party/notices/Wicked-CoreRT-SAL.txt",
       "third_party/notices/Wicked-DirectXMath.txt",
-      "third_party/notices/Wicked-minimp4.txt"
+      "third_party/notices/Wicked-minimp4.txt",
+      "third_party/notices/Wicked-H264.txt",
+      "third_party/notices/Wicked-Compressonator-BcnKernel.txt",
+      "third_party/notices/Wicked-Compressonator-Common.txt",
+      "third_party/notices/Wicked-Compressonator-API.txt",
+      "third_party/notices/FidelityFX-Denoiser.txt",
+      "third_party/notices/FidelityFX-Michal-Drobot.txt",
+      "third_party/notices/Wicked-NVIDIA-FXAA.txt",
+      "third_party/notices/NVIDIA-GaussianSplatting.txt",
+      "third_party/notices/GPURealTimeBC6H.txt",
+      "third_party/notices/MJP-SHforHLSL.txt",
+      "third_party/notices/Apache-2.0.txt"
     ]
   }
 }

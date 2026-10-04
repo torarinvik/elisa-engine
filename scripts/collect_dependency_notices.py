@@ -26,7 +26,7 @@ def collect(manifest: Path, roots: dict[str, Path], output: Path,
         document["complete"] = document["complete"] and extra.get("complete") is True
         if extra.get("remaining"):
             document.setdefault("remaining", []).extend(extra["remaining"])
-        for key in ("bundled_libraries", "statically_linked_components"):
+        for key in ("bundled_libraries", "statically_linked_components", "bundled_resources"):
             additions = extra.get(key, {})
             merged = document.setdefault(key, {})
             if set(merged) & set(additions):

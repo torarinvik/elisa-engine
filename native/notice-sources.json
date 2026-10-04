@@ -616,6 +616,125 @@
         "bytes": 356,
         "sha256": "d41510588c96243e459b82620ecb891ec3074217878ce810f5134c46ec721b9d"
       }
+    },
+    {
+      "name": "Wicked-H264",
+      "root": "wicked",
+      "path": "WickedEngine/Utility/h264.h",
+      "sha256": "f96e3083420d4aac5ed1dd78469858031a6a3f25a48891928460b22ff17124b4",
+      "excerpt": {
+        "offset": 28483,
+        "bytes": 1098,
+        "sha256": "0a1362ed593ab63c4ed58d70f0110fe9c3837e9ef72b9a89bb65b6afc53757f0"
+      }
+    },
+    {
+      "name": "Wicked-Compressonator-BcnKernel",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/compressonator/bcn_common_kernel.h",
+      "sha256": "fba9b620a5395a8ae161165117b50f6484554690069e42789ed6a32da792d844",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1871,
+        "sha256": "91560152d09094e46033edc1d0ef98a7aca4ce0ad82502422218d6e3abf340a1"
+      }
+    },
+    {
+      "name": "Wicked-Compressonator-Common",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/compressonator/common_def.h",
+      "sha256": "6b4592382b18500fe287babc765ca48161b74e219592585cca5937018edf762a",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1452,
+        "sha256": "b34221ec7c0d50f47a120a818aec054382b2819836f1535237b27c98ae139eed"
+      }
+    },
+    {
+      "name": "Wicked-Compressonator-API",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/compressonator/bcn_common_api.h",
+      "sha256": "d1d6082630c56e2fccfe4156f0fd886833a28a23fedca833f43c217d628e4512",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1319,
+        "sha256": "788b4c3b02e5a9d72f6e9832a9e42cd1aa9c72b3c3bb19c641e75047c4d026cb"
+      }
+    },
+    {
+      "name": "FidelityFX-Denoiser",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/ffx-shadows-dnsr/ffx_denoiser_shadows_filter.h",
+      "sha256": "0e121878d3b6b88e2ae55eebd0119bb6cff98dbfcd0ec3025d3ccba77edecb9c",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1237,
+        "sha256": "0c4c4caadb730acd3b6b726abb9f39dc91b18c1bfb8072823d2f1c1b136f8471"
+      }
+    },
+    {
+      "name": "FidelityFX-Michal-Drobot",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/ffx-fsr/ffx_a.h",
+      "sha256": "76f85781a9f6e49f95c96677e0d20501d3d19380615f0fa9410802994b15ce7c",
+      "excerpt": {
+        "offset": 1656,
+        "bytes": 1339,
+        "sha256": "887f47e5317a5a75a1cc321aeb37185f76d9be1e34d5a03fcd93637aca53507f"
+      }
+    },
+    {
+      "name": "Wicked-NVIDIA-FXAA",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/fxaa.hlsli",
+      "sha256": "6d850eeba1569816ce69cdcf0d498290779d89080838681433ed47354681f157",
+      "excerpt": {
+        "offset": 0,
+        "bytes": 1123,
+        "sha256": "9403c2ff11bf82dfd7791964bd17eda2f2ac5f4d6f3451e011dc3c3396adb8fe"
+      }
+    },
+    {
+      "name": "NVIDIA-GaussianSplatting",
+      "root": "wicked",
+      "path": "WickedEngine/shaders/gaussian_splatVS.hlsl",
+      "sha256": "0b534f5615a0f90953f50023c258bfdb8fcd3219cdabb05c49276c3ca47d7751",
+      "excerpt": {
+        "offset": 577,
+        "bytes": 745,
+        "sha256": "b7e7a24c7dee18371ce3f9aed2ecdd349b20faaff1b724d76d4df17c27ae99d4"
+      }
+    },
+    {
+      "name": "GPURealTimeBC6H",
+      "root": "wicked",
+      "path": "third_party_software.txt",
+      "sha256": "9027b5109268337ae2461f0d99f03ed186e1f30f320dca5ac321cb4dbddb67e7",
+      "excerpt": {
+        "offset": 28021,
+        "bytes": 1139,
+        "sha256": "f901365a48749ad739ac7a6e15f0cf6bba4f7658853b9b0aa685727e3f0d5789"
+      }
+    },
+    {
+      "name": "MJP-SHforHLSL",
+      "root": "engine",
+      "path": "native/notices/upstream/SHforHLSL-LICENSE.txt",
+      "sha256": "4ba3b98ea4d80a35a5d7d1242edf0b37307879f78e9e4320f7f1752103b761ac",
+      "origin": {
+        "url": "https://github.com/TheRealMJP/SHforHLSL/blob/e426058959123063e13d61a62df6217259b72cec/LICENSE",
+        "commit": "e426058959123063e13d61a62df6217259b72cec"
+      }
+    },
+    {
+      "name": "Apache-2.0",
+      "root": "engine",
+      "path": "native/notices/upstream/Apache-2.0.txt",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "origin": {
+        "url": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+        "version": "2.0"
+      }
     }
   ],
   "remaining": [
@@ -624,7 +743,7 @@
   ],
   "statically_linked_components": {
     "WickedEngine/libWickedEngine.a": {
-      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations",
+      "evidence": "WickedEngine CMake archive; archive members wiAudio.cpp.o, wiGraphicsDevice_Metal.cpp.o, wiShaderCompiler.cpp.o, wiRenderer.cpp.o and wiGPUSortLib.cpp.o include the mapped miniaudio, Metal-cpp/IRConverter and FidelityFX sources; embedded utility includes confirmed in wiArchive, wiFont, wiHelper, wiLocalization, wiResourceManager, wiUnorderedMap, wiRectPacker, wiScene_Components and wiVoxelGrid; wiMath.h includes vendored DirectXMath, which also includes the vendored SAL annotations; wiVideo.cpp.o includes WickedEngine/Utility/h264.h",
       "notices": [
         "WickedEngine",
         "meshoptimizer",
@@ -644,7 +763,8 @@
         "FidelityFX-SDK",
         "FidelityFX-ParallelSort",
         "Wicked-DirectXMath",
-        "Wicked-CoreRT-SAL"
+        "Wicked-CoreRT-SAL",
+        "Wicked-H264"
       ],
       "remaining": [
         "Other per-object embedded and platform-specific vendor closure remains under review."
@@ -774,6 +894,32 @@
       "notices": [
         "zstd",
         "zstd-gpl-alternative"
+      ]
+    }
+  },
+  "bundled_resources": {
+    "Wicked shader library": {
+      "path": "Contents/Resources/shaders",
+      "evidence": "The macOS app packager stages the prepared Wicked shader tree; the packaged tree contains block-compression HLSL and compiled Metal compute shaders.",
+      "notices": [
+        "WickedEngine",
+        "Wicked-DirectXMath",
+        "FidelityFX-FSR1",
+        "FidelityFX-SDK",
+        "FidelityFX-ParallelSort",
+        "FidelityFX-Denoiser",
+        "FidelityFX-Michal-Drobot",
+        "Wicked-Compressonator-BcnKernel",
+        "Wicked-Compressonator-Common",
+        "Wicked-Compressonator-API",
+        "GPURealTimeBC6H",
+        "Wicked-NVIDIA-FXAA",
+        "MJP-SHforHLSL",
+        "NVIDIA-GaussianSplatting",
+        "Apache-2.0"
+      ],
+      "remaining": [
+        "The complete per-file license closure for every packaged shader and platform-specific variant remains under review."
       ]
     }
   }
