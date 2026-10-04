@@ -64,15 +64,15 @@ existing samples. Do not restart a checked task or complete every unchecked subs
 before producing a playable result. Full task acceptance remains below; a completed
 queue slice does not imply completion of every referenced task. Every slice carries its proof work (contract items 7 and 8).
 
-**Priority change (2026-09-30):** the user asked for engine capabilities for a
-mocap-cleanup app (`../mocap-cleaner`) to come first. They are ordered as M01–M08 in
-[docs/plans/mocap-engine-track.md](docs/plans/mocap-engine-track.md), which also says where the work
-lives. Confirm with the user before starting each large M item. The queue below continues
-after, or alongside, the M work.
+**Current focus (2026-10-04):** prioritize the reusable game runtime on Wicked and SDL3,
+using the selected libraries, as requested in the current engine work. The mocap-cleanup
+M track remains in [docs/plans/mocap-engine-track.md](docs/plans/mocap-engine-track.md)
+with its completed work and future items; new M items are outside this queue until that
+app returns to scope. The active queue below governs engine work.
 
 | Order | Deliverable and next concrete work | Acceptance / stop condition |
 |---|---|---|
-| 1 | **Reproducible game gate — Q01/Q03.** After the compiler fix settles, rebuild and record one compiler product, refresh shared validation, and rerun the native gate on that exact toolchain snapshot. Then close the hosted-CI gap: retain portable/headless artifacts separately from GPU workstation evidence. | A fresh checkout can provision/build with documented commands; incompatible tools fail clearly. Retain structured failures and artifacts. GPU-unavailable jobs remain explicitly unverified. |
+| 1 | **Reproducible game gate — Q01/Q03.** After the current compiler fix is handed off, rebuild and record one compiler product, refresh shared validation, and rerun the native gate on that exact toolchain snapshot. Then close the hosted-CI gap: retain portable/headless artifacts separately from GPU workstation evidence. | A fresh checkout can provision/build with documented commands; incompatible tools fail clearly. Retain structured failures and artifacts. GPU-unavailable jobs remain explicitly unverified. |
 | 2 | **A second playable public-API client — Q07a.** Extend `examples/character_course` into a short traversal game: move through obstacles using the character's walk, jump, and crouch controls, reach the summit objective, pause/resume, restart, and see fall/win feedback. Keep game state in Elisa and reuse the current character, input, and render APIs; add engine calls only for demonstrated gaps. | An ordinary Elisa project completes the gameplay loop with no game-specific native exports. Its hidden run checks state transitions, character restart, and course movement; manual play checks controls and presentation. Use this same client for subsequent work. |
 | 3 | **Package that client — Q02/Q04.** Extend the existing relocated macOS package path to the second game; finish required shader/asset/notice coverage and local failure diagnostics. Limit R13 work to permutations the game actually uses. | Optimized package runs offline with source/Homebrew access denied, including restart and teardown; logs identify build and failing resource. Record clean-machine validation separately. Signing credentials or license decisions do not block local package testing. |
 | 4 | **Durable scenes and lifecycle — W04/W06, relevant W03/W08, Q06a.** Connect the durable scene reader to fresh-world reconstruction and stable asset-ID resource creation. Exercise spawn/despawn and event cleanup in the same game. | Save, quit, load and restart preserve authored overrides and gameplay state. Stale references, malformed saves and failed loads do not publish partial worlds. Repeated cycles show bounded live resources and no sanitizer failures in supported adapters. |
