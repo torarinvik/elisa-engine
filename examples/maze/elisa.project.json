@@ -30,6 +30,7 @@
     "notices": [
       "third_party/notices/FAudio.txt",
       "third_party/notices/GameNetworkingSockets.txt",
+      "third_party/notices/Jolt.txt",
       "third_party/notices/Lua.txt",
       "third_party/notices/MikkTSpace.txt",
       "third_party/notices/SDL3.txt",

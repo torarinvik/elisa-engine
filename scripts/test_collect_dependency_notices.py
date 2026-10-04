@@ -8,6 +8,44 @@ from collect_dependency_notices import collect
 
 
 class NoticeCollectionTests(unittest.TestCase):
+    def test_extra_catalog_is_hash_verified_and_recorded(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            base_notice = b"engine notice\n"
+            font_notice = b"font license\n"
+            (root / "ENGINE.txt").write_bytes(base_notice)
+            (root / "FONT.txt").write_bytes(font_notice)
+            base = root / "base.json"
+            base.write_text(json.dumps({"schema": 1, "complete": False, "sources": [{
+                "name": "Engine", "root": "engine", "path": "ENGINE.txt",
+                "sha256": hashlib.sha256(base_notice).hexdigest()}]}))
+            extra = root / "font.json"
+            extra.write_text(json.dumps({"schema": 1, "complete": True, "sources": [{
+                "name": "Font", "root": "engine", "path": "FONT.txt",
+                "sha256": hashlib.sha256(font_notice).hexdigest()}]}))
+            output = root / "notices"
+            self.assertEqual(collect(base, {"engine": root}, output, (extra,)), 2)
+            self.assertEqual((output / "Font.txt").read_bytes(), font_notice)
+            merged = json.loads((output / "sources.json").read_text())
+            self.assertEqual([entry["name"] for entry in merged["sources"]], ["Engine", "Font"])
+            self.assertFalse(merged["complete"])
+
+    def test_extra_catalog_rejects_changed_source_without_output(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "ENGINE.txt").write_bytes(b"engine notice")
+            (root / "FONT.txt").write_bytes(b"changed font license")
+            base = root / "base.json"
+            base.write_text(json.dumps({"schema": 1, "sources": []}))
+            extra = root / "font.json"
+            extra.write_text(json.dumps({"schema": 1, "sources": [{
+                "name": "Font", "root": "engine", "path": "FONT.txt",
+                "sha256": hashlib.sha256(b"expected font license").hexdigest()}]}))
+            output = root / "notices"
+            with self.assertRaisesRegex(ValueError, "source changed"):
+                collect(base, {"engine": root}, output, (extra,))
+            self.assertFalse(output.exists())
+
     def test_exact_bytes_and_source_drift(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

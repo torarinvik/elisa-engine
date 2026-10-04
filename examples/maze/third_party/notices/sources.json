@@ -62,8 +62,8 @@
   },
   "complete": false,
   "remaining": [
-    "Additional embedded subcomponent notices and copyright blocks beyond the collected utility headers",
-    "Wicked vendored dependency closure",
+    "Additional embedded subcomponent notices and copyright blocks beyond the collected utility headers and Jolt license",
+    "Wicked vendored dependency closure across the platform-specific source sets",
     "Completeness review of library-specific copyright notices and distribution obligations"
   ],
   "schema": 1,
@@ -73,6 +73,16 @@
       "path": "LICENSE.txt",
       "root": "wicked",
       "sha256": "5c48360ddec789b6333413d2e52a1f3b45174dfd9f8d8575c78dc64a6d877f9f"
+    },
+    {
+      "name": "Jolt",
+      "origin": {
+        "commit": "5830c342b90fa087f118aa0f086d541a4950b1d9",
+        "url": "https://raw.githubusercontent.com/jrouwe/JoltPhysics/5830c342b90fa087f118aa0f086d541a4950b1d9/LICENSE"
+      },
+      "path": "native/notices/upstream/jolt-LICENSE.txt",
+      "root": "engine",
+      "sha256": "800abe35d64ad9defd636ff1ee8c961e06f0ebca3ef8d10083e8aa0e8ef86ac3"
     },
     {
       "name": "SDL3",
@@ -529,5 +539,13 @@
       "root": "wicked",
       "sha256": "60911e90d17eb7373139890425e6d0f93f43bfe5c81b91eed71841c175436e94"
     }
-  ]
+  ],
+  "statically_linked_components": {
+    "Jolt": {
+      "evidence": "WickedEngine/Jolt (libJolt.a)",
+      "notices": [
+        "Jolt"
+      ]
+    }
+  }
 }

@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "complete": false,
+  "sources": [
+    {
+      "name": "NotoNaskhArabic-OFL",
+      "root": "engine",
+      "path": "native/notices/upstream/noto-naskh-arabic-ui-OFL.txt",
+      "sha256": "f4ba2ddc6933f56c4d8d8304a43fe263359ea2727c7f6d16b09194d341b5cefb",
+      "origin": {
+        "url": "https://raw.githubusercontent.com/google/fonts/a559a6efcfed22bf50219f52ecefcf20b9522408/ofl/notonaskharabicui/OFL.txt",
+        "commit": "a559a6efcfed22bf50219f52ecefcf20b9522408",
+        "sha256": "5e0da210fb04058a8c0087985d2d456b931c2579811a49655721d3cf0c36b6d6",
+        "note": "Pinned OFL text prefixed with the bundled font asset name and its embedded copyright metadata."
+      }
+    }
+  ]
+}

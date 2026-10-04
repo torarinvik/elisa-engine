@@ -54,6 +54,17 @@ The WAV files in `sounds/` were synthesized for this project by
 included. `python3 make_sounds.py --check` fails if a committed file no longer
 matches the script.
 
+Before packaging, generate the ignored third-party notice directory from the
+shared engine/runtime catalog and this project's bundled-font catalog:
+
+```sh
+python3 scripts/collect_dependency_notices.py \
+  --manifest native/notice-sources.json \
+  --extra-manifest examples/character_course/notice-sources.json \
+  --wicked-root ../elisa-boxing-wickedengine \
+  --output examples/character_course/third_party/notices
+```
+
 A purple guide patrols the yard west of the entrance, walking around the
 guide wall between two posts on a Recast/Detour route (`guide.inc`). The
 course's axis-aligned boxes are staged for the navmesh as they are created and

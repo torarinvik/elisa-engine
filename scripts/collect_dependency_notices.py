@@ -10,10 +10,28 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def collect(manifest: Path, roots: dict[str, Path], output: Path) -> int:
+def collect(manifest: Path, roots: dict[str, Path], output: Path,
+            extra_manifests: tuple[Path, ...] = ()) -> int:
     document = json.loads(manifest.read_text(encoding="utf-8"))
     if document.get("schema") != 1:
         raise ValueError("unsupported notice catalog")
+    document = dict(document)
+    document["sources"] = list(document["sources"])
+    document["complete"] = document.get("complete") is True
+    for extra_manifest in extra_manifests:
+        extra = json.loads(extra_manifest.read_text(encoding="utf-8"))
+        if extra.get("schema") != 1:
+            raise ValueError(f"unsupported notice catalog: {extra_manifest}")
+        document["sources"].extend(extra["sources"])
+        document["complete"] = document["complete"] and extra.get("complete") is True
+        if extra.get("remaining"):
+            document.setdefault("remaining", []).extend(extra["remaining"])
+        for key in ("bundled_libraries", "statically_linked_components"):
+            additions = extra.get(key, {})
+            merged = document.setdefault(key, {})
+            if set(merged) & set(additions):
+                raise ValueError(f"duplicate {key} entries in {extra_manifest}")
+            merged.update(additions)
     verified = []
     names = set()
     for entry in document["sources"]:
@@ -55,12 +73,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, default=ROOT / "native/notice-sources.json")
+    parser.add_argument("--extra-manifest", type=Path, action="append", default=[],
+        help="additional catalog for project-specific assets; may be repeated")
     parser.add_argument("--wicked-root", type=Path, default=ROOT.parent / "amazing-labyrinth-wickedengine")
     parser.add_argument("--brew-prefix", type=Path, default=Path("/opt/homebrew"))
     args = parser.parse_args()
     try:
         count = collect(args.manifest, {"engine": ROOT, "wicked": args.wicked_root,
-            "brew": args.brew_prefix}, args.output)
+            "brew": args.brew_prefix}, args.output, tuple(args.extra_manifest))
     except (OSError, ValueError, KeyError) as error:
         print(f"notice collection failed: {error}")
         return 1

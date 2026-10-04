@@ -16,14 +16,24 @@ class BundledNoticeTests(unittest.TestCase):
             notices.mkdir(parents=True)
             (libraries / "libexample.dylib").write_bytes(b"fixture")
             catalog = {"sources": [{"name": "Example", "sha256": hashlib.sha256(b"notice").hexdigest()}],
-                "complete": False, "bundled_libraries": {"libexample.dylib": {"notices": ["Example"]}}}
-            self.assertFalse(audit(app, catalog)["dylib_notice_files_verified"])
+                "complete": False, "statically_linked_components": {
+                    "Example static": {"evidence": "libexample.a", "notices": ["Example"]}},
+                "bundled_libraries": {"libexample.dylib": {"notices": ["Example"]}}}
+            initial = audit(app, catalog)
+            self.assertFalse(initial["dylib_notice_files_verified"])
+            self.assertFalse(initial["statically_linked_notice_files_verified"])
+            catalog["statically_linked_components"]["Example static"]["notices"] = []
+            self.assertFalse(audit(app, catalog)["statically_linked_notice_files_verified"])
+            catalog["statically_linked_components"]["Example static"]["notices"] = ["Example"]
             (notices / "Example.txt").write_bytes(b"notice")
             report = audit(app, catalog)
             self.assertTrue(report["dylib_notice_files_verified"])
+            self.assertTrue(report["statically_linked_notice_files_verified"])
             self.assertFalse(report["catalog_complete"])
             (notices / "Example.txt").write_bytes(b"modified")
-            self.assertFalse(audit(app, catalog)["dylib_notice_files_verified"])
+            report = audit(app, catalog)
+            self.assertFalse(report["dylib_notice_files_verified"])
+            self.assertFalse(report["statically_linked_notice_files_verified"])
             (notices / "Example.txt").write_bytes(b"notice")
             (libraries / "libunknown.dylib").write_bytes(b"new library")
             self.assertFalse(audit(app, catalog)["dylib_notice_files_verified"])
