@@ -24,7 +24,7 @@ The character course is the first shipped game to save and load a whole
   bodies and rows, and rebuilds both. Only after it succeeds are the on-screen
   boxes recreated from the new rows. A rejected payload returns `LOAD_REJECTED`
   and leaves the World, rows, bodies and boxes untouched.
-- **Game.** `play.inc` creates the props. The player can push them, and Q/L
+- **Game.** `play_loop.inc` creates the props. The player can push them, and Q/L
   save and load them together with the checkpoint and beacons.
 
 ## Checks

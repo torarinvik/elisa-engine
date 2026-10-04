@@ -21,7 +21,7 @@ reload as a gap.
   a fresh board and triggers with `define_from` (all or nothing), carries over
   the old board, stops removed voices and swaps both in. An unreadable or
   invalid file returns `REJECTED` and leaves the loaded asset untouched.
-  `poll_reload` runs every frame from `play.inc`, re-reading
+  `poll_reload` runs every frame from `play_loop.inc`, re-reading
   `sounds/events.sfx` at most every 500 ms, so an edit to the file takes effect
   in the running course without a restart. The footstep and landing trackers
   restart from the next pose so a reload cannot register a spurious landing.

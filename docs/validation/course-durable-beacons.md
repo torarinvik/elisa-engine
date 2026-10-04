@@ -34,7 +34,7 @@ and Q06a) in the second game. It builds on
   `WorldEvents::Queue` frame (subscribe, begin frame, Simulation, `emit_world`,
   dispatch, end frame). `emit_world` validates the lamp against the live
   world, so a lamp reference from before a load raises `InvalidEntity`.
-- **Game.** In `play.inc`, walking past a beacon lights it, plays the save
+- **Game.** In `play_loop.inc`, walking past a beacon lights it, plays the save
   sound and shows a HUD line. Q saves the checkpoint and the beacons, L loads
   both, and R resets both. The beacons are released at exit.
 - **Relaunch.** `relaunch_main.elisa` runs `run_mode(2)`, a second process

@@ -13,7 +13,7 @@ package resource, so the caption text changes without rebuilding gameplay code.
   rejects malformed UTF-8, NUL, overlongs, surrogates and text over 256 bytes.
 - If the file is missing or malformed, `loaded` stays false and the built-in
   English captions are shown.
-- `python3 scripts/locale_keys.py check --loc examples/character_course/text/course.loc examples/character_course/text.elisa examples/character_course/play.inc`
+- `python3 scripts/locale_keys.py check --loc examples/character_course/text/course.loc examples/character_course/text.elisa examples/character_course/play.inc examples/character_course/play_loop.inc`
   reports no errors or warnings.
 
 Self-test code 180 (in access_test.inc) checks that the English jump caption

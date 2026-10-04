@@ -1,5 +1,5 @@
 # Character course captions. Keys are the MSG_ constants in text.elisa;
-# check with: python3 scripts/locale_keys.py check --loc text/course.loc text.elisa access.elisa play.inc
+# check with: python3 scripts/locale_keys.py check --loc text/course.loc text.elisa access.elisa play.inc play_loop.inc
 en 0 [Sound: chime]
 en 1 [Sound: jump]
 en 2 [Sound: landing thud]

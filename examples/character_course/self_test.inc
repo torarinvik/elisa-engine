@@ -1,4 +1,46 @@
 # Finite checks for the character course, included in its private section.
+        const module CoursePathTune:
+            SEGMENT_MAX_TICKS: usize = 180
+            TUNNEL_EXIT_MARGIN: f32 = 0.05
+            PLATFORM_APPROACH_MARGIN: f32 = 0.5
+            GOAL_ENTRY_MARGIN: f32 = 0.05
+            FALL_EDGE_MARGIN: f32 = 5.0
+            FALL_SPAWN_INSET: f32 = 1.5
+            MIN_JUMP_RISE: f32 = 0.04
+            TUNNEL_EXIT_X: f32 = Tune::TUNNEL_X + Tune::TUNNEL_HALF_LENGTH + Tune::CHARACTER_RADIUS + TUNNEL_EXIT_MARGIN
+            PLATFORM_TARGET_X: f32 = Tune::PLATFORM_CENTER_X + PLATFORM_APPROACH_MARGIN
+            GOAL_TARGET_X: f32 = Tune::GOAL_X - Tune::GOAL_TOLERANCE + GOAL_ENTRY_MARGIN
+            FALL_TARGET_X: f32 = Tune::FLOOR_HALF_WIDTH + Tune::CHARACTER_RADIUS + FALL_EDGE_MARGIN
+
+        const module CoursePathCodes:
+            STEP_NOT_CROSSED: i32 = 30
+            STEP_RISE: i32 = 31
+            STEP_PROGRESS: i32 = 32
+            CROUCH_REJECTED: i32 = 33
+            TUNNEL_BLOCKED: i32 = 34
+            STAND_REJECTED: i32 = 35
+            NOT_GROUNDED: i32 = 36
+            JUMP_MISSING: i32 = 37
+            PLATFORM_MISSED: i32 = 38
+            GOAL_MISSED: i32 = 39
+            FALL_MISSED: i32 = 40
+            LANE_MISSED: i32 = 41
+
+        def walk_course_until(session: mutable RuntimeServices::Session&,
+            character: PhysicsRuntime::CharacterHandle, state: mutable GameState&,
+            direction: Geometry::Vec3, x_axis: bool, target: f32) -> PhysicsRuntime::BodyPose error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+            pose: mutable PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+            for _ in 0..<CoursePathTune::SEGMENT_MAX_TICKS |session, character, state, direction, x_axis, target, pose|:
+                reached: bool = pose.position.x >= target if x_axis else pose.position.z >= target
+                break if reached or state.phase != Phase.Playing
+                try RuntimeServices::physics_character_move(session, character,
+                    direction, Tune::WALK_SPEED, 0.0, false)
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds())
+                pose <- try RuntimeServices::physics_character_pose(session, character)
+                update_outcome(&state, pose.position)
+            pose
+
         def simulate_test(session: mutable RuntimeServices::Session&,
             character: PhysicsRuntime::CharacterHandle) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             for _ in 0..<Tune::INITIAL_STEP_COUNT |session|:
@@ -18,11 +60,60 @@
                     session, character)
                 max_height <- pose.position.y if pose.position.y > max_height
                 crossed_step <- true if pose.position.x > Tune::STEP_CLEAR_X
-            return 30 if not crossed_step
-            return 31 if max_height < initial.position.y + Tune::SELF_TEST_MIN_STEP_RISE
+            return CoursePathCodes::STEP_NOT_CROSSED if not crossed_step
+            return CoursePathCodes::STEP_RISE if max_height < initial.position.y + Tune::SELF_TEST_MIN_STEP_RISE
             final_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                 session, character)
-            return 32 if final_pose.position.x < initial.position.x + Tune::SELF_TEST_MIN_PROGRESS
+            return CoursePathCodes::STEP_PROGRESS if final_pose.position.x < initial.position.x + Tune::SELF_TEST_MIN_PROGRESS
+
+            crouched: bool = try RuntimeServices::physics_character_set_capsule(session,
+                character, Tune::CHARACTER_RADIUS, Tune::CROUCHED_HALF_HEIGHT)
+            return CoursePathCodes::CROUCH_REJECTED if not crouched
+            state: mutable GameState = GameState()
+            forward: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
+            tunnel_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
+                character, state, forward, true, CoursePathTune::TUNNEL_EXIT_X)
+            return CoursePathCodes::TUNNEL_BLOCKED if tunnel_pose.position.x < CoursePathTune::TUNNEL_EXIT_X
+            standing: bool = try RuntimeServices::physics_character_set_capsule(session,
+                character, Tune::CHARACTER_RADIUS, Tune::STANDING_HALF_HEIGHT)
+            return CoursePathCodes::STAND_REJECTED if not standing
+            ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
+            return CoursePathCodes::NOT_GROUNDED if ground.state != PhysicsRuntime::CharacterGroundState.OnGround
+
+            jump_start: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+            try RuntimeServices::physics_character_move(session, character,
+                forward, Tune::WALK_SPEED, Tune::JUMP_SPEED, false)
+            _ = try RuntimeServices::physics_fixed_step(session,
+                Runtime::fixed_step_seconds())
+            jump_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+            update_outcome(&state, jump_pose.position)
+            return CoursePathCodes::JUMP_MISSING if jump_pose.position.y < jump_start.position.y + CoursePathTune::MIN_JUMP_RISE
+
+            platform_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
+                character, state, forward, true, CoursePathTune::PLATFORM_TARGET_X)
+            return CoursePathCodes::PLATFORM_MISSED if platform_pose.position.x < CoursePathTune::PLATFORM_TARGET_X or platform_pose.position.y < Tune::PLATFORM_CENTER_Y
+            lane: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
+            lane_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
+                character, state, lane, false, Tune::GOAL_Z)
+            return CoursePathCodes::LANE_MISSED if lane_pose.position.z < Tune::GOAL_Z
+            goal_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
+                character, state, forward, true, CoursePathTune::GOAL_TARGET_X)
+            return CoursePathCodes::GOAL_MISSED if state.phase != Phase.Won or ElisaMath::fabsf(goal_pose.position.x - Tune::GOAL_X) >= Tune::GOAL_TOLERANCE or ElisaMath::fabsf(goal_pose.position.z - Tune::GOAL_Z) >= Tune::GOAL_TOLERANCE
+
+            fall_spawn: Geometry::Vec3 = Geometry::Vec3{
+                x: Tune::FLOOR_HALF_WIDTH - CoursePathTune::FALL_SPAWN_INSET,
+                y: Tune::START_Y, z: 0.0}
+            fall_character: PhysicsRuntime::CharacterHandle = try create_character_at(
+                session, fall_spawn, Tune::STANDING_HALF_HEIGHT)
+            for _ in 0..<Tune::INITIAL_STEP_COUNT |session|:
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds())
+            fall_state: mutable GameState = GameState()
+            fall_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
+                fall_character, fall_state, forward, true, CoursePathTune::FALL_TARGET_X)
+            fell: bool = fall_state.phase == Phase.Failed and fall_pose.position.y < Tune::FAILURE_Y
+            try RuntimeServices::physics_character_destroy(session, fall_character)
+            return CoursePathCodes::FALL_MISSED if not fell
             0
 
         def state_test() -> i32:

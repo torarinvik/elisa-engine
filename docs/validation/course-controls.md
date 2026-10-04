@@ -29,7 +29,7 @@ No engine or native changes were needed.
   around. Tab or Esc (or gamepad East, Back or Start) closes it. Any other key
   assigns, and an unassignable key reports `Reserved`.
 
-`play.inc` holds the interactive loop:
+`play_loop.inc` holds the interactive loop; `play.inc` holds the menu and HUD helpers:
 
 - On startup it loads saved controls. An invalid record restores the defaults
   and the status line says so.

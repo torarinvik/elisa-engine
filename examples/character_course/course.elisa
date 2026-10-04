@@ -369,6 +369,7 @@ module CharacterCourse:
         include "./replay_test.inc"
 
         include "./play.inc"
+        include "./play_loop.inc"
 
         # Mode 0 plays, 1 runs the self-test, 2 checks the self-test's saves
         # from a second process.
