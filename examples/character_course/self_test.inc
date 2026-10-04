@@ -38,7 +38,7 @@
                 _ = try RuntimeServices::physics_fixed_step(session,
                     Runtime::fixed_step_seconds())
                 pose <- try RuntimeServices::physics_character_pose(session, character)
-                update_outcome(&state, pose.position)
+                update_outcome(state, pose.position)
             pose
 
         def simulate_test(session: mutable RuntimeServices::Session&,
