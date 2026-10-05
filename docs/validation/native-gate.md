@@ -124,3 +124,21 @@ the focused rerun passes. The full 30-case gate has not been rerun after this
 correction. The strict source-length check still reports
 `native/render_scene_abi.h` at 604 lines; until that separate cleanup lands,
 source policy fails and no `hardware_verification=verified` claim is made.
+
+## macOS 27 rerun (2026-10-05; Q01 remains open)
+
+The Stage1 snapshot launcher was repaired and installed from compiler commit
+`7b27fa31`; its product SHA-256 is `4c265d5d…e080f05d`. A representative
+`entity_id` compile and run passed. The shared gate then reached all 211 test
+rows but failed compilation: the first diagnostic is an error-set mismatch in
+`test/world_save_swap.elisa`, and four later rows also fail compilation. The
+proof stage was not reached.
+
+The native gate records dependency, source-length, module-hygiene, and
+ASan/UBSan stages as passing on macOS 27.0.1 with SDL3 3.4.16 and Wicked
+`fd790f55`. Its application stage stops at
+`test/world_physics_pose_probe.elisa:67`: Stage1 rejects a captured non-static
+reference passed to `pool_submit1`. The first three application smokes pass;
+the remaining matrix, render captures, and hardware verification are
+unverified. See `build/native-gate.json` and
+`build/native-smoke/world-physics-pose-smoke.json` for this run's records.

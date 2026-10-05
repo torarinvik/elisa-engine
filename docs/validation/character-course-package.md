@@ -467,6 +467,10 @@ In the follow-up foreground check, pressing C once did not leave a visible
 `Crouched` status. The computer-use key API sends taps and cannot keep C held,
 so this does not test the game's hold-to-crouch behavior.
 
+A direct CUA session on the same relocated bundle also confirmed that Space
+visibly raises the avatar. The key API still cannot sustain movement or crouch
+inputs long enough to verify a complete obstacle-to-summit run.
+
 The notice audit verified all bundled dylib, static-archive and shader-resource
 notice mappings without mapping errors. The catalog remains explicitly
 incomplete, so that result does not close distribution review. The validator
