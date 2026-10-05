@@ -118,8 +118,7 @@ module AnimationPackage:
             1 if hash == 0 else hash.i64()
 
         # Reads a cooked contract file, bounded by the 64 MiB format limit.
-        def read_file(path: cstr) -> darray[u8] error[AnimationPackageError]:
-            mutable bytes: darray[u8] = []
+        def read_file[@r](path: cstr, bytes: mutable darray[u8]& @r) -> void error[AnimationPackageError]:
             can Blocking.IO, Memory.Allocate, Memory.Release:
                 handle: mutable heap void&? = anim_pkg_fopen(path.cast[u8&], "rb".cast[u8&])
                 raise AnimationPackageError.OpenFailed if handle == null
@@ -133,7 +132,7 @@ module AnimationPackage:
                     more <- got == Format::READ_CHUNK and bytes.count.i64() <= AnimationPackageIndex::MAX_BYTES
                 _ = anim_pkg_fclose(stream)
             raise AnimationPackageError.OutOfBounds if bytes.count.i64() > AnimationPackageIndex::MAX_BYTES
-            return move bytes
+            return
 
         # Checks the header and walks every record so a truncated, padded or
         # tampered image is refused before any field is trusted.

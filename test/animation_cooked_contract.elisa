@@ -29,17 +29,17 @@ def reseal_rig(bytes: mutable darray[u8]&) -> void:
     put(bytes, 16, AnimationPackage::rig_identity(bytes, word_at(bytes, 20)))
     reseal(bytes)
 
-def copy(bytes: darray[u8]&) -> darray[u8]:
-    out: mutable darray[u8] = []
+def copy[@r](bytes: darray[u8]& @r) -> darray[u8] @r:
+    out: mutable darray[u8] @r = []
     for i in 0..<bytes.count |out, bytes|:
         out.push(bytes[i])
-    return move out
+    return out
 
-def prefix(bytes: darray[u8]&, count: usize) -> darray[u8]:
-    out: mutable darray[u8] = []
+def prefix[@r](bytes: darray[u8]& @r, count: usize) -> darray[u8] @r:
+    out: mutable darray[u8] @r = []
     for i in 0..<count |out, bytes|:
         out.push(bytes[i])
-    return move out
+    return out
 
 def clip_zero(bytes: darray[u8]&) -> i64:
     JOINT_ZERO + word_at(bytes, 20) * JOINT_BYTES
@@ -207,11 +207,13 @@ def integrity_cases(base: darray[u8]&) -> i32:
     0
 
 def main() -> i32:
-    base: darray[u8] = catch AnimationPackage::read_file(RIG):
-        value: value
+    mutable base: darray[u8] = []
+    _ = catch AnimationPackage::read_file(RIG, &base):
+        value: 0
         error failure: return 10
     return 11 if code(&base) != 0
-    missing_file: i32 = catch AnimationPackage::read_file("build/no-such-rig.anim"):
+    mutable missing_bytes: darray[u8] = []
+    missing_file: i32 = catch AnimationPackage::read_file("build/no-such-rig.anim", &missing_bytes):
         value: 0
         AnimationPackage::AnimationPackageError.OpenFailed: 1
         error failure: 2
