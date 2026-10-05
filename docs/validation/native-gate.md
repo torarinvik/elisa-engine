@@ -156,3 +156,10 @@ diagnostics in that report, including the asset importer and viewport lifetime
 errors. `python3 scripts/test_run_tests.py` passes its report-shape regression.
 The report is local build output and is regenerated or removed by the next test
 run; it is not checked in.
+
+The asset-import diagnostic was an engine ownership omission: the linear
+`GlbDocument` now returns as `return move doc` from
+`src/assets/glb_document_import.elisa`. Its uncached focused gate row passes
+with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` (8 seconds). This resolves one of
+the five initial compile failures; the remaining four rows and full 211-row
+gate still need a fresh run after the remaining source/compiler fixes.

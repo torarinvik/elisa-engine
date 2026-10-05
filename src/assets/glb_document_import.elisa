@@ -50,4 +50,4 @@ module GlbDocumentImport:
             raise GlbImport::GlbImportError.OverBudget if AssetImportLimits::charge_alloc(budget, limits, GlbDocument::node_count(&doc).i64(), NODE_BYTES) != AssetImportLimits::Verdict.Ok
             values: i64 = decoded_values(&doc)
             raise GlbImport::GlbImportError.OverBudget if values > 0 and AssetImportLimits::charge_alloc(budget, limits, values, 4) != AssetImportLimits::Verdict.Ok
-            doc
+            return move doc
