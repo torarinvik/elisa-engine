@@ -43,6 +43,13 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
         self.assertEqual(environment["ELISA_PROJECT_ROOT"], "/tmp/project")
         self.assertEqual(environment["PATH"], "/usr/bin")
 
+    def test_course_relaunch_can_reopen_the_saved_device_without_playback(self) -> None:
+        environment = native_smoke_environment(
+            {"ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "1"},
+            allow_silent_device_open=True)
+
+        self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "0")
+
     def test_relocated_package_launch_is_silent_and_isolated(self) -> None:
         environment = standalone_launch_environment(Path("/tmp/isolated-home"), {
             "ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "0",
