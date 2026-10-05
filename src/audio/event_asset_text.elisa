@@ -59,17 +59,16 @@ module SoundEventAssets:
             fields: mutable u64[SoundEventAssets::MAX_FIELDS] = zeroed
             cursor: mutable usize = start
             count: mutable usize = 0
-            for slot in 0..<MAX_FIELDS + 1 |cursor, count, fields|:
+            for slot in 0..<MAX_FIELDS |cursor, count, fields|:
                 invariant count <= MAX_FIELDS
                 invariant cursor <= stop
                 begin: usize = skip_spaces(source, cursor, stop)
                 if begin < stop and source.bytes[begin] != HASH:
-                    raise SoundAssetError.FieldCount if count >= MAX_FIELDS
-                    end: usize = token_end(source, begin, stop)
-                    value: u64 = try number(source, begin, end)
-                    fields[count] <- value
-                    count <- count + 1
-                    cursor <- end
+                    if count < MAX_FIELDS:
+                        cursor <- token_end(source, begin, stop)
+                        value: u64 = try number(source, begin, cursor)
+                        fields[count] <- value
+                        count <- count + 1
                 else:
                     cursor <- stop
             rest: usize = skip_spaces(source, cursor, stop)
