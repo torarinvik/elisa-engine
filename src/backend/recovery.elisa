@@ -70,12 +70,12 @@ module BackendRecovery:
             return false if r.state != State.Recovering
             if r.wait_frames > 0:
                 r.wait_frames <- r.wait_frames - 1
-                return false
+                return r.wait_frames == 0
             true
 
         # Result of a due recovery attempt.
         def attempt(r: mutable Recovery&, ok: bool):
-            return if r.state != State.Recovering
+            return if r.state != State.Recovering or r.wait_frames > 0
             if ok:
                 r.state <- State.Running
                 r.attempts <- 0
