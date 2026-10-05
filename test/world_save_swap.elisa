@@ -3,7 +3,7 @@ include "../src/world/world_save_swap.elisa"
 def swap_code(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
     catch World::SaveSwap::replace_world(world, bytes, length):
         ok: 0
-        World::SaveSwap::SaveSwapError.Rejected: 1
+        SaveSwapError.Rejected: 1
         error failure: 2
 
 def spawn(world: mutable World::World&, kind: World::Entity) -> World::EntityRef:
