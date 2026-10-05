@@ -1,0 +1,61 @@
+# Runtime resource locations keyed by stable authored IDs. The offline asset
+# database remains a build-tool concern; games provide cooked package and
+# section names here, then resolve saved visual IDs without a parallel switch.
+include "./descriptor.elisa"
+
+module AssetResourceCatalogue:
+    private:
+        const module Tune:
+            MAX_RESOURCES: usize = 1024
+            NONE: usize = MAX_RESOURCES
+
+        def slot_of(catalogue: Catalogue&, id: Assets::AssetId) -> usize:
+            for index in 0..<catalogue.count |found: usize = Tune::NONE| -> found:
+                found <- index if Assets::same_asset_id(catalogue.entries[index].id, id)
+
+    public:
+        error CatalogueError:
+            Capacity
+            Duplicate
+            Invalid
+            Unknown
+
+        struct Location:
+            package: cstr
+            section: cstr
+
+        struct Entry:
+            private:
+                id: Assets::AssetId
+                package: cstr
+                section: cstr
+
+        struct Catalogue:
+            private:
+                entries: mutable Entry[Tune::MAX_RESOURCES]
+                count: mutable usize
+
+        def Catalogue() -> Catalogue:
+            Catalogue{entries: zeroed, count: 0}
+
+        def count(catalogue: Catalogue&) -> usize:
+            catalogue.count
+
+        # C strings are borrowed location metadata. Callers should register
+        # literals or other storage that remains alive while lookups use them.
+        def add(catalogue: mutable Catalogue&, id: Assets::AssetId,
+            package: cstr, section: cstr) -> void error[CatalogueError]:
+            raise CatalogueError.Invalid if not Assets::asset_id_valid(id) or package == "" or section == ""
+            raise CatalogueError.Duplicate if slot_of(catalogue, id) < catalogue.count
+            raise CatalogueError.Capacity if catalogue.count >= Tune::MAX_RESOURCES
+            catalogue.entries[catalogue.count] <- Entry{id: id, package: package, section: section}
+            catalogue.count <- catalogue.count + 1
+
+        def contains(catalogue: Catalogue&, id: Assets::AssetId) -> bool:
+            slot_of(catalogue, id) < catalogue.count
+
+        def resolve(catalogue: Catalogue&, id: Assets::AssetId) -> Location error[CatalogueError]:
+            raise CatalogueError.Invalid if not Assets::asset_id_valid(id)
+            slot: usize = slot_of(catalogue, id)
+            raise CatalogueError.Unknown if slot >= catalogue.count
+            Location{package: catalogue.entries[slot].package, section: catalogue.entries[slot].section}

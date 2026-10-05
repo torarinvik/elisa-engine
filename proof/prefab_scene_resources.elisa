@@ -1,0 +1,13 @@
+# The stable-ID array scan calls these scalar guards before reading any slot.
+include "../src/assets/resource_id_index_policy.elisa"
+
+extend AssetResourceIdIndexPolicy:
+    def prove_index_stays_inside_prefix(index: usize, count: usize) -> bool:
+        ensure not result or index < count
+        ensure not result or index < MAX_RESOURCES
+        slot_inside_prefix(index, count)
+
+    def prove_oversized_catalogue_refused(count: usize) -> bool:
+        requires count > MAX_RESOURCES
+        ensure not result
+        prefix_accepted(count)

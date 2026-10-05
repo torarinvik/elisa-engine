@@ -1,0 +1,136 @@
+# Converts stable visual IDs in a durable nested-scene snapshot into cooked
+# package requests. The plan is fully checked before any stream work begins;
+# partial requests are dropped if a later package cannot be queued.
+include "./prefab_scene_codec.elisa"
+include "../assets/resource_catalogue.elisa"
+include "../assets/resource_id_index.elisa"
+include "../runtime/asset_stream.elisa"
+
+module PrefabSceneResources:
+    private:
+        const module Tune:
+            MAX_RESOURCES: usize = AssetResourceIdIndex::MAX_RESOURCES
+
+        def add_id(plan: mutable Plan&, catalogue: AssetResourceCatalogue::Catalogue&,
+            id: Assets::AssetId) -> void error[ResourceError]:
+            return if AssetResourceIdIndex::slot(plan.highs, plan.lows, plan.count,
+                id.high, id.low) < plan.count
+            raise ResourceError.InvalidSnapshot if not Assets::asset_id_valid(id)
+            raise ResourceError.Capacity if plan.count >= Tune::MAX_RESOURCES
+            location: AssetResourceCatalogue::Location = catch AssetResourceCatalogue::resolve(catalogue, id):
+                value: value
+                error failure: AssetResourceCatalogue::Location{package: "", section: ""}
+            raise ResourceError.MissingBinding if location.package == ""
+            plan.highs[plan.count] <- id.high
+            plan.lows[plan.count] <- id.low
+            plan.locations[plan.count] <- location
+            plan.count <- plan.count + 1
+
+        def rollback(batch: mutable Batch&) -> bool:
+            released: mutable bool = true
+            for index in 0..<batch.count |batch, released|:
+                if batch.resources[index].handle.token != 0:
+                    dropped: bool = catch AssetStream::stream_drop(batch.resources[index].handle):
+                        ok: true
+                        error failure: false
+                    if dropped:
+                        batch.resources[index].handle <- AssetStream::stream_none()
+                    else:
+                        released <- false
+            if released:
+                batch.count <- 0
+            released
+
+    public:
+        const MAX_RESOURCES: usize = Tune::MAX_RESOURCES
+
+        error ResourceError:
+            InvalidSnapshot
+            MissingBinding
+            Capacity
+            RequestFailed
+            RollbackFailed
+            ReleaseFailed
+
+        struct Plan:
+            private:
+                highs: mutable u64[Tune::MAX_RESOURCES]
+                lows: mutable u64[Tune::MAX_RESOURCES]
+                locations: mutable AssetResourceCatalogue::Location[Tune::MAX_RESOURCES]
+                count: mutable usize
+
+        struct BatchEntry:
+            private:
+                id: Assets::AssetId
+                handle: mutable AssetStream::StreamHandle
+
+        affine struct Batch:
+            private:
+                resources: mutable BatchEntry[Tune::MAX_RESOURCES]
+                count: mutable usize
+
+        def Plan() -> Plan:
+            Plan{highs: zeroed, lows: zeroed, locations: zeroed, count: 0}
+
+        def Batch() -> Batch:
+            Batch{resources: zeroed, count: 0}
+
+        def plan_count(plan: Plan&) -> usize:
+            plan.count
+
+        def plan_id(plan: Plan&, index: usize) -> Assets::AssetId:
+            return zeroed if index >= plan.count
+            Assets::AssetId{high: plan.highs[index], low: plan.lows[index]}
+
+        def plan_index(plan: Plan&, id: Assets::AssetId) -> usize:
+            AssetResourceIdIndex::slot(plan.highs, plan.lows, plan.count, id.high, id.low)
+
+        def plan_location(plan: Plan&, index: usize) -> AssetResourceCatalogue::Location:
+            return zeroed if index >= plan.count
+            plan.locations[index]
+
+        # Collects each distinct mesh/material reference once. The snapshot
+        # and every resource mapping are validated before `plan` is changed.
+        def build_plan(plan: mutable Plan&, snapshot: PrefabScene::SceneSnapshot&,
+            catalogue: AssetResourceCatalogue::Catalogue&) -> void error[ResourceError]:
+            raise ResourceError.InvalidSnapshot if plan.count != 0 or not PrefabSceneCodec::snapshot_valid(snapshot)
+            candidate: mutable Plan = Plan()
+            for link_index in 0..<snapshot.link_count |candidate, snapshot, catalogue|:
+                overrides: PrefabPersistence::Snapshot = snapshot.links[link_index].overrides
+                for record_index in 0..<overrides.count |candidate, overrides, catalogue|:
+                    record: PrefabPersistence::OverrideRecord = overrides.records[record_index]
+                    if record.has_visual:
+                        try add_id(&candidate, catalogue, record.visual.mesh)
+                        try add_id(&candidate, catalogue, record.visual.material)
+            plan <- move candidate
+
+        def batch_count(batch: Batch&) -> usize:
+            batch.count
+
+        def batch_id(batch: Batch&, index: usize) -> Assets::AssetId:
+            return zeroed if index >= batch.count
+            batch.resources[index].id
+
+        def batch_handle(batch: Batch&, index: usize) -> AssetStream::StreamHandle:
+            return AssetStream::stream_none() if index >= batch.count
+            batch.resources[index].handle
+
+        # Queues all planned package sections. If queuing one fails, handles
+        # acquired by this call are dropped; a failed rollback remains in the
+        # batch so the owner can retry `release` instead of losing ownership.
+        def request(plan: Plan&, batch: mutable Batch&) -> void error[ResourceError]:
+            raise ResourceError.InvalidSnapshot if plan.count > Tune::MAX_RESOURCES or batch.count != 0
+            for index in 0..<plan.count |plan, batch|:
+                id: Assets::AssetId = Assets::AssetId{high: plan.highs[index], low: plan.lows[index]}
+                location: AssetResourceCatalogue::Location = plan.locations[index]
+                handle: AssetStream::StreamHandle = catch AssetStream::stream_request(location.package, location.section):
+                    value: value
+                    error failure: AssetStream::stream_none()
+                if handle.token <= 0:
+                    raise ResourceError.RollbackFailed if not rollback(batch)
+                    raise ResourceError.RequestFailed
+                batch.resources[batch.count] <- BatchEntry{id: id, handle: handle}
+                batch.count <- batch.count + 1
+
+        def release(batch: mutable Batch&) -> void error[ResourceError]:
+            raise ResourceError.ReleaseFailed if not rollback(batch)

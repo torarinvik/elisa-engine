@@ -1,0 +1,16 @@
+# Scalar bounds used by the stable-resource ID scan. Kept separate from the
+# array walk so the proof assistant can verify the exact guard in isolation.
+module AssetResourceIdIndexPolicy:
+    public:
+        const MAX_RESOURCES: usize = 1024
+
+        def prefix_accepted(count: usize) -> bool:
+            ensure not result or count <= MAX_RESOURCES
+            count <= MAX_RESOURCES
+
+        def slot_inside_prefix(index: usize, count: usize) -> bool:
+            ensure not result or index < count
+            ensure not result or index < MAX_RESOURCES
+            return false if index >= count
+            return false if index >= MAX_RESOURCES
+            true

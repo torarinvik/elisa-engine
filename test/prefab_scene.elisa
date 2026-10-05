@@ -1,5 +1,6 @@
 include "../src/world/prefab_scene.elisa"
 include "./prefab_scene_codec.elisa"
+include "../src/world/prefab_scene_resources.elisa"
 
 def main() -> i32:
     definition: mutable Prefab::Definition = Prefab::Definition()
@@ -61,9 +62,51 @@ def main() -> i32:
     return 17 if not PrefabScene::override_local(&instance, &world, scene, 200, 10, moved_link)
     return 18 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 17.0
     return 19 if not PrefabScene::override_visual(&instance, &world, scene, 200, 20, true, child_visual)
+    return 42 if not PrefabScene::override_visual(&instance, &world, scene, 100, 20, true, child_visual)
     return 20 if not PrefabScene::instance_has_visual(&instance, scene, 200, 20)
     snapshot: PrefabScene::SceneSnapshot = PrefabScene::capture(&instance, &world, scene)
     return 21 if not PrefabScene::snapshot_valid(&snapshot, scene, 55)
+
+    resource_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
+    mesh_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
+        "beacon-lamp.elpk", "mesh"):
+        ok: true
+        error failure: false
+    return 34 if not mesh_added
+    material_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.material,
+        "beacon-lit.elpk", "albedo"):
+        ok: true
+        error failure: false
+    return 35 if not material_added
+    resource_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
+    plan_status: bool = catch PrefabSceneResources::build_plan(&resource_plan, &snapshot, &resource_catalogue):
+        ok: true
+        error failure: false
+    return 36 if not plan_status or PrefabSceneResources::plan_count(&resource_plan) != 2
+    return 37 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 0), child_visual.mesh)
+    return 38 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 1), child_visual.material)
+    mesh_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 0)
+    return 39 if mesh_location.package != "beacon-lamp.elpk" or mesh_location.section != "mesh"
+    material_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 1)
+    return 43 if material_location.package != "beacon-lit.elpk" or material_location.section != "albedo"
+    duplicate_binding: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
+        "other.elpk", "mesh"):
+        ok: false
+        AssetResourceCatalogue::CatalogueError.Duplicate: true
+        error failure: false
+    return 44 if not duplicate_binding
+
+    incomplete_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
+    incomplete_mesh_added: bool = catch AssetResourceCatalogue::add(&incomplete_catalogue, child_visual.mesh,
+        "beacon-lamp.elpk", "mesh"):
+        ok: true
+        error failure: false
+    return 40 if not incomplete_mesh_added
+    rejected_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
+    rejected: bool = catch PrefabSceneResources::build_plan(&rejected_plan, &snapshot, &incomplete_catalogue):
+        ok: true
+        error failure: false
+    return 41 if rejected or PrefabSceneResources::plan_count(&rejected_plan) != 0
 
     cycle_scene: mutable PrefabScene::Scene = PrefabScene::Scene()
     return 11 if not PrefabScene::add_definition(&cycle_scene, 7, definition)

@@ -1,0 +1,13 @@
+# Stable-ID index shared by bounded resource plans. A missing or oversized
+# prefix returns the one-past-capacity sentinel without reading the array.
+include "./resource_id_index_policy.elisa"
+
+module AssetResourceIdIndex:
+    public:
+        const MAX_RESOURCES: usize = AssetResourceIdIndexPolicy::MAX_RESOURCES
+
+        def slot(highs: u64[MAX_RESOURCES]&, lows: u64[MAX_RESOURCES]&, count: usize,
+            high: u64, low: u64) -> usize:
+            return MAX_RESOURCES if not AssetResourceIdIndexPolicy::prefix_accepted(count) or (high == 0 and low == 0)
+            for index in 0..<count |found: usize = MAX_RESOURCES| -> found:
+                found <- index if AssetResourceIdIndexPolicy::slot_inside_prefix(index, count) and highs[index] == high and lows[index] == low
