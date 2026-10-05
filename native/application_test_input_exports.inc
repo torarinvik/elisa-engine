@@ -2,7 +2,7 @@
 // Pushes a real SDL keyboard event, so it travels the same pump, key-code
 // mapping and action-binding path as a key the player presses. Only the keys
 // a pilot needs are accepted: 1 Right arrow, 2 Left arrow, 3 Escape,
-// 4 Space, 5 C, 6 W, 7 P and 8 R.
+// 4 Space, 5 C, 6 W, 7 P, 8 R and 9 S.
 extern "C" int32_t elisa_application_v1_test_push_key(int32_t key, int32_t down) {
     SDL_Keycode keycode = 0;
     if (key == 1) keycode = SDLK_RIGHT;
@@ -13,6 +13,7 @@ extern "C" int32_t elisa_application_v1_test_push_key(int32_t key, int32_t down)
     else if (key == 6) keycode = SDLK_W;
     else if (key == 7) keycode = SDLK_P;
     else if (key == 8) keycode = SDLK_R;
+    else if (key == 9) keycode = SDLK_S;
     else return ELISA_APPLICATION_INVALID_ARGUMENT;
     ApplicationService& service = application_service();
     std::lock_guard<std::mutex> guard(service.mutex);

@@ -10,6 +10,7 @@ module CourseTestInput:
             Forward
             Pause
             Restart
+            Backward
 
     private:
         const module NativeKey:
@@ -21,6 +22,7 @@ module CourseTestInput:
             FORWARD: i32 = 6
             PAUSE: i32 = 7
             RESTART: i32 = 8
+            BACKWARD: i32 = 9
 
         @callconv(c)
         extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
@@ -35,6 +37,7 @@ module CourseTestInput:
                 Key.Forward: NativeKey::FORWARD
                 Key.Pause: NativeKey::PAUSE
                 Key.Restart: NativeKey::RESTART
+                Key.Backward: NativeKey::BACKWARD
 
     public:
         def push(key: Key, down: bool) -> bool:

@@ -11,6 +11,7 @@ module CourseLiveInputPilot:
                 won: mutable bool
                 failed: mutable bool
                 forward_held: mutable bool
+                backward_held: mutable bool
                 crouch_held: mutable bool
                 jump_held: mutable bool
                 lateral_held: mutable bool
@@ -19,6 +20,7 @@ module CourseLiveInputPilot:
                 saw_paused: mutable bool
                 resumed: mutable bool
                 restarted: mutable bool
+                saw_fall: mutable bool
                 crossed_step: mutable bool
                 saw_crouch: mutable bool
                 released_crouch: mutable bool
@@ -65,6 +67,7 @@ module CourseLiveInputPilot:
             TURNING_TO_GOAL: i32 = 9
             WALK_TO_GOAL: i32 = 10
             RESTARTING: i32 = 11
+            FALLING: i32 = 12
 
         const module Failure:
             INJECTION: i32 = 130
@@ -76,6 +79,10 @@ module CourseLiveInputPilot:
             if pilot.forward_held:
                 push_ok <- CourseTestInput::push(CourseTestInput::Key.Forward, false)
                 pilot.forward_held <- false
+            if pilot.backward_held:
+                backward_released: bool = CourseTestInput::push(CourseTestInput::Key.Backward, false)
+                push_ok <- push_ok and backward_released
+                pilot.backward_held <- false
             if pilot.crouch_held:
                 crouch_released: bool = CourseTestInput::push(CourseTestInput::Key.Crouch, false)
                 push_ok <- push_ok and crouch_released
@@ -109,9 +116,10 @@ module CourseLiveInputPilot:
         def Pilot() -> Pilot:
             Pilot{stage: Stage::WAITING, started: false, finished: false,
                 won: false, failed: false, forward_held: false,
+                backward_held: false,
                 crouch_held: false, jump_held: false, lateral_held: false,
                 pause_held: false, restart_held: false, saw_paused: false,
-                resumed: false, restarted: false,
+                resumed: false, restarted: false, saw_fall: false,
                 crossed_step: false, saw_crouch: false, released_crouch: false,
                 stood_after_crouch: false, jumped: false, reached_platform: false,
                 reached_goal_lane: false, started_nanos: 0,
@@ -145,7 +153,11 @@ module CourseLiveInputPilot:
             elif not pilot.finished:
                 if failed:
                     pilot.failed <- true
-                    fail(pilot, Failure::COURSE_FAILED)
+                    if pilot.stage == Stage::FALLING:
+                        pilot.saw_fall <- true
+                        pilot_finish(pilot)
+                    else:
+                        fail(pilot, Failure::COURSE_FAILED)
                 elif elapsed_nanos > pilot.started_nanos + Tune::TIMEOUT_NANOS:
                     fail(pilot, Failure::TIMEOUT)
                 elif pilot.stage == Stage::PAUSING and paused:
@@ -175,7 +187,16 @@ module CourseLiveInputPilot:
                     near_start: bool = x >= Tune::RESTART_X - Tune::RESTART_TOLERANCE and x <= Tune::RESTART_X + Tune::RESTART_TOLERANCE and y >= Tune::RESTART_Y - Tune::RESTART_TOLERANCE and y <= Tune::RESTART_Y + Tune::RESTART_TOLERANCE and z >= Tune::RESTART_Z - Tune::RESTART_TOLERANCE and z <= Tune::RESTART_Z + Tune::RESTART_TOLERANCE
                     if near_start:
                         pilot.restarted <- true
-                        pilot_finish(pilot)
+                        restart_released: bool = CourseTestInput::push(CourseTestInput::Key.Restart, false)
+                        forward_released: bool = CourseTestInput::push(CourseTestInput::Key.Forward, false)
+                        backward_pressed: bool = CourseTestInput::push(CourseTestInput::Key.Backward, true)
+                        if restart_released and forward_released and backward_pressed:
+                            pilot.restart_held <- false
+                            pilot.forward_held <- false
+                            pilot.backward_held <- true
+                            pilot.stage <- Stage::FALLING
+                        else:
+                            fail(pilot, Failure::INJECTION)
                 elif won:
                     pilot.won <- true
                     if CourseTestInput::push(CourseTestInput::Key.Restart, true):
@@ -233,8 +254,9 @@ module CourseLiveInputPilot:
             return 137 if not pilot.jumped
             return 138 if not pilot.reached_platform
             return 139 if not pilot.reached_goal_lane
-            return 140 if pilot.failed or not pilot.won
+            return 140 if not pilot.won or (pilot.failed and not pilot.saw_fall)
             return 141 if not pilot.saw_paused
             return 142 if not pilot.resumed
             return 143 if not pilot.restarted
+            return 144 if not pilot.saw_fall
             0
