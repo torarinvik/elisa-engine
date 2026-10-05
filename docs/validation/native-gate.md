@@ -149,6 +149,12 @@ the remaining matrix, render captures, and hardware verification are
 unverified. See `build/native-gate.json` and
 `build/native-smoke/world-physics-pose-smoke.json` for this run's records.
 
+Recheck on 2026-10-05 with fresh Stage1 provenance `bc8def2e` reproduces the
+same `pool_submit1` diagnostic in the focused world-physics smoke. The
+ElisaScript current-rebuilt product passes `--check` on the gate script and the
+quick gate mode (dependency manifest, source length, module hygiene); the full
+native gate remains pending that compiler fix.
+
 ## Retaining all test-runner failures (2026-10-05)
 
 `scripts/run_tests.py` now writes every nonzero test row, its compile/run stage,

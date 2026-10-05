@@ -38,16 +38,23 @@ checks the live failure state. The pilot checks each milestone and fails on a
 timeout or unexpected course failure. Streamed floor cells stay valid throughout.
 
 ```sh
-ELISA_COMPILER_BIN="$HOME/.elisac/elisac-stage1" \
+ELISA_COMPILER_BIN="../Elisa-compiler/scripts/elisac_stage1.sh" \
+ELISA_RUNTIME_OBJ="../Elisa-compiler/build/runtime/elisacore_runtime.o" \
+WICKED_ROOT="../elisa-boxing-wickedengine" \
+WICKED_BUILD="../elisa-boxing-wickedengine/build-elisa-sdl3" \
+ELISA_SDL3_LIB_DIR=/opt/homebrew/lib \
 ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1 \
 DEVELOPER_DIR=/Library/Developer/CommandLineTools \
 PYTHON_BIN=/opt/homebrew/bin/python3.14 \
+PYTHONPATH=scripts \
 /opt/homebrew/bin/python3.14 scripts/application_native_smoke.py \
   --only character-course-live-input-smoke
 ```
 
-Result: pass (status 0, 135.28 seconds including compilation and linking). The
-silent-audio override was enabled for the entire hidden app run.
+Fresh rerun on Stage1 provenance `bc8def2e`: pass (status 0, 123.563 seconds,
+including compilation and linking). The silent-audio override was enabled for
+the entire hidden app run. Results are recorded in
+`build/native-smoke/character-course-live-input-smoke.json`.
 
 The live-input pilot now leaves each terminal state on screen for one full
 frame, then saves the presented win and fall images before restarting or
