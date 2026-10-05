@@ -37,14 +37,34 @@ module SkinMeshPolicyLaws:
             ensure result == ambient
             return SkinMeshPolicy::light_level(0, ambient)
 
+        def nonnegative_magnitude(facing: i64) -> i64:
+            requires facing >= 0
+            requires facing <= SkinMeshPolicy::FULL_LIGHT
+            ensure result == facing
+            return SkinMeshPolicy::facing_magnitude(facing)
+
+        def nonpositive_magnitude(facing: i64) -> i64:
+            requires facing >= 0 - SkinMeshPolicy::FULL_LIGHT
+            requires facing <= 0
+            ensure result == 0 - facing
+            return SkinMeshPolicy::facing_magnitude(facing)
+
+        def opposite_facing(facing: i64) -> i64:
+            requires facing >= 0
+            requires facing <= SkinMeshPolicy::FULL_LIGHT
+            ensure result >= 0 - SkinMeshPolicy::FULL_LIGHT
+            ensure result <= 0
+            ensure 0 - result == facing
+            return 0 - facing
+
         # Back faces face the light as much as front faces.
         def two_sided(facing: i64) -> bool:
             requires facing >= 0
             requires facing <= SkinMeshPolicy::FULL_LIGHT
             ensure result
-            back: i64 = 0 - facing
-            front_level: i64 = SkinMeshPolicy::facing_magnitude(facing)
-            back_level: i64 = SkinMeshPolicy::facing_magnitude(back)
+            back: i64 = opposite_facing(facing)
+            front_level: i64 = nonnegative_magnitude(facing)
+            back_level: i64 = nonpositive_magnitude(back)
             return front_level == back_level
 
         # Full light keeps the base colour; no light is black.
