@@ -336,8 +336,8 @@ module CourseSounds:
             for slot in 0..<AudioEvents::MAX_INSTANCES |sounds, next|:
                 if AudioEvents::live(&sounds.board, slot) and not AudioEvents::live(&next, slot):
                     stop_slot(sounds, slot)
-            sounds.board <- next
-            sounds.triggers <- next_triggers
+            sounds.board <- move next
+            sounds.triggers <- move next_triggers
             sounds.tracked <- false
             RELOADED
 

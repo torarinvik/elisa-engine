@@ -103,7 +103,7 @@
                             keymap <- menu.keymap
                             rebound: mutable ActionInput::Input = ActionInput::Input()
                             return 33 if not CourseControls::bind(&rebound, &keymap, &pads)
-                            input <- rebound
+                            input <- move rebound
                             keys_stored: bool = catch CourseControls::save(&keymap):
                                 ok: true
                                 error failure: false
@@ -263,6 +263,8 @@
                                     beacon_message(CourseBeacons::lit_count(beacons)))
                             ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
                             now_grounded: bool = ground.state == PhysicsRuntime::CharacterGroundState.OnGround
+                            CourseCells::observe_pilot(cells, pose.position, crouched,
+                                ActionInput::action_down(input, CourseControls::ACTION_CROUCH)) if mode == 3
                             # Footsteps and landings come from the authored triggers; the
                             # landing caption shows for every touchdown, heard or not.
                             _ = CourseSounds::track(&sounds, now_grounded, pose.position, sound_tick)

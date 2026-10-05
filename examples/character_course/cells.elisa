@@ -47,6 +47,14 @@ module CourseCells:
             PILOT_TIMEOUT_NANOS: u64 = 90000000000
             PILOT_MIN_CROSSINGS: i64 = 24
             PILOT_MIN_LOADS: i64 = 12
+            PILOT_CROUCH_NANOS: u64 = 200000000
+            PILOT_STAND_NANOS: u64 = 250000000
+            PILOT_JUMP_NANOS: u64 = 120000000
+            PILOT_JUMP_RISE: f32 = 0.15
+            PILOT_CROUCH_CODE: i32 = 113
+            PILOT_STAND_CODE: i32 = 114
+            PILOT_JUMP_CODE: i32 = 115
+            PILOT_RELEASE_CODE: i32 = 116
 
         affine struct Cells:
             shelf: mutable VisualShelf::Shelf
@@ -72,6 +80,14 @@ module CourseCells:
             legs: mutable i64
             quit_sent: mutable bool
             started_nanos: mutable u64
+            action_stage: mutable i32
+            action_deadline_nanos: mutable u64
+            action_start_height: mutable f32
+            player_height: mutable f32
+            saw_crouch: mutable bool
+            released_crouch: mutable bool
+            stood_after_crouch: mutable bool
+            jumped: mutable bool
 
     private:
         @callconv(c)
@@ -81,6 +97,8 @@ module CourseCells:
             RIGHT: i32 = 1
             LEFT: i32 = 2
             ESCAPE: i32 = 3
+            SPACE: i32 = 4
+            CROUCH: i32 = 5
 
         def cells_key_of(high: u64, low: u64) -> AssetLoader::RequestKey:
             AssetLoader::RequestKey{id: Assets::AssetId{high: high, low: low}, variant: Assets::ArtifactVariant.Runtime}
@@ -340,7 +358,11 @@ module CourseCells:
                 rows: [empty, empty, empty, empty, empty, empty],
                 opened: false, failure: 0, loads: 0, crossings: 0, violations: 0, generation: 0,
                 last_x: -1, last_z: -1, player_z: 0.0, warm_gpu: 0, warm_cpu: 0,
-                heading: 0, legs: 0, quit_sent: false, started_nanos: 0}
+                heading: 0, legs: 0, quit_sent: false, started_nanos: 0,
+                action_stage: 0, action_deadline_nanos: 0,
+                action_start_height: 0.0, player_height: 0.0,
+                saw_crouch: false, released_crouch: false,
+                stood_after_crouch: false, jumped: false}
             return move cells
 
         def cells_make_runtime() -> CellWorld::Runtime:
@@ -375,9 +397,20 @@ module CourseCells:
                 code <- cells_check(cells, runtime, world) if code == 0
                 cells.failure <- code
 
-        # Mode 3 pilot: pushes real Right/Left arrow key events through the
-        # application's SDL queue, so the course's own pump, bindings and
-        # character controller move the player across cell boundaries along z.
+        # Observe the character state after the live input and physics update.
+        # The mode-3 smoke uses this to prove that injected keys reached the
+        # real character controller, not just the standalone mapping tests.
+        def observe_pilot(cells: mutable Cells&, position: Geometry::Vec3,
+            crouched: bool, crouch_held: bool) -> void:
+            cells.player_height <- position.y
+            if cells.action_stage > 0:
+                cells.saw_crouch <- true if crouched
+                cells.released_crouch <- true if cells.saw_crouch and not crouch_held
+                cells.stood_after_crouch <- true if cells.saw_crouch and not crouched
+                cells.jumped <- true if position.y > cells.action_start_height + CellTune::PILOT_JUMP_RISE
+
+        # Mode 3 pilot: pushes real SDL key events through the application's
+        # pump and bindings, then moves across streamed cell boundaries.
         def pilot(cells: mutable Cells&, elapsed_nanos: u64) -> void:
             cells.started_nanos <- elapsed_nanos + 1 if cells.started_nanos == 0
             if not cells.quit_sent:
@@ -387,9 +420,25 @@ module CourseCells:
                     cells_quit(cells)
                 elif cells.legs == 0 and cells.heading == 0:
                     if cells.loads > 0:
+                        cells.action_start_height <- cells.player_height
+                        cells_push(cells, PilotKey::CROUCH, true)
                         cells_push(cells, PilotKey::RIGHT, true)
                         cells.heading <- 1
-                elif cells.heading == 1 and cells.player_z >= CellTune::PILOT_HIGH_Z:
+                        cells.action_stage <- 1
+                        cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_CROUCH_NANOS
+                elif cells.action_stage == 1 and elapsed_nanos >= cells.action_deadline_nanos:
+                    cells_push(cells, PilotKey::CROUCH, false)
+                    cells.action_stage <- 2
+                    cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_STAND_NANOS
+                elif cells.action_stage == 2 and elapsed_nanos >= cells.action_deadline_nanos:
+                    cells.action_start_height <- cells.player_height
+                    cells_push(cells, PilotKey::SPACE, true)
+                    cells.action_stage <- 3
+                    cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_JUMP_NANOS
+                elif cells.action_stage == 3 and elapsed_nanos >= cells.action_deadline_nanos:
+                    cells_push(cells, PilotKey::SPACE, false)
+                    cells.action_stage <- 4
+                if cells.heading == 1 and cells.player_z >= CellTune::PILOT_HIGH_Z:
                     cells_turn(cells, PilotKey::RIGHT)
                 elif cells.heading == 2 and cells.player_z <= CellTune::PILOT_LOW_Z:
                     cells_turn(cells, PilotKey::LEFT)
@@ -423,5 +472,8 @@ module CourseCells:
             return 102 if cells.crossings < CellTune::PILOT_MIN_CROSSINGS
             return 103 if cells.loads < CellTune::PILOT_MIN_LOADS
             return 104 if cells.violations != 0
+            return CellTune::PILOT_CROUCH_CODE if not cells.saw_crouch
+            return CellTune::PILOT_RELEASE_CODE if not cells.released_crouch
+            return CellTune::PILOT_STAND_CODE if not cells.stood_after_crouch
+            return CellTune::PILOT_JUMP_CODE if not cells.jumped
             0
-

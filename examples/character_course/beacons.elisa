@@ -177,7 +177,7 @@ module CourseBeacons:
                     prefab_id: Layout::PREFAB, instance_id: Layout::FIRST_INSTANCE + index.i64(),
                     root_authoring_id: Layout::ROOT_NODE, parent_link_id: PrefabScene::ROOT,
                     parent_authoring_id: 0, local: at(anchor(index).x, 0.0, anchor(index).z, 1.0)})
-            scene
+            return move scene
 
         def snapshot_on_shelf(shelf: VisualShelf::Shelf&, snapshot: PrefabScene::SceneSnapshot&) -> bool:
             for index in 0..<snapshot.link_count |known: bool = true| -> known:

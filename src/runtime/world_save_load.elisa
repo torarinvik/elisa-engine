@@ -24,7 +24,7 @@ module WorldSaveLoad:
         def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
             catch World::SaveSwap::replace_world(world, bytes, length):
                 ok: 0
-                World::SaveSwap::SaveSwapError.Rejected: 1
+                SaveSwapError.Rejected: 1
                 error failure: 2
 
         def saveload_unbind_all(session: RuntimeServices::Session&,
