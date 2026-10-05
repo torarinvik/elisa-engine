@@ -24,6 +24,21 @@ def file_identity(path: Path) -> dict | None:
     return {"path": str(path.resolve()), "sha256": digest.hexdigest()}
 
 
+def elisascript_identity() -> dict:
+    """Identify the launcher selected for this gate, including stale products."""
+    configured = os.environ.get("ELISASCRIPT_BIN", "elisascript")
+    candidate = Path(configured).expanduser()
+    if candidate.is_absolute() or candidate.parent != Path("."):
+        resolved = candidate if candidate.is_file() else None
+    else:
+        located = shutil.which(configured)
+        resolved = Path(located) if located else None
+    return {
+        "configured": configured,
+        "executable": file_identity(resolved) if resolved else None,
+    }
+
+
 def command_output(arguments: list[str]) -> str | None:
     try:
         result = subprocess.run(arguments, capture_output=True, text=True, check=False, timeout=10)
@@ -138,6 +153,7 @@ def main() -> int:
             "platform": platform.platform(),
             "python": platform.python_version(),
             "developer_dir": os.environ.get("DEVELOPER_DIR", ""),
+            "elisascript": elisascript_identity(),
         },
         "native_build": native_build_identity(checkout),
         "stages": {name: stage(value) for name, value in statuses.items()},

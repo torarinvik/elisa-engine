@@ -199,21 +199,27 @@ with source and Homebrew denied.
 The direct Character Course self-test and relaunch pair passed on 2026-10-05
 (statuses 0; recorded durations 188.233s and 243.787s). Audio was forced
 unavailable for the self-test; the relaunch opened the saved device but did not
-start course audio. The focused ElisaScript `smoke` wrapper still returns
-failure with the existing product because its 120-second default process
-deadline expires before the first app build finishes. ElisaScript commit
-`6769aebb` makes the wait honor the requested deadline; the product rebuild is still blocked
-because Stage1 rejects nested machine-arm branches in
+start course audio. `scripts/native_gate.elisascript` selects a 600-second
+deadline for this pair. The 2026-09-23 ElisaScript product still applies its
+120-second default because it does not honor that requested deadline. ElisaScript
+commit `6769aebb` contains the timeout fix, but its product rebuild was blocked
+by Stage1 rejecting nested machine-arm branches in
 `../elisa-script/src/runtime/output_transport_posix.elisa`. Q01 remains open
-until a compatible compiler product runs the focused wrapper successfully.
+until the focused wrapper passes on a product that honors the selected deadline.
 
 The 2026-10-05 full native-gate rerun on compiler Stage1
 `541788548651d43dd466d0b5210955eb966eb18e` passed the first 19 application
 smokes, then stopped at `character-course-smoke-and-relaunch`. The selected
 ElisaScript executable is dated 2026-09-23, before the Oct. 3 custom-timeout
-fix, and the course pair takes longer than its old 120-second default. A direct
-Python rerun of the pair passed (223.255s and 127.806s) with the self-test audio
-output unavailable; the relaunch path reopened the saved output without
-playing course sounds. This points to stale runner timeout behavior; the
-complete native gate remains unverified until the focused ElisaScript wrapper
-can honor its configured deadline.
+fix. The gate source already requests 600 seconds for the pair; the old product
+uses its 120-second default instead. A direct Python rerun of the pair passed
+(223.255s and 127.806s) with the self-test audio output unavailable; the
+relaunch path reopened the saved output without playing course sounds.
+
+The native-gate report now records the configured ElisaScript command and the
+resolved executable path and SHA-256, so a rerun identifies whether it used the
+stale product or a rebuilt one. Regression coverage checks both a resolved
+product and a missing configured executable. Compiler commit `6b475d89` fixes
+the parser errors in `output_transport_posix.elisa`, and its source parser
+regression passes, but a rebuilt full ElisaScript product is not yet available.
+The complete native gate and focused wrapper therefore remain unverified.
