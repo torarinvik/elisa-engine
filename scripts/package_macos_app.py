@@ -35,8 +35,8 @@ from macos_bundle_support import (  # noqa: F401 - re-exported for callers and t
     SHADER_BACKENDS, SHADER_BINARY_SUFFIXES, SHADER_GENERATED_INVENTORY_NAME,
     SHADER_MANIFEST_NAME, SHADER_MANIFEST_SCHEMA, SHADER_METADATA_SUFFIX,
     SYSTEM_LIBRARY_PREFIXES, PackageError, bundle_dynamic_libraries, existing_rpaths,
-    ignore_litter, ignore_shader_metadata, is_mach_o, linked_libraries, run_tool,
-    shader_manifest,
+    executable_provenance, ignore_litter, ignore_shader_metadata, is_mach_o,
+    linked_libraries, run_tool, shader_manifest,
 )
 
 
@@ -386,6 +386,7 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     notices = manifest_notices({"package": {"notices": [str(path) for path in notice_paths or []]}}, project)
     if not executable.is_file():
         raise PackageError(f"built executable does not exist: {executable}")
+    provenance = executable_provenance(executable)
     if shader_root is not None:
         shader_root = shader_root.expanduser().resolve()
         if not shader_root.is_dir():
@@ -447,17 +448,10 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
-    provenance_source = executable.with_name(executable.name + ".provenance.json")
-    if provenance_source.is_file():
+    if provenance is not None:
         provenance_destination = resources / "build-provenance.json"
         if provenance_destination.exists():
             raise PackageError("a packaged resource conflicts with build-provenance.json")
-        try:
-            provenance = json.loads(provenance_source.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as error:
-            raise PackageError(f"could not read build provenance {provenance_source}: {error}") from error
-        if not isinstance(provenance, dict):
-            raise PackageError(f"build provenance must contain an object: {provenance_source}")
         provenance["project_root"] = "<project>"
         try:
             provenance["main_source"] = Path(str(provenance.get("main_source", ""))).resolve().relative_to(project.resolve()).as_posix()

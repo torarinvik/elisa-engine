@@ -246,6 +246,19 @@ contains a symbolic link, rebuild fails and the previously published app stays
 intact (`test_compiled_shaders_only_rejects_symbolic_links_without_replacing_app`
 in `scripts/test_package_macos_app.py`).
 
+## Build provenance integrity (2026-10-05)
+
+When an executable's provenance sidecar records `binary.sha256`, the packager
+now compares it with the executable bytes before staging. A stale or malformed
+digest fails with a local diagnostic and leaves an already published app
+untouched. Older sidecars without a binary digest remain usable. The regression
+changes executable bytes after writing a valid sidecar and verifies both the
+failure and preservation of the previous bundle.
+
+`PYTHONPATH=scripts python3 scripts/test_package_macos_app.py` passes 33/33.
+This checks metadata consistency only; it does not establish that the build was
+optimized, clean, signed, or validated on a separate machine.
+
 ## Minimum macOS version
 
 The packager no longer writes a fixed macOS 13 requirement. It reads the

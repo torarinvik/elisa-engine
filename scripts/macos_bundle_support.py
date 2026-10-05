@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import stat
 import subprocess
@@ -18,6 +19,28 @@ from pathlib import Path
 
 class PackageError(ValueError):
     """The project or release bundle is not packageable."""
+
+
+def executable_provenance(executable: Path) -> dict[str, object] | None:
+    """Read build metadata and reject a sidecar for different executable bytes."""
+    sidecar = executable.with_name(executable.name + ".provenance.json")
+    if not sidecar.is_file():
+        return None
+    try:
+        record = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise PackageError(f"could not read build provenance {sidecar}: {error}") from error
+    if not isinstance(record, dict):
+        raise PackageError(f"build provenance must contain an object: {sidecar}")
+    binary = record.get("binary")
+    if isinstance(binary, dict) and "sha256" in binary:
+        expected = binary["sha256"]
+        actual = hashlib.sha256(executable.read_bytes()).hexdigest()
+        if not isinstance(expected, str) or re.fullmatch(r"[0-9a-fA-F]{64}", expected) is None:
+            raise PackageError(f"build provenance has an invalid binary sha256: {sidecar}")
+        if expected.lower() != actual:
+            raise PackageError(f"build provenance binary sha256 does not match executable: {sidecar}")
+    return record
 
 
 IGNORED_NAMES = frozenset({".git", ".gitattributes", ".gitignore", ".DS_Store",

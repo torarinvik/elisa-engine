@@ -95,7 +95,8 @@ class PackageMacosAppTests(unittest.TestCase):
                 "wicked_build": "/private/build/wicked",
                 "compiler_request": "/opt/private/bin/elisac",
             },
-            "binary": {"path": str(executable), "sha256": "source-hash"},
+            "binary": {"path": str(executable),
+                "sha256": hashlib.sha256(executable.read_bytes()).hexdigest()},
         }
         sidecar = executable.with_name(executable.name + ".provenance.json")
         sidecar.write_text(json.dumps(source_provenance), encoding="utf-8")
@@ -114,6 +115,31 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual(record["packaged_binary"]["sha256"],
             hashlib.sha256((resource_root / "Game.bin").read_bytes()).hexdigest())
         self.assertNotIn(str(self.project), record_path.read_text(encoding="utf-8"))
+
+    def test_stale_build_provenance_is_rejected_without_replacing_app(self) -> None:
+        executable = self.project / "build/game"
+        sidecar = executable.with_name(executable.name + ".provenance.json")
+        sidecar.write_text(json.dumps({
+            "build_identity": "0011223344556677",
+            "binary": {"sha256": hashlib.sha256(executable.read_bytes()).hexdigest()},
+        }), encoding="utf-8")
+        manifest = self.write_manifest({"package": {"resources": []}})
+        app = self.package(manifest)
+        retained = app / "Contents/Resources/retained-from-previous-build.txt"
+        retained.write_bytes(b"known-good bundle")
+
+        executable.write_bytes(b"changed executable")
+        with self.assertRaisesRegex(packager.PackageError,
+                "build provenance binary sha256 does not match executable"):
+            self.package(manifest)
+
+        self.assertEqual(retained.read_bytes(), b"known-good bundle")
+        sidecar.write_text(json.dumps({"binary": {"sha256": "not-a-digest"}}),
+            encoding="utf-8")
+        with self.assertRaisesRegex(packager.PackageError,
+                "build provenance has an invalid binary sha256"):
+            self.package(manifest)
+        self.assertEqual(retained.read_bytes(), b"known-good bundle")
 
     def test_empty_resource_declaration_stages_no_project_files(self) -> None:
         shutil.rmtree(self.project / "assets")
