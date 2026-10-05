@@ -48,7 +48,9 @@ module NavAgent:
 
         def Agent(tuning: Tuning) -> Agent:
             Agent{
-                tuning: tuning,
+                # Invalid policy values can make waypoint normalization divide
+                # by zero or prevent progress checks from ever firing.
+                tuning: tuning if valid_tuning(tuning) else default_tuning(),
                 route: NavRoute::Route(NavRoute::Status.OffMesh),
                 next: 0,
                 state: State.Idle,
@@ -107,6 +109,14 @@ module NavAgent:
     private:
         const module Limits:
             FAR: f32 = 1000000000.0
+
+        def finite(value: f32) -> bool:
+            value - value == 0.0
+
+        def valid_tuning(tuning: Tuning) -> bool:
+            (finite(tuning.arrive_radius) and tuning.arrive_radius > 0.0 and
+                finite(tuning.min_progress) and tuning.min_progress >= 0.0 and
+                tuning.stuck_ticks > 0)
 
         def still(state: State) -> Steering:
             Steering{state: state, direction: Geometry::vec3_zero(), remaining: 0.0}

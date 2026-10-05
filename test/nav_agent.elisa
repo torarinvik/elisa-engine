@@ -104,4 +104,16 @@ def main() -> i32:
     NavRoute::mark_link(&linked)
     return 17 if NavRoute::starts_link(&linked, 0) or not NavRoute::starts_link(&linked, 1)
     return 18 if NavRoute::starts_link(&linked, 2)
+
+    # Invalid arrival radii could leave an agent on a waypoint and divide by
+    # zero while normalizing its steering direction. Construction falls back
+    # to the safe default policy.
+    invalid_tuning: NavAgent::Tuning = NavAgent::Tuning{
+        arrive_radius: -0.1, min_progress: 0.25, stuck_ticks: 45,
+    }
+    robust: mutable NavAgent::Agent = NavAgent::Agent(invalid_tuning)
+    return 19 if robust.tuning.arrive_radius != tuning.arrive_radius
+    _ = NavAgent::assign(&robust, corner_route(NavRoute::Status.Found))
+    steering: NavAgent::Steering = NavAgent::steer(&robust, at(-0.4, 4.4))
+    return 20 if steering.state != NavAgent::State.Moving or not Geometry::vec3_is_finite(steering.direction)
     0
