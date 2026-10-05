@@ -142,3 +142,17 @@ reference passed to `pool_submit1`. The first three application smokes pass;
 the remaining matrix, render captures, and hardware verification are
 unverified. See `build/native-gate.json` and
 `build/native-smoke/world-physics-pose-smoke.json` for this run's records.
+
+## Retaining all test-runner failures (2026-10-05)
+
+`scripts/run_tests.py` now writes every nonzero test row, its compile/run stage,
+return code, stdout, stderr, flags, and arguments to the ignored generated file
+`build/test-failures.json`. This keeps diagnostics for later rows that the
+terminal summary previously reduced to test names. The report records the hash
+of the selected compiler entry point, which may be a launcher script.
+
+A focused rerun of the five compile-failing rows above produced all five full
+diagnostics in that report, including the asset importer and viewport lifetime
+errors. `python3 scripts/test_run_tests.py` passes its report-shape regression.
+The report is local build output and is regenerated or removed by the next test
+run; it is not checked in.

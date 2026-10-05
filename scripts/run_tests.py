@@ -42,6 +42,26 @@ def cache_key(compiler_sha, test):
     return h.hexdigest()
 
 
+def failure_report(compiler_sha, results):
+    failures = []
+    for index in sorted(results):
+        test, returncode, stdout, stderr, stage = results[index]
+        if returncode == 0:
+            continue
+        failures.append({
+            "name": test["name"],
+            "source": test["source"],
+            "binary": test["binary"],
+            "flags": test["flags"],
+            "args": test["args"],
+            "stage": stage,
+            "returncode": returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+        })
+    return {"schema": 1, "compiler_entry_sha256": compiler_sha, "failures": failures}
+
+
 def setup_remotes(a, root_scratch, local_sha):
     remotes = remote_compile.parse(a.remote)
     if not remotes:
@@ -79,6 +99,8 @@ def main():
     compiler_sha = hashlib.sha256(Path(a.compiler).read_bytes()).hexdigest()
     cache = ROOT / "build/test-cache"
     cache.mkdir(parents=True, exist_ok=True)
+    failure_path = ROOT / "build/test-failures.json"
+    failure_path.unlink(missing_ok=True)
     scratch = tempfile.mkdtemp(prefix="run-tests-", dir=ROOT / "build")
     remotes, linker = setup_remotes(a, scratch, compiler_sha)
     # Remember every remote compiler seen with this local one, so a host that is slow or down on a
@@ -234,6 +256,9 @@ def main():
     os.rmdir(scratch)
 
     durations_path.write_text(json.dumps(durations, indent=0, sort_keys=True))
+    report = failure_report(compiler_sha, results)
+    if report["failures"]:
+        failure_path.write_text(json.dumps(report, indent=2) + "\n")
     status, hits = 0, 0
     for i in range(len(tests)):
         t, rc, out, err, how = results[i]
@@ -251,6 +276,8 @@ def main():
     remote_n = sum(1 for i in range(len(tests)) if results[i][4] == "built remotely")
     print(f"tests: {len(tests)} total, {hits} compiles cached, {remote_n} compiled remotely, "
           f"status {status}, {time.monotonic() - started:.0f}s (compiles done at {built_at:.0f}s)")
+    if report["failures"]:
+        print(f"failure details: {failure_path.relative_to(ROOT)}")
     return status
 
 
