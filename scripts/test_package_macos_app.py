@@ -145,6 +145,14 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual([entry["path"] for entry in manifest["files"]], [
             "metal/basic.cso", "metal/nested/extra.cso", "spirv/basic.spv"])
 
+    def test_compiled_shaders_only_rejects_source_only_shader_tree(self) -> None:
+        (self.project / "shaders" / "metal" / "basic.cso").unlink()
+        touch(self.project / "shaders" / "metal" / "basic.hlsl", b"source only")
+        with self.assertRaisesRegex(packager.PackageError, "no compiled shader binaries"):
+            self.package(self.write_manifest({"package": {"resources": []}}),
+                compiled_shaders_only=True)
+        self.assertFalse(self.output.exists())
+
     def test_compiled_shaders_only_rejects_symbolic_links_without_replacing_app(self) -> None:
         manifest = self.write_manifest({"package": {"resources": []}})
         existing = self.package(manifest)

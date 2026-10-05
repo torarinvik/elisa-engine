@@ -439,9 +439,10 @@ python3 scripts/validate_interactive_macos_app.py \
 
 `package_macos_app.py --compiled-shaders-only` stages only compiled `.cso` and
 `.spv` files inside recognized backend directories. It writes the normal
-content-hashed shader manifest and rejects shader symlinks. The default keeps
-the existing full-tree behavior, including source files that a runtime shader
-compiler might need as a fallback.
+content-hashed shader manifest, rejects shader symlinks, and fails if the tree
+has no compiled binaries instead of publishing an empty manifest. The default
+keeps the existing full-tree behavior, including source files that a runtime
+shader compiler might need as a fallback.
 
 The optimized Character Course executable was packaged both ways from the
 same build and Wicked shader tree. The full-tree control is 127,972 KiB; the

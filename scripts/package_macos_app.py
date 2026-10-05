@@ -112,6 +112,7 @@ def copy_compiled_shaders(source: Path, destination: Path) -> None:
     if not source.is_dir():
         raise PackageError(f"required project directory is missing: {source}")
     destination.mkdir(parents=True)
+    copied = False
     for path in sorted(source.rglob("*")):
         if path.is_symlink():
             raise PackageError(f"shader tree contains a symbolic link: {path}")
@@ -123,6 +124,10 @@ def copy_compiled_shaders(source: Path, destination: Path) -> None:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
+        copied = True
+    if not copied:
+        raise PackageError("compiled-shaders-only staging found no compiled shader binaries under "
+            f"{source}")
 
 
 def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path] | None:
