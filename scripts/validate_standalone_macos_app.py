@@ -14,6 +14,15 @@ import tempfile
 ENGINE_ROOT = Path(__file__).resolve().parents[1]
 
 
+def launch_environment(home: Path, source: dict[str, str] | None = None) -> dict[str, str]:
+    inherited = os.environ if source is None else source
+    environment = {key: value for key, value in inherited.items()
+        if not key.startswith(("ELISA_", "WICKED_", "DYLD_"))}
+    environment["HOME"] = str(home)
+    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "1"
+    return environment
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--app", type=Path, required=True, help="app with a finite validation entry point")
@@ -50,10 +59,9 @@ def main() -> int:
                     "/bin/cat", str(control)], capture_output=True, timeout=10)
                 if result.returncode == 0:
                     raise ValueError(f"sandbox unexpectedly allowed reading {control}")
-            environment = {key: value for key, value in os.environ.items()
-                if not key.startswith(("ELISA_", "WICKED_", "DYLD_"))}
-            # Keep packaged saves, logs, and crash reports inside the disposable run.
-            environment["HOME"] = str(isolated_home)
+            # Keep app-generated state inside the disposable run, and never
+            # send game audio to the machine's output during validation.
+            environment = launch_environment(isolated_home)
             launcher = app / "Contents/MacOS" / executable
             for index in range(args.runs):
                 result = subprocess.run(["/usr/bin/sandbox-exec", "-f", str(profile), str(launcher)],

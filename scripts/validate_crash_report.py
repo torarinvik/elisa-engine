@@ -40,7 +40,9 @@ def main() -> int:
     launcher = next((arguments.app / "Contents/MacOS").iterdir())
     with tempfile.TemporaryDirectory(prefix="elisa crash report ") as temporary:
         reports = Path(temporary)
-        environment = {"PATH": "/usr/bin:/bin", "HOME": temporary, "ELISA_CRASH_DIR": str(reports)}
+        environment = {"PATH": "/usr/bin:/bin", "HOME": temporary,
+            "ELISA_CRASH_DIR": str(reports),
+            "ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "1"}
         process = subprocess.Popen([str(launcher), "--induced-crash-probe"], env=environment,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:

@@ -171,3 +171,13 @@ caller-provided output buffer for the animation package reader, and the direct
 `SaveSwapError` name in the top-level save-swap test. All five affected rows
 passed uncached; the full 211-row suite then passed. Runtime rows used
 `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`.
+
+## Silent application validation (2026-10-05)
+
+Native app smokes, packaged-maze and shader runs, interactive package startup,
+standalone relocation checks, and induced crash-report launches force
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` in the child process. This keeps test
+audio on Elisa's silent fallback even when the developer's environment or
+machine has an available output device. The standalone launch-environment
+regression and the complete native unit suite pass; the packaged standalone
+validator also completed one relocated launch with source and Homebrew denied.

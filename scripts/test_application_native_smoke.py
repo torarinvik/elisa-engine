@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import struct
 import tempfile
 import unittest
@@ -14,6 +15,8 @@ from application_native_smoke import (
     character_course_presentation_error,
     native_smoke_environment,
 )
+from packaged_maze_smoke import application_environment as packaged_maze_environment
+from validate_standalone_macos_app import launch_environment as standalone_launch_environment
 
 
 def rgba_png(width: int, height: int, pixels: bytes) -> bytes:
@@ -39,6 +42,32 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
         self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
         self.assertEqual(environment["ELISA_PROJECT_ROOT"], "/tmp/project")
         self.assertEqual(environment["PATH"], "/usr/bin")
+
+    def test_relocated_package_launch_is_silent_and_isolated(self) -> None:
+        environment = standalone_launch_environment(Path("/tmp/isolated-home"), {
+            "ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "0",
+            "ELISA_PROJECT_ROOT": "/private/project",
+            "WICKED_ROOT": "/private/wicked",
+            "DYLD_LIBRARY_PATH": "/private/libraries",
+            "PATH": "/usr/bin",
+        })
+
+        self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
+        self.assertEqual(environment["HOME"], "/tmp/isolated-home")
+        self.assertEqual(environment["PATH"], "/usr/bin")
+        self.assertNotIn("ELISA_PROJECT_ROOT", environment)
+        self.assertNotIn("WICKED_ROOT", environment)
+        self.assertNotIn("DYLD_LIBRARY_PATH", environment)
+
+    def test_packaged_maze_smoke_forces_silent_audio(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            project = Path(temporary_directory)
+            (project / "elisa.project.json").write_text(
+                json.dumps({"application": {"title": "Fixture"}}), encoding="utf-8")
+            environment = packaged_maze_environment(
+                project, project / "staged", project / "shaders")
+
+        self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
 
     def test_character_course_outcomes_require_visible_distinct_hud_captures(self) -> None:
         width, height = 12, 100

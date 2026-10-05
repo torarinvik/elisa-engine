@@ -64,6 +64,7 @@ def application_environment(project: Path, project_root: Path, shader_path: Path
     environment["ELISA_PROJECT_HIDDEN"] = "1" if application.get("hidden", False) else "0"
     environment["ELISA_PROJECT_ROOT"] = str(project_root)
     environment["ELISA_ENGINE_SHADER_PATH"] = str(shader_path)
+    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "1"
     return environment
 
 
