@@ -455,11 +455,12 @@ The compiled-only app passed the relocated interactive startup validator on
 macOS 27.0.1 / arm64 in 1.431 seconds, with the project tree and Homebrew
 denied, network access disabled, and all five runtime resource groups present.
 The app also visibly rendered the full course from the compiled-only bundle;
-its runtime log showed Metal and Wicked initialization and no shader compile
-or shader compile-failure markers. Closing the visible test app recorded
-`process_exit_status=0`. This exercises the ordinary initial scene only, so
-optional render paths and later gameplay transitions still need coverage
-before relying on this mode for a release build.
+W taps moved the avatar, P showed the paused controls, and R restarted it to
+the spawn area. Its runtime log showed Metal and Wicked initialization and no
+shader compile or shader compile-failure markers. Closing the visible test app
+recorded `process_exit_status=0`. Jump, held crouch, full traversal, win/fall,
+and optional render paths still need coverage before relying on this mode for
+a release build.
 
 The notice audit verified all bundled dylib, static-archive and shader-resource
 notice mappings without mapping errors. The catalog remains explicitly
