@@ -70,6 +70,8 @@ module AudioRuntime:
 
                 def move(handles: mutable Pool&, source: usize, destination: usize) -> bool:
                     return false if source >= AudioRuntime::VoiceHandles::CAPACITY or destination >= AudioRuntime::VoiceHandles::CAPACITY or not handles.live[source]
+                    return true if source == destination
+                    return false if handles.live[destination]
                     handles.values[destination] <- handles.values[source]
                     handles.live[destination] <- true
                     handles.live[source] <- false

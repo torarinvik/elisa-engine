@@ -467,6 +467,14 @@
   "message": null
  },
  {
+  "name": "audio_voice_handles",
+  "source": "test/audio_voice_handles.elisa",
+  "flags": [],
+  "binary": "build/audio_voice_handles-test",
+  "args": [],
+  "message": null
+ },
+ {
   "name": "audio_event_assets",
   "source": "test/audio_event_assets.elisa",
   "flags": [],
