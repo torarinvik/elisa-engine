@@ -200,9 +200,20 @@ The direct Character Course self-test and relaunch pair passed on 2026-10-05
 (statuses 0; recorded durations 188.233s and 243.787s). Audio was forced
 unavailable for the self-test; the relaunch opened the saved device but did not
 start course audio. The focused ElisaScript `smoke` wrapper still returns
-failure with the existing product because its 120,000-poll process guard expires
-before the first app build finishes. ElisaScript commit `a26f9fd0` makes that
-guard scale with the requested deadline; the product rebuild is still blocked
+failure with the existing product because its 120-second default process
+deadline expires before the first app build finishes. ElisaScript commit
+`6769aebb` makes the wait honor the requested deadline; the product rebuild is still blocked
 because Stage1 rejects nested machine-arm branches in
 `../elisa-script/src/runtime/output_transport_posix.elisa`. Q01 remains open
 until a compatible compiler product runs the focused wrapper successfully.
+
+The 2026-10-05 full native-gate rerun on compiler Stage1
+`541788548651d43dd466d0b5210955eb966eb18e` passed the first 19 application
+smokes, then stopped at `character-course-smoke-and-relaunch`. The selected
+ElisaScript executable is dated 2026-09-23, before the Oct. 3 custom-timeout
+fix, and the course pair takes longer than its old 120-second default. A direct
+Python rerun of the pair passed (223.255s and 127.806s) with the self-test audio
+output unavailable; the relaunch path reopened the saved output without
+playing course sounds. This points to stale runner timeout behavior; the
+complete native gate remains unverified until the focused ElisaScript wrapper
+can honor its configured deadline.

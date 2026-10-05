@@ -89,6 +89,29 @@ The runner retains per-process status and logs at
 `build/native-smoke/character-course-smoke.json` and
 `build/native-smoke/character-course-relaunch-smoke.json`.
 
+Rechecked on 2026-10-05 with compiler Stage1
+`541788548651d43dd466d0b5210955eb966eb18e`: both processes passed (223.255s
+and 127.806s). The parent environment used
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=0`; the runner forces it to `1` for the
+sound-producing self-test and clears it only for relaunch. The self-test's
+stress trace reported `voices=0 streams=0`. Relaunch reopens the saved miniaudio
+output but never creates course clips or calls playback; Wicked's independent
+FAudio instance stays on SDL's dummy driver. Thus this pair checks saved-device
+reopening without playing course audio. The first process report is at
+`build/native-smoke/character-course-smoke.json`, and the relaunch report is at
+`build/native-smoke/character-course-relaunch-smoke.json`.
+
+```sh
+ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=0 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
+ELISA_RUNTIME_OBJ=../Elisa-compiler/build/runtime/elisacore_runtime.o \
+WICKED_ROOT=../elisa-boxing-wickedengine \
+WICKED_BUILD=../elisa-boxing-wickedengine/build-elisa-sdl3 \
+/opt/homebrew/bin/python3.14 scripts/application_native_smoke.py \
+  --only character-course-smoke,character-course-relaunch-smoke
+```
+
 ## Monotonic frame time
 
 The native `FrameInfo.elapsed_nanos` now reports monotonic time since app
