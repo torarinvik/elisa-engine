@@ -29,12 +29,12 @@ def add(rig: mutable PoseOverride::Rig&, parent: i64, offset: Geometry::Vec3) ->
         value: 0
         error failure: 1
 
-def models_of(rig: PoseOverride::Rig&, held: PoseOverride::Overrides&) -> darray[Geometry::Transform]:
-    mutable models: darray[Geometry::Transform] = []
+def models_of[@r](rig: PoseOverride::Rig&, held: PoseOverride::Overrides& @r) -> darray[Geometry::Transform] @r:
+    mutable models: darray[Geometry::Transform] @r = []
     _ = catch PoseOverride::evaluate_rest(rig, held, &models):
         value: value
         error failure: 0
-    return move models
+    return models
 
 # Rotation taking unit a onto unit b (not antiparallel).
 def from_to(a: Geometry::Vec3, b: Geometry::Vec3) -> Geometry::Quat:
@@ -216,11 +216,11 @@ def drag_case() -> i32:
     return 48 if not same_bits(PoseOverride::override_local(&held, 1), seeded) or not PoseOverride::is_overridden(&held, 1) or PoseOverride::is_overridden(&held, 0)
     0
 
-def snapshot(held: PoseOverride::Overrides&, n: usize) -> darray[Geometry::Transform]:
-    mutable out: darray[Geometry::Transform] = []
+def snapshot[@r](held: PoseOverride::Overrides& @r, n: usize) -> darray[Geometry::Transform] @r:
+    mutable out: darray[Geometry::Transform] @r = []
     for b in 0..<n:
         out.push(PoseOverride::override_local(held, b))
-    return move out
+    return out
 
 def adversarial_case() -> i32:
     cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)

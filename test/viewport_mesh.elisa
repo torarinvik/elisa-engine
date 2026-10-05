@@ -114,8 +114,8 @@ def skinning_cases() -> i32:
     0
 
 # Node model transforms from the document's rest pose.
-def rest_models(doc: GlbDocument::Document&) -> darray[Geometry::Transform]:
-    mutable models: darray[Geometry::Transform] = []
+def rest_models[@r](doc: GlbDocument::Document& @r) -> darray[Geometry::Transform] @r:
+    mutable models: darray[Geometry::Transform] @r = []
     for n in 0..<GlbDocument::node_count(doc):
         models.push(Geometry::transform_identity())
     mutable done: darray[bool] = []
@@ -129,7 +129,7 @@ def rest_models(doc: GlbDocument::Document&) -> darray[Geometry::Transform]:
                 models[n] <- GlbDocument::node_rest(doc, n) if parent < 0 else Geometry::transform_compose(models[parent.usize()], GlbDocument::node_rest(doc, n))
                 done[n] <- true
                 left <- left - 1
-    return move models
+    return models
 
 def boxer_case() -> i32:
     path: cstr = "../elisa-boxing-game/build/dual-stance/black/black-boxer.glb"

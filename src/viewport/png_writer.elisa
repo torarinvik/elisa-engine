@@ -23,11 +23,11 @@ module PngWriter:
             crc ^ 0xffffffff
 
         # Encode `width` x `height` tightly packed RGBA8 pixels.
-        def encode(width: i64, height: i64, rgba: darray[u8]&) -> darray[u8] error[PngError]:
+        def encode[@r](width: i64, height: i64, rgba: darray[u8]& @r) -> darray[u8] @r error[PngError]:
             raise PngError.BadSize if width < 1 or height < 1 or width > MAX_SIDE or height > MAX_SIDE
             row: usize = width.usize() * 4
             raise PngError.ShortPixels if rgba.count < row * height.usize()
-            mutable out: darray[u8] = []
+            mutable out: darray[u8] @r = []
             for b in [137, 80, 78, 71, 13, 10, 26, 10]:
                 out.push(b.u8())
             # IHDR: size, 8-bit depth, colour type 6 (RGBA), deflate, no
@@ -70,7 +70,7 @@ module PngWriter:
             chunk(&out, 0x49444154, &z)
             empty: darray[u8] = []
             chunk(&out, 0x49454e44, &empty)
-            return move out
+            return out
 
         def save(path: cstr, width: i64, height: i64, rgba: darray[u8]&) -> usize error[PngError]:
             bytes: darray[u8] = try encode(width, height, rgba)
