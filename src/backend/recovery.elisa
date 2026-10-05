@@ -53,7 +53,8 @@ module BackendRecovery:
         # Reports a failure. Upload and resize failures keep rendering with the
         # previous resources; swapchain and device loss stop rendering until
         # recovered. Ignored once failed, and while already recovering a device
-        # loss still escalates (a swapchain fix cannot cover it).
+        # loss still escalates (a swapchain fix cannot cover it). Duplicate
+        # device-loss reports do not reset an active device recovery.
         def report(r: mutable Recovery&, failure: Failure):
             return if r.state == State.Failed
             if failure == Failure.UploadFailed or failure == Failure.ResizeFailed:
@@ -61,7 +62,7 @@ module BackendRecovery:
                 r.state <- State.Degraded if r.state == State.Running
                 return
             if failure == Failure.DeviceLost:
-                begin_recovery(r, true)
+                begin_recovery(r, true) if r.state != State.Recovering or not r.rebuild_pending
                 return
             begin_recovery(r, false) if r.state != State.Recovering
 

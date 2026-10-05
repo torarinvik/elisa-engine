@@ -22,10 +22,11 @@ device, swapchain or upload failure is injected into Wicked or SDL3.
 
 ## Checks
 
-- `test/backend_recovery.elisa` exits 0 (codes 1–24). It confirms retry calls
-  during a cooldown are ignored, including an early success, and the countdown
-  reports an attempt due on the final waited frame. The two- and four-frame
-  backoffs therefore cannot be bypassed or stretched by one frame.
+- `test/backend_recovery.elisa` exits 0 (codes 1–25). It confirms retry calls
+  during a cooldown are ignored, including an early success; duplicate device
+  loss reports preserve the epoch and retry budget; and the countdown reports
+  an attempt due on the final waited frame. The two- and four-frame backoffs
+  therefore cannot be bypassed, reset, or stretched by one frame.
 - Negative control: not bumping the epoch on device loss makes it exit 7.
 - Source-length check passes.
 
