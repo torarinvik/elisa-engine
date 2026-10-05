@@ -35,13 +35,15 @@ MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS = 8
 CAPTURE_PIXEL_CHANNEL_DELTA = 8
 
 
-def native_smoke_environment(source: dict[str, str], *, allow_silent_device_open: bool = False) -> dict[str, str]:
-    """Run app smokes through the silent audio provider, regardless of user settings."""
+def native_smoke_environment(
+    source: dict[str, str], *, allow_device_reopen: bool = False
+) -> dict[str, str]:
+    """Keep app smokes quiet regardless of user audio settings."""
     environment = dict(source)
     # The relaunch case validates that a saved output device can be reopened.
     # Its mode only checks persisted settings and does not start course sounds;
     # the other app smokes keep the device unavailable and use the null route.
-    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "0" if allow_silent_device_open else "1"
+    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "0" if allow_device_reopen else "1"
     return environment
 
 
@@ -351,7 +353,7 @@ def main() -> int:
             if name in ("world-hierarchy-render-smoke", "world-save-physics-smoke"):
                 command.append("--no-public-runtime")
             environment = native_smoke_environment(os.environ,
-                allow_silent_device_open=name == "character-course-relaunch-smoke")
+                allow_device_reopen=name == "character-course-relaunch-smoke")
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
             environment["ELISA_PROJECT_ROOT"] = str(project)
             screenshot = project / f"{name}-frame.png"
