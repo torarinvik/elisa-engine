@@ -32,6 +32,13 @@ MIN_VISIBLE_CHANNEL_VALUE = 16
 MIN_HIERARCHY_CAPTURE_PIXELS = 100
 
 
+def native_smoke_environment(source: dict[str, str]) -> dict[str, str]:
+    """Run app smokes through the silent audio provider, regardless of user settings."""
+    environment = dict(source)
+    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "1"
+    return environment
+
+
 def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
     if len(data) < PNG_MINIMUM_LENGTH or data[:8] != PNG_SIGNATURE:
         return None
@@ -300,7 +307,7 @@ def main() -> int:
             # importing the whole public bundle a second time through the wrapper.
             if name in ("world-hierarchy-render-smoke", "world-save-physics-smoke"):
                 command.append("--no-public-runtime")
-            environment = dict(os.environ)
+            environment = native_smoke_environment(os.environ)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
             environment["ELISA_PROJECT_ROOT"] = str(project)
             screenshot = project / f"{name}-frame.png"
