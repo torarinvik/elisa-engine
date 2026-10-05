@@ -19,8 +19,10 @@ module ActionInput:
                 break index if input.states[index].live and input.states[index].action == action
 
         def deadzone_valid(deadzone: f32) -> bool:
+            ensure not result or not (deadzone != deadzone)
             return false if deadzone != deadzone
-            deadzone >= 0.0 and deadzone < 1.0
+            return false if deadzone < 0.0 or deadzone >= 1.0
+            true
 
         def refresh_action(input: mutable Input&, slot: usize) -> void:
             return if slot >= Limits::MAX_ACTIONS or not input.states[slot].live

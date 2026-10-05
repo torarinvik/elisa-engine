@@ -1,0 +1,2 @@
+# Focus only the implementation-linked postcondition for ActionInput's NaN guard.
+include "../src/runtime/action_input.elisa"
