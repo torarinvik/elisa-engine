@@ -50,12 +50,22 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
 
         self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "0")
 
-    def test_explicit_silent_mode_keeps_course_relaunch_device_unavailable(self) -> None:
-        environment = native_smoke_environment(
-            {"ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "1"},
-            allow_device_reopen=True)
+    def test_course_relaunch_preserves_native_force_value_semantics(self) -> None:
+        cases = (
+            ("1", "1"),
+            ("true", "1"),
+            ("false", "1"),  # Native semantics are nonempty and not prefixed by 0.
+            ("", "0"),
+            ("0", "0"),
+            ("0false", "0"),
+        )
+        for value, expected in cases:
+            with self.subTest(value=value):
+                environment = native_smoke_environment(
+                    {"ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": value},
+                    allow_device_reopen=True)
 
-        self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
+                self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], expected)
 
     def test_relocated_package_launch_is_silent_and_isolated(self) -> None:
         environment = standalone_launch_environment(Path("/tmp/isolated-home"), {
