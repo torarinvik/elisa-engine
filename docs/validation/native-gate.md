@@ -176,8 +176,11 @@ passed uncached; the full 211-row suite then passed. Runtime rows used
 
 Native app smokes, packaged-maze and shader runs, interactive package startup,
 standalone relocation checks, and induced crash-report launches force
-`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` in the child process. This keeps test
-audio on Elisa's silent fallback even when the developer's environment or
-machine has an available output device. The standalone launch-environment
-regression and the complete native unit suite pass; the packaged standalone
-validator also completed one relocated launch with source and Homebrew denied.
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` in the child process. The paired
+Character Course relaunch smoke clears that flag only after the sound-producing
+self-test, because it verifies reopening the saved output device. Its relaunch
+mode starts no course clips or music; Wicked FAudio remains on SDL's dummy
+driver. See [`character-course-live-input.md`](character-course-live-input.md#saved-output-relaunch-2026-10-05).
+The standalone launch-environment regression and the complete native unit suite
+pass; the packaged standalone validator also completed one relocated launch
+with source and Homebrew denied.

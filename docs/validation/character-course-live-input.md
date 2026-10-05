@@ -59,6 +59,28 @@ readable at the hidden window's capture size. Artifacts are retained at
 `build/validation/character-course-presentation/fall.png`. The app process is
 launched with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`.
 
+## Saved-output relaunch (2026-10-05)
+
+The paired `character-course-smoke,character-course-relaunch-smoke` run keeps
+the self-test on Elisa's silent fallback, then clears the forced-unavailable
+flag only for the relaunch process so it can reopen the saved output by name.
+The relaunch mode checks saved progress and device settings; it does not start
+`CourseSounds` or play clips or music. Wicked's FAudio backend stays on SDL's
+dummy audio driver. The first process logged `voices=0 streams=0`, and both
+processes exited with status 0 on Stage1 provenance `e30ca421`.
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN=/private/tmp/elisa-submit-block-shareability/scripts/elisac_stage1.sh \
+ELISA_RUNTIME_OBJ=/private/tmp/elisa-submit-block-shareability/build/runtime/elisacore_runtime.o \
+PYTHONPATH=scripts python3.14 scripts/application_native_smoke.py \
+  --only character-course-smoke,character-course-relaunch-smoke
+```
+
+The runner retains per-process status and logs at
+`build/native-smoke/character-course-smoke.json` and
+`build/native-smoke/character-course-relaunch-smoke.json`.
+
 ## Monotonic frame time
 
 The native `FrameInfo.elapsed_nanos` now reports monotonic time since app

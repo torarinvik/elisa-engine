@@ -1,6 +1,6 @@
 # Elisa Engine — native implementation backlog
 
-**Updated:** 2026-10-04. **Focus:** reliable, playable, packaged games on Wicked + SDL3.
+**Updated:** 2026-10-05. **Focus:** reliable, playable, packaged games on Wicked + SDL3.
 **Baseline:** inspect the current tree and linked validation notes before starting work.
 This is the active execution plan. [Architecture](Elisa_Engine_Architecture_and_Plan.md) defines the ownership model; [capabilities](docs/capabilities.md) records evidence.
 Unfinished tasks below are proposals, not claims of existing engine support.
