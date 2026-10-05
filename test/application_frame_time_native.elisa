@@ -1,0 +1,33 @@
+# Focused regression for the native FrameInfo clock contract.
+def main() -> i32:
+    config: Application::Config = Application::default_config()
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+
+    failure: mutable i32 = 0
+    first: Application::PumpStatus = Application::pump()
+    failure <- 2 if first != Application::PumpStatus.Running
+    previous_nanos: mutable u64 = 0
+    if failure == 0:
+        info: mutable Application::FrameInfo = zeroed
+        if not Application::frame_info(&info):
+            failure <- 3
+        else:
+            previous_nanos <- info.elapsed_nanos
+            failure <- 4 if info.frame_count != 1 or previous_nanos == 0
+
+    if failure == 0:
+        second: Application::PumpStatus = Application::pump()
+        failure <- 5 if second != Application::PumpStatus.Running
+        if failure == 0:
+            info: mutable Application::FrameInfo = zeroed
+            if not Application::frame_info(&info):
+                failure <- 6
+            else:
+                failure <- 7 if info.frame_count != 2 or info.elapsed_nanos <= previous_nanos
+
+    failure <- 8 if not Application::request_exit() and failure == 0
+    exited: Application::PumpStatus = Application::pump()
+    failure <- 9 if exited != Application::PumpStatus.ExitRequested and failure == 0
+    shutdown_ok: bool = Application::shutdown()
+    return 10 if not shutdown_ok
+    failure

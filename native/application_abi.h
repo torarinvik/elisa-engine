@@ -144,7 +144,8 @@ int32_t elisa_application_v1_test_push_pointer_event(
 #endif
 // One typed scalar-output call avoids compiler-specific aggregate layout.
 // Event flags are coalesced edges since the previous successful read; window
-// flags describe current levels.
+// flags describe current levels. The elapsed sample is monotonic nanoseconds
+// since initialization; subtract consecutive samples for a frame delta.
 int32_t elisa_application_v1_frame_info(
     uint64_t* frame_count, uint64_t* elapsed_nanos, uint64_t* resize_serial,
     int32_t* logical_width, int32_t* logical_height, int32_t* pixel_width, int32_t* pixel_height,

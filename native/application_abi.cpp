@@ -77,7 +77,6 @@ struct ApplicationService {
     probe::NativeApplication host;
     std::thread::id owner_thread{};
     std::chrono::steady_clock::time_point initialized_at{};
-    std::chrono::steady_clock::time_point previous_pump{};
     uint64_t frame_count = 0;
     uint64_t elapsed_nanos = 0;
     uint32_t pending_events = 0;
@@ -284,7 +283,6 @@ extern "C" int32_t elisa_application_v1_initialize(
 
     service.owner_thread = std::this_thread::get_id();
     service.initialized_at = std::chrono::steady_clock::now();
-    service.previous_pump = std::chrono::steady_clock::now();
     service.frame_count = 0;
     service.elapsed_nanos = 0;
     service.pending_events = 0;
@@ -369,8 +367,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
     if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
     const auto now = std::chrono::steady_clock::now();
     service.elapsed_nanos = static_cast<uint64_t>(
-        std::chrono::duration_cast<std::chrono::nanoseconds>(now - service.previous_pump).count());
-    service.previous_pump = now;
+        std::chrono::duration_cast<std::chrono::nanoseconds>(now - service.initialized_at).count());
     const bool should_continue = service.host.poll_events([&service](const SDL_Event& event) {
         switch (event.type) {
         case SDL_EVENT_QUIT:

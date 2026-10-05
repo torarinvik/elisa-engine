@@ -96,6 +96,8 @@ module Application:
 
         struct FrameInfo:
             frame_count: u64
+            # Monotonic time since initialization; subtract consecutive samples
+            # when a fixed-step consumer needs this frame's delta.
             elapsed_nanos: u64
             resize_serial: u64
             logical_width: i32
