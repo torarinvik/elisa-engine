@@ -29,6 +29,12 @@ def same_binding(a: ActionInput::Binding, b: ActionInput::Binding) -> bool:
     a.action == b.action and a.device == b.device and a.code == b.code and a.chord_code == b.chord_code and ActionInputProfile::quantize_deadzone(a.deadzone) == b.deadzone and a.context == b.context and a.live == b.live
 
 def main() -> i32:
+    mutable invalid_deadzone_input: ActionInput::Input = ActionInput::Input()
+    nan_binding: ActionInput::Binding = binding(JUMP, ActionInput::Device.Keyboard, KEY_SPACE,
+        0.0 / 0.0, ActionInput::Context.Gameplay)
+    return 23 if ActionInput::bind_checked(&invalid_deadzone_input, nan_binding) != ActionInput::BindResult.InvalidDeadzone
+    return 24 if ActionInput::binding_count(&invalid_deadzone_input) != 0
+
     mutable input: ActionInput::Input = bound_input()
     return 1 if ActionInput::binding_count(&input) != 3
     return 2 if ActionInput::binding_at(&input, 7).live

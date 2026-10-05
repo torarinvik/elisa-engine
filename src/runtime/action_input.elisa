@@ -18,6 +18,10 @@ module ActionInput:
             for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS| -> slot:
                 break index if input.states[index].live and input.states[index].action == action
 
+        def deadzone_valid(deadzone: f32) -> bool:
+            return false if deadzone != deadzone
+            deadzone >= 0.0 and deadzone < 1.0
+
         def refresh_action(input: mutable Input&, slot: usize) -> void:
             return if slot >= Limits::MAX_ACTIONS or not input.states[slot].live
             action: i64 = input.states[slot].action
@@ -119,7 +123,7 @@ module ActionInput:
         def bind_checked(input: mutable Input&, binding: Binding) -> BindResult:
             return BindResult.InvalidAction if binding.action <= 0
             return BindResult.InvalidCode if binding.code <= 0 or binding.chord_code < 0 or binding.chord_code == binding.code
-            return BindResult.InvalidDeadzone if binding.deadzone < 0.0 or binding.deadzone >= 1.0
+            return BindResult.InvalidDeadzone if not deadzone_valid(binding.deadzone)
             for index in 0..<input.binding_count:
                 existing: Binding = input.bindings[index]
                 return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.chord_code == binding.chord_code and existing.context == binding.context
