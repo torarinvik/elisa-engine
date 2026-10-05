@@ -1,7 +1,6 @@
-# Toolchain-free checks: these steps need only a Python interpreter, so they
-# run on every push and pull request without the pinned Elisa compiler,
-# prover, ElisaScript launcher, or a graphics session. The full gate stays
-# local (`elisascript scripts/check.elisascript`) because it needs all four.
+# Toolchain-free checks need only Python, so they run across hosts. The pinned
+# Elisa compiler/prover/ElisaScript build remains deferred until a compatible
+# compiler commit is published; interactive graphics validation remains local.
 name: cook
 
 on:
@@ -43,6 +42,8 @@ jobs:
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
       - name: CI stage recorder self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
+      - name: Hosted Elisa toolchain lock preflight
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-plan -- python scripts/provision_hosted_toolchain.py --plan
       - name: Native smoke artifact self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" smoke-artifacts -- python scripts/native_smoke_artifacts.py --self-test
       - name: Course sounds match their generator
@@ -77,9 +78,8 @@ jobs:
 
   # The real libraries that need a toolchain: the selected transport and the
   # Basis encoder are fetched, built, and run, and the boundary libraries run
-  # under AddressSanitizer/UBSan. These mirror commands verified on the
-  # development machine; the pinned compiler/prover and the graphics hosts
-  # still need the full local gate.
+  # under AddressSanitizer/UBSan. Elisa tool builds are intentionally deferred
+  # until the branch-local machine-over parser change has a published pin.
   native:
     runs-on: macos-latest
     env:

@@ -1,0 +1,37 @@
+{
+  "schema": "elisa-engine-hosted-toolchain-lock-v1",
+  "upstream_ref_verified": "refs/heads/main at 2026-10-05 UTC",
+  "build_eligibility": "blocked_upstream_compatibility",
+  "build_blocker": {
+    "kind": "compiler_revision_not_published",
+    "required_compiler_commit": "955cde86f336dff0945e8918303e9f974cc97532",
+    "required_feature": "Support branch-local machine-over transitions",
+    "published_compiler_revision": "72a752820ab581d46bb17b3fb7158ba3879a16e3",
+    "detail": "ElisaScript contains branch-local machine-over transitions. The compatible compiler commit exists in the local codex/edir-host-effects checkout but is not advertised by an upstream ref; do not build against the older published pin or fetch the unpublished commit by guesswork."
+  },
+  "bootstrap_go": "1.25.0",
+  "repositories": {
+    "elisa_core": {
+      "url": "https://github.com/torarinvik/Elisa-core.git",
+      "revision": "370110bc2913831f59fc190f266491efcf3ccabe"
+    },
+    "elisa_compiler": {
+      "url": "https://github.com/torarinvik/Elisa-compiler.git",
+      "revision": "72a752820ab581d46bb17b3fb7158ba3879a16e3"
+    },
+    "elisa_proof": {
+      "url": "https://github.com/torarinvik/elisa-proof.git",
+      "revision": "04601de17703ac3ffa1b128086e8d6ea047e9501"
+    },
+    "elisascript": {
+      "url": "https://github.com/torarinvik/elisa-script.git",
+      "revision": "a26f9fd09d59fe1498622feebee3d7b355123b84"
+    }
+  },
+  "build_contract": {
+    "stage0": ["make", "-C", "{elisa_core}/compiler", "build"],
+    "stage1": ["bash", "scripts/elisac_stage1.sh", "--seed"],
+    "proof": ["bash", "scripts/build.sh"],
+    "elisascript": ["bash", "{compiler}/scripts/elisac_stage1.sh", "-emit", "exe", "-o", "{output}/elisascript", "src/driver/elisascript.elisa"]
+  }
+}
