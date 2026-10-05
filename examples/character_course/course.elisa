@@ -1,5 +1,6 @@
 # Playable Jolt character course built entirely from public Elisa runtime APIs.
 include "./progress.elisa"
+include "./state.elisa"
 include "./pad.elisa"
 include "./controls.elisa"
 include "./sounds.elisa"
@@ -124,57 +125,15 @@ module CharacterCourse:
             AUDIO_SAMPLE_RATE_HZ: u32 = 48000
             AUDIO_CHANNELS: u32 = 2
 
-        enum Phase:
-            Playing
-            Paused
-            Won
-            Failed
-
-        struct GameState:
-            phase: mutable Phase
-            attempts: mutable i64
-
-        def GameState() -> GameState:
-            GameState{phase: Phase.Playing, attempts: 1}
-
-        def restart(state: mutable GameState&) -> void:
-            state.phase <- Phase.Playing
-            state.attempts <- state.attempts + 1
-
-        # Durable phase codes are explicit so reordering Phase never changes
-        # what an existing checkpoint means.
-        def phase_code(phase: Phase) -> i64:
-            if phase == Phase.Paused:
-                CourseProgress::PHASE_PAUSED
-            elif phase == Phase.Won:
-                CourseProgress::PHASE_WON
-            elif phase == Phase.Failed:
-                CourseProgress::PHASE_FAILED
-            else:
-                CourseProgress::PHASE_PLAYING
-
-        def phase_from_code(code: i64) -> Phase:
+        def phase_from_code(code: i64) -> CourseState::Phase:
             if code == CourseProgress::PHASE_PAUSED:
-                Phase.Paused
+                CourseState::Phase.Paused
             elif code == CourseProgress::PHASE_WON:
-                Phase.Won
+                CourseState::Phase.Won
             elif code == CourseProgress::PHASE_FAILED:
-                Phase.Failed
+                CourseState::Phase.Failed
             else:
-                Phase.Playing
-
-        def toggle_pause(state: mutable GameState&) -> void:
-            if state.phase == Phase.Playing:
-                state.phase <- Phase.Paused
-            elif state.phase == Phase.Paused:
-                state.phase <- Phase.Playing
-
-        def update_outcome(state: mutable GameState&, position: Geometry::Vec3) -> void:
-            if state.phase == Phase.Playing:
-                if position.y < Tune::FAILURE_Y:
-                    state.phase <- Phase.Failed
-                elif ElisaMath::fabsf(position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE:
-                    state.phase <- Phase.Won
+                CourseState::Phase.Playing
 
         def box_color(red: f32, green: f32, blue: f32) -> RenderScene::Color:
             RenderScene::Color{red: red, green: green, blue: blue, alpha: 1.0}
@@ -328,11 +287,11 @@ module CharacterCourse:
             try RuntimeServices::physics_character_destroy(session, character)
             restarted
 
-        def checkpoint_of(state: GameState&, pose: PhysicsRuntime::BodyPose,
+        def checkpoint_of(state: CourseState::State&, pose: PhysicsRuntime::BodyPose,
             crouched: bool) -> CourseProgress::Checkpoint:
-            CourseProgress::Checkpoint{phase: phase_code(state.phase),
+            CourseProgress::Checkpoint{phase: CourseState::phase_tag(state),
                 position: pose.position, crouched: crouched,
-                attempts: state.attempts}
+                attempts: CourseState::attempts(state)}
 
         # Creates the restored character before retiring the live one, so a
         # failed creation leaves the running attempt untouched.

@@ -10,12 +10,12 @@
             caption: mutable RenderScene::OverlayTextHandle
             words: CourseText::Captions
 
-        def status_text(state: GameState&, crouched: bool) -> cstr:
-            if state.phase == Phase.Paused:
+        def status_text(state: CourseState::State&, crouched: bool) -> cstr:
+            if CourseState::phase(state) == CourseState::Phase.Paused:
                 "Paused | P resume | Tab controls | R restart | Q save | L load | Esc quit"
-            elif state.phase == Phase.Won:
+            elif CourseState::phase(state) == CourseState::Phase.Won:
                 "Summit reached! | R play again | Esc quit"
-            elif state.phase == Phase.Failed:
+            elif CourseState::phase(state) == CourseState::Phase.Failed:
                 "You fell! | R try again | Esc quit"
             elif crouched:
                 "Crouched | Arrows also move | P pause | R restart"
@@ -23,7 +23,7 @@
                 "Arrows also move | P pause | R restart | Q save | L load"
 
         def refresh_status(handle: RenderScene::OverlayTextHandle,
-            state: GameState&, crouched: bool) -> void error[RenderScene::RenderSceneError]:
+            state: CourseState::State&, crouched: bool) -> void error[RenderScene::RenderSceneError]:
             try RenderScene::set_overlay_text(handle, status_text(state, crouched))
 
         # A failed restart should leave the game running with a status message.
@@ -31,7 +31,7 @@
         # the current attempt.
         def restart_live(session: mutable RuntimeServices::Session&,
             character: mutable PhysicsRuntime::CharacterHandle&,
-            state: mutable GameState&, sounds: mutable CourseSounds::Sounds&,
+            state: mutable CourseState::State&, sounds: mutable CourseSounds::Sounds&,
             beacons: mutable CourseBeacons::Beacons&, grounded: mutable bool&,
             crouched: mutable bool&, jump_queued: mutable bool&,
             clock: mutable Runtime::StepClock&, previous_elapsed_nanos: mutable u64&,
@@ -42,7 +42,7 @@
                 value: value
                 error failure: return false
             character <- restarted
-            restart(state)
+            CourseState::restart(state)
             CourseSounds::reset_scene(sounds)
             _ = CourseSounds::restart_music(sounds)
             _ = CourseSounds::set_paused(sounds, false)

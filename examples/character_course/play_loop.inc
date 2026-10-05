@@ -9,7 +9,7 @@
             beacons: mutable CourseBeacons::Beacons&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
             running: mutable bool = true
             crouched: mutable bool = false
-            state: mutable GameState = GameState()
+            state: mutable CourseState::State = CourseState::State()
             jump_queued: mutable bool = false
             previous_elapsed_nanos: mutable u64 = 0
             resize_serial: mutable u64 = 0
@@ -83,15 +83,15 @@
                     elif mode == 4:
                         CourseCells::pilot_course(cells, frame.elapsed_nanos,
                             crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
-                            grounded, state.phase == Phase.Paused,
-                            state.phase == Phase.Won, state.phase == Phase.Failed)
-                    mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
-                    look_wanted: bool = state.phase == Phase.Playing and not menu_open
+                            grounded, CourseState::phase(state) == CourseState::Phase.Paused,
+                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed)
+                    mood: i32 = CourseSounds::mood_for(menu_open, CourseState::phase(state) == CourseState::Phase.Paused)
+                    look_wanted: bool = CourseState::phase(state) == CourseState::Phase.Playing and not menu_open
                     if look_wanted != look_held:
                         _ = Application::set_relative_mouse(look_wanted)
                         look_held <- look_wanted
                     _ = CourseSounds::mix(&sounds, mood, frame.elapsed_nanos / 1000000)
-                    _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(state.phase == Phase.Won), frame.elapsed_nanos / 1000000)
+                    _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(CourseState::phase(state) == CourseState::Phase.Won), frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::poll_reload(&sounds, frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::update(&sounds)
                     if menu_open:
@@ -150,8 +150,8 @@
                         look <- CourseLook::drain(look, settings.reduced_motion)
                         focus_lost: bool = CourseControls::drain_gameplay_recorded(input, recording, recording_tick)
                         recording_tick <- recording_tick + 1
-                        if focus_lost and state.phase == Phase.Playing:
-                            toggle_pause(&state)
+                        if focus_lost and CourseState::phase(state) == CourseState::Phase.Playing:
+                            CourseState::toggle_pause(&state)
                             Runtime::set_paused(&clock, true)
                             _ = CourseSounds::set_paused(&sounds, true)
                             jump_queued <- false
@@ -160,7 +160,7 @@
                                 "Paused: window lost focus | P resume | Tab controls")
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_QUIT):
                             running <- false
-                        elif ActionInput::action_pressed(input, CourseControls::ACTION_CONTROLS) and state.phase == Phase.Paused:
+                        elif ActionInput::action_pressed(input, CourseControls::ACTION_CONTROLS) and CourseState::phase(state) == CourseState::Phase.Paused:
                             menu_open <- true
                             menu <- CourseControls::Menu(keymap)
                             device_list <- ApplicationDisplays::list().displays
@@ -194,36 +194,43 @@
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_LOAD):
                             loaded: CourseProgress::LoadResult = CourseProgress::load()
                             if loaded.status == CourseProgress::LoadStatus.Loaded:
-                                character <- try apply_checkpoint(session, character, loaded.checkpoint)
-                                beacons_loaded: i32 = try CourseBeacons::load(beacons)
-                                props_loaded: i32 = try CourseProps::load(session, &props)
-                                state.phase <- phase_from_code(loaded.checkpoint.phase)
-                                state.attempts <- loaded.checkpoint.attempts
-                                crouched <- loaded.checkpoint.crouched
-                                jump_queued <- false
-                                clock <- Runtime::StepClock()
-                                Runtime::set_paused(&clock, state.phase != Phase.Playing)
-                                CourseSounds::reset_scene(&sounds)
-                                _ = CourseSounds::set_paused(&sounds, state.phase == Phase.Paused)
-                                grounded <- false
-                                previous_elapsed_nanos <- frame.elapsed_nanos
-                                loaded_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
-                                _ = try update_avatar(avatar, loaded_pose, crouched)
-                                _ = try update_camera_look(loaded_pose, look)
-                                _ = try refresh_status(instruction, state, crouched)
-                                if beacons_loaded != 0 or props_loaded != 0:
+                                restored_state: mutable CourseState::State = CourseState::State()
+                                state_valid: bool = CourseState::restore(&restored_state,
+                                    loaded.checkpoint.phase, loaded.checkpoint.attempts)
+                                if state_valid:
+                                    restored_character: PhysicsRuntime::CharacterHandle = try apply_checkpoint(session, character, loaded.checkpoint)
+                                    character <- restored_character
+                                    state <- restored_state
+                                    beacons_loaded: i32 = try CourseBeacons::load(beacons)
+                                    props_loaded: i32 = try CourseProps::load(session, &props)
+                                    crouched <- loaded.checkpoint.crouched
+                                    jump_queued <- false
+                                    clock <- Runtime::StepClock()
+                                    Runtime::set_paused(&clock, CourseState::phase(state) != CourseState::Phase.Playing)
+                                    CourseSounds::reset_scene(&sounds)
+                                    _ = CourseSounds::set_paused(&sounds, CourseState::phase(state) == CourseState::Phase.Paused)
+                                    grounded <- false
+                                    previous_elapsed_nanos <- frame.elapsed_nanos
+                                    loaded_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+                                    _ = try update_avatar(avatar, loaded_pose, crouched)
+                                    _ = try update_camera_look(loaded_pose, look)
+                                    _ = try refresh_status(instruction, state, crouched)
+                                    if beacons_loaded != 0 or props_loaded != 0:
+                                        _ = try RenderScene::set_overlay_text(instruction,
+                                            "Checkpoint loaded; saved beacons or crates unreadable, current kept")
+                                else:
                                     _ = try RenderScene::set_overlay_text(instruction,
-                                        "Checkpoint loaded; saved beacons or crates unreadable, current kept")
+                                        "Checkpoint rejected; current run kept")
                             else:
                                 _ = try RenderScene::set_overlay_text(instruction, load_message(loaded.status))
                         elif ActionInput::action_pressed(input, CourseControls::ACTION_PAUSE):
-                            toggle_pause(&state)
-                            Runtime::set_paused(&clock, state.phase != Phase.Playing)
-                            _ = CourseSounds::set_paused(&sounds, state.phase == Phase.Paused)
+                            CourseState::toggle_pause(&state)
+                            Runtime::set_paused(&clock, CourseState::phase(state) != CourseState::Phase.Playing)
+                            _ = CourseSounds::set_paused(&sounds, CourseState::phase(state) == CourseState::Phase.Paused)
                             jump_queued <- false
                             previous_elapsed_nanos <- frame.elapsed_nanos
                             _ = try refresh_status(instruction, state, crouched)
-                        elif state.phase == Phase.Playing:
+                        elif CourseState::phase(state) == CourseState::Phase.Playing:
                             desired_crouch: bool = ActionInput::action_down(input, CourseControls::ACTION_CROUCH)
                             if desired_crouch != crouched:
                                 half_height: f32 = Tune::CROUCHED_HALF_HEIGHT if desired_crouch else Tune::STANDING_HALF_HEIGHT
@@ -257,7 +264,9 @@
                                     Runtime::fixed_step_seconds())
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
-                            update_outcome(&state, pose.position)
+                            CourseState::update_outcome(&state,
+                                pose.position.y < Tune::FAILURE_Y,
+                                ElisaMath::fabsf(pose.position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(pose.position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE)
                             CourseCells::update(cells, cell_runtime, cell_world, pose.position)
                             try CourseProps::sync(session, &props)
                             newly_lit: usize = try CourseBeacons::update(beacons, pose.position)
@@ -276,8 +285,8 @@
                             if now_grounded and not grounded:
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_LAND, frame.elapsed_nanos)
                             grounded <- now_grounded
-                            if state.phase == Phase.Won or state.phase == Phase.Failed:
-                                ending: u32 = CourseSounds::EVENT_WIN if state.phase == Phase.Won else CourseSounds::EVENT_FALL
+                            if CourseState::phase(state) == CourseState::Phase.Won or CourseState::phase(state) == CourseState::Phase.Failed:
+                                ending: u32 = CourseSounds::EVENT_WIN if CourseState::phase(state) == CourseState::Phase.Won else CourseSounds::EVENT_FALL
                                 _ = CourseSounds::fire(&sounds, ending, sound_tick)
                                 captions <- CourseAccess::caption(captions, &settings, ending, frame.elapsed_nanos)
                                 Runtime::set_paused(&clock, true)

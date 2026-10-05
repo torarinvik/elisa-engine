@@ -27,18 +27,20 @@
             LANE_MISSED: i32 = 41
 
         def walk_course_until(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle, state: mutable GameState&,
+            character: PhysicsRuntime::CharacterHandle, state: mutable CourseState::State&,
             direction: Geometry::Vec3, x_axis: bool, target: f32) -> PhysicsRuntime::BodyPose error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
             pose: mutable PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
             for _ in 0..<CoursePathTune::SEGMENT_MAX_TICKS |session, character, state, direction, x_axis, target, pose|:
                 reached: bool = pose.position.x >= target if x_axis else pose.position.z >= target
-                break if reached or state.phase != Phase.Playing
+                break if reached or CourseState::phase(state) != CourseState::Phase.Playing
                 try RuntimeServices::physics_character_move(session, character,
                     direction, Tune::WALK_SPEED, 0.0, false)
                 _ = try RuntimeServices::physics_fixed_step(session,
                     Runtime::fixed_step_seconds())
                 pose <- try RuntimeServices::physics_character_pose(session, character)
-                update_outcome(state, pose.position)
+                CourseState::update_outcome(state,
+                    pose.position.y < Tune::FAILURE_Y,
+                    ElisaMath::fabsf(pose.position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(pose.position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE)
             pose
 
         def simulate_test(session: mutable RuntimeServices::Session&,
@@ -69,7 +71,7 @@
             crouched: bool = try RuntimeServices::physics_character_set_capsule(session,
                 character, Tune::CHARACTER_RADIUS, Tune::CROUCHED_HALF_HEIGHT)
             return CoursePathCodes::CROUCH_REJECTED if not crouched
-            state: mutable GameState = GameState()
+            state: mutable CourseState::State = CourseState::State()
             forward: Geometry::Vec3 = Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0}
             tunnel_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
                 character, state, forward, true, CoursePathTune::TUNNEL_EXIT_X)
@@ -86,7 +88,9 @@
             _ = try RuntimeServices::physics_fixed_step(session,
                 Runtime::fixed_step_seconds())
             jump_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
-            update_outcome(&state, jump_pose.position)
+            CourseState::update_outcome(&state,
+                jump_pose.position.y < Tune::FAILURE_Y,
+                ElisaMath::fabsf(jump_pose.position.x - Tune::GOAL_X) < Tune::GOAL_TOLERANCE and ElisaMath::fabsf(jump_pose.position.z - Tune::GOAL_Z) < Tune::GOAL_TOLERANCE)
             return CoursePathCodes::JUMP_MISSING if jump_pose.position.y < jump_start.position.y + CoursePathTune::MIN_JUMP_RISE
 
             platform_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
@@ -98,7 +102,7 @@
             return CoursePathCodes::LANE_MISSED if lane_pose.position.z < Tune::GOAL_Z
             goal_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
                 character, state, forward, true, CoursePathTune::GOAL_TARGET_X)
-            return CoursePathCodes::GOAL_MISSED if state.phase != Phase.Won or ElisaMath::fabsf(goal_pose.position.x - Tune::GOAL_X) >= Tune::GOAL_TOLERANCE or ElisaMath::fabsf(goal_pose.position.z - Tune::GOAL_Z) >= Tune::GOAL_TOLERANCE
+            return CoursePathCodes::GOAL_MISSED if CourseState::phase(state) != CourseState::Phase.Won or ElisaMath::fabsf(goal_pose.position.x - Tune::GOAL_X) >= Tune::GOAL_TOLERANCE or ElisaMath::fabsf(goal_pose.position.z - Tune::GOAL_Z) >= Tune::GOAL_TOLERANCE
 
             fall_spawn: Geometry::Vec3 = Geometry::Vec3{
                 x: Tune::FLOOR_HALF_WIDTH - CoursePathTune::FALL_SPAWN_INSET,
@@ -108,34 +112,34 @@
             for _ in 0..<Tune::INITIAL_STEP_COUNT |session|:
                 _ = try RuntimeServices::physics_fixed_step(session,
                     Runtime::fixed_step_seconds())
-            fall_state: mutable GameState = GameState()
+            fall_state: mutable CourseState::State = CourseState::State()
             fall_pose: PhysicsRuntime::BodyPose = try walk_course_until(session,
                 fall_character, fall_state, forward, true, CoursePathTune::FALL_TARGET_X)
-            fell: bool = fall_state.phase == Phase.Failed and fall_pose.position.y < Tune::FAILURE_Y
+            fell: bool = CourseState::phase(fall_state) == CourseState::Phase.Failed and fall_pose.position.y < Tune::FAILURE_Y
             try RuntimeServices::physics_character_destroy(session, fall_character)
             return CoursePathCodes::FALL_MISSED if not fell
             0
 
         def state_test() -> i32:
-            state: mutable GameState = GameState()
-            toggle_pause(&state)
-            return Tune::STATE_TEST_PAUSE_CODE if state.phase != Phase.Paused
-            toggle_pause(&state)
-            return Tune::STATE_TEST_RESUME_CODE if state.phase != Phase.Playing
-            update_outcome(&state, Geometry::Vec3{x: 0.0, y: Tune::FAILURE_Y - Tune::SELF_TEST_FAILURE_MARGIN, z: 0.0})
-            return Tune::STATE_TEST_FAIL_CODE if state.phase != Phase.Failed
-            update_outcome(&state, Geometry::Vec3{x: Tune::GOAL_X, y: Tune::GOAL_HEIGHT, z: Tune::GOAL_Z})
-            return Tune::STATE_TEST_FAIL_LOCK_CODE if state.phase != Phase.Failed
-            restart(&state)
-            return Tune::STATE_TEST_FAIL_RESTART_CODE if state.phase != Phase.Playing
-            update_outcome(&state, Geometry::Vec3{x: Tune::GOAL_X, y: Tune::GOAL_HEIGHT, z: Tune::GOAL_Z})
-            return Tune::STATE_TEST_WIN_CODE if state.phase != Phase.Won
-            update_outcome(&state, Geometry::Vec3{x: 0.0, y: Tune::FAILURE_Y - Tune::SELF_TEST_FAILURE_MARGIN, z: 0.0})
-            return Tune::STATE_TEST_WIN_LOCK_CODE if state.phase != Phase.Won
-            toggle_pause(&state)
-            return Tune::STATE_TEST_TERMINAL_PAUSE_CODE if state.phase != Phase.Won
-            restart(&state)
-            return Tune::STATE_TEST_WIN_RESTART_CODE if state.phase != Phase.Playing
+            state: mutable CourseState::State = CourseState::State()
+            CourseState::toggle_pause(&state)
+            return Tune::STATE_TEST_PAUSE_CODE if CourseState::phase(state) != CourseState::Phase.Paused
+            CourseState::toggle_pause(&state)
+            return Tune::STATE_TEST_RESUME_CODE if CourseState::phase(state) != CourseState::Phase.Playing
+            CourseState::update_outcome(&state, true, false)
+            return Tune::STATE_TEST_FAIL_CODE if CourseState::phase(state) != CourseState::Phase.Failed
+            CourseState::update_outcome(&state, false, true)
+            return Tune::STATE_TEST_FAIL_LOCK_CODE if CourseState::phase(state) != CourseState::Phase.Failed
+            CourseState::restart(&state)
+            return Tune::STATE_TEST_FAIL_RESTART_CODE if CourseState::phase(state) != CourseState::Phase.Playing
+            CourseState::update_outcome(&state, false, true)
+            return Tune::STATE_TEST_WIN_CODE if CourseState::phase(state) != CourseState::Phase.Won
+            CourseState::update_outcome(&state, true, false)
+            return Tune::STATE_TEST_WIN_LOCK_CODE if CourseState::phase(state) != CourseState::Phase.Won
+            CourseState::toggle_pause(&state)
+            return Tune::STATE_TEST_TERMINAL_PAUSE_CODE if CourseState::phase(state) != CourseState::Phase.Won
+            CourseState::restart(&state)
+            return Tune::STATE_TEST_WIN_RESTART_CODE if CourseState::phase(state) != CourseState::Phase.Playing
             0
 
         struct ProgressOutcome:
@@ -164,22 +168,26 @@
         # missing records must leave the restored character untouched.
         def progress_test(session: mutable RuntimeServices::Session&,
             character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Save::SaveError, UserData::UserDataError]:
-            state: mutable GameState = GameState()
-            state.attempts <- Tune::SELF_TEST_ATTEMPTS
-            state.phase <- Phase.Paused
+            state: mutable CourseState::State = CourseState::State()
+            return ProgressOutcome{status: Tune::PROGRESS_SAVE_CODE, character: character} if not CourseState::restore(&state, CourseState::PHASE_PAUSED, Tune::SELF_TEST_ATTEMPTS)
             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
             saved: CourseProgress::Checkpoint = checkpoint_of(state, pose, false)
             try CourseProgress::save(&saved)
             current: mutable PhysicsRuntime::CharacterHandle = try restart_character(session, character)
-            restart(&state)
+            CourseState::restart(&state)
             loaded: CourseProgress::LoadResult = CourseProgress::load()
-            return ProgressOutcome{status: Tune::PROGRESS_LOAD_CODE, character: current} if progress_status(loaded.status) != 0 or loaded.checkpoint.attempts != Tune::SELF_TEST_ATTEMPTS or phase_from_code(loaded.checkpoint.phase) != Phase.Paused
+            return ProgressOutcome{status: Tune::PROGRESS_LOAD_CODE, character: current} if progress_status(loaded.status) != 0 or loaded.checkpoint.attempts != Tune::SELF_TEST_ATTEMPTS or phase_from_code(loaded.checkpoint.phase) != CourseState::Phase.Paused
             current <- try apply_checkpoint(session, current, loaded.checkpoint)
             restored: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, current)
             return ProgressOutcome{status: Tune::PROGRESS_RESTORE_CODE, character: current} if not near(restored.position, pose.position)
             unknown_phase: CourseProgress::Checkpoint = CourseProgress::Checkpoint{
                 phase: 9, position: pose.position, crouched: false, attempts: 1}
             try CourseProgress::save(&unknown_phase)
+            return ProgressOutcome{status: Tune::PROGRESS_MALFORMED_CODE, character: current} if progress_status(CourseProgress::load().status) != 3
+            zero_attempts: CourseProgress::Checkpoint = CourseProgress::Checkpoint{
+                phase: CourseProgress::PHASE_PLAYING, position: pose.position,
+                crouched: false, attempts: 0}
+            try CourseProgress::save(&zero_attempts)
             return ProgressOutcome{status: Tune::PROGRESS_MALFORMED_CODE, character: current} if progress_status(CourseProgress::load().status) != 3
             values: i64[Save::MAX_FIELDS] = zeroed
             short_record: Save::Blob = try Save::save_write(values, 2)
@@ -213,13 +221,16 @@
                 cycle_saved: CourseProgress::Checkpoint = checkpoint_of(state, cycle_pose, false)
                 try CourseProgress::save(&cycle_saved)
                 current <- try restart_character(session, current)
-                restart(&state)
+                CourseState::restart(&state)
                 cycle_loaded: CourseProgress::LoadResult = CourseProgress::load()
                 if progress_status(cycle_loaded.status) == 0:
                     current <- try apply_checkpoint(session, current, cycle_loaded.checkpoint)
-                    state.attempts <- cycle_loaded.checkpoint.attempts
-                    cycle_restored: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, current)
-                    cycle_status <- Tune::PROGRESS_CYCLE_CODE if not near(cycle_restored.position, restored.position)
+                    state_restored: bool = CourseState::restore(&state, cycle_loaded.checkpoint.phase, cycle_loaded.checkpoint.attempts)
+                    if state_restored:
+                        cycle_restored: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, current)
+                        cycle_status <- Tune::PROGRESS_CYCLE_CODE if not near(cycle_restored.position, restored.position)
+                    else:
+                        cycle_status <- Tune::PROGRESS_CYCLE_CODE
                 else:
                     cycle_status <- Tune::PROGRESS_CYCLE_CODE
             try UserData::remove_blob(CourseProgress::key())

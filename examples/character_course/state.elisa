@@ -1,0 +1,99 @@
+# Pure character-course state transitions. The state fields stay private so
+# gameplay and persistence can change them only through validated operations.
+module CourseState:
+    private:
+        def valid_phase_tag(tag: i64) -> bool:
+            ensure result == (tag >= PHASE_PLAYING and tag <= PHASE_FAILED)
+            tag >= PHASE_PLAYING and tag <= PHASE_FAILED
+
+        def next_pause_tag(current: i64) -> i64:
+            ensure result == (PHASE_PAUSED if current == PHASE_PLAYING else (PHASE_PLAYING if current == PHASE_PAUSED else current))
+            if current == PHASE_PLAYING:
+                PHASE_PAUSED
+            elif current == PHASE_PAUSED:
+                PHASE_PLAYING
+            else:
+                current
+
+        def active_outcome_tag(fallen: bool, inside_goal: bool) -> i64:
+            ensure result == (PHASE_FAILED if fallen else (PHASE_WON if inside_goal else PHASE_PLAYING))
+            if fallen:
+                PHASE_FAILED
+            elif inside_goal:
+                PHASE_WON
+            else:
+                PHASE_PLAYING
+
+        def next_attempt_count(current: i64) -> i64:
+            ensure result == (1 if current < 1 else (current + 1 if current < MAX_ATTEMPTS else MAX_ATTEMPTS))
+            if current < 1:
+                1
+            elif current < MAX_ATTEMPTS:
+                current + 1
+            else:
+                MAX_ATTEMPTS
+
+        def valid_restore(phase_tag: i64, attempt_count: i64) -> bool:
+            ensure result == (valid_phase_tag(phase_tag) and attempt_count >= 1 and attempt_count <= MAX_ATTEMPTS)
+            valid_phase_tag(phase_tag) and attempt_count >= 1 and attempt_count <= MAX_ATTEMPTS
+
+    public:
+        const MAX_ATTEMPTS: i64 = 1000000
+        # These explicit tags are also the durable checkpoint representation.
+        const PHASE_PLAYING: i64 = 1
+        const PHASE_PAUSED: i64 = 2
+        const PHASE_WON: i64 = 3
+        const PHASE_FAILED: i64 = 4
+
+        enum Phase:
+            Playing
+            Paused
+            Won
+            Failed
+
+        struct State:
+            private:
+                phase: mutable i64
+                attempts: mutable i64
+
+        def State() -> State:
+            State{phase: PHASE_PLAYING, attempts: 1}
+
+        def phase(state: State&) -> Phase:
+            if state.phase == PHASE_PAUSED:
+                Phase.Paused
+            elif state.phase == PHASE_WON:
+                Phase.Won
+            elif state.phase == PHASE_FAILED:
+                Phase.Failed
+            else:
+                Phase.Playing
+
+        def phase_tag(state: State&) -> i64:
+            state.phase
+
+        def attempts(state: State&) -> i64:
+            state.attempts
+
+        def restart(state: mutable State&) -> void:
+            state.phase <- PHASE_PLAYING
+            state.attempts <- next_attempt_count(state.attempts)
+
+        # A checkpoint restore is all-or-nothing. Attempts share the durable
+        # checkpoint bound, and no invalid value can enter the private state.
+        def restore(state: mutable State&, restored_phase_tag: i64,
+                restored_attempts: i64) -> bool:
+            return false if not valid_restore(restored_phase_tag, restored_attempts)
+            state.phase <- restored_phase_tag
+            state.attempts <- restored_attempts
+            true
+
+        def toggle_pause(state: mutable State&) -> void:
+            state.phase <- next_pause_tag(state.phase)
+
+        # Only active play can end. Falling takes precedence over reaching the
+        # goal, so a position satisfying both conditions is always a failure.
+        def update_outcome(state: mutable State&, fallen: bool,
+                inside_goal: bool) -> void:
+            if state.phase == PHASE_PLAYING:
+                state.phase <- active_outcome_tag(fallen, inside_goal)

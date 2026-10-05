@@ -1,4 +1,5 @@
 include "../../src/world/save_migrations.elisa"
+include "./state.elisa"
 # Durable character-course checkpoints. Fields are explicit codes, whole
 # millimetres and counters rather than enum ordinals or native handles, and a
 # load is validated completely before the game touches its live character.
@@ -15,7 +16,6 @@ module CourseProgress:
             MIN_Y_MM: i64 = -8000
             MAX_Y_MM: i64 = 16000
             MAX_ABS_Z_MM: i64 = 8000
-            MAX_ATTEMPTS: i64 = 1000000
 
         def to_millimetres(value: f32) -> i64:
             ElisaMath::round(value.f64() * Limits::MILLIMETRES).i64()
@@ -31,10 +31,10 @@ module CourseProgress:
 
     public:
         const SCHEMA: i64 = 2
-        const PHASE_PLAYING: i64 = 1
-        const PHASE_PAUSED: i64 = 2
-        const PHASE_WON: i64 = 3
-        const PHASE_FAILED: i64 = 4
+        const PHASE_PLAYING: i64 = CourseState::PHASE_PLAYING
+        const PHASE_PAUSED: i64 = CourseState::PHASE_PAUSED
+        const PHASE_WON: i64 = CourseState::PHASE_WON
+        const PHASE_FAILED: i64 = CourseState::PHASE_FAILED
 
         struct Checkpoint:
             phase: i64
@@ -139,7 +139,7 @@ module CourseProgress:
             return rejected() if not within(y, Limits::MIN_Y_MM, Limits::MAX_Y_MM)
             return rejected() if not within(z, -Limits::MAX_ABS_Z_MM, Limits::MAX_ABS_Z_MM)
             return rejected() if not within(crouched, 0, 1)
-            return rejected() if not within(attempts, 0, Limits::MAX_ATTEMPTS)
+            return rejected() if not within(attempts, 1, CourseState::MAX_ATTEMPTS)
             LoadResult{status: LoadStatus.Loaded, migrated: not current, checkpoint: Checkpoint{
                 phase: phase,
                 position: Geometry::Vec3{x: from_millimetres(x),

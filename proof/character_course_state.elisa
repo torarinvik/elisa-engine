@@ -1,0 +1,27 @@
+# Prove the pure transition policy that the Character Course state mutators
+# call directly. Numeric tags keep the policy in the prover's supported logic;
+# gameplay still uses the typed public Phase enum.
+include "../examples/character_course/state.elisa"
+
+extend CourseState:
+    def prove_pause_policy(current: i64) -> i64:
+        ensure result == (PHASE_PAUSED if current == PHASE_PLAYING else (PHASE_PLAYING if current == PHASE_PAUSED else current))
+        next_pause_tag(current)
+
+    def prove_active_outcome_policy(fallen: bool, inside_goal: bool) -> i64:
+        ensure result == (PHASE_FAILED if fallen else (PHASE_WON if inside_goal else PHASE_PLAYING))
+        active_outcome_tag(fallen, inside_goal)
+
+    def prove_restart_attempt_count(previous: i64) -> i64:
+        ensure result == (1 if previous < 1 else (previous + 1 if previous < MAX_ATTEMPTS else MAX_ATTEMPTS))
+        next_attempt_count(previous)
+
+    def prove_restore_validation(phase_tag: i64, attempt_count: i64) -> bool:
+        ensure result == (valid_phase_tag(phase_tag) and attempt_count >= 1 and attempt_count <= MAX_ATTEMPTS)
+        valid_restore(phase_tag, attempt_count)
+
+    def prove_invalid_restore_rejected(phase_tag: i64,
+            attempt_count: i64) -> bool:
+        requires not valid_phase_tag(phase_tag) or attempt_count < 1 or attempt_count > MAX_ATTEMPTS
+        ensure not result
+        valid_restore(phase_tag, attempt_count)
