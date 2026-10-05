@@ -241,6 +241,11 @@ path passed two relocated launches with source, Homebrew, and outbound network
 access denied. Publication uses two renames, so concurrent launches during
 the replacement window and crash-atomic replacement are not guaranteed.
 
+The compiled-shader-only path also checks this guarantee: when its shader tree
+contains a symbolic link, rebuild fails and the previously published app stays
+intact (`test_compiled_shaders_only_rejects_symbolic_links_without_replacing_app`
+in `scripts/test_package_macos_app.py`).
+
 ## Minimum macOS version
 
 The packager no longer writes a fixed macOS 13 requirement. It reads the

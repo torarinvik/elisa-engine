@@ -145,12 +145,16 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual([entry["path"] for entry in manifest["files"]], [
             "metal/basic.cso", "metal/nested/extra.cso", "spirv/basic.spv"])
 
-    def test_compiled_shaders_only_rejects_symbolic_links(self) -> None:
+    def test_compiled_shaders_only_rejects_symbolic_links_without_replacing_app(self) -> None:
+        manifest = self.write_manifest({"package": {"resources": []}})
+        existing = self.package(manifest)
+        retained = existing / "Contents/Resources/retained-from-previous-build.txt"
+        retained.write_bytes(b"known-good bundle")
         source = self.project / "shaders" / "metal" / "source-link.hlsl"
         os.symlink(self.project / "shaders" / "metal" / "basic.cso", source)
         with self.assertRaises(packager.PackageError):
-            self.package(self.write_manifest({"package": {"resources": []}}),
-                compiled_shaders_only=True)
+            self.package(manifest, compiled_shaders_only=True)
+        self.assertEqual(retained.read_bytes(), b"known-good bundle")
 
     def test_launcher_runs_from_relocated_resources(self) -> None:
         executable = self.project / "build" / "game"
