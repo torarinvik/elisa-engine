@@ -60,6 +60,17 @@ def wait_for_process_group(process_group: int, timeout: float) -> bool:
     return True
 
 
+def launch_environment(home: Path, user_data: Path,
+    inherited: dict[str, str] | None = None) -> dict[str, str]:
+    source = os.environ if inherited is None else inherited
+    environment = {key: value for key, value in source.items()
+        if not key.startswith(("ELISA_", "WICKED_", "DYLD_"))}
+    environment.update({"PATH": "/usr/bin:/bin", "HOME": str(home),
+        "ELISA_USER_DATA_DIR": str(user_data),
+        "ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE": "1"})
+    return environment
+
+
 def stop_process_group(process: subprocess.Popen[bytes], force: bool = False) -> int | None:
     process_group = process.pid
     if process.poll() is not None:
@@ -149,10 +160,7 @@ def run_validation(app_source: Path, log_copy: Path,
                     raise ValueError(f"declared resource group is missing or empty: {group}")
                 resource_counts[group] = count
 
-            environment = {key: value for key, value in os.environ.items()
-                if not key.startswith(("ELISA_", "WICKED_", "DYLD_"))}
-            environment.update({"PATH": "/usr/bin:/bin", "HOME": str(home),
-                "ELISA_USER_DATA_DIR": str(user_data)})
+            environment = launch_environment(home, user_data)
             launcher = app / "Contents/MacOS" / executable_name
             record["launcher_sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
             process = subprocess.Popen(["/usr/bin/sandbox-exec", "-f", str(profile), str(launcher)],
@@ -181,6 +189,7 @@ def run_validation(app_source: Path, log_copy: Path,
                 "outcome": "pass",
                 "relocated_path_contains_spaces": True,
                 "network_outbound_denied_by_profile": True,
+                "audio_device_forced_unavailable": True,
                 "sandbox_controls_denied": denied_controls,
                 "resource_file_counts": resource_counts,
                 "startup_markers": expected,
