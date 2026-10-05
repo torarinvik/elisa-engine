@@ -190,6 +190,19 @@ void concurrent_checks(const std::string& path) {
     const audio::StreamStatus sought = service.stream_status(music);
     check(sought.position > 100 && sought.position < 100 + RATE && sought.underrun_frames == 0,
         "a stream plays on from a seek on a running device");
+    // Cancellation after device recovery retires the decoder and generation
+    // while the null-device callback is still running. The stale handle must
+    // stay invalid, and the freed bounded slot must be reusable.
+    check(service.stop_stream(music) && service.active_streams() == 0 &&
+        service.stream_status(music).state == audio::StreamState::Invalid,
+        "stop cancels a recovered stream while the callback runs");
+    const audio::StreamHandle replacement = service.open_stream(path.c_str(), true,
+        audio::Bus::Music, 0.0f, opened);
+    check(opened == audio::StreamOpenStatus::Opened && replacement.slot == music.slot &&
+        replacement.generation != music.generation &&
+        service.stream_status(music).state == audio::StreamState::Invalid,
+        "a canceled stream slot is safely reused with a fresh generation");
+    check(service.stop_stream(replacement), "stop the replacement stream");
     std::fprintf(stdout, "stream harness: frames=%llu underruns=%llu contended=%llu\n",
         static_cast<unsigned long long>(recovered.frames_played),
         static_cast<unsigned long long>(recovered.underrun_frames),
