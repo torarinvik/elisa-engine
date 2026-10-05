@@ -116,4 +116,24 @@ def main() -> i32:
     _ = NavAgent::assign(&robust, corner_route(NavRoute::Status.Found))
     steering: NavAgent::Steering = NavAgent::steer(&robust, at(-0.4, 4.4))
     return 20 if steering.state != NavAgent::State.Moving or not Geometry::vec3_is_finite(steering.direction)
+
+    # A corrupt public route is rejected before the agent can index beyond its
+    # fixed point array or mistake a NaN waypoint for an arrived waypoint.
+    nan: f32 = 0.0 / 0.0
+    invalid_route: NavRoute::Route = corner_route(NavRoute::Status.Found)
+    invalid_route.points[1].x <- nan
+    malformed: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    return 21 if NavAgent::assign(&malformed, invalid_route) != NavAgent::State.Blocked
+    return 22 if NavAgent::steer(&malformed, at(0.0, 0.0)).state != NavAgent::State.Blocked
+    oversized: NavRoute::Route = corner_route(NavRoute::Status.Found)
+    oversized.count <- NavRoute::MAX_POINTS + 1
+    return 23 if NavAgent::assign(&malformed, oversized) != NavAgent::State.Blocked
+
+    # A non-finite character pose requests a replan with zero steering instead
+    # of skipping the entire corridor and reporting arrival.
+    bad_pose: mutable NavAgent::Agent = NavAgent::Agent(tuning)
+    _ = NavAgent::assign(&bad_pose, corner_route(NavRoute::Status.Found))
+    unsafe_steering: NavAgent::Steering = NavAgent::steer(&bad_pose, at(nan, 0.0))
+    return 24 if unsafe_steering.state != NavAgent::State.Stuck
+    return 25 if Geometry::vec3_length(unsafe_steering.direction) != 0.0
     0

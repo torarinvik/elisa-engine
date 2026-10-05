@@ -65,7 +65,10 @@ module NavAgent:
             agent.next <- 1
             agent.best <- Limits::FAR
             agent.idle_ticks <- 0
-            blocked: bool = route.status == NavRoute::Status.OffMesh or route.count == 0
+            # Routes usually come from NavMesh, but Route is public data and
+            # may also be assembled by game code. Reject malformed counts and
+            # non-finite points before any waypoint indexing or distance math.
+            blocked: bool = route.status == NavRoute::Status.OffMesh or not valid_route(route)
             agent.state <- State.Blocked if blocked else State.Moving
             agent.state
 
@@ -80,6 +83,11 @@ module NavAgent:
 
         def steer(agent: mutable Agent&, position: Geometry::Vec3) -> Steering:
             return still(agent.state) if agent.state != State.Moving
+            # A bad physics sample must not make NaN distances compare as
+            # reached waypoints and falsely report arrival.
+            if not Geometry::vec3_is_finite(position):
+                agent.state <- State.Stuck
+                return still(agent.state)
             reached: usize = first_unreached(agent, position)
             if reached != agent.next:
                 agent.next <- reached
@@ -117,6 +125,12 @@ module NavAgent:
             (finite(tuning.arrive_radius) and tuning.arrive_radius > 0.0 and
                 finite(tuning.min_progress) and tuning.min_progress >= 0.0 and
                 tuning.stuck_ticks > 0)
+
+        def valid_route(route: NavRoute::Route) -> bool:
+            return false if route.count == 0 or route.count > NavRoute::MAX_POINTS
+            for index in 0..<NavRoute::MAX_POINTS |valid: bool = true| -> valid:
+                break if index >= route.count
+                valid <- false if not Geometry::vec3_is_finite(route.points[index])
 
         def still(state: State) -> Steering:
             Steering{state: state, direction: Geometry::vec3_zero(), remaining: 0.0}

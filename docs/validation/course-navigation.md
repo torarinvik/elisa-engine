@@ -39,7 +39,7 @@ animated instances in the second playable client (`examples/character_course`).
 
 ## Checks
 
-`test/nav_agent.elisa` is in the shared check (codes 1–16). It covers:
+`test/nav_agent.elisa` is in the shared check (codes 1–25). It covers:
 
 - idle
 - ordered corners and arrival timing
@@ -48,6 +48,8 @@ animated instances in the second playable client (`examples/character_course`).
 - held and crawling stuck detection
 - replan and resume
 - the 64-point route bound
+- malformed routes (oversized point count and non-finite waypoint) rejected at assignment
+- non-finite character poses reported as Stuck with zero steering
 
 `test/navigation_service_test.cpp` runs the service ABI under ASan and UBSan
 (`run_boundary_sanitized.py`). It covers:
@@ -100,6 +102,9 @@ controller and renderer:
 - `nav_agent` passes in the shared check. The navigation ABI test passes under
   ASan and UBSan in the gate's headless stage. Leak detection is off, as it is
   for the other harnesses: ASan does not support it on macOS arm64.
+- On 2026-10-06, the Stage1 `nav_agent` test passes codes 21–25 for malformed
+  routes and non-finite poses; malformed routes become Blocked before corridor
+  indexing, and invalid poses request a replan instead of looking Arrived.
 - `navmesh_service.h` now reports a Detour route that stops short of the
   goal polygon as Partial instead of Success. This exposed a flaw in the
   native gate's Recast probe (`native/recast_probe.h`): its one-cell gap had
