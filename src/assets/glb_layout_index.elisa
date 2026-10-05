@@ -10,6 +10,9 @@ module GlbLayoutIndex:
             ensure result == 8
             8
 
+        # Chunk payload sizes must preserve four-byte GLB alignment.
+        const CHUNK_ALIGNMENT_BYTES: i64 = 4
+
         # Where a chunk whose header starts at `offset` ends, or -1 when its
         # header or payload would run past `total` bytes.
         def chunk_end(offset: i64, length: i64, total: i64) -> i64:
@@ -44,4 +47,9 @@ module GlbLayoutIndex:
 
         # GLB chunk lengths are multiples of four.
         def aligned(length: i64) -> bool:
-            length >= 0 and length % 4 == 0
+            ensure not result or length >= 0
+            ensure not result or length % CHUNK_ALIGNMENT_BYTES == 0
+            ensure result or length < 0 or length % CHUNK_ALIGNMENT_BYTES != 0
+            return false if length < 0
+            return false if length % CHUNK_ALIGNMENT_BYTES != 0
+            true

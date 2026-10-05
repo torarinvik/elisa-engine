@@ -119,6 +119,8 @@ def exercise() -> i32:
     return 20 if parse_code(with_word(plain, 48, 68)) != 6
     return 21 if parse_code(with_word(plain, 52, 1313821514)) != 6
     return 22 if parse_code(with_word(plain, 48, 62)) != 7
+    return 23 if not GlbLayoutIndex::aligned(0) or not GlbLayoutIndex::aligned(GlbLayoutIndex::CHUNK_ALIGNMENT_BYTES)
+    return 24 if GlbLayoutIndex::aligned(-1) or GlbLayoutIndex::aligned(-GlbLayoutIndex::CHUNK_ALIGNMENT_BYTES) or GlbLayoutIndex::aligned(GlbLayoutIndex::CHUNK_ALIGNMENT_BYTES + 1)
     0
 
 def main() -> i32:
