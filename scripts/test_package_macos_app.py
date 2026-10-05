@@ -471,6 +471,17 @@ class PackageMacosAppTests(unittest.TestCase):
         with self.assertRaises(packager.PackageError):
             self.package(self.write_manifest({"package": {"resources": ["assets/link"]}}))
 
+    def test_resource_directory_with_nested_symlink_is_rejected_with_path(self) -> None:
+        external = Path(self.tempdir.name) / "shared.wav"
+        touch(external, b"audio")
+        nested = self.project / "assets" / "audio" / "shared.wav"
+        os.symlink(external, nested)
+        manifest = self.write_manifest({"package": {"resources": ["assets/audio"]}})
+        with self.assertRaisesRegex(packager.PackageError,
+                r"manifest resource contains a symbolic link: assets/audio/shared\.wav"):
+            self.package(manifest)
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

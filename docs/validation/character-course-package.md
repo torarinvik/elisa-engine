@@ -305,6 +305,15 @@ python3 scripts/validate_interactive_macos_app.py \
   --marker 'wi::physics Initialized [Jolt Physics'
 ```
 
+## Declared resource symlink check (2026-10-05)
+
+The packager now rejects a symbolic link anywhere inside a declared runtime
+resource directory and reports the project-relative path. This prevents a
+resource tree from silently pulling an external target into the relocated app.
+The focused Python suite passes 32/32 tests, including a nested symlink
+regression. This is a local packaging check; it does not add optimized or
+release-grade offline launch evidence.
+
 ## Full course path self-test (2026-10-04)
 
 `self_test.inc` now drives the Jolt character through the step, crouched tunnel,

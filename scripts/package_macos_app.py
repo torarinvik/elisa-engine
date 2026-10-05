@@ -190,6 +190,11 @@ def stage_resource(project: Path, resources: Path, relative: Path) -> None:
     if source.is_symlink():
         raise PackageError(f"manifest resource must not be a symbolic link: {relative}")
     if source.is_dir():
+        for child in source.rglob("*"):
+            if child.is_symlink():
+                child_relative = child.relative_to(project)
+                raise PackageError(
+                    f"manifest resource contains a symbolic link: {child_relative}")
         copy_directory(source, destination)
     elif source.is_file():
         destination.parent.mkdir(parents=True, exist_ok=True)
