@@ -16,6 +16,7 @@ struct AudioService {
     bool initialized = false;
 #if defined(ELISA_AUDIO_TEST_PROBE)
     bool fail_next_initialize_after_open = false;
+    bool fail_next_stream_stop = false;
 #endif
 };
 
@@ -161,6 +162,15 @@ extern "C" int32_t elisa_audio_v1_test_request_device_recovery(void) {
     AudioService& state = audio_service();
     if (!state.initialized) return ELISA_AUDIO_INVALID_STATE;
     state.service.request_device_recovery_for_test();
+    return ELISA_AUDIO_OK;
+}
+
+extern "C" int32_t elisa_audio_v1_test_fail_next_stream_stop(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (!state.initialized || state.fail_next_stream_stop) return ELISA_AUDIO_INVALID_STATE;
+    state.fail_next_stream_stop = true;
     return ELISA_AUDIO_OK;
 }
 #endif
@@ -314,6 +324,13 @@ extern "C" int32_t elisa_audio_v1_open_stream(const char* path, int32_t looped, 
 extern "C" int32_t elisa_audio_v1_stop_stream(uint32_t slot, uint32_t generation) {
     const int32_t status = require_audio_service();
     if (status != ELISA_AUDIO_OK) return status;
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    AudioService& state = audio_service();
+    if (state.fail_next_stream_stop) {
+        state.fail_next_stream_stop = false;
+        return ELISA_AUDIO_INVALID_STATE;
+    }
+#endif
     return audio_service().service.stop_stream(probe::audio::StreamHandle{slot, generation})
         ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
 }
@@ -442,5 +459,14 @@ extern "C" int32_t elisa_audio_v1_shutdown(void) {
 extern "C" void elisa_audio_v1_shutdown_from_application(void) {
     shutdown_audio();
 }
+
+#if !defined(ELISA_AUDIO_TEST_PROBE)
+// The course keeps its test case in the ordinary Elisa module, so resolve
+// this dormant test-probe reference in production builds without enabling it.
+extern "C" __attribute__((visibility("hidden"))) int32_t
+elisa_audio_v1_test_fail_next_stream_stop(void) {
+    return ELISA_AUDIO_INVALID_STATE;
+}
+#endif
 
 #include "audio_devices.inc"

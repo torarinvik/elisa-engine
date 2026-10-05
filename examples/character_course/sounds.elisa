@@ -374,14 +374,7 @@ module CourseSounds:
                 ok: true
                 error failure: false
 
-        # Restart or load: silence every event sound and forget the old
-        # timeline so its ticks cannot suppress or double the new ones.
-        def reset_scene(sounds: mutable Sounds&) -> void:
-            for slot in 0..<AudioEvents::MAX_INSTANCES |sounds|:
-                stop_slot(sounds, slot)
-            AudioEvents::reset(&sounds.board)
-            AudioTriggers::reset(&sounds.triggers.footfalls, &sounds.triggers.impacts)
-            sounds.tracked <- false
+        include "./sound_teardown.inc"
 
         def event_voices(sounds: Sounds&) -> usize:
             AudioEvents::live_count(&sounds.board)
@@ -442,57 +435,6 @@ module CourseSounds:
             catch AudioRuntime::stream_position(sounds.music):
                 value: value
                 error failure: 0
-
-        # Stop every voice and the stream, then release the clips, so a later
-        # `start` reuses the freed slots. Returns false if a release failed.
-        def stop(sounds: mutable Sounds&) -> bool:
-            return true if not sounds.live
-            if sounds.decisions.count > 0 and sounds.decisions.mode == RuntimeDecisionLog::Mode.Recording:
-                _ = RuntimeDecisionSessionStore::save_chunk(sounds.sealed_chunks, &sounds.decisions)
-            reset_scene(sounds)
-            _ = catch AudioRuntime::stop(sounds.ambience):
-                ok: true
-                error failure: false
-            _ = catch AudioRuntime::stop_stream(sounds.music):
-                ok: true
-                error failure: false
-            _ = catch AudioRuntime::stop_stream(sounds.victory):
-                ok: true
-                error failure: false
-            sounds.victory <- AudioRuntime::empty_stream()
-            sounds.score <- AudioMusic::Transition()
-            sounds.ambience <- AudioRuntime::empty_voice()
-            _ = catch AudioVirtual::remove(&sounds.sounds_virtual, sounds.ambience_sound):
-                ok: true
-                error failure: false
-            sounds.ambience_sound <- AudioVirtual::MAX_SOUNDS
-            sounds.music <- AudioRuntime::empty_stream()
-            sounds.live <- false
-            _ = catch AudioRuntime::set_bus_paused(AudioRuntime::Bus.Effects, false):
-                ok: true
-                error failure: false
-            released: mutable bool = release(sounds.jump_a)
-            released <- release(sounds.jump_b) and released
-            released <- release(sounds.land) and released
-            released <- release(sounds.win) and released
-            released <- release(sounds.fall) and released
-            released <- release(sounds.save) and released
-            released <- release(sounds.footstep) and released
-            released <- release(sounds.wind) and released
-            sounds.jump_a <- AudioRuntime::empty_clip()
-            sounds.jump_b <- AudioRuntime::empty_clip()
-            sounds.land <- AudioRuntime::empty_clip()
-            sounds.win <- AudioRuntime::empty_clip()
-            sounds.fall <- AudioRuntime::empty_clip()
-            sounds.save <- AudioRuntime::empty_clip()
-            sounds.footstep <- AudioRuntime::empty_clip()
-            sounds.wind <- AudioRuntime::empty_clip()
-            sounds.board <- AudioEvents::Board()
-            sounds.triggers <- SoundEventAssets::Triggers()
-            sounds.mix <- CourseSoundMix::settled_mix()
-            sounds.mood <- MOOD_PLAY
-            full: AudioMixer::Snapshot = mood_snapshot(sounds, MOOD_PLAY)
-            CourseSoundMix::apply_gains(full) and released
 
     private:
         def cue_stream(sounds: Sounds&, cue: u64) -> AudioRuntime::StreamHandle:
@@ -589,12 +531,30 @@ module CourseSounds:
         def heard_outcome(outcome: i32) -> bool:
             outcome == PLAYED or outcome == REPLACED
 
-        def stop_slot(sounds: mutable Sounds&, slot: usize) -> void:
+        def stop_slot(sounds: mutable Sounds&, slot: usize) -> bool:
             voice: AudioRuntime::VoiceHandle = catch AudioRuntime::VoiceHandles::get(&sounds.voices, slot):
                 value: value
                 error failure: AudioRuntime::empty_voice()
+            stopped: mutable bool = true
             if not AudioRuntime::voice_is_empty(voice):
-                _ = catch AudioRuntime::stop(voice):
+                stopped <- catch AudioRuntime::stop(voice):
                     ok: true
+                    AudioRuntime::AudioError.InvalidHandle: true
                     error failure: false
             AudioRuntime::VoiceHandles::clear(&sounds.voices, slot)
+            stopped
+
+        # A stolen or finished voice is already silent; other failures still
+        # matter to the owner that is shutting the sound set down.
+        def stop_voice(voice: AudioRuntime::VoiceHandle) -> bool:
+            return true if AudioRuntime::voice_is_empty(voice)
+            catch AudioRuntime::stop(voice):
+                ok: true
+                AudioRuntime::AudioError.InvalidHandle: true
+                error failure: false
+
+        def stop_stream(stream: AudioRuntime::StreamHandle) -> bool:
+            return true if AudioRuntime::stream_is_empty(stream)
+            catch AudioRuntime::stop_stream(stream):
+                ok: true
+                error failure: false
