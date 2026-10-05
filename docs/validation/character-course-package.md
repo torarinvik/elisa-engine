@@ -462,6 +462,10 @@ recorded `process_exit_status=0`. Jump, held crouch, full traversal, win/fall,
 and optional render paths still need coverage before relying on this mode for
 a release build.
 
+In the follow-up foreground check, pressing C once did not leave a visible
+`Crouched` status. The computer-use key API sends taps and cannot keep C held,
+so this does not test the game's hold-to-crouch behavior.
+
 The notice audit verified all bundled dylib, static-archive and shader-resource
 notice mappings without mapping errors. The catalog remains explicitly
 incomplete, so that result does not close distribution review. The validator
