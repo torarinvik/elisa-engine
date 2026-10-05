@@ -68,11 +68,22 @@ module CourseLiveInputPilot:
             WALK_TO_GOAL: i32 = 10
             RESTARTING: i32 = 11
             FALLING: i32 = 12
+            CAPTURING_WIN: i32 = 13
+            CAPTURING_FALL: i32 = 14
 
         const module Failure:
             INJECTION: i32 = 130
             TIMEOUT: i32 = 131
             COURSE_FAILED: i32 = 132
+            CAPTURE: i32 = 145
+
+        const module Capture:
+            WIN_PATH_VARIABLE: cstr = "ELISA_CHARACTER_COURSE_WIN_CAPTURE_PATH"
+            FALL_PATH_VARIABLE: cstr = "ELISA_CHARACTER_COURSE_FALL_CAPTURE_PATH"
+
+        def capture_outcome(path_variable: cstr) -> bool:
+            path: cstr = Application::environment_value(path_variable)
+            path == "" or Application::save_screenshot(path)
 
         def pilot_finish(pilot: mutable Pilot&) -> void:
             push_ok: mutable bool = true
@@ -154,8 +165,13 @@ module CourseLiveInputPilot:
                 if failed:
                     pilot.failed <- true
                     if pilot.stage == Stage::FALLING:
-                        pilot.saw_fall <- true
-                        pilot_finish(pilot)
+                        pilot.stage <- Stage::CAPTURING_FALL
+                    elif pilot.stage == Stage::CAPTURING_FALL:
+                        if capture_outcome(Capture::FALL_PATH_VARIABLE):
+                            pilot.saw_fall <- true
+                            pilot_finish(pilot)
+                        else:
+                            fail(pilot, Failure::CAPTURE)
                     else:
                         fail(pilot, Failure::COURSE_FAILED)
                 elif elapsed_nanos > pilot.started_nanos + Tune::TIMEOUT_NANOS:
@@ -197,13 +213,17 @@ module CourseLiveInputPilot:
                             pilot.stage <- Stage::FALLING
                         else:
                             fail(pilot, Failure::INJECTION)
-                elif won:
-                    pilot.won <- true
-                    if CourseTestInput::push(CourseTestInput::Key.Restart, true):
+                elif pilot.stage == Stage::CAPTURING_WIN:
+                    if not capture_outcome(Capture::WIN_PATH_VARIABLE):
+                        fail(pilot, Failure::CAPTURE)
+                    elif CourseTestInput::push(CourseTestInput::Key.Restart, true):
                         pilot.restart_held <- true
                         pilot.stage <- Stage::RESTARTING
                     else:
                         fail(pilot, Failure::INJECTION)
+                elif won:
+                    pilot.won <- true
+                    pilot.stage <- Stage::CAPTURING_WIN
                 elif pilot.stage == Stage::WALKING and x >= Tune::CROUCH_ENTER_X:
                     if CourseTestInput::push(CourseTestInput::Key.Crouch, true):
                         pilot.crouch_held <- true

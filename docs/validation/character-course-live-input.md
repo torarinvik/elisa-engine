@@ -46,8 +46,18 @@ PYTHON_BIN=/opt/homebrew/bin/python3.14 \
   --only character-course-live-input-smoke
 ```
 
-Result: pass (status 0, 158.43 seconds including compilation and linking). The
+Result: pass (status 0, 135.28 seconds including compilation and linking). The
 silent-audio override was enabled for the entire hidden app run.
+
+The live-input pilot now leaves each terminal state on screen for one full
+frame, then saves the presented win and fall images before restarting or
+exiting. The smoke runner decodes both RGBA PNGs, checks matching dimensions
+and visible content, and requires the HUD region to differ between outcomes.
+The saved images were inspected to confirm the summit and fall messages are
+readable at the hidden window's capture size. Artifacts are retained at
+`build/validation/character-course-presentation/win.png` and
+`build/validation/character-course-presentation/fall.png`. The app process is
+launched with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`.
 
 ## Monotonic frame time
 
@@ -74,4 +84,5 @@ compilation at `test/world_physics_pose_probe.elisa:67` because Stage1 rejects a
 non-static reference passed to `pool_submit1`; the focused clock smoke avoids
 that unrelated physics probe.
 
-Manual traversal and win/fall presentation remain unverified.
+Manual visible keyboard traversal remains unverified; the hidden route and its
+captured win/fall presentations are covered above.

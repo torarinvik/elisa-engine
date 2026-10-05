@@ -30,6 +30,9 @@ PNG_FILTER_NONE = 0
 MIN_VISIBLE_CAPTURE_PIXELS = 1000
 MIN_VISIBLE_CHANNEL_VALUE = 16
 MIN_HIERARCHY_CAPTURE_PIXELS = 100
+CHARACTER_COURSE_HUD_CAPTURE_HEIGHT = 96
+MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS = 8
+CAPTURE_PIXEL_CHANNEL_DELTA = 8
 
 
 def native_smoke_environment(source: dict[str, str]) -> dict[str, str]:
@@ -91,6 +94,36 @@ def decode_capture_png(data: bytes) -> tuple[int, int, bytes] | None:
         target_start = row * width * 4
         pixels[target_start:target_start + width * 4] = scanlines[source_start + 1:source_start + row_stride]
     return width, height, bytes(pixels)
+
+
+def character_course_presentation_error(win_path: Path, fall_path: Path) -> str | None:
+    """Require visible, same-sized outcome captures with a changed HUD region."""
+    decoded = []
+    for outcome, path in (("win", win_path), ("fall", fall_path)):
+        if not path.is_file():
+            return f"Character Course did not write its {outcome} presentation capture: {path}"
+        image = decode_capture_png(path.read_bytes())
+        if image is None:
+            return f"Character Course {outcome} presentation is not a valid RGBA PNG: {path}"
+        width, height, pixels = image
+        visible_pixels = sum(1 for index in range(0, len(pixels), 4)
+            if max(pixels[index:index + 3]) > MIN_VISIBLE_CHANNEL_VALUE)
+        if width <= 0 or height <= 0 or visible_pixels < MIN_VISIBLE_CAPTURE_PIXELS:
+            return f"Character Course {outcome} presentation is empty or has invalid dimensions."
+        decoded.append(image)
+    win, fall = decoded
+    if win[:2] != fall[:2]:
+        return "Character Course win and fall captures have mismatched dimensions."
+    width, height = win[0], win[1]
+    hud_height = min(height, CHARACTER_COURSE_HUD_CAPTURE_HEIGHT)
+    changed_hud_pixels = sum(
+        1 for y in range(hud_height) for x in range(width)
+        if any(abs(win[2][(y * width + x) * 4 + channel] -
+            fall[2][(y * width + x) * 4 + channel]) > CAPTURE_PIXEL_CHANNEL_DELTA
+            for channel in range(3)))
+    if changed_hud_pixels < MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS:
+        return "Character Course win and fall captures do not show a changed outcome HUD."
+    return None
 
 
 def write_physics_mesh_fixture(project: Path) -> None:
@@ -263,6 +296,13 @@ def main() -> int:
                 return 2
         physics_captures = ROOT / "build/validation/physics-render-cadence"
         physics_captures.mkdir(parents=True, exist_ok=True)
+        character_course_captures = ROOT / "build/validation/character-course-presentation"
+        character_course_win_capture = character_course_captures / "win.png"
+        character_course_fall_capture = character_course_captures / "fall.png"
+        if any(name == "character-course-live-input-smoke" for name, _ in projects):
+            character_course_captures.mkdir(parents=True, exist_ok=True)
+            character_course_win_capture.unlink(missing_ok=True)
+            character_course_fall_capture.unlink(missing_ok=True)
         frame_capture_dirs = {
             "30hz": physics_captures / "physics-30hz-frames",
             "120hz": physics_captures / "physics-120hz-frames",
@@ -322,14 +362,30 @@ def main() -> int:
             environment["ELISA_PHYSICS_120HZ_FRAME_CAPTURE_DIR"] = str(frame_capture_dirs["120hz"])
             environment["ELISA_HIERARCHY_BEFORE_CAPTURE_PATH"] = str(physics_captures / "hierarchy-before.png")
             environment["ELISA_HIERARCHY_AFTER_CAPTURE_PATH"] = str(physics_captures / "hierarchy-after.png")
+            if name == "character-course-live-input-smoke":
+                environment["ELISA_CHARACTER_COURSE_WIN_CAPTURE_PATH"] = str(character_course_win_capture)
+                environment["ELISA_CHARACTER_COURSE_FALL_CAPTURE_PATH"] = str(character_course_fall_capture)
             started = time.monotonic()
             completed = subprocess.run(command, env=environment, check=False,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
             sys.stdout.write(completed.stdout)
             sys.stdout.flush()
             status = completed.returncode
+            output = completed.stdout
+            if status == 0 and name == "character-course-live-input-smoke":
+                capture_error = character_course_presentation_error(
+                    character_course_win_capture, character_course_fall_capture)
+                if capture_error is None:
+                    capture_note = ("Validated Character Course win/fall presentation captures at "
+                        f"{character_course_win_capture} and {character_course_fall_capture}.")
+                    print(capture_note)
+                    output += capture_note + "\n"
+                else:
+                    print(capture_error, file=sys.stderr)
+                    status = 1
+                    output += capture_error + "\n"
             artifact = native_smoke_artifacts.record(ROOT / "build/native-smoke", name, Path(entry), status,
-                time.monotonic() - started, completed.stdout)
+                time.monotonic() - started, output)
             if status == 0 and name == "application-native-smoke":
                 header = screenshot.read_bytes()[:8] if screenshot.exists() else b""
                 if header != PNG_SIGNATURE:

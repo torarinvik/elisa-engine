@@ -3,9 +3,29 @@
 
 from __future__ import annotations
 
+import struct
+import tempfile
 import unittest
+import zlib
+from pathlib import Path
 
-from application_native_smoke import native_smoke_environment
+from application_native_smoke import (
+    MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS,
+    character_course_presentation_error,
+    native_smoke_environment,
+)
+
+
+def rgba_png(width: int, height: int, pixels: bytes) -> bytes:
+    def chunk(name: bytes, payload: bytes) -> bytes:
+        return (struct.pack(">I", len(payload)) + name + payload +
+            struct.pack(">I", zlib.crc32(name + payload) & 0xFFFFFFFF))
+
+    scanlines = b"".join(b"\x00" + pixels[row * width * 4:(row + 1) * width * 4]
+        for row in range(height))
+    header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) +
+        chunk(b"IDAT", zlib.compress(scanlines)) + chunk(b"IEND", b""))
 
 
 class ApplicationNativeSmokeTests(unittest.TestCase):
@@ -19,6 +39,23 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
         self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
         self.assertEqual(environment["ELISA_PROJECT_ROOT"], "/tmp/project")
         self.assertEqual(environment["PATH"], "/usr/bin")
+
+    def test_character_course_outcomes_require_visible_distinct_hud_captures(self) -> None:
+        width, height = 12, 100
+        win_pixels = bytes((32, 32, 32, 255)) * width * height
+        fall_pixels = bytearray(win_pixels)
+        for pixel in range(MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS):
+            fall_pixels[pixel * 4] = 96
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            win_path = Path(temporary_directory) / "win.png"
+            fall_path = Path(temporary_directory) / "fall.png"
+            win_path.write_bytes(rgba_png(width, height, win_pixels))
+            fall_path.write_bytes(rgba_png(width, height, bytes(fall_pixels)))
+            self.assertIsNone(character_course_presentation_error(win_path, fall_path))
+
+            fall_path.write_bytes(rgba_png(width, height, win_pixels))
+            self.assertIn("changed outcome HUD",
+                character_course_presentation_error(win_path, fall_path) or "")
 
 
 if __name__ == "__main__":

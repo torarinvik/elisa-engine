@@ -14,9 +14,9 @@
             if CourseState::phase(state) == CourseState::Phase.Paused:
                 "Paused | P resume | Tab controls | R restart | Q save | L load | Esc quit"
             elif CourseState::phase(state) == CourseState::Phase.Won:
-                "Summit reached! | R play again | Esc quit"
+                "Summit! | R replay | Esc quit"
             elif CourseState::phase(state) == CourseState::Phase.Failed:
-                "You fell! | R try again | Esc quit"
+                "You fell! | R retry | Esc quit"
             elif crouched:
                 "Crouched | Arrows also move | P pause | R restart"
             else:
