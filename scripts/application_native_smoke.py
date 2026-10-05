@@ -230,6 +230,9 @@ def main() -> int:
             ("character-course-relaunch-smoke", ROOT / "examples/character_course/relaunch_main.elisa"),
             # The real course loop, piloted by pushed key events across streamed floor cells.
             ("character-course-cells-smoke", ROOT / "examples/character_course/stream_test_main.elisa"),
+            # The real game loop, with the controller driven to the summit through SDL events.
+            ("character-course-live-input-smoke",
+                ROOT / "examples/character_course/live_input_test_main.elisa"),
             ("physics-collision-layers-smoke", ROOT / "test/physics_collision_layers_native.elisa"),
             ("physics-mesh-shapes-smoke", ROOT / "test/physics_mesh_shapes_native.elisa"),
             ("physics-render-capture-smoke", ROOT / "test/physics_render_capture_native.elisa"),

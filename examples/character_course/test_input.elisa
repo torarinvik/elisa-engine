@@ -1,0 +1,35 @@
+# Narrow test-only bridge for injecting SDL events through the live input path.
+module CourseTestInput:
+    public:
+        enum Key:
+            Right
+            Left
+            Escape
+            Space
+            Crouch
+            Forward
+
+    private:
+        const module NativeKey:
+            RIGHT: i32 = 1
+            LEFT: i32 = 2
+            ESCAPE: i32 = 3
+            SPACE: i32 = 4
+            CROUCH: i32 = 5
+            FORWARD: i32 = 6
+
+        @callconv(c)
+        extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
+
+        def native_key(key: Key) -> i32:
+            match key:
+                Key.Right: NativeKey::RIGHT
+                Key.Left: NativeKey::LEFT
+                Key.Escape: NativeKey::ESCAPE
+                Key.Space: NativeKey::SPACE
+                Key.Crouch: NativeKey::CROUCH
+                Key.Forward: NativeKey::FORWARD
+
+    public:
+        def push(key: Key, down: bool) -> bool:
+            elisa_application_v1_test_push_key(native_key(key), 1 if down else 0) == 0

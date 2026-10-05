@@ -504,6 +504,10 @@ module CharacterCourse:
         def run_cells_test() -> i32:
             run_mode(3)
 
+        # Plays to the summit using pushed keys and the ordinary game loop.
+        def run_live_input_test() -> i32:
+            run_mode(4)
+
         def run_mode(mode: i32) -> i32:
             catch run_mode_cells(mode):
                 value: value

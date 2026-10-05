@@ -1,0 +1,5 @@
+include "./course.elisa"
+
+# Hidden end-to-end test: real key events complete the authored course.
+def main() -> i32:
+    CharacterCourse::run_live_input_test()

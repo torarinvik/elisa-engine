@@ -17,6 +17,7 @@ include "../../src/runtime/render_scene_streamed.elisa"
 include "../../src/world/cell_asset_world.elisa"
 include "../../src/world/cell_memory_budget.elisa"
 include "../../src/world/cell_visuals.elisa"
+include "./live_input_pilot.elisa"
 
 module CourseCells:
     public:
@@ -57,49 +58,43 @@ module CourseCells:
             PILOT_RELEASE_CODE: i32 = 116
 
         affine struct Cells:
-            shelf: mutable VisualShelf::Shelf
-            ledger: mutable CellAssets::Ledger
-            meshes: mutable AssetStream::StreamHandle[2]
-            paints: mutable AssetStream::StreamHandle[CellTune::PAINTS]
-            cell_x: mutable i64[CellTune::SLOTS]
-            cell_z: mutable i64[CellTune::SLOTS]
-            stage: mutable i32[CellTune::SLOTS]
-            rows: mutable RenderScene::InstanceHandle[CellTune::SLOTS]
-            opened: mutable bool
-            failure: mutable i32
-            loads: mutable i64
-            crossings: mutable i64
-            violations: mutable i64
-            generation: mutable i64
-            last_x: mutable i64
-            last_z: mutable i64
-            player_z: mutable f32
-            warm_gpu: mutable i64
-            warm_cpu: mutable i64
-            heading: mutable i32
-            legs: mutable i64
-            quit_sent: mutable bool
-            started_nanos: mutable u64
-            action_stage: mutable i32
-            action_deadline_nanos: mutable u64
-            action_start_height: mutable f32
-            player_height: mutable f32
-            saw_crouch: mutable bool
-            released_crouch: mutable bool
-            stood_after_crouch: mutable bool
-            jumped: mutable bool
+            private:
+                shelf: mutable VisualShelf::Shelf
+                ledger: mutable CellAssets::Ledger
+                meshes: mutable AssetStream::StreamHandle[2]
+                paints: mutable AssetStream::StreamHandle[CellTune::PAINTS]
+                cell_x: mutable i64[CellTune::SLOTS]
+                cell_z: mutable i64[CellTune::SLOTS]
+                stage: mutable i32[CellTune::SLOTS]
+                rows: mutable RenderScene::InstanceHandle[CellTune::SLOTS]
+                opened: mutable bool
+                failure: mutable i32
+                loads: mutable i64
+                crossings: mutable i64
+                violations: mutable i64
+                generation: mutable i64
+                last_x: mutable i64
+                last_z: mutable i64
+                player_x: mutable f32
+                player_y: mutable f32
+                player_z: mutable f32
+                warm_gpu: mutable i64
+                warm_cpu: mutable i64
+                heading: mutable i32
+                legs: mutable i64
+                quit_sent: mutable bool
+                started_nanos: mutable u64
+                action_stage: mutable i32
+                action_deadline_nanos: mutable u64
+                action_start_height: mutable f32
+                player_height: mutable f32
+                saw_crouch: mutable bool
+                released_crouch: mutable bool
+                stood_after_crouch: mutable bool
+                jumped: mutable bool
+                live_pilot: mutable CourseLiveInputPilot::Pilot
 
     private:
-        @callconv(c)
-        extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
-
-        const module PilotKey:
-            RIGHT: i32 = 1
-            LEFT: i32 = 2
-            ESCAPE: i32 = 3
-            SPACE: i32 = 4
-            CROUCH: i32 = 5
-
         def cells_key_of(high: u64, low: u64) -> AssetLoader::RequestKey:
             AssetLoader::RequestKey{id: Assets::AssetId{high: high, low: low}, variant: Assets::ArtifactVariant.Runtime}
 
@@ -319,30 +314,30 @@ module CourseCells:
                 cells.violations <- cells.violations + 1 if not gpu_ok or not cpu_ok
             0
 
-        def cells_push(cells: mutable Cells&, key: i32, down: bool) -> void:
-            pushed: i32 = elisa_application_v1_test_push_key(key, 1 if down else 0)
-            cells.failure <- 100 if pushed != 0 and cells.failure == 0
+        def cells_push(cells: mutable Cells&, key: CourseTestInput::Key, down: bool) -> void:
+            pushed: bool = CourseTestInput::push(key, down)
+            cells.failure <- 100 if not pushed and cells.failure == 0
 
         def cells_quit(cells: mutable Cells&) -> void:
             if cells.heading == 1:
-                cells_push(cells, PilotKey::RIGHT, false)
+                cells_push(cells, CourseTestInput::Key.Right, false)
             elif cells.heading == 2:
-                cells_push(cells, PilotKey::LEFT, false)
+                cells_push(cells, CourseTestInput::Key.Left, false)
             cells.heading <- 3
-            cells_push(cells, PilotKey::ESCAPE, true)
+            cells_push(cells, CourseTestInput::Key.Escape, true)
             cells.quit_sent <- true
 
         # After a leg ends, start the next one or quit once all legs are done.
-        def cells_turn(cells: mutable Cells&, released: i32) -> void:
+        def cells_turn(cells: mutable Cells&, released: CourseTestInput::Key) -> void:
             cells_push(cells, released, false)
             cells.legs <- cells.legs + 1
             cells.heading <- 0
             if cells.legs >= CellTune::PILOT_LEGS:
                 cells_quit(cells)
             else:
-                next_key: i32 = PilotKey::LEFT if released == PilotKey::RIGHT else PilotKey::RIGHT
+                next_key: CourseTestInput::Key = CourseTestInput::Key.Left if released == CourseTestInput::Key.Right else CourseTestInput::Key.Right
                 cells_push(cells, next_key, true)
-                cells.heading <- 2 if next_key == PilotKey::LEFT else 1
+                cells.heading <- 2 if next_key == CourseTestInput::Key.Left else 1
 
     public:
         # The cell World and CellWorld::Runtime are large; the caller owns
@@ -357,12 +352,14 @@ module CourseCells:
                 cell_x: zeroed, cell_z: zeroed, stage: zeroed,
                 rows: [empty, empty, empty, empty, empty, empty],
                 opened: false, failure: 0, loads: 0, crossings: 0, violations: 0, generation: 0,
-                last_x: -1, last_z: -1, player_z: 0.0, warm_gpu: 0, warm_cpu: 0,
+                last_x: -1, last_z: -1, player_x: 0.0, player_y: 0.0,
+                player_z: 0.0, warm_gpu: 0, warm_cpu: 0,
                 heading: 0, legs: 0, quit_sent: false, started_nanos: 0,
                 action_stage: 0, action_deadline_nanos: 0,
                 action_start_height: 0.0, player_height: 0.0,
                 saw_crouch: false, released_crouch: false,
-                stood_after_crouch: false, jumped: false}
+                stood_after_crouch: false, jumped: false,
+                live_pilot: CourseLiveInputPilot::Pilot()}
             return move cells
 
         def cells_make_runtime() -> CellWorld::Runtime:
@@ -381,10 +378,12 @@ module CourseCells:
         # Called once per played frame with the player's position. The first
         # failure stops streaming and is kept for the verdict.
         def update(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&, position: Geometry::Vec3) -> void:
+            cells.player_z <- position.z
+            cells.player_x <- position.x
+            cells.player_y <- position.y
             if cells.opened and cells.failure == 0:
                 cx: i64 = cells_axis(position.x, CellTune::ORIGIN_X, CellTune::GRID_X)
                 cz: i64 = cells_axis(position.z, CellTune::ORIGIN_Z, CellTune::GRID_Z)
-                cells.player_z <- position.z
                 moved: bool = cx != cells.last_x or cz != cells.last_z
                 cells.crossings <- cells.crossings + 1 if cells.last_x >= 0 and moved
                 cells.last_x <- cx
@@ -421,27 +420,35 @@ module CourseCells:
                 elif cells.legs == 0 and cells.heading == 0:
                     if cells.loads > 0:
                         cells.action_start_height <- cells.player_height
-                        cells_push(cells, PilotKey::CROUCH, true)
-                        cells_push(cells, PilotKey::RIGHT, true)
+                        cells_push(cells, CourseTestInput::Key.Crouch, true)
+                        cells_push(cells, CourseTestInput::Key.Right, true)
                         cells.heading <- 1
                         cells.action_stage <- 1
                         cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_CROUCH_NANOS
                 elif cells.action_stage == 1 and elapsed_nanos >= cells.action_deadline_nanos:
-                    cells_push(cells, PilotKey::CROUCH, false)
+                    cells_push(cells, CourseTestInput::Key.Crouch, false)
                     cells.action_stage <- 2
                     cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_STAND_NANOS
                 elif cells.action_stage == 2 and elapsed_nanos >= cells.action_deadline_nanos:
                     cells.action_start_height <- cells.player_height
-                    cells_push(cells, PilotKey::SPACE, true)
+                    cells_push(cells, CourseTestInput::Key.Space, true)
                     cells.action_stage <- 3
                     cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_JUMP_NANOS
                 elif cells.action_stage == 3 and elapsed_nanos >= cells.action_deadline_nanos:
-                    cells_push(cells, PilotKey::SPACE, false)
+                    cells_push(cells, CourseTestInput::Key.Space, false)
                     cells.action_stage <- 4
                 if cells.heading == 1 and cells.player_z >= CellTune::PILOT_HIGH_Z:
-                    cells_turn(cells, PilotKey::RIGHT)
+                    cells_turn(cells, CourseTestInput::Key.Right)
                 elif cells.heading == 2 and cells.player_z <= CellTune::PILOT_LOW_Z:
-                    cells_turn(cells, PilotKey::LEFT)
+                    cells_turn(cells, CourseTestInput::Key.Left)
+
+        # Drives the live course objective through the public key/action path.
+        def pilot_course(cells: mutable Cells&, elapsed_nanos: u64,
+            crouched: bool, crouch_down: bool, grounded: bool,
+            won: bool, failed: bool) -> void:
+            CourseLiveInputPilot::tick(&cells.live_pilot, elapsed_nanos,
+                cells.loads > 0, cells.player_x, cells.player_y, cells.player_z,
+                crouched, crouch_down, grounded, won, failed)
 
         # Rows, then cells, then their native loads; 0 or a failure code.
         def close(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&) -> i32:
@@ -477,3 +484,12 @@ module CourseCells:
             return CellTune::PILOT_STAND_CODE if not cells.stood_after_crouch
             return CellTune::PILOT_JUMP_CODE if not cells.jumped
             0
+
+        # Mode 4 also checks the traversed game's streamed floor cells.
+        def course_verdict(cells: Cells&, closed: i32) -> i32:
+            return cells.failure if cells.failure != 0
+            return closed if closed != 0
+            return 104 if cells.violations != 0
+            return 105 if cells.loads < 6
+            return 106 if cells.crossings < 6
+            CourseLiveInputPilot::verdict(cells.live_pilot)

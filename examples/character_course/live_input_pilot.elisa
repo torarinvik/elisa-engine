@@ -1,0 +1,182 @@
+# Hidden integration pilot for the ordinary SDL input and character loop.
+include "./test_input.elisa"
+
+module CourseLiveInputPilot:
+    public:
+        affine struct Pilot:
+            private:
+                stage: mutable i32
+                started: mutable bool
+                finished: mutable bool
+                won: mutable bool
+                failed: mutable bool
+                forward_held: mutable bool
+                crouch_held: mutable bool
+                jump_held: mutable bool
+                lateral_held: mutable bool
+                crossed_step: mutable bool
+                saw_crouch: mutable bool
+                released_crouch: mutable bool
+                stood_after_crouch: mutable bool
+                jumped: mutable bool
+                reached_platform: mutable bool
+                reached_goal_lane: mutable bool
+                started_nanos: mutable u64
+                jump_deadline_nanos: mutable u64
+                jump_observe_until_nanos: mutable u64
+                jump_start_height: mutable f32
+                failure: mutable i32
+
+    private:
+        const module Tune:
+            TIMEOUT_NANOS: u64 = 45000000000
+            JUMP_HOLD_NANOS: u64 = 120000000
+            JUMP_OBSERVE_NANOS: u64 = 600000000
+            CROUCH_ENTER_X: f32 = -7.5
+            CROUCH_EXIT_X: f32 = -3.6
+            JUMP_START_X: f32 = -3.0
+            LANE_START_X: f32 = 6.0
+            STEP_CLEAR_X: f32 = -7.65
+            LANE_TARGET_Z: f32 = 1.7
+            PLATFORM_MARKER_X: f32 = 5.0
+            # Match the route check's authored platform-center height.
+            PLATFORM_MINIMUM_Y: f32 = 1.8
+            JUMP_RISE: f32 = 0.15
+
+        const module Stage:
+            WAITING: i32 = 0
+            WALKING: i32 = 1
+            CROUCHING: i32 = 2
+            CLEAR_TUNNEL: i32 = 3
+            JUMPING: i32 = 4
+            AFTER_JUMP: i32 = 5
+            TURNING_TO_GOAL: i32 = 6
+            WALK_TO_GOAL: i32 = 7
+
+        const module Failure:
+            INJECTION: i32 = 130
+            TIMEOUT: i32 = 131
+            COURSE_FAILED: i32 = 132
+
+        def pilot_finish(pilot: mutable Pilot&) -> void:
+            push_ok: mutable bool = true
+            if pilot.forward_held:
+                push_ok <- CourseTestInput::push(CourseTestInput::Key.Forward, false)
+                pilot.forward_held <- false
+            if pilot.crouch_held:
+                crouch_released: bool = CourseTestInput::push(CourseTestInput::Key.Crouch, false)
+                push_ok <- push_ok and crouch_released
+                pilot.crouch_held <- false
+            if pilot.jump_held:
+                jump_released: bool = CourseTestInput::push(CourseTestInput::Key.Space, false)
+                push_ok <- push_ok and jump_released
+                pilot.jump_held <- false
+            if pilot.lateral_held:
+                lateral_released: bool = CourseTestInput::push(CourseTestInput::Key.Right, false)
+                push_ok <- push_ok and lateral_released
+                pilot.lateral_held <- false
+            exit_pushed: bool = CourseTestInput::push(CourseTestInput::Key.Escape, true)
+            push_ok <- push_ok and exit_pushed
+            pilot.failure <- Failure::INJECTION if not push_ok and pilot.failure == 0
+            pilot.finished <- true
+
+        def fail(pilot: mutable Pilot&, code: i32) -> void:
+            pilot.failure <- code if pilot.failure == 0
+            pilot_finish(pilot)
+
+    public:
+        def Pilot() -> Pilot:
+            Pilot{stage: Stage::WAITING, started: false, finished: false,
+                won: false, failed: false, forward_held: false,
+                crouch_held: false, jump_held: false, lateral_held: false,
+                crossed_step: false, saw_crouch: false, released_crouch: false,
+                stood_after_crouch: false, jumped: false, reached_platform: false,
+                reached_goal_lane: false, started_nanos: 0,
+                jump_deadline_nanos: 0, jump_observe_until_nanos: 0,
+                jump_start_height: 0.0, failure: 0}
+
+        # Called before input draining with the last simulated pose. Every key
+        # goes through the same SDL pump and action bindings as player input.
+        def tick(pilot: mutable Pilot&, elapsed_nanos: u64, ready: bool,
+            x: f32, y: f32, z: f32, crouched: bool, crouch_down: bool,
+            grounded: bool, won: bool, failed: bool) -> void:
+            if pilot.started and not pilot.finished:
+                pilot.crossed_step <- true if x >= Tune::STEP_CLEAR_X
+                pilot.saw_crouch <- true if crouched and x >= Tune::CROUCH_ENTER_X and x <= Tune::CROUCH_EXIT_X
+                pilot.released_crouch <- true if pilot.saw_crouch and not crouch_down
+                pilot.stood_after_crouch <- true if pilot.saw_crouch and not crouched and x >= Tune::CROUCH_EXIT_X
+                pilot.jumped <- true if elapsed_nanos <= pilot.jump_observe_until_nanos and y >= pilot.jump_start_height + Tune::JUMP_RISE
+                pilot.reached_platform <- true if x >= Tune::PLATFORM_MARKER_X and y >= Tune::PLATFORM_MINIMUM_Y
+                pilot.reached_goal_lane <- true if z >= Tune::LANE_TARGET_Z
+                pilot.won <- won
+                pilot.failed <- failed
+            if not pilot.started:
+                if ready:
+                    pilot.started_nanos <- elapsed_nanos
+                    pilot.started <- true
+                    if CourseTestInput::push(CourseTestInput::Key.Forward, true):
+                        pilot.forward_held <- true
+                        pilot.stage <- Stage::WALKING
+                    else:
+                        fail(pilot, Failure::INJECTION)
+            elif not pilot.finished:
+                if won:
+                    pilot.won <- true
+                    pilot_finish(pilot)
+                elif failed:
+                    pilot.failed <- true
+                    fail(pilot, Failure::COURSE_FAILED)
+                elif elapsed_nanos > pilot.started_nanos + Tune::TIMEOUT_NANOS:
+                    fail(pilot, Failure::TIMEOUT)
+                elif pilot.stage == Stage::WALKING and x >= Tune::CROUCH_ENTER_X:
+                    if CourseTestInput::push(CourseTestInput::Key.Crouch, true):
+                        pilot.crouch_held <- true
+                        pilot.stage <- Stage::CROUCHING
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::CROUCHING and x >= Tune::CROUCH_EXIT_X:
+                    if CourseTestInput::push(CourseTestInput::Key.Crouch, false):
+                        pilot.crouch_held <- false
+                        pilot.stage <- Stage::CLEAR_TUNNEL
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::CLEAR_TUNNEL and x >= Tune::JUMP_START_X and grounded:
+                    pilot.jump_start_height <- y
+                    pilot.jump_deadline_nanos <- elapsed_nanos + Tune::JUMP_HOLD_NANOS
+                    pilot.jump_observe_until_nanos <- elapsed_nanos + Tune::JUMP_OBSERVE_NANOS
+                    if CourseTestInput::push(CourseTestInput::Key.Space, true):
+                        pilot.jump_held <- true
+                        pilot.stage <- Stage::JUMPING
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::JUMPING and elapsed_nanos >= pilot.jump_deadline_nanos:
+                    if CourseTestInput::push(CourseTestInput::Key.Space, false):
+                        pilot.jump_held <- false
+                        pilot.stage <- Stage::AFTER_JUMP
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::AFTER_JUMP and x >= Tune::LANE_START_X:
+                    if CourseTestInput::push(CourseTestInput::Key.Right, true):
+                        pilot.lateral_held <- true
+                        pilot.stage <- Stage::TURNING_TO_GOAL
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::TURNING_TO_GOAL and z >= Tune::LANE_TARGET_Z:
+                    if CourseTestInput::push(CourseTestInput::Key.Right, false):
+                        pilot.lateral_held <- false
+                        pilot.stage <- Stage::WALK_TO_GOAL
+                    else:
+                        fail(pilot, Failure::INJECTION)
+
+        # 0 means the real game loop completed the authored route.
+        def verdict(pilot: Pilot&) -> i32:
+            return pilot.failure if pilot.failure != 0
+            return 133 if not pilot.started or not pilot.finished
+            return 134 if not pilot.crossed_step
+            return 135 if not pilot.saw_crouch
+            return 136 if not pilot.released_crouch or not pilot.stood_after_crouch
+            return 137 if not pilot.jumped
+            return 138 if not pilot.reached_platform
+            return 139 if not pilot.reached_goal_lane
+            return 140 if pilot.failed or not pilot.won
+            0

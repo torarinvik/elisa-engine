@@ -26,6 +26,28 @@ PYTHON_BIN=/opt/homebrew/bin/python3.14 \
 Result: pass (status 0). The run took 190.64 seconds including compilation and
 linking.
 
+## Full course through live input
+
+`character-course-live-input-smoke` starts the ordinary hidden course loop and
+drives W, C, Space and Right-arrow events through SDL's event pump and normal
+action bindings. It completes the step, crouches through the tunnel, releases
+crouch and stands, jumps onto the ramp/platform route, turns into the goal lane,
+and wins. The pilot checks each milestone and fails on a timeout or course
+failure. This run also checks that streamed floor cells stay valid during the
+traversal.
+
+```sh
+ELISA_COMPILER_BIN="$HOME/.elisac/elisac-stage1" \
+ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+PYTHON_BIN=/opt/homebrew/bin/python3.14 \
+/opt/homebrew/bin/python3.14 scripts/application_native_smoke.py \
+  --only character-course-live-input-smoke
+```
+
+Result: pass (status 0, 110.69 seconds including compilation and linking). The
+silent-audio override was enabled for the entire hidden app run.
+
 ## Monotonic frame time
 
 The native `FrameInfo.elapsed_nanos` now reports monotonic time since app

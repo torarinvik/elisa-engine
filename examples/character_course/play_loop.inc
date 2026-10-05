@@ -60,8 +60,8 @@
                 value: value
                 error failure: return 35
             # Floor cells stream in and out around the player (cells.elisa);
-            # mode 3 also pilots the player with real key events.
-            return 37 if not CourseCells::open(cells, Tune::START_Z) and mode == 3
+            # modes 3 and 4 also drive the real SDL input path.
+            return 37 if not CourseCells::open(cells, Tune::START_Z) and (mode == 3 or mode == 4)
             if saved_controls.status == CourseControls::LoadStatus.Rejected or saved_controls.status == CourseControls::LoadStatus.Unreadable:
                 _ = try RenderScene::set_overlay_text(instruction,
                     "Saved controls were invalid; defaults restored")
@@ -80,6 +80,10 @@
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     if mode == 3:
                         CourseCells::pilot(cells, frame.elapsed_nanos)
+                    elif mode == 4:
+                        CourseCells::pilot_course(cells, frame.elapsed_nanos,
+                            crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
+                            grounded, state.phase == Phase.Won, state.phase == Phase.Failed)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
                     look_wanted: bool = state.phase == Phase.Playing and not menu_open
                     if look_wanted != look_held:
@@ -305,4 +309,5 @@
             try NavMesh::unload(guide.mesh)
             closed_cells: i32 = CourseCells::close(cells, cell_runtime, cell_world)
             return CourseCells::verdict(cells, closed_cells) if mode == 3
+            return CourseCells::course_verdict(cells, closed_cells) if mode == 4
             0
