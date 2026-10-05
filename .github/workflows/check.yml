@@ -90,6 +90,78 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build dependencies
         run: brew install protobuf openssl@3 freetype harfbuzz zstd
+      # Keep this cache scoped to the hosted macOS toolchain and the exact
+      # dependency/build inputs. The fingerprint hashes the installed ABI
+      # package versions plus the compiler and CMake versions.
+      - name: Native dependency cache fingerprint
+        id: native-cache
+        run: |
+          set -euo pipefail
+          brew list --versions protobuf openssl@3 freetype harfbuzz zstd > /tmp/native-brew-versions
+          {
+            clang++ --version | head -n 1
+            cmake --version | head -n 1
+            sw_vers --productVersion
+            xcrun --sdk macosx --show-sdk-version
+            xcodebuild -version | head -n 2
+            cat /tmp/native-brew-versions
+            printf '%s\n' \
+              'CMAKE_BUILD_TYPE=Release' \
+              'GNS:BUILD_SHARED_LIB=OFF,BUILD_STATIC_LIB=ON,USE_STEAM_SOCKETS=OFF' \
+              'Basis:target=basisu' \
+              'ozz:tools/samples/howtos/tests=OFF;targets=ozz_animation,ozz_animation_offline' \
+              'Recast:POLICY=3.5,DEMO/TESTS/EXAMPLES=OFF;targets=Recast,Detour'
+          } > /tmp/native-cache-inputs
+          echo "toolchain=$(shasum -a 256 /tmp/native-cache-inputs | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+      # No broad restore key: only an exact platform/toolchain/source match
+      # can reuse compiled outputs. Native inputs stay separate from build/ci.
+      - name: Restore native dependency cache
+        id: native-deps
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            dependencies/gns
+            dependencies/basisu
+            dependencies/ozz
+            dependencies/recast
+          key: native-${{ runner.os }}-${{ runner.arch }}-gns-a424b7db649438acafb60c99cae6667587c42732-basis-99f52d63aa6799cbdaecfe977111dc5ec3b31d47-ozz-6cbdc790123aa4731d82e255df187b3a8a808256-recast-6dc1667f580357e8a2154c28b7867bea7e8ad3a7-clang-cmake-${{ steps.native-cache.outputs.toolchain }}-${{ hashFiles('scripts/fetch_gns.py', 'scripts/fetch_basisu.py', 'scripts/fetch_ozz.py', 'scripts/fetch_recast.py') }}
+      - name: Validate restored native dependencies
+        if: steps.native-deps.outputs.cache-hit == 'true'
+        run: |
+          python3 - <<'PY'
+          import shutil
+          import subprocess
+          from pathlib import Path
+
+          dependencies = Path("dependencies")
+          specs = {
+              "gns": ("a424b7db649438acafb60c99cae6667587c42732", ("build/src/libGameNetworkingSockets_s.a",)),
+              "basisu": ("99f52d63aa6799cbdaecfe977111dc5ec3b31d47", ("bin/basisu",)),
+              "ozz": ("6cbdc790123aa4731d82e255df187b3a8a808256", (
+                  "build/src/base/libozz_base_r.a",
+                  "build/src/animation/runtime/libozz_animation_r.a",
+                  "build/src/animation/offline/libozz_animation_offline_r.a",
+              )),
+              "recast": ("6dc1667f580357e8a2154c28b7867bea7e8ad3a7", (
+                  "build/Recast/libRecast.a", "build/Detour/libDetour.a",
+              )),
+          }
+          for name, (revision, outputs) in specs.items():
+              checkout = dependencies / name
+              try:
+                  head = subprocess.check_output(
+                      ["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True,
+                      stderr=subprocess.DEVNULL,
+                  ).strip()
+                  valid = head == revision and all((checkout / output).is_file() for output in outputs)
+              except (OSError, subprocess.CalledProcessError):
+                  valid = False
+              if not valid:
+                  print(f"Discarding incomplete or stale {name} cache; fetch step will rebuild it")
+                  shutil.rmtree(checkout, ignore_errors=True)
+              else:
+                  print(f"Validated {name} at {revision}")
+          PY
       - name: GameNetworkingSockets transport
         run: python3 scripts/ci_stage.py build/ci native gns-probe -- python3 scripts/gns_probe.py
       - name: Basis Universal KTX2
@@ -102,6 +174,16 @@ jobs:
         run: python3 scripts/ci_stage.py build/ci native crash-report -- python3 scripts/test_crash_report.py
       - name: Boundary sanitizers (ASan + UBSan)
         run: python3 scripts/ci_stage.py build/ci native boundary-sanitizers -- python3 scripts/run_boundary_sanitized.py
+      - name: Save validated native dependency cache
+        if: success() && steps.native-deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            dependencies/gns
+            dependencies/basisu
+            dependencies/ozz
+            dependencies/recast
+          key: native-${{ runner.os }}-${{ runner.arch }}-gns-a424b7db649438acafb60c99cae6667587c42732-basis-99f52d63aa6799cbdaecfe977111dc5ec3b31d47-ozz-6cbdc790123aa4731d82e255df187b3a8a808256-recast-6dc1667f580357e8a2154c28b7867bea7e8ad3a7-clang-cmake-${{ steps.native-cache.outputs.toolchain }}-${{ hashFiles('scripts/fetch_gns.py', 'scripts/fetch_basisu.py', 'scripts/fetch_ozz.py', 'scripts/fetch_recast.py') }}
       # Hosted runners have no GPU session: this artifact is headless evidence
       # only (`hardware_verification: unverified`). GPU workstation evidence is
       # `build/native-gate.json` from `native_gate.elisascript native`.
