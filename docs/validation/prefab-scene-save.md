@@ -6,6 +6,15 @@
 
 `test/prefab_scene.elisa` covers a nested placement override, a visual override, capture, rejection of an unknown authoring ID without allocating entities, and restore into a separately constructed world. It verifies that old references are invalid in the new world, the world-space placement and stable visual IDs survive, and all entities are released after teardown.
 
+The same test saturates a replacement world to 254 of 256 entity slots. The
+first two-node link restores, the second link fails its capacity preflight, and
+`spawn_restored` must remove the first link while preserving the 254 existing
+entities and leaving the destination instance empty. After four filler entities
+are removed, retrying the same restore succeeds and destroy returns the live
+count to the remaining 250. This checks failed replacement rollback and
+retryability in the pure world adapter; it does not measure native resource
+handles or sanitizer behavior.
+
 `PrefabSceneCodec` adds a bounded binary format for persisting this snapshot through
 `UserData::write_payload` and `read_payload`. Version 1 uses a fixed little-endian
 header, link rows, and override records; transforms retain their exact f32 bits,
