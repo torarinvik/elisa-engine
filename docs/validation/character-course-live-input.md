@@ -51,9 +51,10 @@ PYTHONPATH=scripts \
   --only character-course-live-input-smoke
 ```
 
-Fresh rerun on Stage1 provenance `bc8def2e`: pass (status 0, 123.563 seconds,
-including compilation and linking). The silent-audio override was enabled for
-the entire hidden app run. Results are recorded in
+Fresh reruns on Stage1 provenance `bc8def2e` (123.563 seconds) and `54178854`
+(265.037 seconds) passed, including compilation and linking. The latest run set
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` in the parent environment, keeping the
+entire hidden app run on the silent route. Results are recorded in
 `build/native-smoke/character-course-live-input-smoke.json`.
 
 The live-input pilot now leaves each terminal state on screen for one full
