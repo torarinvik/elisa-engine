@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -190,6 +191,7 @@ class Provisioner:
             self.report["build_blocker"] = self.lock["build_blocker"]
             self.save()
             raise ProvisionError(self.lock["build_blocker"]["detail"])
+        self.verify_bootstrap_go()
         sources = self.fetch_sources()
         core, compiler, proof, script = (sources[key] for key in REPOSITORIES)
         llvm_prefix = os.environ.get("LLVM_PREFIX", "")
@@ -238,6 +240,47 @@ class Provisioner:
         self.report["evidence_class"] = "hosted-portable"
         self.save()
 
+    def verify_bootstrap_go(self) -> str:
+        executable = shutil.which("go")
+        if not executable:
+            self.report["toolchain_preflight"] = {
+                "go": {"expected": self.lock["bootstrap_go"], "state": "failed", "error": "go is not on PATH"}
+            }
+            self.save()
+            raise ProvisionError("locked Go bootstrap is unavailable: go is not on PATH")
+        result = subprocess.run([executable, "version"], text=True, stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE, check=False)
+        output = result.stdout.strip()
+        match = re.search(r"(?:^|\s)go version go([^\s]+)", output)
+        observed = match.group(1) if match else ""
+        go_record = {
+            "expected": self.lock["bootstrap_go"],
+            "observed": observed,
+            "executable": self.display_path(Path(executable)),
+            "version_output": output,
+            "state": "passed" if result.returncode == 0 and observed == self.lock["bootstrap_go"] else "failed",
+        }
+        self.report["toolchain_preflight"] = {"go": go_record}
+        self.save()
+        if result.returncode != 0:
+            raise ProvisionError(f"go version failed with status {result.returncode}: {result.stderr.strip()}")
+        if observed != self.lock["bootstrap_go"]:
+            raise ProvisionError(f"Go version mismatch: lock requires {self.lock['bootstrap_go']}, found {observed or 'unrecognized'}")
+        return observed
+
+    def mark_failed(self, error: Exception) -> None:
+        if self.report.get("state") in {"blocked", "failed", "passed"}:
+            return
+        for entry in reversed(self.report.get("stages", [])):
+            if "state" not in entry:
+                entry["state"] = "failed"
+                entry["error"] = str(error)
+                entry["finished_unix"] = int(time.time())
+                break
+        self.report["state"] = "failed"
+        self.report["failure"] = {"type": type(error).__name__, "message": str(error)}
+        self.save()
+
     def record_artifacts(self, compiler: Path, proof: Path) -> None:
         products = {
             "stage0_compiler": self.sources / "elisa_core/compiler/bin/elisac",
@@ -266,11 +309,15 @@ def main(argv: list[str] | None = None) -> int:
     operation.add_argument("--build", action="store_true", help="build all pinned compiler/prover/script products")
     operation.add_argument("--plan", action="store_true", help="print pins and documented build commands without running them")
     args = parser.parse_args(argv)
+    provisioner: Provisioner | None = None
     try:
         lock = load_lock(args.lock)
         if args.plan:
             print(json.dumps({"schema": lock["schema"], "bootstrap_go": lock["bootstrap_go"],
                               "build_eligibility": lock["build_eligibility"], "build_blocker": lock.get("build_blocker"),
+                              "hosted_build_execution": "deferred" if lock["build_eligibility"] != "ready" else "enabled",
+                              "message": ("Hosted toolchain build execution is deferred while the compatible compiler commit remains unpublished; update the lock only after verifying its immutable upstream ref."
+                                          if lock["build_eligibility"] != "ready" else "Hosted toolchain build execution is enabled for the pinned revisions."),
                               "repositories": lock["repositories"], "build_contract": lock["build_contract"]}, indent=2, sort_keys=True))
             return 0
         provisioner = Provisioner(args.root, lock)
@@ -281,9 +328,25 @@ def main(argv: list[str] | None = None) -> int:
         else:
             provisioner.build()
         return 0
-    except ProvisionError as error:
+    except Exception as error:
+        if provisioner is not None:
+            try:
+                provisioner.mark_failed(error)
+            except OSError:
+                # If the workspace itself has become unwritable, no report
+                # writer can make the failure durable; preserve the original error.
+                pass
         print(f"toolchain provisioning failed: {error}", file=sys.stderr)
         return 1
+    except KeyboardInterrupt:
+        error = ProvisionError("provisioning interrupted")
+        if provisioner is not None:
+            try:
+                provisioner.mark_failed(error)
+            except OSError:
+                pass
+        print(f"toolchain provisioning failed: {error}", file=sys.stderr)
+        return 130
 
 
 if __name__ == "__main__":

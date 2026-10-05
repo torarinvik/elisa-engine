@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import subprocess
 import sys
@@ -47,6 +49,8 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         self.assertEqual(plan["repositories"]["elisascript"]["revision"],
                          "a26f9fd09d59fe1498622feebee3d7b355123b84")
         self.assertEqual(plan["build_eligibility"], "blocked_upstream_compatibility")
+        self.assertEqual(plan["hosted_build_execution"], "deferred")
+        self.assertIn("remains unpublished", plan["message"])
         self.assertEqual(plan["build_blocker"]["required_compiler_commit"],
                          "955cde86f336dff0945e8918303e9f974cc97532")
         self.assertIn("--seed", plan["build_contract"]["stage1"])
@@ -62,6 +66,64 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
             self.assertEqual(report["state"], "blocked")
             self.assertEqual(report["build_blocker"]["kind"], "compiler_revision_not_published")
             self.assertEqual(report["stages"], [])
+
+    def test_go_preflight_accepts_only_the_exact_locked_version(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            runner = provision.Provisioner(root, self.lock)
+            good = subprocess.CompletedProcess(["go", "version"], 0, "go version go1.25.0 darwin/arm64\n", "")
+            with patch.object(provision.shutil, "which", return_value="/fake/go"), \
+                    patch.object(provision.subprocess, "run", return_value=good):
+                self.assertEqual(runner.verify_bootstrap_go(), "1.25.0")
+            self.assertEqual(runner.report["toolchain_preflight"]["go"]["state"], "passed")
+
+            bad = subprocess.CompletedProcess(["go", "version"], 0, "go version go1.26.0 darwin/arm64\n", "")
+            with patch.object(provision.shutil, "which", return_value="/fake/go"), \
+                    patch.object(provision.subprocess, "run", return_value=bad):
+                with self.assertRaisesRegex(provision.ProvisionError, "requires 1.25.0, found 1.26.0"):
+                    runner.verify_bootstrap_go()
+            self.assertEqual(runner.report["toolchain_preflight"]["go"]["state"], "failed")
+
+    def test_build_checks_go_before_any_source_fetch_and_writes_terminal_failure_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            lock = json.loads(json.dumps(self.lock))
+            lock["build_eligibility"] = "ready"
+            lock.pop("build_blocker")
+            lock_path = root / "ready-lock.json"
+            lock_path.write_text(json.dumps(lock), encoding="utf-8")
+            workspace = root / "workspace"
+            mismatch = subprocess.CompletedProcess(["go", "version"], 0, "go version go1.24.0 darwin/arm64\n", "")
+            with patch.object(provision.shutil, "which", return_value="/fake/go"), \
+                    patch.object(provision.subprocess, "run", return_value=mismatch), \
+                    patch.object(provision.Provisioner, "fetch_sources", side_effect=AssertionError("fetch must not run")), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                status = provision.main(["--build", "--lock", str(lock_path), "--root", str(workspace)])
+            self.assertEqual(status, 1)
+            manifest = json.loads((workspace / "toolchain-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["state"], "failed")
+            self.assertEqual(manifest["toolchain_preflight"]["go"]["state"], "failed")
+            self.assertEqual(manifest["stages"], [])
+
+    def test_unexpected_post_initialization_failure_is_recorded_as_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            workspace = root / "workspace"
+            with patch.object(provision.Provisioner, "fetch_sources", side_effect=OSError("mock disk error")), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                status = provision.main(["--fetch", "--root", str(workspace)])
+            self.assertEqual(status, 1)
+            manifest = json.loads((workspace / "toolchain-manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["state"], "failed")
+            self.assertEqual(manifest["failure"]["message"], "mock disk error")
+
+    def test_plan_does_not_create_or_modify_a_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "must-remain-absent"
+            result = subprocess.run([sys.executable, str(Path(provision.__file__)), "--plan", "--root", str(root)],
+                                    capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(root.exists())
 
     def test_failed_stage_is_retained_with_log_and_stops_the_sequence(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
