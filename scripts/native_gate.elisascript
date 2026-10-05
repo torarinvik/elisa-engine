@@ -1,18 +1,19 @@
 # Native-first validation composition.
 # Modes: quick (policy checks), headless (quick + sanitizer boundary), native
-# (headless + the SDL3/Wicked gate). Godot is intentionally not a prerequisite.
+# (headless + the SDL3/Wicked gate), smoke (selected application smokes).
+# Godot is intentionally not a prerequisite.
 
-def run_visible(stage: sview, program: sview, arguments: darray[sview]) -> i64:
-    result: ProcessCapture =
-        empty_input: sview = ""
-        capture_process_result(executable(program), arguments, empty_input)
-    _ = write_stdout(result.stdout)
-    _ = write_stderr(result.stderr)
+const APP_PROCESS_TIMEOUT_MICROS: i64 = 300000000
+const COURSE_PAIR_TIMEOUT_MICROS: i64 = 600000000
+const COURSE_PAIR_SELECTION: sview = "character-course-smoke,character-course-relaunch-smoke"
+
+def run_visible(stage: sview, program: sview, arguments: darray[sview], timeout_micros: i64 = APP_PROCESS_TIMEOUT_MICROS) -> i64:
+    exit_status: i64 = try run_process(executable(program), arguments, timeout_micros) else 1
     # Name the failing sub-stage so a nonzero gate never ends in silence.
-    if result.exit_status != 0:
+    if exit_status != 0:
         eprint("native gate: stage failed:")
         eprint(stage)
-    result.exit_status
+    exit_status
 
 def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> i64:
     exit_status: i64 = try run_process(executable(program), arguments) else 1
@@ -21,12 +22,35 @@ def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> 
         eprint(stage)
     exit_status
 
+def run_application_smoke(selection: sview) -> i64:
+    root: Path = Script::source_path().parent().parent()
+    python: sview = get_environment_or("PYTHON_BIN", "python3")
+    application_script: sview = str(root.joinpath("scripts/application_native_smoke.py"))
+    arguments: darray[sview] = [application_script, "--only", selection]
+    timeout_micros: i64 = COURSE_PAIR_TIMEOUT_MICROS if selection == COURSE_PAIR_SELECTION else APP_PROCESS_TIMEOUT_MICROS
+    _ = create_directories(root.joinpath("build"))
+    report_path: Path = root.joinpath("build/native-gate.json")
+    _ = write_text(report_path, "{}\n")
+    application_status: i64 = run_visible("application-smoke", python, arguments, timeout_micros)
+    report_script: sview = str(root.joinpath("scripts/write_native_gate_report.py"))
+    report: ProcessCapture =
+        empty_input: sview = ""
+        capture_process_result(executable(python), [report_script, str(report_path), "smoke", "-1", "-1", "-1", "-1", str(application_status), "-1"], empty_input)
+    _ = write_stdout(report.stdout)
+    _ = write_stderr(report.stderr)
+    return report.exit_status if report.exit_status != 0 else application_status
+
 def main(arguments: darray[sview]) -> i64:
-    if arguments.count > 1:
-        eprint("usage: elisascript scripts/native_gate.elisascript [quick|headless|native]")
+    if arguments.count > 2:
+        eprint("usage: elisascript scripts/native_gate.elisascript [quick|headless|native] or smoke <names>")
         return 2
     mode: sview = "quick" if arguments.count == 0 else arguments[0]
-    return 2 if mode != "quick" and mode != "headless" and mode != "native"
+    valid_mode: bool = mode == "quick" or mode == "headless" or mode == "native" or mode == "smoke"
+    return 2 if not valid_mode
+    if mode == "smoke":
+        return 2 if arguments.count != 2
+        return run_application_smoke(arguments[1])
+    return 2 if arguments.count > 1
     root: Path = Script::source_path().parent().parent()
     report_path: Path = root.joinpath("build/native-gate.json")
     _ = create_directories(root.joinpath("build"))
@@ -93,7 +117,8 @@ def main(arguments: darray[sview]) -> i64:
                         if smoke_case == "character-course-smoke":
                             application_status <- run_visible(
                                 "character-course-smoke-and-relaunch", python,
-                                [application_script, "--only", "character-course-smoke,character-course-relaunch-smoke"])
+                                [application_script, "--only", "character-course-smoke,character-course-relaunch-smoke"],
+                                COURSE_PAIR_TIMEOUT_MICROS)
                         else:
                             application_status <- run_visible(smoke_case, python, [application_script, "--only", smoke_case])
         native_status <- -1i64 if native_status == 0 and application_status > 0

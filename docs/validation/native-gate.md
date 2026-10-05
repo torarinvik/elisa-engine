@@ -1,17 +1,20 @@
 # Native-first gate validation
 
 `scripts/native_gate.elisascript` composes the native checks without making
-Godot a prerequisite. It accepts `quick`, `headless`, or `native`:
+Godot a prerequisite. It accepts `quick`, `headless`, `native`, or `smoke`
+with a comma-separated application selection:
 
 ```text
 elisascript scripts/native_gate.elisascript quick
 elisascript scripts/native_gate.elisascript headless
 elisascript scripts/native_gate.elisascript native
+elisascript scripts/native_gate.elisascript smoke character-course-smoke,character-course-relaunch-smoke
 ```
 
-Every run clears `build/native-gate.json` before doing work and writes a fresh
+Every mode clears `build/native-gate.json` before doing work and writes a fresh
 schema-2 JSON record with dependency, source-length, module-hygiene, headless,
-application, and Wicked stage states. A stage is explicitly `pass`, `fail`, or
+application, and Wicked stage states. Smoke mode records only the selected
+application stage and marks the others skipped. A stage is explicitly `pass`, `fail`, or
 `skip`, so a quick run cannot report an omitted native stage as green. The
 record also includes the checkout revision, host platform, Python and selected
 developer-directory provenance, timestamp, and `hardware_verification` (`verified`
@@ -31,12 +34,13 @@ course state-transition and relaunch checks run in order through one runner
 selection, with each check in its own child process; the relaunch check reads
 the saved state from the first. The streamed-cell traversal check follows. The
 gate then runs the render-scene, frame, rerun, and artifact verification stages.
-Individual application children stay
-within ElisaScript's default two-minute process deadline and report their own
-exit status. Each case builds a temporary app harness, so the matrix takes several
-minutes on a local GPU workstation. Each render-scene mode is also a separate
-child. Captured output is relayed to the gate caller with the child exit status
-preserved.
+Individual application children use a five-minute process deadline, except the
+combined Character Course smoke and relaunch run, which has a ten-minute deadline
+because it builds and runs both applications in sequence. Recent single-app builds
+take about two minutes; the latest paired run took about seven. Each case builds a
+temporary app harness, so the matrix takes several minutes on a local GPU
+workstation. Each render-scene mode is also a separate child. Child output is
+inherited by the gate caller, and the gate preserves each child's exit status.
 
 Run the shared source/proof check and native gate separately. For this layout,
 the compiler, prover, and pinned Wicked checkout are sibling projects; the selected
@@ -185,8 +189,20 @@ standalone relocation checks, and induced crash-report launches force
 `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` in the child process. The paired
 Character Course relaunch smoke clears that flag only after the sound-producing
 self-test, because it verifies reopening the saved output device. Its relaunch
-mode starts no course clips or music; Wicked FAudio remains on SDL's dummy
-driver. See [`character-course-live-input.md`](character-course-live-input.md#saved-output-relaunch-2026-10-05).
+mode does not start `CourseSounds`, so it creates no course clips, music, voices,
+or streams; Wicked FAudio remains on SDL's dummy driver. See
+[`character-course-live-input.md`](character-course-live-input.md#saved-output-relaunch-2026-10-05).
 The standalone launch-environment regression and the complete native unit suite
 pass; the packaged standalone validator also completed one relocated launch
 with source and Homebrew denied.
+
+The direct Character Course self-test and relaunch pair passed on 2026-10-05
+(statuses 0; recorded durations 188.233s and 243.787s). Audio was forced
+unavailable for the self-test; the relaunch opened the saved device but did not
+start course audio. The focused ElisaScript `smoke` wrapper still returns
+failure with the existing product because its 120,000-poll process guard expires
+before the first app build finishes. ElisaScript commit `a26f9fd0` makes that
+guard scale with the requested deadline; the product rebuild is still blocked
+because Stage1 rejects nested machine-arm branches in
+`../elisa-script/src/runtime/output_transport_posix.elisa`. Q01 remains open
+until a compatible compiler product runs the focused wrapper successfully.
