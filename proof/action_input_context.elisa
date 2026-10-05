@@ -1,0 +1,2 @@
+# Prove the context-switch policy used by ActionInput::set_context.
+include "../src/runtime/action_input.elisa"

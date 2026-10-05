@@ -94,6 +94,8 @@ def application_input_tests() -> i32:
     ActionInputRuntime::apply_application_event(&context_input,
         application_event(Application::InputEventKind.Key, key_a, 1.0, true, false, false))
     return 98 if not ActionInput::action_pressed(&context_input, 96)
+    ActionInput::set_context(&context_input, ActionInput::Context.Gameplay)
+    return 101 if not ActionInput::action_down(&context_input, 96) or not ActionInput::action_pressed(&context_input, 96)
     ActionInput::set_context(&context_input, ActionInput::Context.UI)
     return 99 if ActionInput::action_down(&context_input, 96) or ActionInput::action_pressed(&context_input, 96) or ActionInput::action_released(&context_input, 96)
     return 100 if ActionInput::action_down(&context_input, 97) or ActionInput::action_pressed(&context_input, 97)

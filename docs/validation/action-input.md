@@ -27,6 +27,27 @@ the same results to typed `InputError` values. The fixture checks every result,
 the typed error mapping, full binding/action tables, repeated action-capacity
 failures, and preservation of a held action when another binding is added.
 
+Calling `set_context` with its current context is idempotent: it preserves held
+actions and pending edges. A real Gameplay/UI transition still clears held and
+edge state, so events from one context cannot leak into the other. The focused
+regression in `test/action_input.elisa` checks both paths (codes 101 and 99).
+`proof/action_input_context.elisa` includes the implementation and proves the
+context-code bounds and context-change decision (5/5 obligations, all
+certificates replayed). The report also contains unresolved obligations from
+other ActionInput functions; this slice makes no proof claim for those.
+
+Focused checks:
+
+```sh
+elisac-stage1 -emit exe -o build/action-input-test test/action_input.elisa
+build/action-input-test
+../elisa-engine-proof/build/elisa-proof --json proof/action_input_context.elisa
+```
+
+The stage1 fixture passes. The proof report proves all five obligations on the
+new context-policy functions, while its overall module status remains failed
+because unrelated ActionInput obligations are unresolved.
+
 Multiple bindings for one action are aggregated: releasing one binding keeps
 the action down while another remains held, and the action releases only when
 the last held binding is released or disconnected. The reported value is the

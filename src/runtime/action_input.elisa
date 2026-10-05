@@ -24,6 +24,18 @@ module ActionInput:
             return false if deadzone < 0.0 or deadzone >= 1.0
             true
 
+        def context_code(context: Context) -> i64:
+            ensure result >= 0 and result <= 1
+            match context:
+                Context.Gameplay:
+                    0
+                Context.UI:
+                    1
+
+        def context_changes(current: Context, next: Context) -> bool:
+            ensure result == (context_code(current) != context_code(next))
+            context_code(current) != context_code(next)
+
         def refresh_action(input: mutable Input&, slot: usize) -> void:
             return if slot >= Limits::MAX_ACTIONS or not input.states[slot].live
             action: i64 = input.states[slot].action
@@ -181,6 +193,7 @@ module ActionInput:
             raise InputError.DuplicateBinding if result == BindResult.DuplicateBinding
 
         def set_context(input: mutable Input&, context: Context) -> void:
+            return if not context_changes(input.context, context)
             input.context <- context
             for index in 0..<input.binding_count |input|:
                 input.binding_down[index] <- false
