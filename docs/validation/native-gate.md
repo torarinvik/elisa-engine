@@ -129,10 +129,16 @@ source policy fails and no `hardware_verification=verified` claim is made.
 
 The Stage1 snapshot launcher was repaired and installed from compiler commit
 `7b27fa31`; its product SHA-256 is `4c265d5d…e080f05d`. A representative
-`entity_id` compile and run passed. The shared gate then reached all 211 test
-rows but failed compilation: the first diagnostic is an error-set mismatch in
-`test/world_save_swap.elisa`, and four later rows also fail compilation. The
-proof stage was not reached.
+`entity_id` compile and run passed. The shared gate reached all 211 test rows
+but initially reported five compile failures. Those are fixed: the GLB
+importer returns its linear document with an explicit move; viewport and
+animation test arrays use caller-owned regions; animation package loading
+writes into a caller-provided buffer; and the save-swap test names its error
+variant using Stage1's directly resolved enum type. The five affected rows
+passed uncached, and the full 211-row suite then passed with
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`. This was a test-suite run, not a full
+`check.elisascript` run; proofs and later SDL3/Godot/native stages remain
+unverified on this snapshot.
 
 The native gate records dependency, source-length, module-hygiene, and
 ASan/UBSan stages as passing on macOS 27.0.1 with SDL3 3.4.16 and Wicked
@@ -159,7 +165,9 @@ run; it is not checked in.
 
 The asset-import diagnostic was an engine ownership omission: the linear
 `GlbDocument` now returns as `return move doc` from
-`src/assets/glb_document_import.elisa`. Its uncached focused gate row passes
-with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` (8 seconds). This resolves one of
-the five initial compile failures; the remaining four rows and full 211-row
-gate still need a fresh run after the remaining source/compiler fixes.
+`src/assets/glb_document_import.elisa`. The other four failures were resolved
+with caller-region output arrays in the viewport and animation tests, a
+caller-provided output buffer for the animation package reader, and the direct
+`SaveSwapError` name in the top-level save-swap test. All five affected rows
+passed uncached; the full 211-row suite then passed. Runtime rows used
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`.
