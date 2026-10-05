@@ -34,13 +34,11 @@ def v(x: f32, y: f32, z: f32) -> Geometry::Vec3:
 
 # 600 frames sweeping x from -1 to 1 at height y (0.2 m/s at 60 fps), with
 # frame 300 lifted by `spike` metres.
-def sweep(y: f32, z: f32, spike: f32) -> darray[Geometry::Vec3]:
-    mutable t: darray[Geometry::Vec3] = []
+def sweep(t: mutable darray[Geometry::Vec3]&, y: f32, z: f32, spike: f32):
     for f in 0..<600:
         x: f32 = -1.0 + 2.0 * f.f32() / 599.0
         lift: f32 = spike if f == 300 else 0.0
         t.push(v(x, y + lift, z))
-    return move t
 
 def heat(mode: i32) -> MotionOverlay::Heat:
     MotionOverlay::Heat{mode: mode, low: 0.0, high: 2.0, fps: 60.0}
@@ -71,7 +69,8 @@ def blue(img: ViewportRaster::Image&, x: i64, y: i64) -> bool:
 # The spike picture: hot pixels only within 12 px of frame 300's column.
 def spike_case() -> i32:
     cam: ViewportCamera::Camera = ViewportCamera::create_ortho(480, 240, ViewportCamera::FRONT)
-    t: darray[Geometry::Vec3] = sweep(1.0, 0.0, 0.05)
+    mutable t: darray[Geometry::Vec3] = []
+    sweep(&t, 1.0, 0.0, 0.05)
     h: MotionOverlay::Heat = heat(MotionOverlay::SPEED)
     mutable list: ViewportDraw::List = ViewportDraw::create()
     return 30 if heat_n(&list, &t, 300, 1000, 1000, &h) != 599
@@ -108,7 +107,8 @@ def spike_case() -> i32:
     0
 
 def windows_case() -> i32:
-    t: darray[Geometry::Vec3] = sweep(1.0, 0.0, 0.0)
+    mutable t: darray[Geometry::Vec3] = []
+    sweep(&t, 1.0, 0.0, 0.0)
     mutable list: ViewportDraw::List = ViewportDraw::create()
     return 40 if trail_n(&list, &t, 300, 10, 20) != 30
     return 41 if trail_n(&list, &t, 5, 10, 20) != 25
@@ -211,10 +211,18 @@ def budget_case() -> i32:
         value: value
         error failure: return 92
     mutable tracks: darray[darray[Geometry::Vec3]] = []
-    tracks.push(sweep(1.0, 0.0, 0.05))
-    tracks.push(sweep(1.5, 0.0, 0.0))
-    tracks.push(sweep(0.05, 0.1, 0.0))
-    tracks.push(sweep(0.05, -0.1, 0.0))
+    first_track: mutable darray[Geometry::Vec3] = []
+    sweep(&first_track, 1.0, 0.0, 0.05)
+    tracks.push(move first_track)
+    second_track: mutable darray[Geometry::Vec3] = []
+    sweep(&second_track, 1.5, 0.0, 0.0)
+    tracks.push(move second_track)
+    third_track: mutable darray[Geometry::Vec3] = []
+    sweep(&third_track, 0.05, 0.1, 0.0)
+    tracks.push(move third_track)
+    fourth_track: mutable darray[Geometry::Vec3] = []
+    sweep(&fourth_track, 0.05, -0.1, 0.0)
+    tracks.push(move fourth_track)
     h: MotionOverlay::Heat = heat(MotionOverlay::SPEED)
     mutable list: ViewportDraw::List = ViewportDraw::create()
     mutable worst: u64 = 0
