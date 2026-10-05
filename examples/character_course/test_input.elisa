@@ -8,6 +8,8 @@ module CourseTestInput:
             Space
             Crouch
             Forward
+            Pause
+            Restart
 
     private:
         const module NativeKey:
@@ -17,6 +19,8 @@ module CourseTestInput:
             SPACE: i32 = 4
             CROUCH: i32 = 5
             FORWARD: i32 = 6
+            PAUSE: i32 = 7
+            RESTART: i32 = 8
 
         @callconv(c)
         extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
@@ -29,6 +33,8 @@ module CourseTestInput:
                 Key.Space: NativeKey::SPACE
                 Key.Crouch: NativeKey::CROUCH
                 Key.Forward: NativeKey::FORWARD
+                Key.Pause: NativeKey::PAUSE
+                Key.Restart: NativeKey::RESTART
 
     public:
         def push(key: Key, down: bool) -> bool:

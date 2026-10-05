@@ -14,6 +14,11 @@ module CourseLiveInputPilot:
                 crouch_held: mutable bool
                 jump_held: mutable bool
                 lateral_held: mutable bool
+                pause_held: mutable bool
+                restart_held: mutable bool
+                saw_paused: mutable bool
+                resumed: mutable bool
+                restarted: mutable bool
                 crossed_step: mutable bool
                 saw_crouch: mutable bool
                 released_crouch: mutable bool
@@ -42,16 +47,24 @@ module CourseLiveInputPilot:
             # Match the route check's authored platform-center height.
             PLATFORM_MINIMUM_Y: f32 = 1.8
             JUMP_RISE: f32 = 0.15
+            RESTART_X: f32 = -11.5
+            RESTART_Y: f32 = 2.0
+            RESTART_Z: f32 = 0.0
+            RESTART_TOLERANCE: f32 = 0.05
 
         const module Stage:
             WAITING: i32 = 0
-            WALKING: i32 = 1
-            CROUCHING: i32 = 2
-            CLEAR_TUNNEL: i32 = 3
-            JUMPING: i32 = 4
-            AFTER_JUMP: i32 = 5
-            TURNING_TO_GOAL: i32 = 6
-            WALK_TO_GOAL: i32 = 7
+            PAUSING: i32 = 1
+            RESUME_RELEASED: i32 = 2
+            RESUMING: i32 = 3
+            WALKING: i32 = 4
+            CROUCHING: i32 = 5
+            CLEAR_TUNNEL: i32 = 6
+            JUMPING: i32 = 7
+            AFTER_JUMP: i32 = 8
+            TURNING_TO_GOAL: i32 = 9
+            WALK_TO_GOAL: i32 = 10
+            RESTARTING: i32 = 11
 
         const module Failure:
             INJECTION: i32 = 130
@@ -75,6 +88,14 @@ module CourseLiveInputPilot:
                 lateral_released: bool = CourseTestInput::push(CourseTestInput::Key.Right, false)
                 push_ok <- push_ok and lateral_released
                 pilot.lateral_held <- false
+            if pilot.pause_held:
+                pause_released: bool = CourseTestInput::push(CourseTestInput::Key.Pause, false)
+                push_ok <- push_ok and pause_released
+                pilot.pause_held <- false
+            if pilot.restart_held:
+                restart_released: bool = CourseTestInput::push(CourseTestInput::Key.Restart, false)
+                push_ok <- push_ok and restart_released
+                pilot.restart_held <- false
             exit_pushed: bool = CourseTestInput::push(CourseTestInput::Key.Escape, true)
             push_ok <- push_ok and exit_pushed
             pilot.failure <- Failure::INJECTION if not push_ok and pilot.failure == 0
@@ -89,6 +110,8 @@ module CourseLiveInputPilot:
             Pilot{stage: Stage::WAITING, started: false, finished: false,
                 won: false, failed: false, forward_held: false,
                 crouch_held: false, jump_held: false, lateral_held: false,
+                pause_held: false, restart_held: false, saw_paused: false,
+                resumed: false, restarted: false,
                 crossed_step: false, saw_crouch: false, released_crouch: false,
                 stood_after_crouch: false, jumped: false, reached_platform: false,
                 reached_goal_lane: false, started_nanos: 0,
@@ -99,7 +122,7 @@ module CourseLiveInputPilot:
         # goes through the same SDL pump and action bindings as player input.
         def tick(pilot: mutable Pilot&, elapsed_nanos: u64, ready: bool,
             x: f32, y: f32, z: f32, crouched: bool, crouch_down: bool,
-            grounded: bool, won: bool, failed: bool) -> void:
+            grounded: bool, paused: bool, won: bool, failed: bool) -> void:
             if pilot.started and not pilot.finished:
                 pilot.crossed_step <- true if x >= Tune::STEP_CLEAR_X
                 pilot.saw_crouch <- true if crouched and x >= Tune::CROUCH_ENTER_X and x <= Tune::CROUCH_EXIT_X
@@ -108,26 +131,58 @@ module CourseLiveInputPilot:
                 pilot.jumped <- true if elapsed_nanos <= pilot.jump_observe_until_nanos and y >= pilot.jump_start_height + Tune::JUMP_RISE
                 pilot.reached_platform <- true if x >= Tune::PLATFORM_MARKER_X and y >= Tune::PLATFORM_MINIMUM_Y
                 pilot.reached_goal_lane <- true if z >= Tune::LANE_TARGET_Z
-                pilot.won <- won
-                pilot.failed <- failed
+                pilot.won <- true if won
+                pilot.failed <- true if failed
             if not pilot.started:
                 if ready:
                     pilot.started_nanos <- elapsed_nanos
                     pilot.started <- true
-                    if CourseTestInput::push(CourseTestInput::Key.Forward, true):
-                        pilot.forward_held <- true
-                        pilot.stage <- Stage::WALKING
+                    if CourseTestInput::push(CourseTestInput::Key.Pause, true):
+                        pilot.pause_held <- true
+                        pilot.stage <- Stage::PAUSING
                     else:
                         fail(pilot, Failure::INJECTION)
             elif not pilot.finished:
-                if won:
-                    pilot.won <- true
-                    pilot_finish(pilot)
-                elif failed:
+                if failed:
                     pilot.failed <- true
                     fail(pilot, Failure::COURSE_FAILED)
                 elif elapsed_nanos > pilot.started_nanos + Tune::TIMEOUT_NANOS:
                     fail(pilot, Failure::TIMEOUT)
+                elif pilot.stage == Stage::PAUSING and paused:
+                    pilot.saw_paused <- true
+                    if CourseTestInput::push(CourseTestInput::Key.Pause, false):
+                        pilot.pause_held <- false
+                        pilot.stage <- Stage::RESUME_RELEASED
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::RESUME_RELEASED and paused:
+                    if CourseTestInput::push(CourseTestInput::Key.Pause, true):
+                        pilot.pause_held <- true
+                        pilot.stage <- Stage::RESUMING
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::RESUMING and not paused:
+                    pilot.resumed <- true
+                    pause_released: bool = CourseTestInput::push(CourseTestInput::Key.Pause, false)
+                    forward_pressed: bool = CourseTestInput::push(CourseTestInput::Key.Forward, true)
+                    if pause_released and forward_pressed:
+                        pilot.pause_held <- false
+                        pilot.forward_held <- true
+                        pilot.stage <- Stage::WALKING
+                    else:
+                        fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::RESTARTING:
+                    near_start: bool = x >= Tune::RESTART_X - Tune::RESTART_TOLERANCE and x <= Tune::RESTART_X + Tune::RESTART_TOLERANCE and y >= Tune::RESTART_Y - Tune::RESTART_TOLERANCE and y <= Tune::RESTART_Y + Tune::RESTART_TOLERANCE and z >= Tune::RESTART_Z - Tune::RESTART_TOLERANCE and z <= Tune::RESTART_Z + Tune::RESTART_TOLERANCE
+                    if near_start:
+                        pilot.restarted <- true
+                        pilot_finish(pilot)
+                elif won:
+                    pilot.won <- true
+                    if CourseTestInput::push(CourseTestInput::Key.Restart, true):
+                        pilot.restart_held <- true
+                        pilot.stage <- Stage::RESTARTING
+                    else:
+                        fail(pilot, Failure::INJECTION)
                 elif pilot.stage == Stage::WALKING and x >= Tune::CROUCH_ENTER_X:
                     if CourseTestInput::push(CourseTestInput::Key.Crouch, true):
                         pilot.crouch_held <- true
@@ -179,4 +234,7 @@ module CourseLiveInputPilot:
             return 138 if not pilot.reached_platform
             return 139 if not pilot.reached_goal_lane
             return 140 if pilot.failed or not pilot.won
+            return 141 if not pilot.saw_paused
+            return 142 if not pilot.resumed
+            return 143 if not pilot.restarted
             0

@@ -83,7 +83,8 @@
                     elif mode == 4:
                         CourseCells::pilot_course(cells, frame.elapsed_nanos,
                             crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
-                            grounded, state.phase == Phase.Won, state.phase == Phase.Failed)
+                            grounded, state.phase == Phase.Paused,
+                            state.phase == Phase.Won, state.phase == Phase.Failed)
                     mood: i32 = CourseSounds::mood_for(menu_open, state.phase == Phase.Paused)
                     look_wanted: bool = state.phase == Phase.Playing and not menu_open
                     if look_wanted != look_held:

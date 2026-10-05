@@ -29,12 +29,12 @@ linking.
 ## Full course through live input
 
 `character-course-live-input-smoke` starts the ordinary hidden course loop and
-drives W, C, Space and Right-arrow events through SDL's event pump and normal
-action bindings. It completes the step, crouches through the tunnel, releases
-crouch and stands, jumps onto the ramp/platform route, turns into the goal lane,
-and wins. The pilot checks each milestone and fails on a timeout or course
-failure. This run also checks that streamed floor cells stay valid during the
-traversal.
+drives W, C, Space, P, R and Right-arrow events through SDL's event pump and
+normal action bindings. It checks pause and resume, traverses the step, crouches
+through the tunnel and stands, jumps onto the ramp/platform route, turns into the
+goal lane and wins. It then restarts through the live R binding and checks the
+character returned to its spawn. The pilot checks each milestone and fails on a
+timeout or course failure. Streamed floor cells stay valid throughout.
 
 ```sh
 ELISA_COMPILER_BIN="$HOME/.elisac/elisac-stage1" \
@@ -45,7 +45,7 @@ PYTHON_BIN=/opt/homebrew/bin/python3.14 \
   --only character-course-live-input-smoke
 ```
 
-Result: pass (status 0, 110.69 seconds including compilation and linking). The
+Result: pass (status 0, 126.53 seconds including compilation and linking). The
 silent-audio override was enabled for the entire hidden app run.
 
 ## Monotonic frame time

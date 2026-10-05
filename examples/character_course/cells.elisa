@@ -445,10 +445,10 @@ module CourseCells:
         # Drives the live course objective through the public key/action path.
         def pilot_course(cells: mutable Cells&, elapsed_nanos: u64,
             crouched: bool, crouch_down: bool, grounded: bool,
-            won: bool, failed: bool) -> void:
+            paused: bool, won: bool, failed: bool) -> void:
             CourseLiveInputPilot::tick(&cells.live_pilot, elapsed_nanos,
                 cells.loads > 0, cells.player_x, cells.player_y, cells.player_z,
-                crouched, crouch_down, grounded, won, failed)
+                crouched, crouch_down, grounded, paused, won, failed)
 
         # Rows, then cells, then their native loads; 0 or a failure code.
         def close(cells: mutable Cells&, runtime: mutable CellWorld::Runtime&, world: mutable World::World&) -> i32:
