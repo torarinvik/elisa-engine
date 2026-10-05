@@ -434,3 +434,58 @@ python3 scripts/validate_interactive_macos_app.py \
   --resource-group rigs --resource-group sounds --resource-group text \
   --marker 'wi::physics Initialized [Jolt Physics'
 ```
+
+## Compiled-shader-only package (2026-10-05)
+
+`package_macos_app.py --compiled-shaders-only` stages only compiled `.cso` and
+`.spv` files inside recognized backend directories. It writes the normal
+content-hashed shader manifest and rejects shader symlinks. The default keeps
+the existing full-tree behavior, including source files that a runtime shader
+compiler might need as a fallback.
+
+The optimized Character Course executable was packaged both ways from the
+same build and Wicked shader tree. The full-tree control is 127,972 KiB; the
+compiled-only app is 123,884 KiB, a 4,088 KiB (3.2%) reduction. Both contain
+392 Metal `.cso` binaries. The compiled-only shader directory contains 393
+files including its manifest, and no `.h`, `.hlsl`, or `.hlsli` sources. Its
+manifest fingerprint is
+`004b1cc8be65195a42784709d0c236d9f6d971403f67be18d09882aa9cf7abf0`.
+
+The compiled-only app passed the relocated interactive startup validator on
+macOS 27.0.1 / arm64 in 1.431 seconds, with the project tree and Homebrew
+denied, network access disabled, and all five runtime resource groups present.
+The app also visibly rendered the full course from the compiled-only bundle;
+its runtime log showed Metal and Wicked initialization and no shader compile
+or shader compile-failure markers. Closing the visible test app recorded
+`process_exit_status=0`. This exercises the ordinary initial scene only, so
+optional render paths and later gameplay transitions still need coverage
+before relying on this mode for a release build.
+
+The notice audit verified all bundled dylib, static-archive and shader-resource
+notice mappings without mapping errors. The catalog remains explicitly
+incomplete, so that result does not close distribution review. The validator
+report and launcher log are
+`examples/character_course/build/validation/character-course-compiledonly-2026-10-05.json`
+and `.log`; the package binary SHA-256 is
+`ef62e4abdd194d293a23f3e7ef97f186a367325af5246ee89d7293e55aa80cd5`.
+
+Reproduction commands:
+
+```bash
+python3 scripts/package_macos_app.py --project examples/character_course \
+  --executable examples/character_course/build/character-course-visible-optimized \
+  --output /private/tmp/CharacterCourseCompiledOnly-2026-10-05.app \
+  --name CharacterCourseCompiledOnly20261005 \
+  --bundle-id org.elisa.character-course.compiledonly.20261005 \
+  --version 0.1.0 \
+  --shader-root ../elisa-boxing-wickedengine/build-elisa-sdl3/WickedEngine/shaders \
+  --compiled-shaders-only
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/validate_interactive_macos_app.py \
+  --app /private/tmp/CharacterCourseCompiledOnly-2026-10-05.app \
+  --report examples/character_course/build/validation/character-course-compiledonly-2026-10-05.json \
+  --log examples/character_course/build/validation/character-course-compiledonly-2026-10-05.log \
+  --timeout 45 --resource-group cells --resource-group fonts \
+  --resource-group rigs --resource-group sounds --resource-group text \
+  --marker 'wi::physics Initialized [Jolt Physics'
+```

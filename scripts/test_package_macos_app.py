@@ -55,12 +55,13 @@ class PackageMacosAppTests(unittest.TestCase):
         (self.project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
         return manifest
 
-    def package(self, manifest: dict[str, object]) -> Path:
+    def package(self, manifest: dict[str, object], compiled_shaders_only: bool = False) -> Path:
         return packager.package_app(self.project, self.project / "build" / "game",
             self.output, "Game", "org.elisa.game", "1.2.3", None,
             packager.manifest_resources(manifest, self.project),
             packager.manifest_window(manifest, self.project),
-            notice_paths=packager.manifest_notices(manifest, self.project))
+            notice_paths=packager.manifest_notices(manifest, self.project),
+            compiled_shaders_only=compiled_shaders_only)
 
     def staged(self, app: Path) -> set[str]:
         resources = app / "Contents" / "Resources"
@@ -127,6 +128,29 @@ class PackageMacosAppTests(unittest.TestCase):
             "Game.bin", "assets/audio/step.wav", "assets/textures/trim.png",
             "assets/source/rig.blend", "build/cooked/player.pkg", "shaders/metal/basic.cso",
             "shaders/elisa.shader-manifest.json"})
+
+    def test_compiled_shaders_only_omits_shader_sources_and_metadata(self) -> None:
+        touch(self.project / "shaders" / "objectVS.hlsl", b"source")
+        touch(self.project / "shaders" / "vendor" / "helper.hlsli", b"include")
+        touch(self.project / "shaders" / "metal" / "nested" / "extra.cso", b"compiled")
+        touch(self.project / "shaders" / "spirv" / "basic.spv", b"spirv")
+        app = self.package(self.write_manifest({"package": {"resources": []}}),
+            compiled_shaders_only=True)
+        self.assertEqual(self.staged(app), {
+            "Game.bin", "build/cooked/player.pkg", "shaders/metal/basic.cso",
+            "shaders/metal/nested/extra.cso", "shaders/spirv/basic.spv",
+            "shaders/elisa.shader-manifest.json"})
+        manifest_path = app / "Contents/Resources/shaders/elisa.shader-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        self.assertEqual([entry["path"] for entry in manifest["files"]], [
+            "metal/basic.cso", "metal/nested/extra.cso", "spirv/basic.spv"])
+
+    def test_compiled_shaders_only_rejects_symbolic_links(self) -> None:
+        source = self.project / "shaders" / "metal" / "source-link.hlsl"
+        os.symlink(self.project / "shaders" / "metal" / "basic.cso", source)
+        with self.assertRaises(packager.PackageError):
+            self.package(self.write_manifest({"package": {"resources": []}}),
+                compiled_shaders_only=True)
 
     def test_launcher_runs_from_relocated_resources(self) -> None:
         executable = self.project / "build" / "game"

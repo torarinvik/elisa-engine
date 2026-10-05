@@ -107,6 +107,24 @@ def copy_directory(source: Path, destination: Path, ignore=ignore_litter) -> Non
     shutil.copytree(source, destination, symlinks=False, ignore=ignore)
 
 
+def copy_compiled_shaders(source: Path, destination: Path) -> None:
+    """Stage compiled backend binaries without source or build metadata."""
+    if not source.is_dir():
+        raise PackageError(f"required project directory is missing: {source}")
+    destination.mkdir(parents=True)
+    for path in sorted(source.rglob("*")):
+        if path.is_symlink():
+            raise PackageError(f"shader tree contains a symbolic link: {path}")
+        if not path.is_file() or path.suffix.lower() not in SHADER_BINARY_SUFFIXES:
+            continue
+        relative = path.relative_to(source)
+        if len(relative.parts) < 2 or relative.parts[0] not in SHADER_BACKENDS:
+            raise PackageError(f"compiled shader is outside a known backend directory: {relative}")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+
+
 def manifest_resources(manifest: dict[str, object], project: Path) -> list[Path] | None:
     """Return the manifest's runtime resource paths, or None to stage all assets."""
     package = manifest.get("package")
@@ -302,7 +320,8 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     resource_paths: list[Path] | None = None,
     window: tuple[str, int, int] | None = None,
     shader_root: Path | None = None,
-    notice_paths: list[Path] | None = None) -> Path:
+    notice_paths: list[Path] | None = None,
+    compiled_shaders_only: bool = False) -> Path:
     project = project.expanduser().resolve()
     output = output.expanduser().resolve()
     app = output if output.suffix == ".app" else output.with_suffix(".app")
@@ -321,7 +340,8 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     app.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".elisa-app-stage-", dir=app.parent) as folder:
         staged = _assemble_app(project, executable, Path(folder) / app.name, name,
-            bundle_id, version, icon, resource_paths, window, shader_root, notice_paths)
+            bundle_id, version, icon, resource_paths, window, shader_root, notice_paths,
+            compiled_shaders_only)
         backup = Path(tempfile.mkdtemp(prefix=".elisa-app-backup-", dir=app.parent))
         backup.rmdir()
         previous = app.exists()
@@ -346,7 +366,8 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     resource_paths: list[Path] | None = None,
     window: tuple[str, int, int] | None = None,
     shader_root: Path | None = None,
-    notice_paths: list[Path] | None = None) -> Path:
+    notice_paths: list[Path] | None = None,
+    compiled_shaders_only: bool = False) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -408,7 +429,10 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         copy_directory(cooked, resources / "build" / "cooked")
     shaders = shader_root if shader_root is not None else project / "shaders"
     if shaders.is_dir():
-        copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
+        if compiled_shaders_only:
+            copy_compiled_shaders(shaders, resources / "shaders")
+        else:
+            copy_directory(shaders, resources / "shaders", ignore_shader_metadata)
         manifest = shader_manifest(resources / "shaders")
         (resources / "shaders" / SHADER_MANIFEST_NAME).write_text(
             json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -522,6 +546,8 @@ def parse_arguments() -> argparse.Namespace:
         help="optional .icns file copied into the bundle")
     parser.add_argument("--shader-root", type=Path,
         help="prepared shader library to stage (default: project/shaders)")
+    parser.add_argument("--compiled-shaders-only", action="store_true",
+        help="stage compiled backend binaries only; runtime source-compilation fallback is unavailable")
     return parser.parse_args()
 
 
@@ -543,7 +569,8 @@ def main() -> int:
         stage_started = time.perf_counter()
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
-            manifest_window(manifest, project), options.shader_root, manifest_notices(manifest, project))
+            manifest_window(manifest, project), options.shader_root,
+            manifest_notices(manifest, project), options.compiled_shaders_only)
         print(f"App packaging: {time.perf_counter() - stage_started:.2f}s", flush=True)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
