@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import signal
 import subprocess
+import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -12,7 +15,25 @@ from validate_interactive_macos_app import (
     launch_environment,
     process_group_exists,
     stop_process_group,
+    stop_process_group_gracefully,
 )
+
+
+def start_wrapped_runtime(runtime: Path, source: str) -> subprocess.Popen[bytes]:
+    runtime.write_text(f"#!{sys.executable}\n{source}", encoding="utf-8")
+    runtime.chmod(0o755)
+    launcher = runtime.with_name("launcher.sh")
+    launcher.write_text(
+        "#!/bin/sh\n"
+        f"\"{runtime}\" &\n"
+        "child=$!\n"
+        "wait \"$child\"\n"
+        "exit $?\n",
+        encoding="utf-8",
+    )
+    launcher.chmod(0o755)
+    return subprocess.Popen([str(launcher)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+        start_new_session=True)
 
 
 class InteractiveMacosAppTests(unittest.TestCase):
@@ -48,6 +69,43 @@ class InteractiveMacosAppTests(unittest.TestCase):
 
         self.assertGreaterEqual(time.monotonic() - started, 0.2)
         self.assertFalse(process_group_exists(process.pid))
+
+    def test_graceful_stop_requires_zero_exit_and_reaps_process_group(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = Path(folder) / "Game Runtime.bin"
+            process = start_wrapped_runtime(runtime,
+                "import signal, sys, time\n"
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))\n"
+                "print('ready', flush=True)\n"
+                "time.sleep(30)\n")
+            assert process.stdout is not None
+            try:
+                with process.stdout:
+                    self.assertEqual(process.stdout.readline(), b"ready\n")
+
+                self.assertEqual(stop_process_group_gracefully(process, runtime), 0)
+                self.assertFalse(process_group_exists(process.pid))
+            finally:
+                if process_group_exists(process.pid):
+                    stop_process_group(process, force=True)
+
+    def test_graceful_stop_rejects_default_signal_termination(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            runtime = Path(folder) / "Game Runtime.bin"
+            process = start_wrapped_runtime(runtime,
+                "import time\nprint('ready', flush=True)\ntime.sleep(30)\n")
+            assert process.stdout is not None
+            try:
+                with process.stdout:
+                    self.assertEqual(process.stdout.readline(), b"ready\n")
+
+                with self.assertRaisesRegex(ValueError, "did not exit cleanly after runtime SIGTERM"):
+                    stop_process_group_gracefully(process, runtime)
+                self.assertEqual(process.returncode, 143)
+                self.assertFalse(process_group_exists(process.pid))
+            finally:
+                if process_group_exists(process.pid):
+                    stop_process_group(process, force=True)
 
 
 if __name__ == "__main__":

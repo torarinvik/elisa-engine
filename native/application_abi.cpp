@@ -29,6 +29,8 @@
 #include <limits>
 #include <string>
 #include <thread>
+#include <csignal>
+#include <signal.h>
 
 #ifndef ELISA_APPLICATION_BUILD_ID
 #define ELISA_APPLICATION_BUILD_ID 0
@@ -39,6 +41,35 @@ static_assert(ELISA_APPLICATION_BUILD_ID >= 0 &&
     "ELISA_APPLICATION_BUILD_ID must fit a nonnegative signed 64-bit integer");
 
 namespace {
+
+// SIGTERM may arrive from a process supervisor while the game is inside its
+// normal frame loop. Keep the handler async-signal-safe: the owner thread turns
+// this flag into the same persistent close request as an SDL window close.
+volatile sig_atomic_t application_termination_requested = 0;
+struct sigaction previous_sigterm_action {};
+bool application_sigterm_handler_installed = false;
+
+void application_sigterm_handler(int) {
+    application_termination_requested = 1;
+}
+
+bool install_application_sigterm_handler() {
+    struct sigaction action {};
+    action.sa_handler = application_sigterm_handler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    application_termination_requested = 0;
+    if (sigaction(SIGTERM, &action, &previous_sigterm_action) != 0) return false;
+    application_sigterm_handler_installed = true;
+    return true;
+}
+
+void restore_application_sigterm_handler() {
+    if (!application_sigterm_handler_installed) return;
+    (void)sigaction(SIGTERM, &previous_sigterm_action, nullptr);
+    application_sigterm_handler_installed = false;
+    application_termination_requested = 0;
+}
 
 constexpr size_t INPUT_EVENT_CAPACITY = 512;
 constexpr size_t GAMEPAD_CAPACITY = 4;
@@ -277,6 +308,11 @@ extern "C" int32_t elisa_application_v1_initialize(
         int64_t(ELISA_APPLICATION_BUILD_ID));
     elisa::hitch::begin(service.hitches);
     if (!service.host.initialize(config)) return ELISA_APPLICATION_INITIALIZATION_FAILED;
+    if (!install_application_sigterm_handler()) {
+        std::fprintf(stderr, "native application: SIGTERM handler installation failed\n");
+        service.host.shutdown();
+        return ELISA_APPLICATION_INITIALIZATION_FAILED;
+    }
     elisa::hitch::initialized(service.hitches);
 
     service.backend_profile_valid = probe::query_live_backend_profile(service.backend_profile);
@@ -365,6 +401,7 @@ extern "C" int32_t elisa_application_v1_pump(void) {
     std::lock_guard<std::mutex> guard(service.mutex);
     if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
     if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    if (application_termination_requested != 0) service.host.request_close();
     const auto now = std::chrono::steady_clock::now();
     service.elapsed_nanos = static_cast<uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(now - service.initialized_at).count());

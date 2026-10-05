@@ -60,6 +60,27 @@ def wait_for_process_group(process_group: int, timeout: float) -> bool:
     return True
 
 
+def process_group_runtime_pids(process_group: int, runtime_executable: Path) -> list[int]:
+    """Find the packaged runtime below its shell/ sandbox launcher."""
+    result = subprocess.run(["/bin/ps", "-axo", "pid=,pgid=,command="],
+        capture_output=True, text=True, timeout=5, check=True)
+    # Keep the spelling used on argv: macOS `ps` reports paths through their
+    # launch-time symlink even when Path.resolve() follows it to /private/.
+    target = str(runtime_executable.absolute())
+    matches = []
+    for line in result.stdout.splitlines():
+        fields = line.strip().split(None, 2)
+        if len(fields) != 3:
+            continue
+        try:
+            pid, group = int(fields[0]), int(fields[1])
+        except ValueError:
+            continue
+        if group == process_group and pid != process_group and target in fields[2]:
+            matches.append(pid)
+    return matches
+
+
 def launch_environment(home: Path, user_data: Path,
     inherited: dict[str, str] | None = None) -> dict[str, str]:
     source = os.environ if inherited is None else inherited
@@ -94,6 +115,27 @@ def stop_process_group(process: subprocess.Popen[bytes], force: bool = False) ->
             pass
         if not wait_for_process_group(process_group, 5):
             raise subprocess.TimeoutExpired(str(process_group), 5)
+    return return_code
+
+
+def stop_process_group_gracefully(process: subprocess.Popen[bytes],
+    runtime_executable: Path) -> int:
+    """Signal the packaged runtime, then reap the launcher and its whole group."""
+    runtime_pids = process_group_runtime_pids(process.pid, runtime_executable)
+    if not runtime_pids:
+        raise ValueError(f"packaged runtime is missing from process group {process.pid}")
+    for runtime_pid in runtime_pids:
+        try:
+            os.kill(runtime_pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
+    return_code = stop_process_group(process)
+    if return_code != 0:
+        raise ValueError(f"launcher did not exit cleanly after runtime SIGTERM (status {return_code})")
     return return_code
 
 
@@ -162,6 +204,9 @@ def run_validation(app_source: Path, log_copy: Path,
 
             environment = launch_environment(home, user_data)
             launcher = app / "Contents/MacOS" / executable_name
+            runtime_executable = app / "Contents/Resources" / f"{executable_name}.bin"
+            if not runtime_executable.is_file():
+                raise ValueError(f"packaged runtime executable is missing: {runtime_executable}")
             record["launcher_sha256"] = hashlib.sha256(launcher.read_bytes()).hexdigest()
             process = subprocess.Popen(["/usr/bin/sandbox-exec", "-f", str(profile), str(launcher)],
                 cwd=base, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -202,13 +247,20 @@ def run_validation(app_source: Path, log_copy: Path,
                 except subprocess.TimeoutExpired:
                     pass
             if process.poll() is None:
-                record["launcher_returncode_after_termination"] = stop_process_group(process)
+                return_code = stop_process_group_gracefully(process, runtime_executable)
+                record["launcher_returncode_after_termination"] = return_code
+                record["graceful_shutdown"] = "verified"
+                record["termination"] = "SIGTERM handled through the application quit loop"
+                record["process_group_reaped"] = True
             else:
                 if process.returncode != 0:
                     raise ValueError(f"interactive app exited with status {process.returncode}")
+                if stop_process_group(process) != 0:
+                    raise ValueError("interactive app process group did not exit cleanly")
                 record["graceful_shutdown"] = "verified"
                 record["termination"] = "clean exit before stop timeout"
                 record["launcher_returncode"] = process.returncode
+                record["process_group_reaped"] = True
             process = None
             startup_log = read_log(latest_log)
             if "process_exit_status=" in startup_log:

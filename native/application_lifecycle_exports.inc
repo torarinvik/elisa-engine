@@ -25,6 +25,7 @@ extern "C" int32_t elisa_application_v1_shutdown(void) {
     flush_application_capture_requests(service);
     elisa::hitch::report(service.hitches);
     service.host.shutdown();
+    restore_application_sigterm_handler();
     service.initialized = false;
     service.backend_profile = {};
     service.backend_profile_valid = false;

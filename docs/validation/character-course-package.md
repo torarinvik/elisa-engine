@@ -267,6 +267,44 @@ the offline startup result, all five non-empty resource groups, and denied
 source, Homebrew, and network access. Shutdown remains a validator SIGTERM; the
 test verifies the process group is gone before temporary files are removed.
 
+### Graceful relocated shutdown (2026-10-05)
+
+The native application ABI now handles SIGTERM as a close request on its normal
+owner-thread event pump. The signal handler only sets an async-signal-safe flag;
+the pump takes the existing SDL close path, and application shutdown restores
+the prior SIGTERM handler. The interactive package validator targets the
+relocated runtime executable inside the bundle, lets the shell launcher collect
+its exit status, and verifies the full process group is gone before the isolated
+HOME is removed. This avoids treating the launcher's own signal death as proof
+of an app teardown.
+
+The new `CharacterCourseSigtermGraceful.app` passed the relocated startup and
+SIGTERM shutdown check on macOS 27.0.1 / arm64. Metal, Wicked and Jolt startup
+markers passed; source-checkout and Homebrew reads and outbound networking were
+denied; all five resource groups were present. The app returned status 0, the
+launcher logged `process_exit_status=0`, and the process group was reaped. Audio
+was forced unavailable for this run. The report and log are
+`build/validation/character-course-sigterm-graceful.json` and `.log`; build
+provenance is `examples/character_course/build/character-course-sigterm-graceful.provenance.json`.
+That build records source revision `ea36e814` and a dirty-tree diff hash, so it
+is a validation artifact rather than a clean-checkout release build. Manual
+gameplay input and clean-machine behavior remain unverified.
+
+Validation command:
+
+```bash
+ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+python3 scripts/validate_interactive_macos_app.py \
+  --app /private/tmp/CharacterCourseSigtermGraceful.app \
+  --report build/validation/character-course-sigterm-graceful.json \
+  --log build/validation/character-course-sigterm-graceful.log \
+  --timeout 45 --stop-after 2 \
+  --resource-group cells --resource-group fonts --resource-group rigs \
+  --resource-group sounds --resource-group text \
+  --marker 'wi::physics Initialized [Jolt Physics'
+```
+
 ## Full course path self-test (2026-10-04)
 
 `self_test.inc` now drives the Jolt character through the step, crouched tunnel,
