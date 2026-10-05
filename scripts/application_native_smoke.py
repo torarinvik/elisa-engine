@@ -40,10 +40,13 @@ def native_smoke_environment(
 ) -> dict[str, str]:
     """Keep app smokes quiet regardless of user audio settings."""
     environment = dict(source)
-    # The relaunch case validates that a saved output device can be reopened.
-    # Its mode only checks persisted settings and does not start course sounds;
-    # the other app smokes keep the device unavailable and use the null route.
-    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = "0" if allow_device_reopen else "1"
+    # The relaunch case normally validates that a saved output device can be
+    # reopened. A caller can still force every app smoke onto the null route,
+    # including that case, by setting this variable in the parent environment.
+    force_device_unavailable = source.get("ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE") == "1"
+    environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"] = (
+        "1" if force_device_unavailable or not allow_device_reopen else "0"
+    )
     return environment
 
 
