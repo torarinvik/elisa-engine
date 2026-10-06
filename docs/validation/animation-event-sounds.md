@@ -1,73 +1,71 @@
 # Animation-event sounds
 
-Validated on 2026-09-29 on macOS 27.0 / Apple M5 with the pinned Stage1
-compiler (`ELISA_ALLOW_STALE_STAGE1=1`) and the `elisa-engine-proof` prover.
+Animation-marker sound policy and the Character Course integration. The
+original binding and live-audio tests were validated on 2026-09-29; the
+clip-authored event path was added and focused-tested on 2026-10-06.
 
-This is S05 progress and closes its trigger list: footfalls and landings
-([`movement-sound-triggers.md`](movement-sound-triggers.md)), music
-([`music-transitions.md`](music-transitions.md)) and now animation markers.
+This is S05 progress alongside [footfall and landing triggers](movement-sound-triggers.md)
+and [music transitions](music-transitions.md).
 
 ## Design
 
 - **Policy.** `src/audio/anim_events.elisa` (`AudioAnimEvents`) binds up to
-  four animation event ids (1–65535) to a sound event and a gain in permille.
-  The clip owns where its markers sit; the asset owns what each marker sounds
-  like. `crossed(before_mc, after_mc, marker_mc)` says whether a clip that
-  advanced from `before_mc` to `after_mc` thousandths of a cycle passed a
-  marker. A marker exactly at the start was heard on the previous update, no
-  motion crosses nothing, and a hitch of several cycles sounds once per
-  update, so a replayed animation repeats the same sounds.
-- **Authoring.** `.sfx` gains `anim <animation event> <sound event> <gain>`.
-  The sound event must be defined on an earlier line (`UnknownEvent`
-  otherwise). A bad id, sound event 0, a gain over 1000 or a fifth binding
-  gives `InvalidAnim`; a repeated animation event gives `DuplicateAnim`. The
-  record is validated all or nothing with the rest of the asset and reloads
-  with it.
-- **Course.** The guide's walk clip plants a foot at the start of a cycle
-  (animation event 100) and half-way (101). `CourseSounds::animation_markers`
-  takes the cycle position before and after each update
-  (`walker.cycles` in milli-cycles), fires each marker passed through
-  `fire_animation`, and returns how many were heard. `events.sfx` authors
-  sound event 7 (the guide's footstep, its own concurrency group) and
-  `anim 100 7 500` / `anim 101 7 500`. An unbound marker is silent.
+  four animation event ids (1–65535) to a sound event and gain in permille.
+  The clip owns marker positions; the `.sfx` asset owns their sounds.
+  `crossed_clip_event` compares integer clip ticks to cycle progress without
+  rounding the marker to a milli-cycle. No motion crosses nothing, and a hitch
+  of several cycles sounds at most once per update.
+- **Clip authoring.** A glTF animation may put tick-aligned events in
+  `animation.extras.elisaEvents`, for example `{ "id": 100, "time": 0.0 }`
+  and `{ "id": 101, "time": 0.5 }`. Times are seconds and must land on the
+  30 Hz cooked clip's ticks. The cooker writes event IDs and integer ticks to
+  the existing `elisa-anim-v1` event records. It accepts up to 32 ordered
+  markers per clip; repeated IDs are permitted.
+- **Sound bindings.** `.sfx` uses `anim <animation event> <sound event> <gain>`.
+  The sound event must be defined earlier (`UnknownEvent` otherwise). A zero
+  or out-of-range animation id, sound event 0, gain over 1000 or fifth binding
+  gives `InvalidAnim`; duplicate binding IDs give `DuplicateAnim`. Validation
+  and reload are all-or-nothing with the rest of the asset.
+- **Course dispatch.** The generated guide `lift` clip authors foot plants
+  100 at tick 0 and 101 at tick 15. Walker creation decodes the packaged
+  `.anim` file once and copies the bounded event table into walker state.
+  Each frame `CourseSounds::animation_markers` checks each authored tick
+  against the clip advance and dispatches the ID through `fire_animation`.
+  `events.sfx` contains the sound bindings `anim 100 7 500` and
+  `anim 101 7 500`; it does not duplicate marker positions. The frame path
+  uses a fixed array and allocates nothing. An unbound marker is silent.
 
 ## Proof
 
-`proof/audio_anim_events.elisa` proves that a guarded record meets
-`binding`'s requires and names an id within range, that any binding's heard
-gain is at most full, and that `crossed` implies the position advanced.
+`proof/audio_anim_events.elisa` proves guarded binding validity, the full-gain
+clamp, and that both milli-cycle and exact clip-tick crossing imply progress.
+`crossed_clip_event` uses a 30 Hz clip bound of 3600 ticks, matching the
+cooker's 120-second limit.
 
-`crossed` needed an explicit early return for a still clip: the prover does not
-yet reason that floor division is monotone.
+## Focused checks (2026-10-06)
 
-## Checks
+- `test/audio_anim_events.elisa` passed: binding table, gain clamp, and
+  milli-cycle and exact clip-tick boundary, wrap, hitch and still-clip cases.
+- `test/anim_state.elisa` passed, including bounded `ClipEvent` access and its
+  invalid-index sentinel.
+- `test/animation_cooked_contract.elisa` passed; it decoded event 100 at tick
+  0 and event 101 at tick 15 from the course contract.
+- `/opt/homebrew/bin/python3 scripts/test_animation_contract.py` and
+  `scripts/gltf_skin_self_test.py` passed, including event validation,
+  time-to-tick conversion, serialization and deterministic cooking.
+- The focused Elisa Proof target proved with 9/9 obligations and no unproven
+  goals. `scripts/check_source_length.py` and `git diff --check` passed.
+- `character-course-smoke` passed with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`
+  and `SDL_AUDIODRIVER=dummy`. The hidden course self-test compiled and ran the
+  integrated dispatch; its stress trace reported zero voices and streams.
+  Audio output remained silent throughout.
 
-- `test/audio_anim_events.elisa` exits 0: validation, table fill and lookup,
-  full table, marker crossings (exact start, wrap, hitch, no motion, once
-  per cycle over 4 cycles) and the gain clamp.
-- `test/audio_event_assets.elisa` codes 80–91: accepted records, a zero id, an
-  over-full gain, sound event 0, an unknown sound event, a duplicate (line 7),
-  a fifth binding, a short record, a rejected asset keeping bindings and a
-  plain one clearing them.
-- Negative control: disabling the duplicate-animation check makes the asset
-  test exit 87.
-- Course self-test 200 (live audio): no marker before the half cycle, the half
-  cycle sounds, a repeat in the same tick does not, a cycle end sounds, two
-  markers in one hitch sound once (same event, same tick), and a reload
-  without the bindings is silent.
-- `character-course-smoke` and `character-course-relaunch-smoke` pass.
+The 2026-09-29 live-audio check exercised sound-event deduplication, marker
+crossings and `.sfx` reload before marker positions moved into the clip. No
+audible listening test has been run for the clip-authored path.
 
-## Gaps
+## Remaining gaps
 
-- The markers' positions (0 and half a cycle) are course constants; the
-  skinned rig's clip asset (`ClipEvent` in `src/animation/assets.elisa`) does
-  not yet carry them into `anim` records, and `Anim::AnimState` events are not
-  consumed.
+- The separate `Anim::AnimState.events` queue has no general audio consumer.
 - Sounds are not spatialised to the guide.
-- No audible listening test was run in this session.
-
-2026-09-30: `test/audio_anim_events.elisa` had been missing from the shared
-gate's unit-test list. It is listed now, as is `test/audio_music.elisa` for
-music transitions. A sweep of the test files no script references found no
-other pure tests outside the gate: the rest are included by native mains or
-need native symbols.
+- No audible listening test was run.

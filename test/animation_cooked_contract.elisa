@@ -91,6 +91,11 @@ def valid_sampling(bytes: darray[u8]&) -> i32:
         value: value
         error failure: return 24
     return 25 if AnimationAssets::clip_duration_ticks(&clip) != 30
+    return 28 if AnimationAssets::clip_event_count(&clip) != 2
+    left_plant: AnimationAssets::ClipEvent = AnimationAssets::clip_event_at(&clip, 0)
+    right_plant: AnimationAssets::ClipEvent = AnimationAssets::clip_event_at(&clip, 1)
+    return 29 if left_plant.event_id.value != 100 or left_plant.tick != 0
+    return 60 if right_plant.event_id.value != 101 or right_plant.tick != 15
     pose: Pose::Pose = catch AnimationAssets::sample_clip_pose(&skeleton, &clip, 15):
         value: value
         error failure: return 26

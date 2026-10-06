@@ -157,12 +157,13 @@
         def anim_marker_test(session: mutable RuntimeServices::Session&) -> bool:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            quiet: bool = CourseSounds::animation_markers(&sounds, 0, 400, 1) == 0
-            right: bool = CourseSounds::animation_markers(&sounds, 400, 600, 2) == 1
-            again: bool = CourseSounds::animation_markers(&sounds, 400, 600, 2) == 0
-            left: bool = CourseSounds::animation_markers(&sounds, 600, 1000, 3) == 1
-            both: bool = CourseSounds::animation_markers(&sounds, 1000, 2100, 4) == 1
-            dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, 2100, 2600, 5) == 0
+            animation: mutable WalkerAnimation = walker_animation_or_empty()
+            quiet: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 0, 400, 1) == 0
+            right: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 400, 600, 2) == 1
+            again: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 400, 600, 2) == 0
+            left: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 600, 1000, 3) == 1
+            both: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 1000, 2100, 4) == 1
+            dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 2100, 2600, 5) == 0
             CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and audio_idle(session)
 
         def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32:

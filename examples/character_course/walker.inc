@@ -13,6 +13,14 @@
             MIN_TRAVEL: f32 = 0.001
             SCALE: f32 = 0.5
 
+        struct WalkerAnimation:
+            duration_ticks: mutable i64
+            events: mutable AnimationAssets::ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]
+            event_count: mutable usize
+
+        def WalkerAnimation() -> WalkerAnimation:
+            WalkerAnimation{duration_ticks: 0, events: zeroed, event_count: 0}
+
         struct Walker:
             loaded: mutable bool
             rig: mutable RenderScene::InstanceHandle
@@ -21,6 +29,34 @@
             heading: mutable Geometry::Quat
             # Clip cycles played since creation.
             cycles: mutable f32
+            animation: mutable WalkerAnimation
+
+        # The animation contract carries marker IDs and their exact positions
+        # alongside the render package. Copy only that small fixed table into
+        # Walker; sampling keys and file storage stay out of the frame path.
+        def load_walker_animation() -> WalkerAnimation error[AnimationPackage::AnimationPackageError]:
+            bytes: mutable darray[u8] = []
+            try AnimationPackage::read_file("rigs/guide_rig.anim", &bytes)
+            skeleton: mutable AnimationAssets::SkeletonAsset = try AnimationPackage::decode_skeleton(&bytes)
+            clips: usize = try AnimationPackage::clip_count(&bytes)
+            raise AnimationPackage::AnimationPackageError.InvalidClip if clips == 0
+            clip: mutable AnimationAssets::AnimationClip = try AnimationPackage::decode_clip(&bytes, &skeleton, 0)
+            duration: i64 = AnimationAssets::clip_duration_ticks(&clip)
+            count: usize = AnimationAssets::clip_event_count(&clip)
+            raise AnimationPackage::AnimationPackageError.InvalidClip if duration <= 0 or duration.u64() > AudioAnimEvents::MAX_CLIP_TICKS or count == 0 or count > AnimationLimits::MAX_EVENTS_PER_CLIP
+            animation: mutable WalkerAnimation = WalkerAnimation()
+            animation.duration_ticks <- duration
+            for index in 0..<count |animation, clip|:
+                event: AnimationAssets::ClipEvent = AnimationAssets::clip_event_at(&clip, index)
+                raise AnimationPackage::AnimationPackageError.InvalidClip if event.event_id.value <= 0 or event.tick < 0 or event.tick > duration
+                animation.events[index] <- event
+                animation.event_count <- animation.event_count + 1
+            animation
+
+        def walker_animation_or_empty() -> WalkerAnimation:
+            catch load_walker_animation():
+                value: value
+                error failure: WalkerAnimation()
 
         # The yaw that turns +Z toward the planar direction (dx, dz), or
         # `previous` when there is no planar travel.
@@ -43,14 +79,16 @@
 
         def create_walker(pose: PhysicsRuntime::BodyPose) -> Walker error[RenderScene::RenderSceneError]:
             start: Geometry::Vec3 = feet(pose)
+            animation: WalkerAnimation = walker_animation_or_empty()
             rig: RenderScene::InstanceHandle = try RenderScene::create_mesh("rigs/guide_rig.pkg",
                 walker_transform(start, Geometry::quat_identity()), box_color(0.86, 0.5, 0.9))
             try RenderScene::play_animation(rig, "lift", true, 1.0, 0.0)
-            Walker{loaded: true, rig: rig, last: start, heading: Geometry::quat_identity(), cycles: 0.0}
+            Walker{loaded: true, rig: rig, last: start, heading: Geometry::quat_identity(), cycles: 0.0, animation: animation}
 
         def no_walker() -> Walker:
             Walker{loaded: false, rig: RenderScene::empty_instance_handle(),
-                last: Geometry::vec3_zero(), heading: Geometry::quat_identity(), cycles: 0.0}
+                last: Geometry::vec3_zero(), heading: Geometry::quat_identity(), cycles: 0.0,
+                animation: WalkerAnimation()}
 
         # Play keeps going with the plain guide body if the package is missing.
         def optional_walker(session: RuntimeServices::Session&, guide: Guide&) -> Walker:

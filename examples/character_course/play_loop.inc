@@ -298,7 +298,9 @@
                             guide_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, guide.character)
                             cycles_before: u64 = AudioTriggers::millimetres(walker.cycles)
                             _ = try update_walker(&walker, guide_pose, NavAgent::state(&guide_agent) == NavAgent::State.Moving)
-                            _ = CourseSounds::animation_markers(&sounds, cycles_before, AudioTriggers::millimetres(walker.cycles), sound_tick)
+                            _ = CourseSounds::animation_markers(&sounds, &walker.animation.events,
+                                walker.animation.event_count, walker.animation.duration_ticks,
+                                cycles_before, AudioTriggers::millimetres(walker.cycles), sound_tick)
                             _ = try advance_rigs(rigs, elapsed_delta.f32() / 1000000.0)
                         else:
                             previous_elapsed_nanos <- frame.elapsed_nanos
