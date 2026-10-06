@@ -224,24 +224,33 @@ the parser errors in `output_transport_posix.elisa`, and its source parser
 regression passes, but a rebuilt full ElisaScript product is not yet available.
 The complete native gate and focused wrapper therefore remain unverified.
 
-## Full shared check result (2026-10-06; Q01 remains open)
+## Shared check and native wrapper status (2026-10-06; Q01 remains open)
 
-With the rebuilt ElisaScript product, `scripts/check.elisascript` passed every
-stage before proofs: 212/212 Elisa tests, SDL3, headless Godot probes, native
-unit tests, scene and artifact checks, viewport tests, navigation tests, and
-negative ownership fixtures. The run used Stage1
-`7b27fa312c5af923f044f6ee0e5e1de4f811f595`,
-`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`, and `SDL_AUDIODRIVER=dummy`. No
-gameplay audio was sent to an output device. The command stopped at the proof
-stage, before writing `build/validation.json`.
+`scripts/check.elisascript` ran with the installed Sep 17 ElisaScript product
+(SHA-256 `80fe9f28cd0d36434e0bae68267b8652c833447c1b6bd01c0e4eaf7a8eca94bf`),
+not a rebuild of the current source. It passed every stage before proofs:
+212/212 Elisa tests, SDL3, headless Godot probes, native unit tests, scene and
+artifact checks, viewport tests, navigation tests, and negative ownership
+fixtures. The Stage1 revision reported by the gate was
+`7b27fa312c5af923f044f6ee0e5e1de4f811f595`. The run set
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` and `SDL_AUDIODRIVER=dummy`, so no
+gameplay audio reached an output device. The proof failure stopped the command
+before it wrote `build/validation.json`.
+
+The separate Character Course smoke did not launch: the same installed
+ElisaScript rejected the native-gate wrapper's third `run_process` timeout
+argument at line 11. A bounded rebuild from ElisaScript commit `36a3374a` with
+Stage1 revision `6b475d894331f0a81c3112167ef7fcf5c642a424` stopped at its
+180-second watchdog with peak RSS 741,808 KiB while other Stage1 builds were
+active. No candidate executable was produced; the installed product is
+unchanged.
 
 The merged proof candidate at `f404eeda` (binary SHA-256
 `0a774e27b0d67bb980c5b1e2e27248924b1dc1f290cf63d5a971da1f125985f0`)
 fully replays 38/71 engine proofs; 31 have replay gaps and two are unsupported.
 The previous local prover product (SHA-256
 `eb0bbe0ef2d6d1960d1a6baca823484964dc0e5ba752160b507911ed61c4b509`)
-fully replays 69/71; `action_input_context` and `action_input_deadzone` remain
-unsupported in both products. The comparison points to a replay regression in
-the merged candidate, in addition to those two existing ActionInput proof
-gaps. Keep Q01 open until the candidate regains the existing proof coverage and
-the two unsupported invariants have accepted and rejected regressions.
+fully replays 69/71; `action_input_context` and `action_input_deadzone` are
+unsupported in both. The coverage drop needs triage to distinguish lost support
+from newly exposed proof gaps. Keep Q01 open until the prover result and both
+ActionInput invariants have accepted and rejected regressions.
