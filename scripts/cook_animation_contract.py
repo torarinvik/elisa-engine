@@ -35,6 +35,7 @@ MAX_JOINTS = 64
 MAX_CLIPS = 24
 MAX_KEYS_PER_CLIP = 262144
 MAX_EVENTS_PER_CLIP = 32
+MAX_EVENT_ID = 65535
 MAX_BYTES = 64 * 1024 * 1024
 BIND_TOLERANCE = 1.0e-3
 
@@ -151,13 +152,30 @@ def clip_record(clip: dict, rig_id: int, joint_count: int) -> bytes:
         raise ValueError("normalized clip does not match the rig")
     if frames * joint_count > MAX_KEYS_PER_CLIP:
         raise ValueError("animation clip exceeds the per-clip key bound")
+    events = clip.get("events", [])
+    if not isinstance(events, list) or len(events) > MAX_EVENTS_PER_CLIP:
+        raise ValueError("animation clip exceeds the per-clip event bound")
+    seen_events: set[int] = set()
+    previous_tick = -1
+    for event in events:
+        if not isinstance(event, dict) or set(event) != {"id", "tick"}:
+            raise ValueError("animation event must contain only id and tick")
+        event_id, tick = event["id"], event["tick"]
+        if (type(event_id) is not int or not 1 <= event_id <= MAX_EVENT_ID or
+                type(tick) is not int or not 0 <= tick <= frames - 1 or tick < previous_tick or
+                event_id in seen_events):
+            raise ValueError("animation event id or tick is invalid")
+        seen_events.add(event_id)
+        previous_tick = tick
     record = bytearray(struct.pack("<6I", stable_id(clip["name"].encode("utf-8")), rig_id,
-        frames - 1, clip["sample_rate"], joint_count, 0))
+        frames - 1, clip["sample_rate"], joint_count, len(events)))
     for joint in range(joint_count):
         record += struct.pack("<2I", joint, frames)
         for frame in range(frames):
             start = (frame * joint_count + joint) * 10
             record += struct.pack("<I10f", frame, *(_f32(value) for value in samples[start:start + 10]))
+    for event in events:
+        record += struct.pack("<2I", event["id"], event["tick"])
     return bytes(record)
 
 

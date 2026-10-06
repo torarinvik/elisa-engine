@@ -1,6 +1,6 @@
 format=elisa-cooked-v3
 source=test/generated/multi_material_skinned_panel.gltf
-source_sha256=59f48780fdeb2a1c98e61f44ced5e54d9c7eb4dd489837d11e171df1adbc2c90
+source_sha256=1b72dbc4abd95205ce8f65ac0ac32884abc0017c388f8028e610cb3cf55d4f1c
 triangles=12
 positions=24
 indices=36

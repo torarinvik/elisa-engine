@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import cook_animation_contract as contract
+import cook_gltf_animation
 
 ROOT = Path(__file__).resolve().parents[1]
 IDENTITY = (0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)
@@ -45,6 +46,15 @@ def main() -> int:
     if checksum != contract.fnv1a(data[16:]) or rig_id != contract.stable_id(data[32:32 + 3 * 112]):
         print("animation contract checksum or rig id is wrong", file=sys.stderr)
         return 1
+    marker_animation = {"extras": {"elisaEvents": [
+        {"id": 100, "time": 0.0}, {"id": 101, "time": 0.5}]}}
+    markers = cook_gltf_animation._animation_events(marker_animation, 1.0, 30, "walk")
+    marker_clip = clip(3, 31, "walk")
+    marker_clip["events"] = markers
+    marker_record = contract.clip_record(marker_clip, 1, 3)
+    if struct.unpack_from("<I", marker_record, 20)[0] != 2 or marker_record[-16:] != struct.pack("<4I", 100, 0, 101, 15):
+        print("animation clip markers did not retain their authored ticks", file=sys.stderr)
+        return 1
     expected = 32 + 3 * 112 + 2 * 24 + 2 * 3 * 8 + (2 + 4) * 3 * 44
     if len(data) != expected:
         print(f"animation contract is {len(data)} bytes, expected {expected}", file=sys.stderr)
@@ -61,6 +71,12 @@ def main() -> int:
         rejects("a clip missing a joint track", lambda: contract.encode(skin([-1, 0]), [clip(1)])),
         rejects("duplicate clip names", lambda: contract.encode(skin([-1]), [clip(1), clip(1)])),
         rejects("a bind pose that disagrees with the rest pose", lambda: contract.encode(bound_skin, [])),
+        rejects("an animation marker between cooked ticks", lambda: cook_gltf_animation._animation_events(
+            {"extras": {"elisaEvents": [{"id": 1, "time": 0.01}]}}, 1.0, 30, "walk")),
+        rejects("duplicate animation marker ids", lambda: contract.encode(skin([-1]), [
+            {**clip(1), "events": [{"id": 7, "tick": 0}, {"id": 7, "tick": 1}]}])),
+        rejects("out-of-order animation marker ticks", lambda: contract.encode(skin([-1]), [
+            {**clip(1), "events": [{"id": 7, "tick": 1}, {"id": 8, "tick": 0}]}])),
     ]
     if not all(checks):
         return 1

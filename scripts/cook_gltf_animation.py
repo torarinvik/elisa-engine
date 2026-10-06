@@ -8,13 +8,14 @@ import math
 import struct
 
 import cook_assets
+import cook_animation_contract
 import cook_gltf_nodes
 
 SAMPLE_RATE = 30
 MAX_CLIPS = 32
 MAX_FRAMES = 3601
 MAX_DURATION = (MAX_FRAMES - 1) / SAMPLE_RATE
-ANIMATION_KEYS = {"name", "samplers", "channels"}
+ANIMATION_KEYS = {"name", "samplers", "channels", "extras"}
 SAMPLER_KEYS = {"input", "output", "interpolation"}
 CHANNEL_KEYS = {"sampler", "target"}
 TARGET_KEYS = {"node", "path"}
@@ -200,6 +201,39 @@ def morph_defaults(document: dict, placement_records: list[tuple], morph_count: 
     return defaults
 
 
+def _animation_events(animation: dict, duration: float, duration_ticks: int,
+        label: str) -> list[dict]:
+    """Read Elisa's tick-aligned clip markers from standard glTF animation extras."""
+    extras = animation.get("extras", {})
+    if not isinstance(extras, dict):
+        raise ValueError(f"{label} extras must be an object")
+    authored = extras.get("elisaEvents", [])
+    if not isinstance(authored, list) or len(authored) > cook_animation_contract.MAX_EVENTS_PER_CLIP:
+        raise ValueError(f"{label} elisaEvents exceeds the per-clip event bound")
+    events = []
+    seen_ids: set[int] = set()
+    previous_tick = -1
+    for index, event in enumerate(authored):
+        event_label = f"{label} event {index}"
+        if not isinstance(event, dict) or set(event) != {"id", "time"}:
+            raise ValueError(f"{event_label} must contain only id and time")
+        event_id, time = event["id"], event["time"]
+        if type(event_id) is not int or not 1 <= event_id <= cook_animation_contract.MAX_EVENT_ID:
+            raise ValueError(f"{event_label} id must be from 1 to {cook_animation_contract.MAX_EVENT_ID}")
+        if type(time) not in (int, float) or not math.isfinite(time) or time < 0.0 or time > duration:
+            raise ValueError(f"{event_label} time is outside the clip")
+        tick_value = time * SAMPLE_RATE
+        tick = round(tick_value)
+        if abs(tick_value - tick) > 1.0e-5 or tick > duration_ticks:
+            raise ValueError(f"{event_label} time must align with a cooked animation tick")
+        if event_id in seen_ids or tick < previous_tick:
+            raise ValueError(f"{event_label} duplicates an id or is out of order")
+        seen_ids.add(event_id)
+        previous_tick = tick
+        events.append({"id": event_id, "tick": tick})
+    return events
+
+
 def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list[int]],
         rest: list[tuple[float, ...]], placement_records: list[tuple] | None = None,
         morph_count: int = 0) -> list[dict]:
@@ -277,6 +311,7 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list
         if not math.isfinite(duration) or duration <= 0.0 or duration > MAX_DURATION:
             raise ValueError(f"{label} duration exceeds the bounded runtime range")
         frame_count = max(2, math.ceil(duration * SAMPLE_RATE) + 1)
+        events = _animation_events(animation, duration, frame_count - 1, label)
         samples: list[float] = []
         morph_samples: list[float] = []
         for frame in range(frame_count):
@@ -298,7 +333,8 @@ def normalize(document: dict, buffer: bytes, ordered_index: dict[int, int | list
                 else:
                     morph_samples.extend(_sample(track, time, f"{label} placement {placement} weights"))
         clips.append({"name": name, "duration": duration, "sample_rate": SAMPLE_RATE,
-            "frames": frame_count, "samples": samples, "morph_weights": morph_samples})
+            "frames": frame_count, "samples": samples, "morph_weights": morph_samples,
+            "events": events})
     return clips
 
 

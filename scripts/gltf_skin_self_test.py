@@ -64,7 +64,8 @@ def _append(document: dict, buffer: bytearray, payload: bytes, component: int,
 
 
 def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES,
-        second_animation: bool = False) -> dict:
+        second_animation: bool = False,
+        animation_events: list[dict] | None = None) -> dict:
     document = cook_assets.read_gltf(SOURCE.read_bytes())
     buffer = bytearray(cook_assets.source_bytes(SOURCE.parent, document))
     primitive_counts = [8, 4, 8]
@@ -119,9 +120,12 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
     if inverse_bind is not None:
         skin["inverseBindMatrices"] = inverse_bind
     document["skins"] = [skin]
-    document["animations"] = [{"name": "lift", "samplers": [{"input": input_accessor,
+    lift = {"name": "lift", "samplers": [{"input": input_accessor,
         "output": output_accessor, "interpolation": "LINEAR"}], "channels": [{"sampler": 0,
-        "target": {"node": 2, "path": "translation"}}]}]
+        "target": {"node": 2, "path": "translation"}}]}
+    if animation_events is not None:
+        lift["extras"] = {"elisaEvents": animation_events}
+    document["animations"] = [lift]
     if second_animation:
         drop_output_accessor = _append(document, buffer,
             struct.pack("<6f", 0.0, 3.0, 0.0, 0.0, 5.0, 0.0), 5126, "VEC3", 2)
@@ -135,10 +139,12 @@ def generated_document(inverse_bind_matrices: tuple[float, ...] | None = INVERSE
 
 def write_package(output: Path,
         inverse_bind_matrices: tuple[float, ...] | None = INVERSE_BIND_MATRICES,
-        second_animation: bool = False, animation_contract: Path | None = None) -> tuple[Path, dict]:
+        second_animation: bool = False, animation_contract: Path | None = None,
+        animation_events: list[dict] | None = None) -> tuple[Path, dict]:
     with tempfile.TemporaryDirectory(prefix="elisa-gltf-skin-") as temporary:
         source = Path(temporary) / "multi_material_skinned_panel.gltf"
-        source.write_text(json.dumps(generated_document(inverse_bind_matrices, second_animation), separators=(",", ":")),
+        source.write_text(json.dumps(generated_document(inverse_bind_matrices,
+            second_animation, animation_events), separators=(",", ":")),
             encoding="utf-8")
         return cook_gltf_geometry.cook_geometry_package(source, ASSET_PATH, output, animation_contract_path=animation_contract)
 

@@ -28,7 +28,8 @@ def cooked() -> tuple[bytes, bytes]:
     with tempfile.TemporaryDirectory(prefix="elisa-course-rig-") as temporary:
         output = Path(temporary) / RIG.name
         contract = Path(temporary) / CONTRACT.name
-        gltf_skin_self_test.write_package(output, animation_contract=contract)
+        gltf_skin_self_test.write_package(output, animation_contract=contract,
+            animation_events=[{"id": 100, "time": 0.0}, {"id": 101, "time": 0.5}])
         return output.read_bytes(), contract.read_bytes()
 
 
