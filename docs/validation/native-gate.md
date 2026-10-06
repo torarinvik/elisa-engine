@@ -234,16 +234,18 @@ artifact checks, viewport tests, navigation tests, and negative ownership
 fixtures. The Stage1 revision reported by the gate was
 `7b27fa312c5af923f044f6ee0e5e1de4f811f595`. The run set
 `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1` and `SDL_AUDIODRIVER=dummy`, so no
-gameplay audio reached an output device. The proof failure stopped the command
-before it wrote `build/validation.json`.
+gameplay audio reached an output device. The six checks in
+`scripts/test_application_native_smoke.py` also passed, including the forced
+unavailable route. The proof failure stopped the command before it wrote
+`build/validation.json`.
 
 The separate Character Course smoke did not launch: the same installed
 ElisaScript rejected the native-gate wrapper's third `run_process` timeout
 argument at line 11. A bounded rebuild from ElisaScript commit `36a3374a` with
 Stage1 revision `6b475d894331f0a81c3112167ef7fcf5c642a424` stopped at its
-180-second watchdog with peak RSS 741,808 KiB while other Stage1 builds were
-active. No candidate executable was produced; the installed product is
-unchanged.
+180-second watchdog on both attempts (peak RSS 741,808 KiB and 602,464
+KiB). The retry was CPU-active; other Stage1 builds appeared during it. No
+candidate executable was produced, and the installed product is unchanged.
 
 The merged proof candidate at `f404eeda` (binary SHA-256
 `0a774e27b0d67bb980c5b1e2e27248924b1dc1f290cf63d5a971da1f125985f0`)
