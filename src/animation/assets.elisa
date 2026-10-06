@@ -188,6 +188,15 @@ module AnimationAssets:
         def clip_duration_ticks(clip: AnimationClip&) -> i64:
             clip.duration_ticks
 
+        # Authored event records are readable without exposing the clip's
+        # backing array. Out-of-range reads return the invalid sentinel.
+        def clip_event_count(clip: AnimationClip&) -> usize:
+            clip.event_count
+
+        def clip_event_at(clip: AnimationClip&, index: usize) -> ClipEvent:
+            return ClipEvent{event_id: EventId{value: 0}, tick: -1} if index >= clip.event_count
+            clip.events[index]
+
         def sample_clip_pose(skeleton: SkeletonAsset&, clip: AnimationClip&,
             tick: i64) -> Pose::Pose error[AnimationAssetError]:
             raise AnimationAssetError.InvalidSkeleton if not skeleton_asset_valid(skeleton)

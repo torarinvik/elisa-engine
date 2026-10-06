@@ -62,6 +62,11 @@ def run_animation_asset_tests() -> i32:
     return 12 if not AnimationAssets::clip_add_event(&clip, AnimationAssets::EventId{value: 100}, 5)
     return 13 if AnimationAssets::clip_add_event(&clip, AnimationAssets::EventId{value: 101}, 4)
     return 14 if not AnimationAssets::clip_asset_valid(&skeleton, &clip) or not AnimationAssets::clip_compatible(&skeleton, &clip)
+    return 22 if AnimationAssets::clip_event_count(&clip) != 1
+    foot_plant: AnimationAssets::ClipEvent = AnimationAssets::clip_event_at(&clip, 0)
+    missing_event: AnimationAssets::ClipEvent = AnimationAssets::clip_event_at(&clip, 1)
+    return 23 if foot_plant.event_id.value != 100 or foot_plant.tick != 5
+    return 24 if missing_event.event_id.value != 0 or missing_event.tick != -1
 
     sampled: Pose::Pose = catch AnimationAssets::sample_clip_pose(&skeleton, &clip, 5):
         value: value
