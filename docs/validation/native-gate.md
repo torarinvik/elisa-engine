@@ -223,3 +223,25 @@ product and a missing configured executable. Compiler commit `6b475d89` fixes
 the parser errors in `output_transport_posix.elisa`, and its source parser
 regression passes, but a rebuilt full ElisaScript product is not yet available.
 The complete native gate and focused wrapper therefore remain unverified.
+
+## Full shared check result (2026-10-06; Q01 remains open)
+
+With the rebuilt ElisaScript product, `scripts/check.elisascript` passed every
+stage before proofs: 212/212 Elisa tests, SDL3, headless Godot probes, native
+unit tests, scene and artifact checks, viewport tests, navigation tests, and
+negative ownership fixtures. The run used Stage1
+`7b27fa312c5af923f044f6ee0e5e1de4f811f595`,
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`, and `SDL_AUDIODRIVER=dummy`. No
+gameplay audio was sent to an output device. The command stopped at the proof
+stage, before writing `build/validation.json`.
+
+The merged proof candidate at `f404eeda` (binary SHA-256
+`0a774e27b0d67bb980c5b1e2e27248924b1dc1f290cf63d5a971da1f125985f0`)
+fully replays 38/71 engine proofs; 31 have replay gaps and two are unsupported.
+The previous local prover product (SHA-256
+`eb0bbe0ef2d6d1960d1a6baca823484964dc0e5ba752160b507911ed61c4b509`)
+fully replays 69/71; `action_input_context` and `action_input_deadzone` remain
+unsupported in both products. The comparison points to a replay regression in
+the merged candidate, in addition to those two existing ActionInput proof
+gaps. Keep Q01 open until the candidate regains the existing proof coverage and
+the two unsupported invariants have accepted and rejected regressions.
