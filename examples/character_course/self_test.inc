@@ -1,6 +1,7 @@
 # Finite checks for the character course, included in its private section.
         @callconv(c)
         extern elisa_audio_v1_test_fail_next_stream_stop() -> i32
+        extern elisa_audio_v1_test_fail_next_voice_stop() -> i32
 
         const module CoursePathTune:
             SEGMENT_MAX_TICKS: usize = 180
@@ -457,6 +458,7 @@
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
             return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::PLAYED
+            return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_voice_stop() != 0
             return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_stream_stop() != 0
             return SoundCodes::RELEASE if CourseSounds::stop(&sounds)
             remaining_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
@@ -465,6 +467,6 @@
             remaining_streams: usize = catch AudioRuntime::active_stream_count():
                 value: value
                 error failure: 99
-            return SoundCodes::RELEASE if remaining_voices != 0 or remaining_streams != 1
+            return SoundCodes::RELEASE if remaining_voices != 1 or remaining_streams != 1
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
             0

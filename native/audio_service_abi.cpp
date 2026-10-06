@@ -16,6 +16,7 @@ struct AudioService {
     bool initialized = false;
 #if defined(ELISA_AUDIO_TEST_PROBE)
     bool fail_next_initialize_after_open = false;
+    bool fail_next_voice_stop = false;
     bool fail_next_stream_stop = false;
 #endif
 };
@@ -173,6 +174,15 @@ extern "C" int32_t elisa_audio_v1_test_fail_next_stream_stop(void) {
     state.fail_next_stream_stop = true;
     return ELISA_AUDIO_OK;
 }
+
+extern "C" int32_t elisa_audio_v1_test_fail_next_voice_stop(void) {
+    const int32_t owner_status = require_application_owner();
+    if (owner_status != ELISA_AUDIO_OK) return owner_status;
+    AudioService& state = audio_service();
+    if (!state.initialized || state.fail_next_voice_stop) return ELISA_AUDIO_INVALID_STATE;
+    state.fail_next_voice_stop = true;
+    return ELISA_AUDIO_OK;
+}
 #endif
 
 extern "C" int32_t elisa_audio_v1_decode_file(
@@ -246,6 +256,13 @@ extern "C" int32_t elisa_audio_v1_play(
 extern "C" int32_t elisa_audio_v1_stop(uint32_t slot, uint32_t generation) {
     const int32_t status = require_audio_service();
     if (status != ELISA_AUDIO_OK) return status;
+#if defined(ELISA_AUDIO_TEST_PROBE)
+    AudioService& state = audio_service();
+    if (state.fail_next_voice_stop) {
+        state.fail_next_voice_stop = false;
+        return ELISA_AUDIO_INVALID_STATE;
+    }
+#endif
     return audio_service().service.stop(probe::audio::VoiceHandle{slot, generation})
         ? ELISA_AUDIO_OK : ELISA_AUDIO_INVALID_HANDLE;
 }
@@ -465,6 +482,10 @@ extern "C" void elisa_audio_v1_shutdown_from_application(void) {
 // this dormant test-probe reference in production builds without enabling it.
 extern "C" __attribute__((visibility("hidden"))) int32_t
 elisa_audio_v1_test_fail_next_stream_stop(void) {
+    return ELISA_AUDIO_INVALID_STATE;
+}
+extern "C" __attribute__((visibility("hidden"))) int32_t
+elisa_audio_v1_test_fail_next_voice_stop(void) {
     return ELISA_AUDIO_INVALID_STATE;
 }
 #endif

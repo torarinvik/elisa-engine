@@ -109,6 +109,7 @@ int32_t elisa_audio_v1_initialize_named(uint32_t sample_rate, uint32_t channels,
 #if defined(ELISA_AUDIO_TEST_PROBE)
 int32_t elisa_audio_v1_test_request_device_recovery(void);
 int32_t elisa_audio_v1_test_fail_next_stream_stop(void);
+int32_t elisa_audio_v1_test_fail_next_voice_stop(void);
 #endif
 
 // Called only after the application ABI has validated the owner thread.

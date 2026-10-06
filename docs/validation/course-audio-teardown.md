@@ -6,14 +6,14 @@ cleanup step. Scene reset reports whether event voices stopped. A stale event
 voice handle is treated as already silent; a failed stream stop remains a
 reported error.
 
-The hidden Character Course smoke injects one stream-stop failure. The first
-`CourseSounds::stop` reports failure, releases the other resources and retains
-the failed stream handle. A second call retries through the owner and reaches
-zero active voices and streams. Failed event-voice stops also keep their voice
-pool entries and event timeline intact; failed clip releases and virtual-sound
-removals retain their handles for retry. The sound set remains live while any
-cleanup step fails, so an unsuccessful teardown cannot be mistaken for a
-completed one. The source is split into a teardown include to keep
+The hidden Character Course smoke injects a voice-stop and a stream-stop
+failure. The first `CourseSounds::stop` reports failure, releases the other
+resources, and retains both failed handles. A second call retries through the
+owner and reaches zero active voices and streams. Failed event-voice stops also
+keep their voice-pool entries and event timeline intact; failed clip releases
+and virtual-sound removals retain their handles for retry. The sound set remains
+live while any cleanup step fails, so an unsuccessful teardown cannot be
+mistaken for a completed one. The source is split into a teardown include to keep
 `sounds.elisa` below the 600-line source limit.
 
 ## Validation
@@ -25,13 +25,16 @@ using Stage1 `7b27fa312c5af923f044f6ee0e5e1de4f811f595`; this forces miniaudio
 onto its silent provider, and Wicked's SDL audio remains on its dummy driver.
 The smoke includes the injected failure and retry case.
 
-On 2026-10-06, the Character Course smoke passed again on the same Stage1
-revision with `ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`. Its injected stream
-stop failure now retries through `CourseSounds::stop` itself; the final active
-voice and stream counts return to zero. Wicked SDL audio uses its dummy driver,
-so this check produces no audible output.
+On 2026-10-06, the Character Course smoke passed on Stage1
+`7b27fa312c5af923f044f6ee0e5e1de4f811f595` with
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`. The test injects one voice-stop and
+one stream-stop failure. Its first `CourseSounds::stop` retains exactly one
+active voice and one stream; retrying through the owner reaches zero of each.
+Wicked SDL audio uses its dummy driver, so this check produces no audible
+output. The captured run reported `voices=0 streams=0` in every teardown stress
+iteration and passed `character-course-smoke`.
 
 No separate proof file applies: this slice changes effectful teardown and adds
-no pure state policy. The native failure injection covers stream-stop failure;
-voice-stop, clip-release, virtual removal, bus reset, and persistence failures
-do not yet have separate injected cases.
+no pure state policy. The native failure injection covers voice-stop and
+stream-stop failures; clip-release, virtual removal, bus reset, and persistence
+failures do not yet have separate injected cases.
