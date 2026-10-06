@@ -457,7 +457,6 @@
             return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
             return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::PLAYED
-            music_after_failure: AudioRuntime::StreamHandle = CourseSounds::music_stream(&sounds)
             return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_stream_stop() != 0
             return SoundCodes::RELEASE if CourseSounds::stop(&sounds)
             remaining_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
@@ -467,8 +466,5 @@
                 value: value
                 error failure: 99
             return SoundCodes::RELEASE if remaining_voices != 0 or remaining_streams != 1
-            retried: bool = catch AudioRuntime::stop_stream(music_after_failure):
-                ok: true
-                error failure: false
-            return SoundCodes::RELEASE if not retried or not audio_idle(session)
+            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
             0

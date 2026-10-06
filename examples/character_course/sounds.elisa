@@ -511,6 +511,7 @@ module CourseSounds:
             return true if AudioRuntime::clip_is_empty(clip)
             catch AudioRuntime::release_clip(clip):
                 ok: true
+                AudioRuntime::AudioError.InvalidHandle: true
                 error failure: false
 
         def event_clip(sounds: Sounds&, event: u32, variant: u32) -> AudioRuntime::ClipHandle:
@@ -541,7 +542,8 @@ module CourseSounds:
                     ok: true
                     AudioRuntime::AudioError.InvalidHandle: true
                     error failure: false
-            AudioRuntime::VoiceHandles::clear(&sounds.voices, slot)
+            if stopped:
+                AudioRuntime::VoiceHandles::clear(&sounds.voices, slot)
             stopped
 
         # A stolen or finished voice is already silent; other failures still
@@ -557,4 +559,5 @@ module CourseSounds:
             return true if AudioRuntime::stream_is_empty(stream)
             catch AudioRuntime::stop_stream(stream):
                 ok: true
+                AudioRuntime::AudioError.InvalidHandle: true
                 error failure: false
