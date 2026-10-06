@@ -36,5 +36,13 @@ def main() -> i32:
         for step in 0..<40 |count: usize = 0| -> count:
             count <- count + 1 if AudioAnimEvents::crossed(step.u64() * 100, step.u64() * 100 + 100, 500)
     return 15 if fired != 4
+    # Clip tick markers retain their authored fraction even when that fraction
+    # is not an integer milli-cycle.
+    return 17 if not AudioAnimEvents::crossed_clip_event(400, 500, 15, 30)
+    return 18 if not AudioAnimEvents::crossed_clip_event(499, 500, 15, 30)
+    return 19 if AudioAnimEvents::crossed_clip_event(500, 501, 15, 30)
+    return 20 if AudioAnimEvents::crossed_clip_event(0, 999, 0, 30) or not AudioAnimEvents::crossed_clip_event(999, 1000, 0, 30)
+    return 21 if not AudioAnimEvents::crossed_clip_event(900, 1600, 15, 30) or AudioAnimEvents::crossed_clip_event(1600, 1900, 15, 30)
+    return 22 if AudioAnimEvents::crossed_clip_event(700, 700, 15, 30)
     return 16 if AudioAnimEvents::heard_gain(bound(100, 6, 600)) != 600 or AudioAnimEvents::heard_gain(AudioAnimEvents::Binding{defined: true, animation_event: 1, sound_event: 1, gain_permille: 5000}) != 1000
     0

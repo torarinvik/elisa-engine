@@ -21,3 +21,10 @@ extend AudioAnimEvents:
         ensure not result or after_mc > before_mc
         return false if marker_mc >= CYCLE_MC or before_mc > after_mc or after_mc > 1000000000000
         crossed(before_mc, after_mc, marker_mc)
+
+    def prove_clip_event_no_crossing_without_motion(before_mc: u64, after_mc: u64,
+        event_tick: u64, duration_ticks: u64) -> bool:
+        ensure not result or after_mc > before_mc
+        return false if before_mc > after_mc or after_mc > 1000000000000
+        return false if duration_ticks == 0 or duration_ticks > MAX_CLIP_TICKS or event_tick > duration_ticks
+        crossed_clip_event(before_mc, after_mc, event_tick, duration_ticks)

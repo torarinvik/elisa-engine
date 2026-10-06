@@ -11,6 +11,8 @@ module AudioAnimEvents:
         const FULL_PERMILLE: u64 = 1000
         # A clip cycle is 1000 milli-cycles; a marker sits below that.
         const CYCLE_MC: u64 = 1000
+        # Cooked clips are capped at 3600 ticks (120 seconds at 30 Hz).
+        const MAX_CLIP_TICKS: u64 = 3600
 
         struct Binding:
             defined: bool
@@ -81,6 +83,19 @@ module AudioAnimEvents:
             requires marker_mc < CYCLE_MC and before_mc <= after_mc and after_mc <= 1000000000000
             return false if after_mc <= before_mc
             (after_mc + CYCLE_MC - marker_mc) / CYCLE_MC > (before_mc + CYCLE_MC - marker_mc) / CYCLE_MC
+
+        # Whether the clip passed an authored event tick. Progress and tick
+        # positions remain integral; scaling the cycle counter by the clip's
+        # tick count avoids rounding marker positions into milli-cycles.
+        def crossed_clip_event(before_mc: u64, after_mc: u64,
+            event_tick: u64, duration_ticks: u64) -> bool:
+            ensure not result or after_mc > before_mc
+            requires before_mc <= after_mc and after_mc <= 1000000000000
+            requires duration_ticks >= 1 and duration_ticks <= MAX_CLIP_TICKS and event_tick <= duration_ticks
+            return false if after_mc <= before_mc or duration_ticks == 0 or duration_ticks > MAX_CLIP_TICKS or event_tick > duration_ticks
+            period: u64 = CYCLE_MC * duration_ticks
+            offset: u64 = CYCLE_MC * event_tick
+            (after_mc * duration_ticks + period - offset) / period > (before_mc * duration_ticks + period - offset) / period
 
         # The gain a marker sounds at: the bound gain, never above full.
         def heard_gain(value: Binding) -> u64:
