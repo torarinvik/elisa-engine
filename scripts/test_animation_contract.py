@@ -60,6 +60,11 @@ def main() -> int:
     if struct.unpack_from("<I", repeated_record, 20)[0] != 2:
         print("repeated animation event ids were not preserved", file=sys.stderr)
         return 1
+    wide_id = cook_gltf_animation._animation_events(
+        {"extras": {"elisaEvents": [{"id": 65536, "time": 0.5}]}}, 1.0, 30, "wide-id")
+    if contract.clip_record({**clip(3, 31, "wide-id"), "events": wide_id}, 1, 3)[-8:] != struct.pack("<2I", 65536, 15):
+        print("animation event IDs above the audio binding range were rejected", file=sys.stderr)
+        return 1
     expected = 32 + 3 * 112 + 2 * 24 + 2 * 3 * 8 + (2 + 4) * 3 * 44
     if len(data) != expected:
         print(f"animation contract is {len(data)} bytes, expected {expected}", file=sys.stderr)
@@ -80,6 +85,8 @@ def main() -> int:
             {"extras": {"elisaEvents": [{"id": 1, "time": 0.01}]}}, 1.0, 30, "walk")),
         rejects("out-of-order animation marker ticks", lambda: contract.encode(skin([-1]), [
             {**clip(1), "events": [{"id": 7, "tick": 1}, {"id": 8, "tick": 0}]}])),
+        rejects("an event ID outside the cooked u32 range", lambda: contract.encode(skin([-1]), [
+            {**clip(1), "events": [{"id": 4294967296, "tick": 0}]}])),
     ]
     if not all(checks):
         return 1
