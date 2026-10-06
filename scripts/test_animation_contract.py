@@ -55,6 +55,11 @@ def main() -> int:
     if struct.unpack_from("<I", marker_record, 20)[0] != 2 or marker_record[-16:] != struct.pack("<4I", 100, 0, 101, 15):
         print("animation clip markers did not retain their authored ticks", file=sys.stderr)
         return 1
+    repeated_record = contract.clip_record({**clip(3, 31, "repeated"), "events": [
+        {"id": 100, "tick": 0}, {"id": 100, "tick": 15}]}, 1, 3)
+    if struct.unpack_from("<I", repeated_record, 20)[0] != 2:
+        print("repeated animation event ids were not preserved", file=sys.stderr)
+        return 1
     expected = 32 + 3 * 112 + 2 * 24 + 2 * 3 * 8 + (2 + 4) * 3 * 44
     if len(data) != expected:
         print(f"animation contract is {len(data)} bytes, expected {expected}", file=sys.stderr)
@@ -73,8 +78,6 @@ def main() -> int:
         rejects("a bind pose that disagrees with the rest pose", lambda: contract.encode(bound_skin, [])),
         rejects("an animation marker between cooked ticks", lambda: cook_gltf_animation._animation_events(
             {"extras": {"elisaEvents": [{"id": 1, "time": 0.01}]}}, 1.0, 30, "walk")),
-        rejects("duplicate animation marker ids", lambda: contract.encode(skin([-1]), [
-            {**clip(1), "events": [{"id": 7, "tick": 0}, {"id": 7, "tick": 1}]}])),
         rejects("out-of-order animation marker ticks", lambda: contract.encode(skin([-1]), [
             {**clip(1), "events": [{"id": 7, "tick": 1}, {"id": 8, "tick": 0}]}])),
     ]

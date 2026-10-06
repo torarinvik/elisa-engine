@@ -211,7 +211,6 @@ def _animation_events(animation: dict, duration: float, duration_ticks: int,
     if not isinstance(authored, list) or len(authored) > cook_animation_contract.MAX_EVENTS_PER_CLIP:
         raise ValueError(f"{label} elisaEvents exceeds the per-clip event bound")
     events = []
-    seen_ids: set[int] = set()
     previous_tick = -1
     for index, event in enumerate(authored):
         event_label = f"{label} event {index}"
@@ -226,9 +225,8 @@ def _animation_events(animation: dict, duration: float, duration_ticks: int,
         tick = round(tick_value)
         if abs(tick_value - tick) > 1.0e-5 or tick > duration_ticks:
             raise ValueError(f"{event_label} time must align with a cooked animation tick")
-        if event_id in seen_ids or tick < previous_tick:
-            raise ValueError(f"{event_label} duplicates an id or is out of order")
-        seen_ids.add(event_id)
+        if tick < previous_tick:
+            raise ValueError(f"{event_label} is out of order")
         previous_tick = tick
         events.append({"id": event_id, "tick": tick})
     return events
