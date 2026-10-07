@@ -366,3 +366,22 @@ fixed extents also pass. Actual apply is 73/93 with 20 findings; full context
 246/267 with 21 findings, zero replay gaps. The uncached engine sweep remains
 71/73, with only both ActionInput reports failing. This does not establish
 full prover matrix compatibility or complete the input repair.
+
+### Remaining facts after branch-value repair
+
+With prover 4cdf33ee the first failed actual apply index uses the correct
+Tuple(index, source-offset) atom; its scalar and signed-width type markers
+survive, but its range inequalities are absent. Current diagnostic variants
+remove-code, remove-chord and remove-both (delete the actual statement bodies,
+not just their conditions) still have 20 findings and zero gaps. Replacing
+state_slot or removing refresh_action independently also retains 20 findings.
+The earlier binder spelling mismatch is repaired; missing inequalities are now
+a separate issue, and cannot be attributed solely to those preceding writes.
+
+Replacing chord_active's short-circuit expression with true reduces findings
+20 to 12; replacing active's expression with true reduces them to 8; replacing
+both yields 6. These are diagnostic changes only, not acceptable production
+semantics. The original expressions include indexed reads through a copied
+Binding record as well as scalar Boolean conditions. Continue isolating the
+fact filtering and short-circuit/index safety paths with these expressions;
+do not remove live chord or active logic to make the proof pass.
