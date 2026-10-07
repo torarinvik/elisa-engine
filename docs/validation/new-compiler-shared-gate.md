@@ -46,3 +46,23 @@ The compiler's required hosted-CI machine-over fix (`955cde86`) is now an
 ancestor of published compiler main `96761822`; the old unpublished-compiler
 blocker must be revisited after compatible proof/ElisaScript provisioning is
 verified. Hosted CI execution and the full native application gate remain open.
+
+## Fresh prover sweep after enum admission
+
+Prover commits `a10c784f` and `d3609076` bind recipe validation to the
+pinned compiler's inventory and admit checked ordinary enum equality and its
+Boolean result. The clean committed prover was rebuilt with compiler
+`96761822`. Five focused enum cases pass: one accepted with complete replay,
+and four rejected cases covering foreign ownership, direct and alias equality
+overrides, and an invalid comparison claim.
+
+An uncached run of all 73 engine proofs on that binary passes 64 and fails
+the same nine rows listed above. This establishes fresh coverage for the 64;
+it does not close the shared gate. The capture-timing report isolates its
+first gap to replay of `whole * 1000000000 + capped` under the recorded
+upper bounds; two caller gaps depend on that unverified function summary.
+Its runtime implementation and contracts have not been weakened.
+
+Logs: `build/validation/prover-d3609076-clean-build.log` and
+`build/validation/proof-d3609076-full-sweep.log`. Reports remain in
+`build/*-proof.json`.
