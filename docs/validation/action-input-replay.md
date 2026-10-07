@@ -81,3 +81,7 @@ makes the test fail with code 1.
 - The log is not merged into `Replay::Recorder`.
 - No packaged game records a session yet, and recordings are not written to
   disk.
+
+## Current post-audio triage
+
+With prover commit `65b58b71`, both ActionInput reports remain 199/228, 33 findings, zero semantic errors. Four functions refuse at the 128-fact snapshot bound: refresh_action, bind_checked and rebind_checked observe 129 facts; bind observes 131. The next admission fix must reduce or select relevant state facts rather than silently raise the bound. An ignored typed-libm-result probe removes two expression refusals in apply but replaces them with index-bounds-opaque refusals, leaving the same result; it was not applied to production. Reports: `build/validation/action_input_{context,deadzone}-current.json`, `build/validation/action-input-typed-math.json`.

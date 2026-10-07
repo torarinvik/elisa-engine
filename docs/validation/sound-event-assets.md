@@ -106,3 +106,7 @@ All controls were reverted.
 - There is no hot reload. The asset is read once when audio starts.
 - The proof covers the text reader, not `define_line`'s use of the board;
   only the test covers that part.
+
+## Current remaining replay gaps
+
+Prover `65b58b71` now checks 157 obligations and replays 155, with no source findings or semantic errors. The two gaps are goal 14 in number (the loop-rebound result <= 10^18) and goal 156 in prove_number_capped (the dependent number summary < 10^18). This supersedes the earlier four-gap baseline. Preserve the exact capped decimal loop semantics while repairing source binding/replay; the producer has certificates for all 157, so producer success alone is insufficient. Report: `build/validation/sound_event_assets-current.json`.
