@@ -546,3 +546,5 @@ python3 scripts/validate_interactive_macos_app.py \
   --resource-group rigs --resource-group sounds --resource-group text \
   --marker 'wi::physics Initialized [Jolt Physics'
 ```
+
+See the [current-source optimized package report](character-course-package-q02-current.md).
