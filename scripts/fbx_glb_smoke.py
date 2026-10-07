@@ -50,6 +50,16 @@ def load_glb(path):
     return doc, floats
 
 
+def accessor_rows(doc, data, index, fmt, width):
+    accessor = doc["accessors"][index]
+    view = doc["bufferViews"][accessor["bufferView"]]
+    json_length = struct.unpack_from("<I", data, 12)[0]
+    bin_start = 20 + json_length + 8
+    offset = bin_start + view.get("byteOffset", 0) + accessor.get("byteOffset", 0)
+    values = struct.unpack_from(f"<{accessor['count'] * width}{fmt}", data, offset)
+    return [values[k * width:(k + 1) * width] for k in range(accessor["count"])]
+
+
 def sample(times, values, t, rotation):
     if t <= times[0][0]:
         return list(values[0])
@@ -131,6 +141,25 @@ def main():
                     "--", str(WORK / "in/take.fbx"), str(WORK / "ref.json")], check=True, capture_output=True, timeout=600)
     reference = json.loads((WORK / "ref.json").read_text())
     doc, floats = load_glb(WORK / "a/take.glb")
+    attributes = doc["meshes"][0]["primitives"][0]["attributes"]
+    if not all(key in attributes for key in ("JOINTS_0", "WEIGHTS_0", "JOINTS_1", "WEIGHTS_1")):
+        fail(17, "skinned mesh is missing the second four-influence attribute set")
+    glb_bytes = (WORK / "a/take.glb").read_bytes()
+    joints0 = accessor_rows(doc, glb_bytes, attributes["JOINTS_0"], "H", 4)
+    joints1 = accessor_rows(doc, glb_bytes, attributes["JOINTS_1"], "H", 4)
+    weights0 = accessor_rows(doc, glb_bytes, attributes["WEIGHTS_0"], "f", 4)
+    weights1 = accessor_rows(doc, glb_bytes, attributes["WEIGHTS_1"], "f", 4)
+    max_influences = 0
+    for vertex in range(len(joints0)):
+        row_weights = [float(x) for x in weights0[vertex] + weights1[vertex]]
+        row_joints = [int(x) for x in joints0[vertex] + joints1[vertex]]
+        positive = [(joint, weight) for joint, weight in zip(row_joints, row_weights) if weight > 0.0]
+        total = sum(weight for _, weight in positive)
+        max_influences = max(max_influences, len(positive))
+        if not positive or abs(total - 1.0) > 1.0e-5 or any(joint >= len(doc["skins"][0]["joints"]) for joint, _ in positive):
+            fail(18, f"invalid eight-slot skin row at vertex {vertex}: {total} {positive}")
+    if max_influences <= 4 or max_influences > 8:
+        fail(19, f"fixture did not exercise the supported 5–8 influence path: max {max_influences}")
     worst, compared = 0.0, 0
     for frame in reference["frames"]:
         ours = world_positions(doc, floats, frame["seconds"])
@@ -142,6 +171,7 @@ def main():
     if worst > TOLERANCE_M:
         fail(16, f"worst joint error {worst:.6f} m over {compared} joint samples")
     print(f"fbx glb smoke passed: {compared} joint samples, worst error {worst * 1000:.4f} mm, "
+          f"max {max_influences} skin influences, "
           f"{len(doc['nodes'])} nodes, {len(doc['animations'][0]['channels'])} channels")
 
 

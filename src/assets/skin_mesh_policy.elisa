@@ -16,8 +16,32 @@ module SkinMeshPolicy:
         # Accessor element counts and strides the loader accepts.
         const MAX_COUNT: i64 = 268435456
         const MAX_STRIDE: i64 = 252
+        # Two glTF VEC4 joint/weight attribute sets are supported.
+        const MAX_INFLUENCE_SETS: i64 = 2
+        # WEIGHTS_0 and WEIGHTS_1 provide four slots each.
+        const INFLUENCES_PER_VERTEX: i64 = 8
         # Light levels are permille.
         const FULL_LIGHT: i64 = 1000
+
+        # The importer accepts the required first set and at most one extra.
+        def influence_set_count_ok(count: i64) -> bool:
+            requires count >= 1
+            ensure result == (count <= MAX_INFLUENCE_SETS)
+            count <= MAX_INFLUENCE_SETS
+
+        # The flattened weight/joint buffers are indexed by the mesh-wide
+        # vertex number, including vertices appended by earlier primitives.
+        def influence_slot_index(first_vertex: i64, vertex: i64, slot: i64) -> i64:
+            requires first_vertex >= 0
+            requires first_vertex < MAX_COUNT
+            requires vertex >= 0
+            requires vertex < MAX_COUNT
+            requires first_vertex + vertex < MAX_COUNT
+            requires slot >= 0
+            requires slot < INFLUENCES_PER_VERTEX
+            ensure result == (first_vertex + vertex) * INFLUENCES_PER_VERTEX + slot
+            ensure result >= 0
+            (first_vertex + vertex) * INFLUENCES_PER_VERTEX + slot
 
         # Bytes per component of a glTF component type; 0 when unsupported.
         def component_bytes(component: i64) -> i64:

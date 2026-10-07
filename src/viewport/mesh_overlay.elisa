@@ -3,7 +3,7 @@
 #
 # `skin` poses a GlbSkinMesh with linear blend skinning: joint j's matrix is
 # the model matrix of its node times its inverse bind matrix, and a vertex
-# is the weight-blended sum of its (up to four) joint-transformed bind
+# is the weight-blended sum of its (up to eight) joint-transformed bind
 # positions. Weights are renormalised; a vertex with no weight keeps its
 # bind position.
 #

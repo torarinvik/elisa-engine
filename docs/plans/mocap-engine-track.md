@@ -86,14 +86,13 @@ uses `ViewportDraw`/Metal and `GlbDocument`/`GlbSkinMesh`, rather than Wicked
    The mocap chat's worker owns the converter implementation in its isolated
    checkout; engine main owns review/integration of reusable commits, avoiding
    duplicate edits. App toggles and timeline policy remain app responsibilities.
-   Review evidence: the four-weight candidate preserves source bytes and refuses
-   existing destinations, but a Blender comparison of 36,000 vertices across
-   four poses reaches 12.48 mm error against full source weights. Reducing the
-   Blender oracle to the same four weights lowers maximum error to 1.23 µm,
-   isolating truncation. The client worker is extending the converter,
-   `GlbSkinMesh` and CPU overlay to eight influences with explicit refusal beyond
-   that bound. Qualify the replacement against full source weights before main
-   integration; the current four-weight preview is insufficient for this client.
+   Reusable eight-influence converter/reader/overlay changes and multi-primitive
+   normalization are integrated on main. Full-source Blender comparison of
+   36,000 corners at four poses reaches at most 1.265 µm; the loader's O0/O2
+   normalization/refusal regression passes and its policy proves 180 obligations.
+   See [engine qualification](../validation/fbx-eight-influences.md).
+   Packaged Studio asynchronous admission still fails under client investigation;
+   actual import, edited playback and surface/skeleton toggle remain open.
 2. **Failed-build recovery ownership.** Review the client's retained-lock
    `OwnedIncomplete` admission with revision-3 failure-event/tree/lease evidence.
    Require active-builder refusal, interruption-safe original/quarantine trees,

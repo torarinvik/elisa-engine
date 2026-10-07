@@ -2,7 +2,7 @@
 #
 # `load` / `from_bytes` read the first mesh node that has a skin out of a
 # GLB file: every triangle primitive of its mesh, with
-# POSITION, JOINTS_0 and WEIGHTS_0, the index list, the skin's joint nodes
+# POSITION, JOINTS_0/1 and WEIGHTS_0/1, the index list, the skin's joint nodes
 # and inverse bind matrices. Positions are bind-space; MeshOverlay::skin
 # poses them with linear blend skinning.
 #
@@ -31,8 +31,8 @@ module GlbSkinMesh:
             IndexOutOfRange
             Capacity
 
-        # Influences per vertex.
-        const INFLUENCES: usize = 4
+        # Maximum influences per vertex. Two glTF VEC4 sets are supported.
+        const INFLUENCES: usize = 8
         # glTF primitive mode for triangle lists (the default).
         const MODE_TRIANGLES: i64 = 4
         const MAX_BYTES: usize = 2147483648
@@ -123,6 +123,9 @@ module GlbSkinMesh:
         def mesh_f32_ref(value: f32&) -> f32:
             value
 
+        def mesh_finite(value: f32) -> bool:
+            value - value == 0.0
+
         def mesh_bits_float(value: u32) -> f32:
             mesh_f32_ref((&value).cast[f32&] can Unsafe.PointerCast)
 
@@ -209,6 +212,36 @@ module GlbSkinMesh:
             found: Layout = try mesh_layout(bytes, json, which)
             found
 
+        def mesh_attribute_set_extra(bytes: darray[u8]&, key: GlbJson::Token, prefix: sview) -> bool:
+            return false if key.kind != GlbJson::KIND_STRING or key.stop - key.start <= prefix.len.usize()
+            mutable same_prefix: bool = true
+            for k in 0..<prefix.len.usize():
+                same_prefix <- false if bytes[key.start + k].i64() != prefix[k.i64()]
+            return false if not same_prefix
+            mutable suffix: usize = key.start + prefix.len.usize()
+            mutable index: usize = 0
+            digits: usize = key.stop - suffix
+            return true if digits > 1 and bytes[suffix] == 48
+            while suffix < key.stop:
+                digit: u8 = bytes[suffix]
+                return true if digit < 48 or digit > 57
+                index <- 3 if index >= 2 else index * 10 + (digit - 48).usize()
+                suffix <- suffix + 1
+            index >= 2
+
+        def mesh_has_extra_skin_set(bytes: darray[u8]&, json: Json&, attributes: i64) -> bool:
+            return false if attributes < 0 or attributes.usize() >= json.json_tokens.count
+            holder: GlbJson::Token = json.json_tokens[attributes.usize()]
+            return false if holder.kind != GlbJson::KIND_OBJECT
+            mutable at: usize = attributes.usize() + 1
+            mutable extra: bool = false
+            for _ in 0..<holder.size:
+                if at < json.json_tokens.count:
+                    key: GlbJson::Token = json.json_tokens[at]
+                    extra <- true if mesh_attribute_set_extra(bytes, key, "JOINTS_") or mesh_attribute_set_extra(bytes, key, "WEIGHTS_")
+                    at <- json.json_tokens[at + 1].after if at + 1 < json.json_tokens.count
+            extra
+
         def mesh_read_primitive(bytes: darray[u8]&, json: Json&, primitive: i64, mesh: mutable Mesh&) -> usize error[SkinMeshError]:
             raise SkinMeshError.BadJson if GlbJson::kind_of(&json.json_tokens, primitive) != GlbJson::KIND_OBJECT
             mode: i64 = try mesh_index_member(bytes, json, primitive, "mode", MODE_TRIANGLES)
@@ -218,23 +251,62 @@ module GlbSkinMesh:
             positions: Layout = try mesh_attribute(bytes, json, attributes, "POSITION")
             joints: Layout = try mesh_attribute(bytes, json, attributes, "JOINTS_0")
             weights: Layout = try mesh_attribute(bytes, json, attributes, "WEIGHTS_0")
+            joints1_index: i64 = try mesh_index_member(bytes, json, attributes, "JOINTS_1", -1)
+            weights1_index: i64 = try mesh_index_member(bytes, json, attributes, "WEIGHTS_1", -1)
+            raise SkinMeshError.UnsupportedLayout if (joints1_index < 0) != (weights1_index < 0)
+            raise SkinMeshError.UnsupportedLayout if mesh_has_extra_skin_set(bytes, json, attributes)
+            second_set: bool = joints1_index >= 0
+            set_count: i64 = 2 if second_set else 1
+            raise SkinMeshError.UnsupportedLayout if not SkinMeshPolicy::influence_set_count_ok(set_count)
+            mutable joints1: Layout = Layout{start: 0, stride: 0, count: 0, component: 0, components: 0, normalized: false}
+            mutable weights1: Layout = Layout{start: 0, stride: 0, count: 0, component: 0, components: 0, normalized: false}
+            if second_set:
+                joints1 <- try mesh_layout(bytes, json, joints1_index)
+                weights1 <- try mesh_layout(bytes, json, weights1_index)
             raise SkinMeshError.UnsupportedComponentType if positions.component != SkinMeshPolicy::FLOAT
             raise SkinMeshError.AccessorShape if positions.components != 3 or joints.components != 4 or weights.components != 4
             raise SkinMeshError.UnsupportedComponentType if joints.component != SkinMeshPolicy::UNSIGNED_BYTE and joints.component != SkinMeshPolicy::UNSIGNED_SHORT
-            raise SkinMeshError.UnsupportedComponentType if weights.component != SkinMeshPolicy::FLOAT and not weights.normalized
+            raise SkinMeshError.UnsupportedComponentType if weights.component != SkinMeshPolicy::FLOAT and (not weights.normalized or (weights.component != SkinMeshPolicy::UNSIGNED_BYTE and weights.component != SkinMeshPolicy::UNSIGNED_SHORT))
             raise SkinMeshError.AccessorShape if joints.count != positions.count or weights.count != positions.count
+            if second_set:
+                raise SkinMeshError.AccessorShape if joints1.components != 4 or weights1.components != 4
+                raise SkinMeshError.UnsupportedComponentType if joints1.component != SkinMeshPolicy::UNSIGNED_BYTE and joints1.component != SkinMeshPolicy::UNSIGNED_SHORT
+                raise SkinMeshError.UnsupportedComponentType if weights1.component != SkinMeshPolicy::FLOAT and (not weights1.normalized or (weights1.component != SkinMeshPolicy::UNSIGNED_BYTE and weights1.component != SkinMeshPolicy::UNSIGNED_SHORT))
+                raise SkinMeshError.AccessorShape if joints1.count != positions.count or weights1.count != positions.count
             raise SkinMeshError.Capacity if mesh.positions.count + positions.count > SkinMeshPolicy::MAX_COUNT.usize()
             first: usize = mesh.positions.count
             skin_joints: usize = mesh.joints.count
             for v in 0..<positions.count:
-                mesh.positions.push(Geometry::Vec3{x: mesh_read_float(bytes, &positions, v, 0), y: mesh_read_float(bytes, &positions, v, 1), z: mesh_read_float(bytes, &positions, v, 2)})
+                position: Geometry::Vec3 = Geometry::Vec3{x: mesh_read_float(bytes, &positions, v, 0), y: mesh_read_float(bytes, &positions, v, 1), z: mesh_read_float(bytes, &positions, v, 2)}
+                raise SkinMeshError.AccessorShape if not Geometry::vec3_is_finite(position)
+                mesh.positions.push(position)
+                mutable total_weight: f32 = 0.0
                 for k in 0..<INFLUENCES:
-                    joint: u32 = mesh_read_index(bytes, &joints, v, k)
-                    weight: f32 = mesh_read_float(bytes, &weights, v, k)
-                    raise SkinMeshError.IndexOutOfRange if joint.usize() >= skin_joints and weight != 0.0
-                    slot: u32 = 0 if joint.usize() >= skin_joints else joint
-                    mesh.influence_joints.push(slot.u16())
-                    mesh.influence_weights.push(weight)
+                    if k < 4:
+                        joint: u32 = mesh_read_index(bytes, &joints, v, k)
+                        weight: f32 = mesh_read_float(bytes, &weights, v, k)
+                        raise SkinMeshError.IndexOutOfRange if joint.usize() >= skin_joints
+                        raise SkinMeshError.AccessorShape if not mesh_finite(weight) or weight < 0.0
+                        mesh.influence_joints.push(joint.u16())
+                        mesh.influence_weights.push(weight)
+                        total_weight <- total_weight + weight
+                    elif second_set:
+                        joint: u32 = mesh_read_index(bytes, &joints1, v, k - 4)
+                        weight: f32 = mesh_read_float(bytes, &weights1, v, k - 4)
+                        raise SkinMeshError.IndexOutOfRange if joint.usize() >= skin_joints
+                        raise SkinMeshError.AccessorShape if not mesh_finite(weight) or weight < 0.0
+                        mesh.influence_joints.push(joint.u16())
+                        mesh.influence_weights.push(weight)
+                        total_weight <- total_weight + weight
+                    else:
+                        mesh.influence_joints.push(0)
+                        mesh.influence_weights.push(0.0)
+                delta: f32 = total_weight - 1.0
+                magnitude: f32 = delta if delta >= 0.0 else 0.0 - delta
+                raise SkinMeshError.AccessorShape if total_weight <= 0.0 or magnitude > 0.02
+                for k in 0..<INFLUENCES:
+                    at: usize = SkinMeshPolicy::influence_slot_index(first.i64(), v.i64(), k.i64()).usize()
+                    mesh.influence_weights[at] <- mesh.influence_weights[at] / total_weight
             indices_at: i64 = try mesh_index_member(bytes, json, primitive, "indices", -1)
             if indices_at < 0:
                 raise SkinMeshError.AccessorShape if positions.count % 3 != 0

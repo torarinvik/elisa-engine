@@ -53,9 +53,9 @@ def synthetic() -> GlbSkinMesh::Mesh:
     mesh.positions.push(v(0.0, 0.0, 0.0))
     mesh.positions.push(v(1.0, 1.0, 0.0))
     mesh.positions.push(v(0.0, 1.0, 1.0))
-    weights: f32[12] = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0]
-    joints: u16[12] = [0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0]
-    for k in 0..<12:
+    weights: f32[24] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.5]
+    joints: u16[24] = [0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1]
+    for k in 0..<24:
         mesh.influence_weights.push(weights[k])
         mesh.influence_joints.push(joints[k])
     mesh.indices.push(0)
@@ -152,10 +152,13 @@ def boxer_case() -> i32:
     _ = catch MeshOverlay::skin(&mesh, &joint_models, &posed):
         value: value
         error failure: 0
-    # The rest pose reproduces the bind positions (to a millimetre).
+    # Rest skinning returns world-space positions. Include the mesh node's
+    # world transform when comparing against its local POSITION accessor.
+    mesh_model: Geometry::Transform = nodes[mesh.node.usize()]
     mutable worst: f32 = 0.0
     for k in 0..<posed.count:
-        d: f32 = Geometry::vec3_length(Geometry::vec3_sub(posed[k], mesh.positions[k]))
+        expected: Geometry::Vec3 = Geometry::transform_apply_point(mesh_model, mesh.positions[k])
+        d: f32 = Geometry::vec3_length(Geometry::vec3_sub(posed[k], expected))
         worst <- d if d > worst else worst
     print_number("viewport_mesh: boxer vertices: ", GlbSkinMesh::vertex_count(&mesh).i64())
     print_number("viewport_mesh: boxer triangles: ", GlbSkinMesh::triangle_count(&mesh).i64())

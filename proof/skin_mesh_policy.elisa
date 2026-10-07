@@ -3,6 +3,35 @@ include "../src/assets/skin_mesh_policy.elisa"
 
 module SkinMeshPolicyLaws:
     public:
+        def one_influence_set_supported() -> bool:
+            ensure result
+            SkinMeshPolicy::influence_set_count_ok(1)
+
+        def two_influence_sets_supported() -> bool:
+            ensure result
+            SkinMeshPolicy::influence_set_count_ok(2)
+
+        def third_influence_set_refused() -> bool:
+            ensure not result
+            SkinMeshPolicy::influence_set_count_ok(3)
+
+        # A second primitive starts after the first primitive's vertices in
+        # the flattened influence arrays, rather than overwriting vertex zero.
+        def second_primitive_first_slot(first_vertices: i64) -> i64:
+            requires first_vertices >= 1
+            requires first_vertices < SkinMeshPolicy::MAX_COUNT
+            ensure result == first_vertices * SkinMeshPolicy::INFLUENCES_PER_VERTEX
+            SkinMeshPolicy::influence_slot_index(first_vertices, 0, 0)
+
+        def second_primitive_last_slot(first_vertices: i64, vertices: i64) -> i64:
+            requires first_vertices >= 1
+            requires vertices >= 1
+            requires first_vertices < SkinMeshPolicy::MAX_COUNT
+            requires vertices < SkinMeshPolicy::MAX_COUNT
+            requires first_vertices + vertices < SkinMeshPolicy::MAX_COUNT
+            ensure result == (first_vertices + vertices - 1) * SkinMeshPolicy::INFLUENCES_PER_VERTEX + 7
+            SkinMeshPolicy::influence_slot_index(first_vertices, vertices - 1, 7)
+
         # Any accepted span holds at least one whole element.
         def span_holds_element(count: i64, stride: i64, element: i64) -> bool:
             ensure result

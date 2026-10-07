@@ -1,0 +1,24 @@
+include "../src/assets/glb_skin_mesh.elisa"
+
+def refused(path: cstr) -> bool:
+    catch GlbSkinMesh::load(path):
+        value: false
+        error failure: true
+
+# Both primitives have eight nonzero weights; their 0.99/1.01 sums must
+# normalize independently without touching the previous primitive.
+def main() -> i32:
+    mesh: GlbSkinMesh::Mesh = catch GlbSkinMesh::load("build/skin-influence-smoke/valid.glb"):
+        value: value
+        error failure: GlbSkinMesh::empty()
+    return 1 if mesh.positions.count != 6 or mesh.influence_weights.count != 48
+    for vertex in 0..<mesh.positions.count:
+        mutable total: f32 = 0.0
+        for slot in 0..<GlbSkinMesh::INFLUENCES:
+            weight: f32 = mesh.influence_weights[vertex * GlbSkinMesh::INFLUENCES + slot]
+            return 2 if weight < 0.12499 or weight > 0.12501
+            total <- total + weight
+        return 3 if total < 0.9999 or total > 1.0001
+    return 4 if not refused("build/skin-influence-smoke/unpaired.glb")
+    return 5 if not refused("build/skin-influence-smoke/third.glb")
+    0
