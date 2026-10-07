@@ -127,3 +127,30 @@ already proves3/3, retained as `record_short_circuit_index_control.elisa`.
 Thus the remaining ActionInput guard bounds must be isolated with mutable
 borrow/place qualifications rather than assuming short-circuit traversal is
 unimplemented. Opaque math-call summaries also remain a separate prerequisite.
+
+### Integer bounds in float-bearing functions — 2026-10-07
+
+The producer previously disabled numerical integer reasoning for an entire function
+when any parameter contained a float, including an unrelated field in a record.
+It now admits integer Boolean goals only with exact integer type witnesses and
+filters premises to integer comparisons and integer type/scalar markers before
+using existing machine-range checks. IEEE comparisons retain their syntactic route.
+
+Strict O2 product pair `b562831ce5044114a0e31d0b703d6e76` was built with the installed
+`50b16e68` compiler/runtime and its archived source. Five index controls pass both
+whole-file and function routes: integer-only, float-before and float-after are proved;
+unsafe-upper and missing-guard are refused. All positive certificates replay.
+`test_record_fixed_arrays.py` (eight controls), `test_qualified_block_ranges.py`
+(seven controls), and the kernel inventory (10 tables, 194 entries) also pass.
+ActionInput improves from 102/180 to **113/180**, with 113 replayed certificates,
+zero replay gaps, and 71 findings. The full uncached sweep remains **69/73**;
+the same ActionInput context/deadzone, AudioAnimEvents and SoundAssets checks fail.
+Logs: `build/validation/proof-float-integer-build.log`,
+`input-float-integer.json`, and `proof-float-integer-sweep.log`.
+
+The source-level float proposition acceptance/rejection cases pass. The later
+`test_float_literal_forgery.py` fails because portable replay accepts
+`not (deadzone < 0.0) => deadzone >= 0.0`, which is false for NaN.
+The previous pair `8483683a13bb4c07860f18ec80dbb21e` reproduces the same failure
+(`build/validation/float-forgery-baseline.log`). This is an existing kernel defect
+and a required next repair; this evidence does not qualify the full prover matrix.
