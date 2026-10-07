@@ -265,3 +265,16 @@ were merged; combined fixture dependencies pass 10 provenance tests plus
 independent-root and source/compiler race checks. Evidence:
 build/validation/prover-signed-call-snapshot-final-build.log and
 proof-signed-call-snapshot-final-sweep.log; prover docs/validation/signed-call-snapshots.md.
+# Indexed snapshot repair — 2026-10-07
+
+Prover `97239692` authenticates immutable indexed scalar captures against the
+original builtin array type and a completely read-only suffix. Safe premise
+reduction omits unrelated local equations to executable calls. Compiler
+`63585c5f`, strict O2 pair `402fbf9514a648e7aaf45c3c79399e0b`: nine snapshot
+controls, existing call/frame/admission controls and O0/O2 source probes pass.
+AudioVirtual's position and caller contract now prove; its full report has
+109 obligations, 107 replayed, no findings and two sentinel replay gaps.
+The fresh uncached engine sweep remains 68/73 with the same five failing files.
+Evidence: `build/validation/prover-indexed-snapshot-final-build.log`,
+`proof-indexed-snapshot-final-sweep.log`, and the prover's
+`docs/validation/indexed-scalar-snapshots.md`. Full qualification remains open.
