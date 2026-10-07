@@ -256,3 +256,26 @@ fully replays 69/71; `action_input_context` and `action_input_deadzone` are
 unsupported in both. The coverage drop needs triage to distinguish lost support
 from newly exposed proof gaps. Keep Q01 open until the prover result and both
 ActionInput invariants have accepted and rejected regressions.
+
+## Typed signed return replay (2026-10-07; Q01 remains open)
+
+In the `../elisa-engine-proof` worktree, commit `805b95a5` adds source-bound
+replay for signed closed-integer return witnesses. The rule matches the exact
+return span and expression, verifies a unique function declaration and its
+signed width, checks the constant fits that width, and only accepts a closed
+integer arithmetic value. `examples/typed_return_constant.elisa` proves 3/3
+obligations and replays 3/3 certificates with the candidate built using pinned
+Stage1 revision `23a0e16a854cddec3016746a0cb9480db0c4db22` (binary SHA-256
+`2be331a9083a03728b8b9d4ea27548ee0dbfc90682a3c73503f7febb6d9bc665`). The
+focused source-binding harness exercised the valid `-1` witness and rejected a
+forged `7`; it then stopped at its package-replay stage because
+`build/elisa-proof-replay` was absent from this single-product build. The
+independent package check using the sibling replay product passed 2/2.
+
+An uncached 71-input sweep fully replayed 62/71. The two ActionInput reports
+remain unsupported. Four reports have replay gaps tied to local bindings or
+helper summaries (`application_capture_timing`, `audio_music`, `audio_triggers`,
+and `motion_overlay_policy`); `audio_virtual` and `sound_event_assets` still
+have unproven obligations, and `glb_layout_index` has a source-obligation
+inventory mismatch. The fixture's proof is complete, but those engine proofs
+remain unproved, so the native shared check and Q01 are not green.
