@@ -75,3 +75,19 @@ native process deadlines. This attempt does not qualify the shared/native gate.
 Retained artifacts: `build/validation/elisascript-ddbc803d-build.log` and its
 `.log.json` watchdog report. The script validation hold and override environment
 were left unchanged; this was the bounded engine integration build.
+
+### Targeted launcher repairs — 2026-10-08
+
+ElisaScript now builds owned argument storage before publishing pointers in
+all five process paths. The bounded before/after attempts remove all 25
+`argv` storage-dependency invalidation diagnostics. A subsequent repair
+restores the absent ASCII whitespace helper (space or bytes 9–13), clearing
+four undefined-identifier diagnostics. Argument order and NUL validation
+remain intact; process execution has not been verified because compilation
+still fails on other compatibility errors.
+
+The latest attempt exits 1 normally in 8.65 seconds, sampled peak RSS
+726,880 KiB under the same 180-second / 1,572,864 KiB limits. Artifacts:
+`build/validation/elisascript-ddbc803d-argv-fixed-build.log` and
+`build/validation/elisascript-ddbc803d-text-helper-build.log`, each with a
+watchdog JSON report. No installed launcher was replaced.
