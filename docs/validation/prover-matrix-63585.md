@@ -20,12 +20,15 @@ Repairs now committed in the prover checkout:
   checks conjunction, disjunction and negation over stable integer comparisons.
   Six controls pass on both report routes in an isolated strict-O2 product pair;
   the digit_step source/kernel replay gap closes. This preserves immutable-input,
-  source-position and overloaded-operator checks. Integrated rebuild is pending.
+  source-position and overloaded-operator checks. The committed strict-O2 rebuild
+  passes all six controls on both routes; a fresh engine sweep remains 69/73.
 
 High ROI next repairs:
 
 1. Decimal saturation: direct value/digit parameters bounded by CAP and 9 prove;
-   the parser-derived digit bound still does not close preservation. Preserve
+   the parser-derived bound still does not close preservation. The negated-order
+   integer-term classifier refuses the closed literal quotient CAP / 10; using
+   its equivalent literal closes the reduced example. Preserve
    the original implementation and contract while repairing bound transport.
 2. Captured and mutable loop entry/exit source validation: loop_state_joins has
    nine replay gaps after the predicate repair; decimal preservation remains
