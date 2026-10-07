@@ -108,3 +108,11 @@ with no pointer casts added. The bounded attempt completes with status 1 on
 remaining errors (6.24 seconds; sampled peak RSS 726,896 KiB). Artifact:
 `build/validation/elisascript-ddbc803d-bool-cstr-build.log` and watchdog JSON.
 This is compile-diagnostic evidence, not an executed launcher.
+
+Integer formatting now preserves `cstr` across its three helpers and checks
+that the writing `snprintf` matches its measured length before returning
+interned or arena storage. Both integer wrapper errors clear and the changed
+prelude helper has no diagnostics. The bounded compile still exits 1 on other
+errors (3.93 seconds; sampled peak RSS 726,880 KiB). Artifact:
+`build/validation/elisascript-ddbc803d-int-cstr-build.log` and watchdog JSON.
+Runtime integer formatting is still unverified on the selected compiler.
