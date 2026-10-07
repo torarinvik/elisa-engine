@@ -27,9 +27,15 @@ High ROI next repairs:
 
 1. Decimal saturation: direct value/digit parameters bounded by CAP and 9 prove;
    the parser-derived bound still does not close preservation. The negated-order
-   integer-term classifier refuses the closed literal quotient CAP / 10; using
-   its equivalent literal closes the reduced example. Preserve
-   the original implementation and contract while repairing bound transport.
+   integer-term classifier refused the closed literal quotient CAP / 10.
+   Prover `390f9566` plus controls `4b8929db` now independently classify a
+   nonnegative literal numerator divided by a positive literal denominator in
+   producer and replay. Large/small saturation cases pass both report routes;
+   wrong threshold and zero divisor refuse. Existing denial and predicate tests
+   pass. Sound-event search now has zero findings, but replay is only 150/157.
+   Preserve
+   the original implementation and contract while repairing the seven source
+   replay gaps. Pair generation: `3af1e2b2fdf6416092fccbaf558111a3`.
 2. Captured and mutable loop entry/exit source validation: loop_state_joins has
    nine replay gaps after the predicate repair; decimal preservation remains
    unproven. Entry equalities must never survive a loop update as exit facts.
