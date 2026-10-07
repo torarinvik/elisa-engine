@@ -191,3 +191,23 @@ Engine sweep remains 66/73 with the same seven failures. Broader mappings and
 full engine/compiler qualification remain open. Evidence:
 build/validation/prover-frame-scalar-values-build.log and
 proof-frame-scalar-values-sweep.log; prover docs/validation/frame-scalar-values.md.
+
+## Conditional caller frame integration (2026-10-07)
+
+Prover c5caa09e integrates original conditional-call effects into complete
+supported caller inventories, producer attempts and independent source replay.
+The condition-call fixture retains 30 obligations and now replays 28 certificates
+(previously 18); the remaining local-binding/index case still refuses admission.
+New CLI controls prove allowed 6/6 and preserved 8/8 events and refuse outside
+6/5 and overlapping-preservation 8/7 cases, retaining failed goal-linked events.
+Composed runtime controls pass at O0/O2; existing event controls, direct frame
+CLI, malformed-source admission and exact-count invariant diagnostics pass.
+Strict all-products O2 build succeeds, generation c31e35d1eafc4bda86c14f0800daf8ca.
+The corrected checker retains ordinary preconditions, summaries and symbolic
+state invalidation while replacing duplicate prepared frame obligations only.
+
+The fresh uncached engine sweep remains 66/73 with the same seven failures.
+This does not qualify the complete prover matrix or close shared/native gates.
+Evidence: build/validation/prover-frame-caller-events-final-build.log and
+proof-frame-caller-events-sweep.log; prover
+docs/validation/frame-caller-event-integration.md. Full plan scope remains open.
