@@ -18,6 +18,11 @@ def main() -> int:
 #include <cstdint>
 #include <cstring>
 #include <vector>
+#include <cstdlib>
+#include <new>
+size_t largest = 0;
+void* operator new(size_t size) { largest = std::max(largest, size); void* p = std::malloc(size); if (!p) throw std::bad_alloc(); return p; }
+void operator delete(void* p) noexcept { std::free(p); }
 int main(int argc, char** argv) {
     const std::vector<uint8_t> bgra = {
         3, 2, 1, 255, 6, 5, 4, 255, 99, 99, 99, 99,
@@ -36,6 +41,16 @@ int main(int argc, char** argv) {
             elisa::capture::PixelOrder::RGB10A2, argv[2])) return 5;
     if (!elisa::capture::save_rgba_png(reinterpret_cast<const uint8_t*>(&packed), 4, 1, 1, 4,
             elisa::capture::PixelOrder::BGR10A2, argv[3])) return 6;
+    for (int fixture = 0; fixture < 2; ++fixture) {
+        const uint32_t width = fixture == 0 ? 5461 : 1024;
+        const uint32_t height = fixture == 0 ? 3 : 40;
+        std::vector<uint8_t> raw(size_t(width) * height * 4);
+        for (size_t i = 0; i < raw.size(); ++i) raw[i] = uint8_t(i % 251);
+        largest = 0;
+        if (!elisa::capture::save_rgba_png(raw.data(), raw.size(), width, height,
+            size_t(width) * 4, elisa::capture::PixelOrder::RGBA, argv[4 + fixture])) return 7;
+        if (largest > 65535) return 8;
+    }
     return 0;
 }
 '''
@@ -46,12 +61,14 @@ int main(int argc, char** argv) {
         image = root / "capture.png"
         packed_image = root / "packed.png"
         metal_packed_image = root / "metal-packed.png"
+        block_images = [root / "exact-block.png", root / "multi-block.png"]
         source.write_text(harness, encoding="utf-8")
         subprocess.run([compiler, "-std=c++17", "-I", str(ROOT), str(source), "-o", str(binary)], check=True)
-        subprocess.run([str(binary), str(image), str(packed_image), str(metal_packed_image)], check=True)
+        subprocess.run([str(binary), str(image), str(packed_image), str(metal_packed_image), *map(str, block_images)], check=True)
         encoded = image.read_bytes()
         packed_encoded = packed_image.read_bytes()
         metal_packed_encoded = metal_packed_image.read_bytes()
+        block_encoded = [path.read_bytes() for path in block_images]
 
     if encoded[:8] != b"\x89PNG\r\n\x1a\n":
         raise ValueError("invalid PNG signature")
@@ -92,7 +109,20 @@ int main(int argc, char** argv) {
         raise ValueError("unexpected R10G10B10A2 conversion")
     if idat_pixels(metal_packed_encoded) != bytes((0, 0, 127, 255, 255)):
         raise ValueError("unexpected BGR10A2 conversion")
-    print("RGBA PNG self-test passed (BGRA swap, packed RGB/BGR 10-bit, padded rows, bounds, CRC, pixels).")
+    for data, width, height in zip(block_encoded, (5461, 1024), (3, 40)):
+        raw = bytes(i % 251 for i in range(width * height * 4))
+        expected = b"".join(b"\0" + raw[row * width * 4:(row + 1) * width * 4] for row in range(height))
+        if idat_pixels(data) != expected:
+            raise ValueError("stored-block boundary corrupted scanlines")
+        offset = 8
+        while offset < len(data):
+            size = struct.unpack_from(">I", data, offset)[0]
+            chunk = data[offset + 4:offset + 8 + size]
+            crc = struct.unpack_from(">I", data, offset + 8 + size)[0]
+            if binascii.crc32(chunk) & 0xFFFFFFFF != crc:
+                raise ValueError("bad streaming chunk CRC")
+            offset += size + 12
+    print("RGBA PNG self-test passed (BGRA swap, packed RGB/BGR 10-bit, padded rows, bounds, CRC, pixels, block boundaries, largest encoder allocation <= 64 KiB).")
     return 0
 
 
