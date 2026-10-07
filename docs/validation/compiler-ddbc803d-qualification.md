@@ -116,3 +116,10 @@ prelude helper has no diagnostics. The bounded compile still exits 1 on other
 errors (3.93 seconds; sampled peak RSS 726,880 KiB). Artifact:
 `build/validation/elisascript-ddbc803d-int-cstr-build.log` and watchdog JSON.
 Runtime integer formatting is still unverified on the selected compiler.
+
+Character formatting preserves `cstr` through its three helpers after the
+existing one-byte-plus-NUL interned copy. Both character wrapper return
+mismatches clear; the changed prelude has no diagnostics. The bounded build
+still exits 1 on other errors (5.23 seconds; sampled peak RSS 724,688 KiB).
+Artifact: `build/validation/elisascript-ddbc803d-char-cstr-build.log` and JSON.
+Runtime character formatting remains unverified.
