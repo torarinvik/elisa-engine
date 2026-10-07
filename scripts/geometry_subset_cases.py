@@ -347,22 +347,30 @@ def cases(directory: Path) -> list[tuple]:
         ("accept", "skinned.pkg", strip_package(2, skinned=True), (6, 1, [(0, 6, 0)])),
         ("accept", "skinned-panel.pkg", None, (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1),
             (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
-            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES)),
         ("accept", "separate-root-skinned.pkg", separate_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
-            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+            "animations", 1, "morphs", 1, "inverse_binds",
+            # Independent skeleton root: inverse of its world Z translation 0.5.
+            tuple(-0.5 if index % 16 == 14 else value
+                for index, value in enumerate(gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES)))),
         ("accept", "multi-skin-panel.pkg", multi_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds",
-            gltf_skin_self_test.INVERSE_BIND_MATRICES +
-                gltf_skin_self_test.SECOND_INVERSE_BIND_MATRICES)),
+            gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES +
+                # Second rig retains only the common ancestor Z translation 0.25.
+                tuple(-0.25 if index % 16 == 14 else value
+                    for index, value in enumerate(gltf_skin_self_test.SECOND_INVERSE_BIND_MATRICES)))),
         ("accept", "mixed-skin-panel.pkg", mixed_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds",
-            gltf_skin_self_test.INVERSE_BIND_MATRICES + gltf_skin_self_test.GLTF_IDENTITY_MATRIX)),
+            gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES + gltf_skin_self_test.GLTF_IDENTITY_MATRIX)),
         ("accept", "large-skinned-rig.pkg", large_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
-            "animations", 1, "morphs", 1, "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES)),
+            "animations", 1, "morphs", 1, "inverse_binds",
+            # 65-node rig: Z = 0.75 + (65 - 4) * 0.001.
+            tuple(-0.811 if index % 16 == 14 else value
+                for index, value in enumerate(gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES)))),
         ("accept", "default-skinned-panel.pkg", default_skin_path.read_bytes(),
             (36, 2, [(0, 6, 1), (6, 6, 0), (12, 12, 1), (24, 6, 0), (30, 6, 1)], PANEL_MATERIALS,
             "animations", 1, "morphs", 1, "inverse_binds",

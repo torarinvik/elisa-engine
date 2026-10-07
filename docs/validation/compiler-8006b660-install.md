@@ -64,3 +64,26 @@ statuses are 1: Wicked checkout `18066af2ac774249ee523be8eb494f04410c89a2` diffe
 from manifest `fd790f55b3237a9d266335ec742faeacc3cc9228`. Application is explicitly
 skipped. Restore the pinned dependency in an isolated checkout with matching
 archives, or qualify an intentional pin update before rerunning the gate.
+
+## Pinned Wicked recovery and geometry gate repair
+
+The dependency mismatch above was caused by selecting the unpinned sibling.
+The existing clean `../elisa-boxing-wickedengine` is already at manifest revision
+`fd790f55`; using its build directory passes the 13-library dependency checker.
+No dependency pin update or new checkout is needed. With this root, the
+`wicked_probe.elisascript build-gate` progresses to the geometry-loader tests
+and exposes six failed exact inverse-bind comparisons out of 160 cases.
+Log: `build/validation/compiler-8006-wicked-build-gate.log`.
+
+The expectations retained raw authored matrices after `9f12acdb` introduced
+bind-shape normalization. Updated ordinary/UV1 expectations use the existing
+COOKED_INVERSE_BIND_MATRICES constant. Independent-root Z is 0.5, second-rig
+ancestor Z is 0.25, and the 65-node rig Z is 0.75 + 61 * 0.001. Exact float32
+comparison remains; malformed packages retain all rejection checks. Added
+checker diagnostics identify the failed check and inverse-bind component.
+`python3.14 scripts/test_geometry_subsets.py` now passes **160/160**, plus three
+hash-verified LOD levels and seven malformed LOD controls. Logs:
+`build/validation/geometry-subset-diagnosis.log` (old expectations fail),
+`geometry-subset-bind-shape.log` (corrected expectations pass).
+Full native build and application smokes still require rerunning; the launcher
+timeout compatibility prerequisite remains open.

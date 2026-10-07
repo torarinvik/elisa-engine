@@ -82,7 +82,7 @@ def cases(directory: Path, panel_source: Path, panel_materials: list, panel_subs
             (18, 2, panel_subsets, panel_materials, "uv1", atlas_geometry["positions"], "gltf", 0, 0, 0)),
         ("accept", skinned_path.name, None,
             (36, 2, skin_subsets, panel_materials, "animations", 1, "morphs", 1,
-            "inverse_binds", gltf_skin_self_test.INVERSE_BIND_MATRICES,
+            "inverse_binds", gltf_skin_self_test.COOKED_INVERSE_BIND_MATRICES,
             "uv1", skinned_geometry["positions"], "xatlas", 128, 4,
             int(skinned_sections["uv1_chart_count"]))),
         ("reject", "uv1-no-data.pkg", atlas_without_uv1_data(),

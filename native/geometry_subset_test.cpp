@@ -110,7 +110,11 @@ bool check_slot_names(const std::vector<std::string>& fields, size_t first, size
 }
 
 bool check_accepted(const std::vector<std::string>& fields, const elisa::assets::CookedGeometry& geometry) {
-    if (fields.size() < 4) return false;
+    const auto mismatch = [](int line) {
+        std::fprintf(stderr, "geometry expectation mismatch at checker line %d\n", line);
+        return false;
+    };
+    if (fields.size() < 4) return mismatch(__LINE__);
     const auto marker = [&fields](const char* name) {
         return size_t(std::find(fields.begin() + 4, fields.end(), name) - fields.begin());
     };
@@ -134,68 +138,70 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
     const size_t section_end = std::min({slot_names, animations, morphs, cameras, lights,
         inverse_binds, uv1, mesh_placements, normal_scales, occlusion_strengths, clearcoat_factors});
     if (materials == fields.size() ? !geometry.slot_materials.empty()
-                                   : !check_slot_materials(fields, materials + 1, material_end, geometry)) return false;
+                                   : !check_slot_materials(fields, materials + 1, material_end, geometry)) return mismatch(__LINE__);
     const size_t normal_scales_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
         inverse_binds, uv1, mesh_placements, occlusion_strengths, clearcoat_factors, fields.size()});
     if (normal_scales != fields.size()) {
-        if (!check_slot_normal_scales(fields, normal_scales + 1, normal_scales_end, geometry)) return false;
+        if (!check_slot_normal_scales(fields, normal_scales + 1, normal_scales_end, geometry)) return mismatch(__LINE__);
     } else if (std::any_of(geometry.slot_materials.begin(), geometry.slot_materials.end(),
-        [](const auto& material) { return material.normal_scale != 1.0f; })) return false;
+        [](const auto& material) { return material.normal_scale != 1.0f; })) return mismatch(__LINE__);
     const size_t occlusion_strengths_end = std::min({sections, slot_names, animations, morphs, cameras, lights,
         inverse_binds, uv1, mesh_placements, clearcoat_factors, fields.size()});
     if (occlusion_strengths != fields.size()) {
         if (!check_slot_occlusion_strengths(fields, occlusion_strengths + 1,
-            occlusion_strengths_end, geometry)) return false;
+            occlusion_strengths_end, geometry)) return mismatch(__LINE__);
     } else if (std::any_of(geometry.slot_materials.begin(), geometry.slot_materials.end(),
-        [](const auto& material) { return material.occlusion_strength != 1.0f; })) return false;
+        [](const auto& material) { return material.occlusion_strength != 1.0f; })) return mismatch(__LINE__);
     const size_t clearcoat_factors_end = std::min({slot_names, animations, morphs, cameras, lights,
         inverse_binds, uv1, mesh_placements, normal_scales, occlusion_strengths, fields.size()});
     if (clearcoat_factors != fields.size()) {
-        if (!check_slot_clearcoat_factors(fields, clearcoat_factors + 1, clearcoat_factors_end, geometry)) return false;
+        if (!check_slot_clearcoat_factors(fields, clearcoat_factors + 1, clearcoat_factors_end, geometry)) return mismatch(__LINE__);
     } else if (std::any_of(geometry.slot_materials.begin(), geometry.slot_materials.end(), [](const auto& material) {
         return material.clearcoat_factor != 0.0f || material.clearcoat_roughness != 0.0f ||
             material.clearcoat_normal_scale != 1.0f;
-    })) return false;
+    })) return mismatch(__LINE__);
     if (sections == fields.size() ? !geometry.texture_sections.empty() || !geometry.texture_checksums.empty()
-                                  : !check_sections(fields, sections + 1, section_end, geometry)) return false;
+                                  : !check_sections(fields, sections + 1, section_end, geometry)) return mismatch(__LINE__);
     const size_t slot_names_end = std::min({animations, morphs, cameras, lights,
         inverse_binds, uv1, mesh_placements, normal_scales, occlusion_strengths, clearcoat_factors});
     if (slot_names == fields.size() ? !geometry.slot_material_names.empty()
-                                    : !check_slot_names(fields, slot_names + 1, slot_names_end, geometry)) return false;
+                                    : !check_slot_names(fields, slot_names + 1, slot_names_end, geometry)) return mismatch(__LINE__);
     if (animations == fields.size() ? !geometry.animation_clips.empty()
-                                    : geometry.animation_clips.size() != std::stoul(fields[animations + 1])) return false;
+                                    : geometry.animation_clips.size() != std::stoul(fields[animations + 1])) return mismatch(__LINE__);
     if (morphs == fields.size() ? !geometry.morph_targets.empty()
-                                : geometry.morph_targets.size() != std::stoul(fields[morphs + 1])) return false;
+                                : geometry.morph_targets.size() != std::stoul(fields[morphs + 1])) return mismatch(__LINE__);
     if (cameras == fields.size() ? !geometry.cameras.empty()
-                                 : geometry.cameras.size() != std::stoul(fields[cameras + 1])) return false;
+                                 : geometry.cameras.size() != std::stoul(fields[cameras + 1])) return mismatch(__LINE__);
     if (lights == fields.size() ? !geometry.lights.empty()
-                                 : geometry.lights.size() != std::stoul(fields[lights + 1])) return false;
+                                 : geometry.lights.size() != std::stoul(fields[lights + 1])) return mismatch(__LINE__);
     if (inverse_binds == fields.size()) {
-        if (!geometry.skin_inverse_bind_matrices.empty()) return false;
+        if (!geometry.skin_inverse_bind_matrices.empty()) return mismatch(__LINE__);
     } else {
         const size_t inverse_bind_end = std::min({uv1, mesh_placements, normal_scales,
             occlusion_strengths, clearcoat_factors, fields.size()});
         if (inverse_bind_end <= inverse_binds ||
-            geometry.skin_inverse_bind_matrices.size() != inverse_bind_end - inverse_binds - 1) return false;
+            geometry.skin_inverse_bind_matrices.size() != inverse_bind_end - inverse_binds - 1) return mismatch(__LINE__);
         for (size_t component = 0; component < geometry.skin_inverse_bind_matrices.size(); ++component) {
             if (geometry.skin_inverse_bind_matrices[component] != std::stof(fields[inverse_binds + 1 + component])) {
-                return false;
+                std::fprintf(stderr, "inverse bind component %zu: actual %.9g expected %.9g\n", component,
+                    geometry.skin_inverse_bind_matrices[component], std::stof(fields[inverse_binds + 1 + component]));
+                return mismatch(__LINE__);
             }
         }
     }
     if (uv1 == fields.size()) {
-        if (!geometry.uv1s.empty() || !geometry.uv1_source.empty()) return false;
+        if (!geometry.uv1s.empty() || !geometry.uv1_source.empty()) return mismatch(__LINE__);
     } else if (std::min({mesh_placements, normal_scales, occlusion_strengths,
             clearcoat_factors, fields.size()}) - uv1 != 6 ||
         geometry.uv1s.size() != std::stoul(fields[uv1 + 1]) * 2 ||
         geometry.uv1_source != fields[uv1 + 2] ||
         geometry.uv1_generation_resolution != std::stoul(fields[uv1 + 3]) ||
         geometry.uv1_generation_padding != std::stoul(fields[uv1 + 4]) ||
-        geometry.uv1_chart_count != std::stoul(fields[uv1 + 5])) return false;
+        geometry.uv1_chart_count != std::stoul(fields[uv1 + 5])) return mismatch(__LINE__);
     if (mesh_placements != fields.size()) {
         const size_t count = std::stoul(fields[mesh_placements + 1]);
         if (geometry.mesh_count != count || geometry.mesh_placements.size() != count ||
-            fields.size() - mesh_placements != 2 + count * 20) return false;
+            fields.size() - mesh_placements != 2 + count * 20) return mismatch(__LINE__);
         for (size_t index = 0; index < count; ++index) {
             const auto& actual = geometry.mesh_placements[index];
             const size_t offset = mesh_placements + 2 + index * 20;
@@ -203,22 +209,22 @@ bool check_accepted(const std::vector<std::string>& fields, const elisa::assets:
                 actual.vertex_count, actual.index_start, actual.index_count,
                 actual.subset_start, actual.subset_count};
             for (size_t field = 0; field < 8; ++field) {
-                if (integers[field] != std::stoul(fields[offset + field])) return false;
+                if (integers[field] != std::stoul(fields[offset + field])) return mismatch(__LINE__);
             }
             for (size_t component = 0; component < actual.transform.size(); ++component) {
-                if (actual.transform[component] != std::stof(fields[offset + 8 + component])) return false;
+                if (actual.transform[component] != std::stof(fields[offset + 8 + component])) return mismatch(__LINE__);
             }
         }
     }
-    if (end < 4 || (end - 4) % 3 != 0) return false;
+    if (end < 4 || (end - 4) % 3 != 0) return mismatch(__LINE__);
     if (geometry.indices.size() != std::stoul(fields[2]) ||
         geometry.material_slots != std::stoul(fields[3]) ||
-        geometry.subsets.size() != (end - 4) / 3) return false;
+        geometry.subsets.size() != (end - 4) / 3) return mismatch(__LINE__);
     for (size_t subset = 0; subset < geometry.subsets.size(); ++subset) {
         const auto& actual = geometry.subsets[subset];
         if (actual.index_start != std::stoul(fields[4 + subset * 3]) ||
             actual.index_count != std::stoul(fields[5 + subset * 3]) ||
-            actual.material_slot != std::stoul(fields[6 + subset * 3])) return false;
+            actual.material_slot != std::stoul(fields[6 + subset * 3])) return mismatch(__LINE__);
     }
     return true;
 }
