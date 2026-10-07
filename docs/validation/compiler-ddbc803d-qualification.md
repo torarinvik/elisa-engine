@@ -235,3 +235,16 @@ The bounded compile exits 1 on remaining errors in 5.25 seconds, sampled peak
 RSS 658,880 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-concurrency-casts-build.log` and JSON.
 No Windows execution or pool synchronization behavior is established.
+
+Generic worker results now use untyped allocated storage instead of an invalid
+zeroed R. The worker writes R before release-storing completed=1; result take
+requires an acquire load observing completion before its typed read. Existing
+join/pool-wait and reference-count release paths remain. Current compiler
+codegen_atomic.elisa recognizes both atomic[T] and AtomicSlot[T], supporting
+the ordered publication calls. Conversions are confined to two documented
+result-storage helpers. The bounded compile clears the last concurrency
+fragment diagnostic and reports none in that fragment; other launcher errors
+remain. It exits 1 normally in 9.65 seconds, sampled peak RSS 587,088 KiB.
+Engine artifact: `build/validation/elisascript-ddbc803d-worker-result-build.log`
+and JSON. Native worker execution and adversarial completion controls remain
+required before treating this synchronization path as qualified.
