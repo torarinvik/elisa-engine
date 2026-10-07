@@ -425,3 +425,82 @@ it proves 19/19. Source-exact declarations and yields must instead execute in
 private scope, exporting the result and valid outer effects while expiring all
 block locals. Preserve accumulator identity, source summary authentication,
 zero iterations and mutation refusal while replacing this flattening path.
+
+### Private declaration-frame candidate
+
+An uncommitted value_block_declarations.elisa handler executes initializer
+statements and the result binding in copied names/values/facts and fixed-array
+maps. It exports the result and outer effects while filtering facts and values
+mentioning expired temporary names. The outer flattening preprocessing call is
+removed. Initial build refused writes to read-only fixed-map arguments; the
+candidate was repaired without changing their API, and its next build finished
+successfully (proof-private-value-declaration-build.log, compiler 8006).
+
+Actual apply proves 91/91, zero gaps/errors (previous 73/93); the reuse minimal
+proves 17/17 (previous 13/19). Totals change because flattened declarations no
+longer duplicate the result-binding path. Captured-search and scoped-summary
+alias suites retain all positive and refusal results. A simple scalar result
+and an outer captured assignment still lose their result relationships: each
+is 1/2 with a finding and zero gaps. Previous immutable generation 556a53fd
+instead had a replay gap for each. Wrong-result refuses in both builds.
+These probes remain open and must not be reclassified as accepted. Result
+relationship export, source replay, shadowing and broader qualification are
+required before committing this scope repair. Production engine code is unchanged.
+
+### Scalar export and replay candidate
+
+The private-frame candidate now derives consequences by eliminating expired
+scalar names through the frame's equations, using the original premises. Work
+is capped at 4096 transformations, existing facts are never re-recorded (avoids
+circular provenance), and new consequences are dated at the yield. A source
+helper checks direct value-block immutable scalar equations against unique
+owner/declaration identity, source positions, initializer shape, type and stable
+parameter reads; direct outer yields require a uniquely declared scalar of the
+same type. This is still uncommitted and not a qualified replay expansion.
+
+Repaired build generation 49920d05 finished successfully on compiler 8006.
+Actual apply remains 91/91 and reuse 17/17, zero gaps. Scalar-result and outer
+capture probes now establish their producer goals but still each have one replay
+gap; wrong-result remains refused with zero gaps. Replay source/type admission
+for these derived premises remains open. Prior captured-search and scoped-summary
+suites pass. No claim of complete scalar export or matrix qualification is made.
+A separate chat reports installed compiler ddbc803d product b4439c09/runtime
+ca40ba1d; these builds remain on the verified immutable 8006 checkpoint until
+that newer product is independently integrated and qualified for this project.
+
+### Immutable scalar export replay passes
+
+The direct nested-local source check now applies single-declaration validation to
+its containing block and rejects conflicting introductions elsewhere in the
+function or parameters, instead of requiring a nested declaration to appear in
+the outer statement list. The subsequent compiler 8006 build finishes; scalar
+result is now 2/2, zero gaps. Five cases in test_private_value_declaration.py run
+both JSON routes: immutable result and expired-name reuse prove; wrong result,
+inner mutation and result rebinding refuse with zero gaps/errors. Captured-search
+and scoped-summary controls remain passing.
+
+The actual input context improves to 264/265 with one borrow-call-summary-
+unsupported finding in bind and zero replay gaps. Apply remains 91/91. The
+uncached engine sweep remains 71/73; both ActionInput reports still fail. The
+outer mutable-capture positive probe still has one replay gap and remains open.
+Private-frame, export and source-validation changes are uncommitted pending that
+capture path and wider qualification; this evidence does not establish complete
+value-block support or full matrix compatibility.
+
+### Committed private declaration frames — 2026-10-08
+
+Prover 34f5ef7c commits private-frame execution, bounded consequence export and
+source authentication for immutable scalar block equations and a matched-type,
+single scalar capture write. The target must precede the capture block; other
+writes, aliases, conflicting declarations and scalar-type mismatches are refused.
+The immutable and mutable capture positives now both prove/replay 2/2. Eight
+cases are wired into the matrix and pass both JSON routes, with wrong results,
+inner mutation, result rebinding and later capture writes refused with zero gaps.
+Captured-search, scoped-summary, record-branch, mutable old-state, conditional
+fixed-extent and branch-local loop controls pass. All earlier candidate results
+above are historical; the mutable-capture replay gap in this slice is repaired.
+
+Actual apply is 91/91; full context is 264/265, one unsupported bind resource
+summary and zero gaps. The uncached sweep remains 71/73, with both ActionInput
+reports failing. Full matrix qualification, broader value-block shapes and scalar
+field snapshots remain open. Engine production source is unchanged.
