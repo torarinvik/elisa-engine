@@ -121,3 +121,29 @@ additional obligations. `approx_eq` and `refresh_action` unsupported-expression 
 are gone. Deadzone report: `build/validation/action-input-deadzone-float-call-shape.json`.
 Both engine proofs still fail. Next inspect the remaining `bind_checked` expression
 and bounds on copied binding/state slots. Full matrix qualification remains open.
+
+## Ordinary for-loop outer bounds — 2026-10-07
+
+Generation `15ce730f72eb4e62bf03683ff83af0e6` fixes the no-invariant ordinary
+for-loop exit rule: a body containing a local declaration previously triggered whole
+frame forgetting. Exit now uses the existing targeted arbitrary-iteration entry rule,
+resymbolizing written/aliased roots and purging dependent facts. The existing mutated
+reference-parameter cleanup remains. Parallel loops and checked-invariant exit rules
+are unchanged. No iteration body fact is exported as a post-loop assertion.
+
+`examples/loop_readonly_outer_index.elisa` reproduces a guarded outer index, copied
+record, read-only search loop and two later writes. Baseline: 11/13 with two upper-bound
+findings; repaired: 13/13 with complete replay. `test_loop_readonly_outer_index.py`
+passes five cases on both routes: read-only accepted; wide/missing guard, index rewrite
+and borrowed index mutation refused. It is included in the prover matrix. Captured
+loop entry, deterministic operator/global invalidation, local-digit decimal and
+for-saturation controls pass. `test_loop_state_joins.py` still fails on exactly the
+previous 45/47, two replay-gap baseline; this slice does not qualify that suite.
+
+Actual ActionInput context: `build/validation/action-input-for-outer-index.json`,
+256 obligations, 223 proven/replayed, 33 findings, zero replay gaps and semantic
+errors. All rebind_checked findings are removed; additional checked downstream code
+contributes 12 obligations. Build log: `build/validation/proof-for-outer-index-build.log`.
+Full uncached engine sweep remains 71/73 with only the two ActionInput failures
+(`build/validation/proof-for-outer-index-engine-sweep.log`). Next fix the captured
+search-loop assignment in bind_checked and indexed apply bounds.
