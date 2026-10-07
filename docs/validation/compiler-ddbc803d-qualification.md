@@ -91,3 +91,12 @@ The latest attempt exits 1 normally in 8.65 seconds, sampled peak RSS
 `build/validation/elisascript-ddbc803d-argv-fixed-build.log` and
 `build/validation/elisascript-ddbc803d-text-helper-build.log`, each with a
 watchdog JSON report. No installed launcher was replaced.
+
+The next targeted repair uses a tuple-valued loop for the vendored float
+formatter's exponent/decimal marker scan. It preserves last-match and absent
+marker values and clears both immutable-assignment diagnostics without adding
+mutable outer locals. The bounded build completes with status 1 on unrelated
+errors in 5.98 seconds, sampled peak RSS 726,896 KiB. Artifact:
+`build/validation/elisascript-ddbc803d-marker-loop-build.log` and watchdog JSON.
+The formatter has not executed on this compiler; full launcher qualification
+remains open.
