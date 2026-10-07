@@ -222,3 +222,22 @@ invariant-for and pure-search suites also pass. The filtered build retains actua
 bind_checked 41/41 and context 236/263, 27 findings, zero gaps. Its uncached engine
 sweep remains 71/73, failing only the two ActionInput reports. Full matrix remains
 unqualified. The inner-local-index replay gap above remains open independently.
+
+### Post-repair diagnostic boundaries
+
+The committed `diagnose_action_input_guard.py` now records the changed outcomes
+rather than asserting obsolete three-finding counts for every variant. Production
+bind_checked is 41/41; literal-call is 32/32, both zero gaps. Removing the search
+leaves 33/36 and three findings. Combining search removal with a literal slot
+produces 24/27 and three replay gaps, zero producer findings. These remain
+explicit diagnostic failures, not passing acceptance cases. Region retention
+therefore does not qualify arbitrary field-copy snapshots or altered search paths.
+
+The scalar-field-snapshot diagnostic still reports 4/5 for the field copy, 5/5
+for local-guard and parameter controls; stale fields, rebound copies and wrong
+entry bounds are refused with their original counts and zero gaps. A separate
+minimal captured-for loop with a fixed flags array and a write between two reads
+proves 7/7 with zero gaps (capture-free and literal-write variants also 7/7;
+no-write 5/5). Capture syntax or an indexed write alone does not reproduce the
+remaining actual apply failures. Continue isolating its aggregate bindings,
+conditional field updates and callee effects without changing production shape.
