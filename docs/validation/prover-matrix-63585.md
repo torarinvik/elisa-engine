@@ -94,3 +94,32 @@ findings and four gaps: number preservation, the number call within read_fields,
 and two dependent wrapper summaries. Evidence:
 `build/validation/sound-assets-mutable-entry-final.json` and
 `prover-mutable-entry-final-build.log`. Full qualification remains open.
+
+## Saturating for preservation isolation
+
+Two minimized reproductions are retained in the prover examples as
+`nested_digit_loop_replay_gap.elisa` and `direct_digit_loop_replay_gap.elisa`.
+Both retain four obligations: search has zero findings, but only three
+certificates replay. The sole gap is invariant preservation after the
+conditional accumulator assignment. These are open regressions, not passing
+qualification evidence.
+
+The direct-digit variant uses an immutable `u64` formal with `requires digit <= 9`;
+it has no indexed reads, casts or nested digit declaration. It still fails,
+so repairing indexed snapshots alone cannot close the parser preservation gap.
+The nested-digit variant with the accumulator update replaced by `pass` replays
+all four certificates. Production parser source and contracts remain unchanged.
+
+An O0 diagnostic compiled with the installed compiler/runtime calls the actual
+source-valid and fact-live predicates in preservation certificate context.
+Both reject the nested digit equality and accumulator rebind equality. The
+header initializer equality also refuses in this context, as expected for an
+entry-only fact. Next repair: independently reconstruct original for-body
+accumulator assignment, invariant and fresh-symbol identity; then admit stable
+nested immutable declarations within that authenticated scope. Preserve
+source positions, primitive-type/operator checks, and stale-state rejection.
+
+Evidence: `build/validation/nested-trace-debug.txt`,
+`nested-digit-loop-before.json`, `direct-digit-loop.json` and
+`nested-digit-without-update.json`. This narrows the next implementation task;
+it does not qualify the full prover matrix or engine gate.
