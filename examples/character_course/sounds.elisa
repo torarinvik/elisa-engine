@@ -16,6 +16,7 @@ module CourseSounds:
         const EVENT_STEP: u32 = 6
         # The guide's foot plants are bound to sound events by `anim` records.
         const EVENT_GUIDE_STEP: u32 = 7
+        const GUIDE_SOUND_RANGE: f32 = 18.0
         # `track` results, as bits.
         const TRACKED_STEP: u32 = 1
         const TRACKED_LANDING: u32 = 2
@@ -225,54 +226,10 @@ module CourseSounds:
             landing_heard: bool = gain > 0 and heard_outcome(fire_scaled(sounds, sounds.triggers.impacts.event, tick, gain))
             (TRACKED_STEP if step_heard else 0) + (TRACKED_LANDING if landing_heard else 0)
 
-        # Sounds the animation event's authored binding at its gain; an
-        # animation event with no binding is silent.
-        def fire_animation(sounds: mutable Sounds&, animation_event: u64, tick: u64) -> i32:
-            bound: AudioAnimEvents::Binding = AudioAnimEvents::get(&sounds.triggers.anims, animation_event)
-            return FIRE_FAILED if not bound.defined
-            fire_scaled(sounds, bound.sound_event, tick, AudioAnimEvents::heard_gain(bound))
-
-        # Once per frame, dispatch only the clip-authored events crossed by
-        # this advance. The fixed clip table is owned by Walker; this loop
-        # allocates nothing and returns how many bound markers were heard.
-        def animation_markers(sounds: mutable Sounds&,
-            events: mutable AnimationAssets::ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]&, event_count: usize,
-            duration_ticks: i64, before_mc: u64, after_mc: u64, tick: u64) -> u32:
-            return 0 if not sounds.live or after_mc < before_mc or after_mc > 1000000000000
-            return 0 if event_count > AnimationLimits::MAX_EVENTS_PER_CLIP or duration_ticks <= 0 or duration_ticks.u64() > AudioAnimEvents::MAX_CLIP_TICKS
-            duration: mutable u64 = duration_ticks.u64()
-            before: mutable u64 = before_mc
-            after: mutable u64 = after_mc
-            sound_tick: mutable u64 = tick
-            for index in 0..<event_count |heard: u32 = 0, sounds, events, duration, before, after, sound_tick| -> heard:
-                event: AnimationAssets::ClipEvent = events[index]
-                crossed: bool = event.event_id.value > 0 and event.tick >= 0 and event.tick.u64() <= duration and AudioAnimEvents::crossed_clip_event(before, after, event.tick.u64(), duration)
-                heard <- heard + 1 if crossed and heard_outcome(fire_animation(sounds, event.event_id.value.u64(), sound_tick))
-
         # `gain_permille` scales the event's volume; 1000 is full.
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32:
-            return SILENT if not sounds.live
-            if RuntimeDecisionSessionStore::needs_roll(&sounds.decisions):
-                sounds.decisions <- RuntimeDecisionSessionStore::roll(sounds.sealed_chunks, &sounds.decisions)
-                sounds.sealed_chunks <- sounds.sealed_chunks + 1
-            trigger: AudioEvents::Trigger = catch AudioEventsLogged::trigger(&sounds.board, event, tick, &sounds.decisions):
-                value: value.trigger
-                error failure: AudioEvents::Trigger{outcome: AudioEvents::Outcome.Play, slot: AudioEvents::MAX_INSTANCES, variant: 0}
-            return DUPLICATE if trigger.outcome == AudioEvents::Outcome.Duplicate
-            return COOLING if trigger.outcome == AudioEvents::Outcome.Cooling
-            return FIRE_FAILED if trigger.slot >= AudioEvents::MAX_INSTANCES
-            stop_slot(sounds, trigger.slot)
-            # Saving happens from the pause menu too, so its chime uses the Ui bus.
-            bus: AudioRuntime::Bus = AudioRuntime::Bus.Ui if event == CourseSounds::EVENT_SAVE else AudioRuntime::Bus.Effects
-            gain: u64 = gain_permille if gain_permille < AudioTriggers::FULL_PERMILLE else AudioTriggers::FULL_PERMILLE
-            volume: f32 = 0.8 * gain.f32() / 1000.0
-            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(event_clip(sounds, event, trigger.variant), false, bus, volume, 2):
-                value: value
-                error failure: AudioRuntime::empty_voice()
-            return FIRE_FAILED if AudioRuntime::voice_is_empty(voice)
-            return FIRE_FAILED if not AudioRuntime::VoiceHandles::store(&sounds.voices, trigger.slot, voice)
-            sounds.last_variant <- trigger.variant
-            REPLACED if trigger.outcome == AudioEvents::Outcome.Replace else PLAYED
+            fire_scaled_with_spatial(sounds, event, tick, gain_permille,
+                1.0, 1.0, false)
 
         # The variant of the last event that started a voice.
         # Started events recorded through the decision log, across chunks.
@@ -563,3 +520,5 @@ module CourseSounds:
                 ok: true
                 AudioRuntime::AudioError.InvalidHandle: true
                 error failure: false
+
+include "./sound_spatial.elisa"

@@ -4,6 +4,8 @@
 # and when a marker has been passed. Positions are whole thousandths of a clip
 # cycle, so a replayed animation fires the same markers and the proof,
 # proof/audio_anim_events.elisa, works in exact integers.
+include "../animation/state.elisa"
+
 module AudioAnimEvents:
     public:
         const MAX_BINDINGS: usize = 4
@@ -13,6 +15,21 @@ module AudioAnimEvents:
         const CYCLE_MC: u64 = 1000
         # Cooked clips are capped at 3600 ticks (120 seconds at 30 Hz).
         const MAX_CLIP_TICKS: u64 = 3600
+        const MAX_STATE_EVENTS: usize = Anim::MAX_QUEUED_EVENTS
+
+        struct Dispatch:
+            animation_event: u64
+            sound_event: u32
+            gain_permille: u64
+
+        struct DispatchBatch:
+            valid: mutable bool
+            consumed: mutable usize
+            count: mutable usize
+            events: mutable Dispatch[AudioAnimEvents::MAX_STATE_EVENTS]
+
+        def DispatchBatch() -> DispatchBatch:
+            DispatchBatch{valid: false, consumed: 0, count: 0, events: zeroed}
 
         struct Binding:
             defined: bool
@@ -102,3 +119,28 @@ module AudioAnimEvents:
             ensure result <= FULL_PERMILLE
             return FULL_PERMILLE if value.gain_permille > FULL_PERMILLE
             value.gain_permille
+
+        # Consume the animation state's bounded event queue into sound intents.
+        # Invalid queues are left intact; valid but unbound events are consumed
+        # silently so they cannot be replayed by the next update.
+        def consume_state(state: mutable Anim::AnimState&,
+            bindings: Bindings&) -> DispatchBatch:
+            batch: mutable DispatchBatch = DispatchBatch()
+            count: usize = Anim::anim_event_count(state)
+            return batch if count > MAX_STATE_EVENTS
+            for index in 0..<count |state|:
+                return batch if Anim::anim_event_at(state, index) <= 0
+            batch.valid <- true
+            batch.consumed <- count
+            for index in 0..<count |batch, bindings, state|:
+                id: i64 = Anim::anim_event_at(state, index)
+                value: Binding = get(bindings, id.u64())
+                if value.defined:
+                    batch.events[batch.count] <- Dispatch{
+                        animation_event: value.animation_event,
+                        sound_event: value.sound_event,
+                        gain_permille: heard_gain(value),
+                    }
+                    batch.count <- batch.count + 1
+            Anim::anim_clear_events(state)
+            batch

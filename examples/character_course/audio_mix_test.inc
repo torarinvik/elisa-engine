@@ -158,13 +158,17 @@
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             animation: mutable WalkerAnimation = walker_animation_or_empty()
-            quiet: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 0, 400, 1) == 0
-            right: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 400, 600, 2) == 1
-            again: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 400, 600, 2) == 0
-            left: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 600, 1000, 3) == 1
-            both: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 1000, 2100, 4) == 1
-            dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, animation.duration_ticks, 2100, 2600, 5) == 0
-            CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and audio_idle(session)
+            listener: Geometry::Vec3 = Geometry::vec3_zero()
+            near_guide: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}
+            far_guide: Geometry::Vec3 = Geometry::Vec3{x: 20.0, y: 0.0, z: 0.0}
+            quiet: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 0, 400, 1, listener, near_guide) == 0
+            right: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 1
+            again: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 0
+            left: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 600, 1000, 3, listener, near_guide) == 1
+            both: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 1000, 2100, 4, listener, near_guide) == 1
+            dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 2100, 2600, 5, listener, far_guide) == 0
+            distance_mix: bool = CourseSounds::guide_sound_gain(listener, near_guide) > CourseSounds::guide_sound_gain(listener, far_guide) and CourseSounds::guide_sound_gain(listener, far_guide) == 0.0
+            CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and distance_mix and audio_idle(session)
 
         def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32:
             return 166 if not moods_test()

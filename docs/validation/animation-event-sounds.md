@@ -2,7 +2,8 @@
 
 Animation-marker sound policy and the Character Course integration. The
 original binding and live-audio tests were validated on 2026-09-29; the
-clip-authored event path was added and focused-tested on 2026-10-06.
+clip-authored path was added on 2026-10-06 and its queue consumer and spatial
+mix were verified on 2026-10-07.
 
 This is S05 progress alongside [footfall and landing triggers](movement-sound-triggers.md)
 and [music transitions](music-transitions.md).
@@ -29,11 +30,18 @@ and [music transitions](music-transitions.md).
 - **Course dispatch.** The generated guide `lift` clip authors foot plants
   100 at tick 0 and 101 at tick 15. Walker creation decodes the packaged
   `.anim` file once and copies the bounded event table into walker state.
-  Each frame `CourseSounds::animation_markers` checks each authored tick
-  against the clip advance and dispatches the ID through `fire_animation`.
-  `events.sfx` contains the sound bindings `anim 100 7 500` and
-  `anim 101 7 500`; it does not duplicate marker positions. The frame path
-  uses a fixed array and allocates nothing. An unbound marker is silent.
+  Crossed ticks enqueue their IDs through `Anim::anim_emit_event`; the common
+  `AudioAnimEvents::consume_state` maps the `AnimState.events` queue into a
+  bounded dispatch batch and clears it once consumed. A full queue is drained
+  in chunks. Invalid queue contents are left intact, while unbound IDs are
+  consumed silently. `events.sfx` contains the sound bindings `anim 100 7 500`
+  and `anim 101 7 500`; it does not duplicate marker positions. The frame path
+  uses fixed arrays and allocates nothing.
+- **Spatial mix.** Guide footfalls use the current player and guide physics
+  poses with `SpatialAudio::spatial_gain`, the same distance attenuation policy
+  used by `WorldAudio`. The omni source reaches zero gain at 18 scene units;
+  its first voice frame receives the mix before the voice is stored. Doppler,
+  occlusion and directional panning are not applied to these one-shot effects.
 
 ## Proof
 
@@ -60,12 +68,26 @@ cooker's 120-second limit.
   integrated dispatch; its stress trace reported zero voices and streams.
   Audio output remained silent throughout.
 
+## Queue consumer and guide mix (2026-10-07)
+
+- `test/anim_state.elisa` passed with queue count, external event enqueue,
+  invalid-ID rejection and explicit drain coverage.
+- `test/audio_anim_events.elisa` passed with generated `AnimState` events,
+  ordered binding dispatch, single consumption, unbound-event handling and
+  malformed-queue preservation.
+- `/opt/homebrew/bin/python3 scripts/application_native_smoke.py --only
+  character-course-smoke` passed on the current source. The test traversed the
+  cooked marker → `AnimState.events` → sound binding → spatial voice path; the
+  final stress trace returned to zero voices and streams.
+- The focused live mix check verifies near-source gain exceeds far-source gain
+  and reaches zero at the configured 18-unit range. No audible listening test
+  was run.
+
 The 2026-09-29 live-audio check exercised sound-event deduplication, marker
 crossings and `.sfx` reload before marker positions moved into the clip. No
 audible listening test has been run for the clip-authored path.
 
 ## Remaining gaps
 
-- The separate `Anim::AnimState.events` queue has no general audio consumer.
-- Sounds are not spatialised to the guide.
-- No audible listening test was run.
+- No audible listening test was run for the guide footfalls or their distance
+  attenuation.

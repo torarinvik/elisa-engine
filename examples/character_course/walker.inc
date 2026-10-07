@@ -17,9 +17,10 @@
             duration_ticks: mutable i64
             events: mutable AnimationAssets::ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]
             event_count: mutable usize
+            audio_events: mutable Anim::AnimState
 
         def WalkerAnimation() -> WalkerAnimation:
-            WalkerAnimation{duration_ticks: 0, events: zeroed, event_count: 0}
+            WalkerAnimation{duration_ticks: 0, events: zeroed, event_count: 0, audio_events: Anim::AnimState()}
 
         struct Walker:
             loaded: mutable bool

@@ -33,7 +33,8 @@ blocking IO or allocation; and measured underruns and memory.
   type is named `SoundEventError` because stage1 rejects the whole
   application build when two modules declare an error with the same bare
   name.
-- **Course (`examples/character_course/sounds.elisa`).**
+- **Course (`examples/character_course/sounds.elisa` and
+  `examples/character_course/sound_spatial.elisa`).**
   - The course plays looped music on the Music bus (streamed) and a looped
     wind ambience on Effects.
   - Jump has two variants. Land has a 6-step cooldown. Win, fall and save
@@ -42,6 +43,11 @@ blocking IO or allocation; and measured underruns and memory.
   - Pause holds Effects, while music and Ui keep playing.
   - Restart and load call `reset_scene`. `stop` releases every voice, the
     stream and all clips.
+  - Clip-authored guide footfalls pass through the generic `AnimState.events`
+    consumer. The one-shot voices receive distance attenuation from the live
+    player and guide poses through `SpatialAudio`; the current mix is omni and
+    does not apply Doppler or occlusion. See
+    [animation-event sounds](animation-event-sounds.md).
   - The course requests the audio service with `MiniaudioDefault`, which
     falls back to the silent route when no device is available. If a clip
     cannot load, the game runs without sound.
@@ -105,8 +111,7 @@ The harness covers these cases:
   play.
 - Device recovery is tested only through the null backend (`reopen_null`). No
   real output device was unplugged.
-- Weighted variants, mixer snapshots, editor-authored event assets and
-  animation-driven footfalls (S05) are not implemented.
 - Memory figures are computed, not measured with RSS.
-- The course does not use spatial audio (S03). The existing `WorldAudio` tests
-  remain the S03 evidence.
+- No person has listened to the shipped mix or checked its distance falloff.
+- Physical device unplug/reconnect and measured memory on the running workload
+  remain open. `WorldAudio` device-independent policy is covered separately.

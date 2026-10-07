@@ -10,7 +10,7 @@ module Anim:
             WIN_LEN: i64 = 45
             HURT_LEN: i64 = 20
             BLEND_TICKS: i64 = 4
-            MAX_EVENTS: usize = 8
+            MAX_EVENTS: usize = Anim::MAX_QUEUED_EVENTS
             WALK_HALF: i64 = 15
             STRIDE: f32 = 0.03125
             FULL_BLEND: f32 = 1.0
@@ -19,6 +19,8 @@ module Anim:
             EVENT_STEP: i64 = 2
 
     public:
+        const MAX_QUEUED_EVENTS: usize = 8
+
         enum Clip:
             Idle
             Walk
@@ -53,6 +55,21 @@ module Anim:
         def anim_event_at(state: AnimState&, index: usize) -> i64:
             return -1 if index >= state.event_count
             state.events[index]
+
+        def anim_event_count(state: AnimState&) -> usize:
+            state.event_count
+
+        # Animation drivers may add authored or backend events to the same
+        # bounded queue that the built-in state machine uses.
+        def anim_emit_event(state: mutable AnimState&, id: i64) -> bool:
+            return false if id <= 0 or state.event_count >= MAX_QUEUED_EVENTS
+            state.events[state.event_count] <- id
+            state.event_count <- state.event_count + 1
+            true
+
+        # Consumers drain only after they have handled every queued event.
+        def anim_clear_events(state: mutable AnimState&) -> void:
+            state.event_count <- 0
 
     private:
         module Playback:

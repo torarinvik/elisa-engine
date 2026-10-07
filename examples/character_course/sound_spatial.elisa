@@ -1,0 +1,118 @@
+# Clip-authored animation events flow through the generic AnimState queue,
+# then use the same spatial gain policy as WorldAudio at their live poses.
+include "../../src/audio/spatial.elisa"
+
+extend CourseSounds:
+    public:
+        def fire_animation(sounds: mutable Sounds&, animation_event: u64,
+            tick: u64, listener_position: Geometry::Vec3,
+            source_position: Geometry::Vec3) -> i32:
+            bound: AudioAnimEvents::Binding = AudioAnimEvents::get(&sounds.triggers.anims, animation_event)
+            return FIRE_FAILED if not bound.defined
+            fire_spatial_scaled(sounds, bound.sound_event, tick,
+                AudioAnimEvents::heard_gain(bound), listener_position, source_position)
+
+        # Omni guide emitter. Character Course passes physics poses because
+        # its guide/player are not World entities owned by WorldAudio.
+        def guide_source(position: Geometry::Vec3) -> SpatialAudio::Source:
+            SpatialAudio::Source{
+                id: 1,
+                position: position,
+                velocity: Geometry::vec3_zero(),
+                forward: Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0},
+                minimum_distance: 0.0,
+                maximum_distance: GUIDE_SOUND_RANGE,
+                inner_cone_cos: 1.0,
+                outer_cone_cos: -1.0,
+                outer_cone_gain: 1.0,
+                occlusion: 0.0,
+                live: true,
+            }
+
+        def guide_sound_gain(listener_position: Geometry::Vec3,
+            source_position: Geometry::Vec3) -> f32:
+            listener: SpatialAudio::Listener = SpatialAudio::Listener{
+                position: listener_position, velocity: Geometry::vec3_zero()}
+            SpatialAudio::spatial_gain(guide_source(source_position), listener)
+
+        # Consume each AnimState event once. Unbound ids are silent; queue
+        # validation fails closed and leaves malformed state available to debug.
+        def animation_state_events(sounds: mutable Sounds&,
+            queue: mutable Anim::AnimState&, tick: u64,
+            listener_position: Geometry::Vec3,
+            source_position: Geometry::Vec3) -> u32:
+            return 0 if not sounds.live
+            batch: mutable AudioAnimEvents::DispatchBatch = AudioAnimEvents::consume_state(
+                queue, &sounds.triggers.anims)
+            return 0 if not batch.valid
+            sound_tick: mutable u64 = tick
+            for index in 0..<batch.count |heard: u32 = 0, sounds, batch, sound_tick| -> heard:
+                event: AudioAnimEvents::Dispatch = batch.events[index]
+                heard <- heard + 1 if heard_outcome(fire_animation(sounds,
+                    event.animation_event, sound_tick, listener_position, source_position))
+
+        # Crossed cooked markers enter the bounded animation queue. A full
+        # queue is consumed in chunks, so a long hitch never overruns it.
+        def animation_markers(sounds: mutable Sounds&,
+            events: mutable AnimationAssets::ClipEvent[AnimationLimits::MAX_EVENTS_PER_CLIP]&, event_count: usize,
+            queue: mutable Anim::AnimState&, duration_ticks: i64,
+            before_mc: u64, after_mc: u64, tick: u64,
+            listener_position: Geometry::Vec3,
+            source_position: Geometry::Vec3) -> u32:
+            return 0 if not sounds.live or after_mc < before_mc or after_mc > 1000000000000
+            return 0 if event_count > AnimationLimits::MAX_EVENTS_PER_CLIP or duration_ticks <= 0 or duration_ticks.u64() > AudioAnimEvents::MAX_CLIP_TICKS
+            duration: mutable u64 = duration_ticks.u64()
+            before: mutable u64 = before_mc
+            after: mutable u64 = after_mc
+            sound_tick: mutable u64 = tick
+            queued_heard: u32 = for index in 0..<event_count |heard: u32 = 0, sounds, events, duration, before, after, queue, sound_tick| -> heard:
+                event: AnimationAssets::ClipEvent = events[index]
+                crossed: bool = event.event_id.value > 0 and event.tick >= 0 and event.tick.u64() <= duration and AudioAnimEvents::crossed_clip_event(before, after, event.tick.u64(), duration)
+                if crossed:
+                    if Anim::anim_event_count(queue) >= AudioAnimEvents::MAX_STATE_EVENTS:
+                        heard <- heard + animation_state_events(sounds, queue,
+                            sound_tick, listener_position, source_position)
+                    _ = Anim::anim_emit_event(queue, event.event_id.value)
+            queued_heard + animation_state_events(sounds, queue, sound_tick,
+                listener_position, source_position)
+
+        def fire_spatial_scaled(sounds: mutable Sounds&, event: u32, tick: u64,
+            gain_permille: u64, listener_position: Geometry::Vec3,
+            source_position: Geometry::Vec3) -> i32:
+            fire_scaled_with_spatial(sounds, event, tick, gain_permille,
+                guide_sound_gain(listener_position, source_position), 1.0, true)
+
+        # Spatial mix is applied before publishing the new voice in its slot.
+        def fire_scaled_with_spatial(sounds: mutable Sounds&, event: u32,
+            tick: u64, gain_permille: u64, spatial_gain: f32,
+            pitch_ratio: f32, apply_spatial: bool) -> i32:
+            return SILENT if not sounds.live
+            if RuntimeDecisionSessionStore::needs_roll(&sounds.decisions):
+                sounds.decisions <- RuntimeDecisionSessionStore::roll(sounds.sealed_chunks, &sounds.decisions)
+                sounds.sealed_chunks <- sounds.sealed_chunks + 1
+            trigger: AudioEvents::Trigger = catch AudioEventsLogged::trigger(&sounds.board, event, tick, &sounds.decisions):
+                value: value.trigger
+                error failure: AudioEvents::Trigger{outcome: AudioEvents::Outcome.Play, slot: AudioEvents::MAX_INSTANCES, variant: 0}
+            return DUPLICATE if trigger.outcome == AudioEvents::Outcome.Duplicate
+            return COOLING if trigger.outcome == AudioEvents::Outcome.Cooling
+            return FIRE_FAILED if trigger.slot >= AudioEvents::MAX_INSTANCES
+            stop_slot(sounds, trigger.slot)
+            bus: AudioRuntime::Bus = AudioRuntime::Bus.Ui if event == CourseSounds::EVENT_SAVE else AudioRuntime::Bus.Effects
+            gain: u64 = gain_permille if gain_permille < AudioTriggers::FULL_PERMILLE else AudioTriggers::FULL_PERMILLE
+            volume: f32 = 0.8 * gain.f32() / 1000.0
+            voice: AudioRuntime::VoiceHandle = catch AudioRuntime::play(event_clip(sounds, event, trigger.variant), false, bus, volume, 2):
+                value: value
+                error failure: AudioRuntime::empty_voice()
+            return FIRE_FAILED if AudioRuntime::voice_is_empty(voice)
+            spatial_ok: mutable bool = true
+            if apply_spatial:
+                spatial_ok <- catch AudioRuntime::set_voice_spatial(voice,
+                    spatial_gain, pitch_ratio):
+                    ok: true
+                    error failure: false
+            if not spatial_ok:
+                _ = stop_voice(voice)
+                return FIRE_FAILED
+            return FIRE_FAILED if not AudioRuntime::VoiceHandles::store(&sounds.voices, trigger.slot, voice)
+            sounds.last_variant <- trigger.variant
+            REPLACED if trigger.outcome == AudioEvents::Outcome.Replace else PLAYED

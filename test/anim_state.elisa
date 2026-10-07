@@ -195,6 +195,11 @@ def main() -> i32:
         anim_tick(&state)
     return 10 if state.tick != 0 or anim_event_at(&state, state.event_count - 1) != 1
     return 11 if state.distance != 0.9375
+    return 25 if MAX_QUEUED_EVENTS != 8 or anim_event_count(&state) != 2
+    return 26 if not anim_emit_event(&state, 100) or anim_event_count(&state) != 3
+    return 27 if anim_emit_event(&state, 0)
+    anim_clear_events(&state)
+    return 28 if anim_event_count(&state) != 0
 
     anim_play(&state, Clip.Idle)
     return 12 if state.clip != Clip.Idle or state.blend_left != 4

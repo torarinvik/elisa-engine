@@ -45,4 +45,27 @@ def main() -> i32:
     return 21 if not AudioAnimEvents::crossed_clip_event(900, 1600, 15, 30) or AudioAnimEvents::crossed_clip_event(1600, 1900, 15, 30)
     return 22 if AudioAnimEvents::crossed_clip_event(700, 700, 15, 30)
     return 16 if AudioAnimEvents::heard_gain(bound(100, 6, 600)) != 600 or AudioAnimEvents::heard_gain(AudioAnimEvents::Binding{defined: true, animation_event: 1, sound_event: 1, gain_permille: 5000}) != 1000
+
+    # A client can consume the generic animation-state queue into bounded
+    # sound intents. The queue is drained once, in source order.
+    state: mutable Anim::AnimState = Anim::AnimState()
+    Anim::anim_play(&state, Anim::Clip.Walk)
+    for _ in 0..<30 |state|:
+        Anim::anim_tick(&state)
+    state_bindings: mutable AudioAnimEvents::Bindings = AudioAnimEvents::Bindings()
+    state_bindings <- AudioAnimEvents::with_binding(state_bindings, bound(1, 7, 500))
+    state_bindings <- AudioAnimEvents::with_binding(state_bindings, bound(2, 6, 750))
+    batch: mutable AudioAnimEvents::DispatchBatch = AudioAnimEvents::consume_state(&state, &state_bindings)
+    return 23 if not batch.valid or batch.consumed != 2 or batch.count != 2
+    return 24 if batch.events[0].animation_event != 2 or batch.events[0].sound_event != 6 or batch.events[0].gain_permille != 750
+    return 25 if batch.events[1].animation_event != 1 or batch.events[1].sound_event != 7 or batch.events[1].gain_permille != 500
+    return 26 if Anim::anim_event_count(&state) != 0
+    empty: AudioAnimEvents::DispatchBatch = AudioAnimEvents::consume_state(&state, &state_bindings)
+    return 27 if not empty.valid or empty.consumed != 0 or empty.count != 0
+    return 28 if not Anim::anim_emit_event(&state, 900) or AudioAnimEvents::consume_state(&state, &state_bindings).count != 0
+    return 29 if Anim::anim_event_count(&state) != 0
+    _ = Anim::anim_emit_event(&state, 10)
+    state.events[0] <- 0
+    invalid: AudioAnimEvents::DispatchBatch = AudioAnimEvents::consume_state(&state, &state_bindings)
+    return 30 if invalid.valid or Anim::anim_event_count(&state) != 1
     0
