@@ -71,3 +71,31 @@ Log: `build/validation/shared-check-50b16e68.log`.
 The complete prover regression matrix, full native application gate, refreshed
 package and hosted execution still remain open. Shared gate remains red at
 proofs; focused compatibility does not promote hosted pins.
+
+## Record-array source repair
+
+Prover `72806cfb` extends fixed-array shape, element and source proposition
+projection to a uniquely declared concrete record head, retaining alias/name
+ambiguity rejection and checked constant extents. Nested module names use the
+parser's qualified suffix spelling; multiple matching constants still refuse.
+Pair generation `48f775f6fa364597a914a6e6c74970b9` passes eight controls on
+both JSON routes: named/literal/nested/private/mutable arrays, wrong bound,
+wrong result and ambiguous extent. Literal-index controls and kernel inventory
+pass. Build: `build/validation/prover-record-array-final-build.log`.
+
+ActionInput moves from31/74 proved obligations to89/185, all89 certificates
+replayed. The original source and contracts are unchanged. Newly checked
+index accesses expose additional bounds and call-summary failures;100 findings
+remain, so this is restored coverage, not a passing input proof. Audio animation
+remains45/58 with13 findings. Fresh engine sweep still69/73, same four files;
+`build/validation/proof-record-array-sweep.log`. Full gates remain open.
+
+Two existing regressions remain red before/after this change, with identical
+reports: fixed_array_extent_after_loop_probe has40 certificates/34 replayed,
+and qualified_constants_body has4/3. Assertions remain unchanged.
+
+Next concrete input prerequisite is qualified loop-range bounds: the minimal
+`record-loop-named-range.elisa` checks2/3 obligations, whereas replacing only
+`0..<Limits::CAP` with literal `0..<4` checks3/3. Keep the real source spelling
+and reconstruct the source constant/loop bound rather than rewriting engine
+loops. Evidence files are under `build/validation/`.
