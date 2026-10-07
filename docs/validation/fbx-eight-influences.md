@@ -39,3 +39,17 @@ Retained local evidence: `build/validation/candidate8-skin-correspondence.json`,
 The complete shared/native gates remain open. Actual Studio asynchronous import
 admission is still under client investigation; surface/skeleton toggling and
 editing/playback in the packaged app are not qualified by these engine probes.
+
+## Integrated shared gate
+
+`shared-check-63585-eight-influence.log` records a fresh shared run after the
+integration: 214/214 Elisa tests, zero compile-cache hits, in 29 seconds.
+SDL3/Godot probes, native unit checks, skin influence smoke, source policies,
+Metal viewport and native navigation checks passed. The proof stage retained
+68 cached successes and executed five rows: the changed skin policy passed;
+action_input_context, action_input_deadzone, audio_anim_events and
+sound_event_assets failed. The shared gate therefore remains failed.
+
+The decimal-saturation step in sound-event parsing is reduced independently in
+`build/validation/decimal_saturation.elisa`; its unsigned arithmetic goal is
+refused by the wrap guard. The original implementation/contracts are unchanged.
