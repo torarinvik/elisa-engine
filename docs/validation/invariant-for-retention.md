@@ -48,3 +48,26 @@ guard retention; it does not count as full acceptance of that reproducer.
 ActionInput remains 232/264, zero gaps (`read-capture-action-input.json`); the
 full uncached engine sweep remains 71/73 (`proof-read-capture-engine-sweep.log`).
 Captured scalar invariant-entry replay and ActionInput bounds remain open.
+
+## Entry replay with an unrelated capture
+
+Prover `4eeb72e8` allows unrelated captures on the exact two-statement loop
+initializer recognized by source replay. The accumulator's own capture is
+refused; empty wrappers remain capture-free. Literal initializer, binding
+positions, exact original invariant and absence of iteration facts remain
+required. Initial equality is available only at the original invariant entry.
+
+`test_captured_search_entry.py` passes six cases through both JSON routes,
+with zero gaps/errors/trusted assumptions: original read-only search and zero
+iterations accepted; wrong initializer, wrong preservation, post-loop record
+mutation and insufficient entry bound refused. The original reproducer is now
+8/8. Existing initializer and captured-loop entry suites pass, including stale
+exit claims. The new suite is wired into the full matrix.
+
+An additional in-loop record mutation is refused but has a separate scalar
+preservation replay gap (`captured-entry-changed.json`: 6/8, one finding, one
+gap). That diagnostic is not counted as a passing regression. ActionInput
+remains 232/264 with zero gaps (`captured-entry-action-input.json`), and the
+uncached engine sweep remains 71/73 (`proof-captured-entry-engine-sweep.log`).
+Copied snapshot bounds, remaining ActionInput obligations and full qualification
+remain open.
