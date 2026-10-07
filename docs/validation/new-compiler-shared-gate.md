@@ -228,3 +228,24 @@ The fresh uncached sweep remains 66/73 with the same seven engine failures. Full
 prover compatibility and shared/native gates remain open. Evidence:
 build/validation/prover-frame-indexed-binding-build.log and
 proof-frame-indexed-binding-sweep.log; prover docs/validation/frame-indexed-binding.md.
+
+## Audio trigger call-result replay restored (2026-10-07)
+
+Prover 373b234f retains the reserved invocation snapshots and additionally records
+exact original Call summary instantiations. A source-local summary is accepted
+only through existing independent original binding/call/argument/owner/requires
+checks; no reserved-name replay authority or purity classification is added.
+Arithmetic/literal alias controls now prove 7/7 and 5/5. Wrong upper bounds,
+wrong result aliases and distinct invocation equality remain refused. Guarded
+results, complete condition-call accounting, malformed source admission and
+portable frame mutations pass on the final strict O2 product, generation
+7551c030af11443b8b79d9bd025d27a4.
+
+AudioTriggers now proves/replays 49/49 with zero findings. The final uncached
+engine sweep improves to 67/73; six failures remain: both ActionInput reports,
+audio_anim_events, audio_virtual, motion_overlay_policy and sound_event_assets.
+A broader call-order transport finding-set test still fails identically on the
+previous and new product; full prover compatibility and shared/native gates
+remain open. Evidence: build/validation/prover-source-call-result-final-build.log,
+audio-triggers-call-result.json and proof-source-call-result-final-sweep.log;
+prover docs/validation/source-call-result-capture.md.
