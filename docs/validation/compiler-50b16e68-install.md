@@ -26,3 +26,48 @@ prover product pair or the full prover matrix under 50b16e68. Those must be
 rerun with matching archived parser/runtime inputs. Earlier 63585c5f evidence
 remains historical qualification of that specific pair, not this installation.
 Hosted pins remain unchanged pending the complete gates.
+
+## Engine qualification results
+
+Strict O2 prover pair generation `de12689f110f42228c452db5c13a2cef` built
+from prover `bd2e036b`, using installed 50b16e68 compiler/runtime and matching
+archived compiler/parser sources. Both products completed with frozen sources.
+Build log: `build/validation/prover-50b16e68-build.log`.
+
+Fresh engine tests: 214/214, zero compile-cache hits, four workers, 44 seconds.
+`build/validation/engine-tests-50b16e68.log`. This is compatibility evidence,
+not a controlled performance comparison with the previous compiler. Native
+unit tests also pass (`native-units-50b16e68.log`).
+
+Focused prover checks pass: seven decimal-for saturation controls, four
+captured initializer controls, six mutable-for entry controls, seven existing
+captured entry controls, seven source-call alias controls, six stable predicate
+controls, four literal-quotient controls, malformed source admission (six classes
+on all twelve routes), and kernel inventory (10 tables /194 entries).
+
+Uncached engine corpus: 73 run, 69 pass, four fail.
+`build/validation/proof-sweep-50b16e68.log`. Exact outstanding reports:
+
+| Proof | Proven / obligations | Replay gaps | Findings |
+| --- | --- | --- | --- |
+| action_input_context | 31/74 | 0 | 44 |
+| action_input_deadzone | 31/74 | 0 | 44 |
+| audio_anim_events | 45/58 | 0 | 13 |
+| sound_event_assets | 153/157 | 4 | 0 |
+
+The two ActionInput reports additionally contain four semantic diagnostics,
+but zero semantic errors. Producer findings and replay gaps are distinct: the
+first three failures need proof coverage, whereas sound assets needs source
+replay reconstruction. None of these failures was waived or removed.
+
+Full shared command used `elisascript scripts/check.elisascript`, explicit
+installed compiler/matching prover, Python3.14, CommandLineTools, Wicked root
+and forced audio-device-unavailable policy. Terminal exit1 at the proof stage.
+All earlier stages pass, including cached rerun of214 tests, SDL3, Godot
+compatibility, native units, scene/skin/localization artifact checks, Metal
+viewport render/motion, navigation and owner/privacy rejection fixtures.
+Log: `build/validation/shared-check-50b16e68.log`.
+
+The complete prover regression matrix, full native application gate, refreshed
+package and hosted execution still remain open. Shared gate remains red at
+proofs; focused compatibility does not promote hosted pins.
