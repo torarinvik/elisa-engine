@@ -100,3 +100,11 @@ errors in 5.98 seconds, sampled peak RSS 726,896 KiB. Artifact:
 `build/validation/elisascript-ddbc803d-marker-loop-build.log` and watchdog JSON.
 The formatter has not executed on this compiler; full launcher qualification
 remains open.
+
+A focused upstream-compatible return-type correction declares all three
+static-literal boolean string helpers as `cstr`; their implementation still
+returns `"True"`/`"False"`. Both boolean forwarding-wrapper type errors clear,
+with no pointer casts added. The bounded attempt completes with status 1 on
+remaining errors (6.24 seconds; sampled peak RSS 726,896 KiB). Artifact:
+`build/validation/elisascript-ddbc803d-bool-cstr-build.log` and watchdog JSON.
+This is compile-diagnostic evidence, not an executed launcher.
