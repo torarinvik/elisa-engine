@@ -13,7 +13,7 @@ Character Course before promoting a subsystem-wide feature.
 | 3 (automated complete) | One production worker-event consumer under `WorldSchedule` | Reuse Jolt's existing bounded contact queue. Resolve contact participants through checked body bindings before routing a crate impact to gameplay/audio. Reject stale world epochs and wrong access phases; retain overflow and unsubscribe evidence. Avoid constructing another public scheduler or generic queue before a producer needs it. |
 | 4 (automated complete) | Measure the course's actual audio workload | Record voice/stream counts, memory and underruns during route, pause, reload and teardown. Exercise existing cancellation/device recovery rather than adding another audio feature. Physical listening and unplug/reconnect remain explicitly unverified until performed. |
 | 5 (local automated complete) | Cook and measure the pinned authored Cesium Man rig | Reuse Ozz's local Cesium Man glTF fixture (19 skin joints, one clip; retain its CC BY attribution). Record the explicit neutral-material/weight-normalized benchmark variant because the pinned source has unsupported sampler state and invalid weight sums; keep importer rejection intact. Exercise the normal geometry/keyed-contract cook and eight independent rendered instances. Target p99 <=1 ms per eight-instance CPU update and zero steady allocations; record package/source hashes and sampled memory. Fix an actual import or sampling defect before adding animation graph features. |
-| 6 | Rebuild and relocate the updated game | Verify optimized clean provenance, resource hashes, offline startup and graceful teardown after the preceding runtime changes. Keep separate-machine testing, signing and legal review visible as external acceptance work. |
+| 6 (local automated complete) | Rebuild and relocate the updated game | Verify optimized clean provenance, resource hashes, offline startup and graceful teardown after the preceding runtime changes. Keep separate-machine testing, signing and legal review visible as external acceptance work. |
 
 The existing live-input pilot already covers pause/resume, held crouch,
 traversal, win, restart and fall. Extend that path to establish focus recovery;
@@ -68,6 +68,11 @@ joint ancestors and passes upright rendered deformation. Eight updates have
 worst p99 139.375 microseconds and zero steady allocations using compiler
 `96761822`. The 19 skin joints occupy 20 runtime nodes; see
 [authored benchmark evidence](../validation/animation-authored-benchmark.md).
+The updated clean-source game now passes relocated offline startup, exact
+resource hashes and graceful teardown with Elisa/native `-O2` after fixing
+hosted compiler flag forwarding. See
+[updated package evidence](../validation/character-course-runtime-slices-package.md).
+Separate-machine, signing, legal review and physical checks remain open.
 See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live
