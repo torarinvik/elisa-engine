@@ -4,7 +4,24 @@ This refines the active queue in `IMPLEMENTATION_PLAN.md`. The full backlog
 remains open. Select a concrete defect or missing acceptance result in the
 Character Course before promoting a subsystem-wide feature.
 
-## Next executable slices
+## Next executable slices — revised priority
+
+| Order | Concrete next action | Why now / acceptance |
+| --- | --- | --- |
+| 1 | Close original-source call identity and callee frame mapping in the prover, then replay `audio_triggers`, `motion_overlay_policy` and `audio_virtual` uncached. | Shared call/result support can remove several existing failures. Preserve distinct invocation identity, actual-argument ordering, callee effects and every failed event; reject wrong aliases/positions/bounds. A helper probe alone does not close a report. |
+| 2 | Close indexed/borrowed place and loop/callee coverage needed by `action_input_context`, `action_input_deadzone`, `audio_anim_events` and `sound_event_assets`. | These are the remaining real policy reports. Each fix needs an implementation-linked engine result plus a minimized invalid control; stop only when the entire 73-row uncached sweep passes. |
+| 3 | Run the full prover compatibility matrix, shared check and full native gate on one qualified immutable compiler product. | Focused regressions are green but broader qualification is open. Capture terminal results, product/runtime hashes, all original counts and explicit skips. Fix actual failures without weakening acceptance. |
+| 4 | Rebuild and relocate optimized Character Course with current generated guide assets. | The earlier bundle has historical pre-refresh guide files. Verify generated-output equality, exact resource hashes, offline startup, restart and graceful teardown; retain old evidence as historical. |
+| 5 | Qualify compatible hosted pins and run clean-checkout headless CI. | Published compiler main now includes the formerly unavailable prerequisite. Verify compatible products before changing pins; retain actual provisioning/build/proof artifacts rather than claiming local preflight as CI. |
+| 6 | Rehearse the existing ordinary-project build/cook/package instructions in an isolated fresh project. | Finds reusable SDK and authoring defects with a real consumer. Fix only demonstrated missing steps/API/resource diagnostics; finish with a runnable packaged public-API client. |
+| 7 | Complete visible gameplay and physical input/audio acceptance when available; sample missing Jolt/GPU lifecycle counts. | Completes product evidence and exposes ownership defects. Use the existing route/reload harness, record live resource baselines and outcomes; hardware checks remain explicitly open until performed. |
+
+Proceed through ready tasks in order. When an external acceptance item cannot run,
+record its exact prerequisite and continue the next independent ready item. Do not
+add another benchmark or subsystem wrapper without a failing workload or named
+consumer. Separate-machine packaging, signing and legal review remain open.
+
+## Completed local automated slices — retained evidence
 
 | Order | Deliverable | Acceptance and value |
 | --- | --- | --- |
