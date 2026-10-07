@@ -61,8 +61,8 @@ A linked library, a policy enum, or one successful scene is not a public runtime
 Work on one bounded deliverable at a time. Rank by observed failures, shipping dependencies, reuse across clients and decisive acceptance.
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
-**Current baseline:** compiler `96761822` passed 214 Elisa tests and non-proof shared stages;
-installed compiler `63585c5f` passes focused prover qualification. The latest uncached engine sweep passes 69/73;
+**Current baseline:** installed compiler `63585c5f` passes all 214 Elisa tests,
+non-proof shared stages and focused prover qualification. The latest uncached engine sweep passes 69/73;
 four proof failures still block the shared gate. The authored-rig, focus, resize,
 contact and audio-workload slices have local automated evidence. The historical
 relocated bundle predates the corrected guide outputs and needs refreshing.
