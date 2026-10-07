@@ -71,3 +71,23 @@ remains 232/264 with zero gaps (`captured-entry-action-input.json`), and the
 uncached engine sweep remains 71/73 (`proof-captured-entry-engine-sweep.log`).
 Copied snapshot bounds, remaining ActionInput obligations and full qualification
 remain open.
+
+## Conditional assignment boundary
+
+Prover `384fd8a1` retains the minimized
+`test/repro/conditional_search_field_bound.elisa`: a conditional assignment of
+a captured search result to an outer scalar, followed by the guarded field copy.
+`conditional-search-baseline.json` has 8 obligations, 6 replayed, one finding
+and one invariant-entry replay gap, with zero semantic errors. A temporary
+scalar-only escaping-reference exemption left ActionInput at 232/264 and was
+removed; the published pair contains no experimental production change.
+
+The source call/move detectors conservatively treat a loop statement inside
+`Expr.Block` as effectful. `proof_body_has_call` applies these detectors to the
+assignment initializer, so branch joins cannot use their call-free retention
+rule for this read-only search. A repair needs a bounded statement/expression
+effect walk that includes block yields, nested assignments, calls, ownership
+transfers, operator overrides and alias writes. Assignment-root collection must
+also inspect block initializers before narrowing escaping-reference invalidation.
+The entry replay walker separately needs to find this exact nested assignment
+site without admitting stale post-loop initializer equalities.
