@@ -337,3 +337,32 @@ leaves the same 67/87. Removing either code or chord condition alone retains
 22 findings. None is an accepted production rewrite. These observations rule
 out a branch-local declaration or pure call alone and narrow the next repair
 to the actual sequence of writes and joins that severs lexical binder identity.
+
+### Branch outer-value restoration candidate
+
+A new uncommitted candidate changes the reaching-arm flags passed to
+proof_restore_branch_values from exact name-count equality to the existing
+proof_arm_names_extend predicate. It admits fresh branch locals while rejecting
+reordered prefixes and shadowed outer names; the existing call-stability filter
+still excludes values depending on arm locals. No record-root validity rule is
+relaxed. Compiler 8006 build proof-branch-outer-values-build.log reached terminal
+success. Actual apply improves 71/93 to 73/93 with 20 findings and zero gaps.
+Record branch-state controls still refuse stale, wrong-arm, missing, rebound,
+aliased and opaque states; all nine conditional fixed-extent cases pass.
+A discriminating source regression, wider sweep and clean provenance remain
+required before this candidate is committed or qualified.
+
+### Committed branch outer-value repair
+
+Prover `4cdf33ee` uses scope-extension validation for both reaching arms when
+restoring outer values. The discriminating branch_local_loop_atom.elisa source
+has fresh declarations in both arms: immutable generation 2acc7315 proves 3/5
+with two bounds findings; the repaired build proves 5/5 with zero gaps. The
+new matrix suite checks both JSON routes for this case, zero iterations,
+wrong range, outer mutable rebinding and shadowed binder. Invalid controls
+refuse with zero gaps and zero semantic errors. Record branch states, mutable
+old-state, scalar-reference branch writes, region retention and conditional
+fixed extents also pass. Actual apply is 73/93 with 20 findings; full context
+246/267 with 21 findings, zero replay gaps. The uncached engine sweep remains
+71/73, with only both ActionInput reports failing. This does not establish
+full prover matrix compatibility or complete the input repair.
