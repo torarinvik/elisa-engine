@@ -114,3 +114,23 @@ prover compatibility matrix and engine shared/native gates remain open. Evidence
 `build/validation/prover-frame-allowance-build.log`,
 `build/validation/proof-frame-allowance-sweep.log`, and the prover's
 `docs/validation/obligation-attempt-accounting-gap.md`.
+
+## Source-bound direct frame CLI accounting (2026-10-07)
+
+Prover 99527e39 integrates complete supported source frame inventories into
+producer attempt/certificate recording and independently source-bound CLI replay.
+The previous three minimized accounting failures now preserve all original
+events with certificates: allowed write proves 3/3; outside write rejects with
+3 events/2 certificates; preservation violation rejects with 5 events/4
+certificates. Failed events remain goal-linked attempts/findings. O0/O2 runtime
+controls, full/summary JSON regressions, malformed-source admission matrix,
+invariant diagnostics and 193-entry kernel inventory pass. All-products strict
+O2 build succeeds, generation fc86464d1b494b06b1b5e824f4701d47.
+
+The fresh uncached engine sweep remains 66/73 with the same seven failures.
+Contract-placement and condition-call-position examples still fail admission
+accounting because broader source event mappings are incomplete. Nested, alias,
+dynamic and callee effects, portable source-context replay, the complete prover
+matrix, compiler qualification and full engine plan remain open. Evidence:
+build/validation/prover-frame-cli-build.log and proof-frame-cli-sweep.log;
+prover docs/validation/frame-report-source-correspondence.md.
