@@ -85,3 +85,25 @@ Logs: `build/validation/proof-float-resource-build-3.log`,
 `input-scalar-extern-resource-final.json`, and
 `proof-scalar-extern-resource-final-sweep.log`. Full prover matrix qualification
 and shared/native gate completion remain open.
+
+## Fixed-array index admission and scoped device slots
+
+The fixed-place collector already establishes built-in storage identity. The prover
+now admits that identity independently of the separate bounded scalar-witness walk,
+so an array late in a record remains indexable without increasing either budget.
+Seven controls pass both whole-file and function routes: early/late fields and a
+qualified extent are accepted; wide bounds, missing guards, empty storage and
+writes through shared references are refused. No trusted assumptions are added.
+
+ActionInput binds device indices in a named region for writes and a value block
+for reads. These retain the style guide's temporary lifetimes and expose stable
+resource places. The strict O2 prover pair is `99e7fd758e344a5eae7cf64025a44ebd`
+with compiler `75568f88`. The actual source report has **228 obligations, 198
+replayed certificates, zero replay gaps**, and 34 findings. It is not fully proved.
+
+Runtime gate: **215/215**, with 208 cached compiles and seven rebuilt tests.
+The uncached proof sweep remains **69/73**, failing ActionInput context/deadzone,
+audio animation events and sound event assets. Logs:
+`build/validation/input-scoped-slots-runtime.log`,
+`input-scoped-slots-proof-sweep.log`, and `input-scoped-slots.json`.
+Full prover compatibility and shared/native qualification remain open.

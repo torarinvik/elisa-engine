@@ -214,7 +214,9 @@ module ActionInput:
                 input.states[index].value <- 0.0 if input.states[index].live
 
         def set_connected(input: mutable Input&, device: Device, connected: bool) -> void:
-            input.connected[device_index(device)] <- connected
+            region device_slot_scope:
+                slot: usize = device_index(device)
+                input.connected[slot] <- connected
             if not connected:
                 input.last_active_device <- Device.Keyboard if input.last_active_device == device
                 for index in 0..<Limits::MAX_BINDINGS |input, device|:
@@ -249,7 +251,10 @@ module ActionInput:
                     input.states[index].released <- false
 
         def apply(input: mutable Input&, event: Event) -> void:
-            return if not input.connected[device_index(event.device)]
+            available: bool =
+                slot: usize = device_index(event.device)
+                input.connected[slot]
+            return if not available
             for index in 0..<Limits::MAX_BINDINGS |input, event|:
                 break if index >= input.binding_count
                 binding: Binding = input.bindings[index]
