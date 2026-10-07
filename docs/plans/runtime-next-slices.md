@@ -80,6 +80,18 @@ these additional checks within implementation slices:
 - Scope side-effect temporaries only after checking allocation escape and live
   views. Use block initializers or helpers when values need to escape; use a
   helper when intervening loop jumps prevent nesting.
+- Prioritize the native launcher's argument ownership: finish growing
+  `owned_arguments` before collecting its element pointers into `argv`, then
+  retain both owners through the process call. Inspect all five process paths
+  in ElisaScript's `src/ir/interpret.elisa`; the pattern also occurs outside the
+  two timeout paths. This applies the guide's backing-buffer lifetime rule
+  to the current native prerequisite. A region must not free argument storage
+  before the foreign call finishes; changing to value-threading alone does not
+  make previously published pointers survive container growth.
+  Implemented the two-pass collection in all five paths on 2026-10-08:
+  the bounded Stage1 build removes all 25 argument-storage invalidation
+  diagnostics. Other launcher compatibility diagnostics still prevent a
+  runnable native gate; this slice does not establish process behavior.
 - Adopt strict lint as a diagnostic on touched code, then enable errors only
   for a clean directory. Preserve loop zero-iteration results and refuse forced
   rewrites where strict diagnostics explain why no valid rewrite exists.
