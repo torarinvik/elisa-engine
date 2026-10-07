@@ -343,19 +343,28 @@ local lifetime at consumption. Preserve refusal of stale field indexing, mutable
 local rebind and insufficient entry guards. Do not add redundant engine guards
 or grant persistent equality to the current record field.
 
-## Full matrix qualification in progress — 2026-10-07
+## Full matrix qualification failed — 2026-10-07
 
-The keep-going full matrix is running against generation
+The keep-going full matrix ran against generation
 `495680a60ab645d585777823bf6a1789`; log:
-`build/validation/proof-current-full-matrix.log`, owned session `39578`.
-No terminal result is claimed in this note. Beyond the earlier loop-state gaps,
+`build/validation/proof-current-full-matrix.log`. Owned session `39578`
+finished with exit status 1 and `73 step(s) failed (KEEP_GOING)`. Beyond the earlier loop-state gaps,
 collection-frame and loop-exit-frame fixtures report replay gaps. Portable package
 identity validation also refuses these prebuilt products because their recorded
 prover source is dirty at `eb5c14b1`, although the source changes have since been
 committed. Source-binding harness failures need separate exact-source diagnosis.
 
-After the live matrix ends, rebuild both products from clean committed prover
-source with the immutable compiler 8006 snapshot, record fresh identities, and
-rerun failed cases plus the complete matrix. A clean-source rebuild addresses
+A rebuild of both products from clean committed prover `dfa1960a` with the
+immutable compiler 8006 snapshot has started (log
+`build/validation/proof-clean-dfa1960a-build.log`, session `91345`); its terminal
+result and fresh identities remain to be checked. Then rerun failed cases plus
+the complete matrix. A clean-source rebuild addresses
 provenance; it does not establish that replay or harness failures are repaired.
 The engine's 71/73 proof result remains partial and does not qualify the matrix.
+
+A direct check of `rejected_loop_counter_invariant.elisa` distinguishes a matrix
+message from its cause: all five invalid functions remain body-unverified with
+the expected seven findings. The report has 15 obligations, seven replayed and
+one replay gap among eight certificates. The matrix's "fresh rebind symbol"
+assertion fails on replay accounting; this probe does not demonstrate acceptance
+of those false claims. Report: `build/validation/rejected-loop-counter-current.json`.
