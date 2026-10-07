@@ -21,6 +21,17 @@ from elisa_build_run_asset_cook_cases import AssetCookTests  # noqa: F401 - coll
 
 
 class BuildRunCliTests(unittest.TestCase):
+    def test_hosted_archive_optimization_and_runtime_ownership(self) -> None:
+        runner = __import__("elisa_build_run")
+        for optimize in (False, True):
+            with self.subTest(optimize=optimize), mock.patch.object(runner, "run_command", return_value=0) as run:
+                self.assertEqual(runner.compile_archive("compiler", Path("entry.elisa"),
+                    Path("entry.a"), optimize=optimize), 0)
+                arguments = run.call_args.args[0]
+                self.assertEqual("-O2" in arguments, optimize)
+                self.assertEqual(arguments[-5:], ["-emit", "c-archive", "-o", "entry.a", "entry.elisa"])
+                self.assertEqual(run.call_args.kwargs["env"]["ELISA_RUNTIME_OBJ"], "none")
+
     def test_macos_default_native_compiler_matches_wicked_build(self) -> None:
         runner = __import__("elisa_build_run")
         with mock.patch.object(runner.sys, "platform", "darwin"):

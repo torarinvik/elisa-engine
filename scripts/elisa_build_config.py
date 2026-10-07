@@ -50,7 +50,7 @@ def parse_arguments(argv: list[str] | None) -> argparse.Namespace:
         command.add_argument("--force-cook-assets", action="store_true",
             help="ignore the asset cook cache and regenerate every declared asset")
         command.add_argument("--optimize", action="store_true",
-            help="compile the native runtime with -O2 (or set ELISA_NATIVE_OPTIMIZE=1)")
+            help="compile Elisa and the native runtime with -O2 (or set ELISA_NATIVE_OPTIMIZE=1)")
         command.add_argument("--console", action="store_true",
             help="build a headless console executable without the Application host "
                  "(or set \"host\": \"console\" in the manifest)")
@@ -121,5 +121,4 @@ def project_host(config: dict[str, object], console_flag: bool) -> str:
     if host not in ("application", "console"):
         raise BuildConfigurationError("project 'host' must be \"application\" or \"console\"")
     return "console" if console_flag else str(host)
-
 

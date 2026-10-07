@@ -292,15 +292,16 @@ def write_entry_wrapper(destination: Path, main_source: Path,
         encoding="utf-8")
 
 
-def compile_archive(compiler: str, wrapper: Path, archive: Path) -> int:
+def compile_archive(compiler: str, wrapper: Path, archive: Path, *, optimize: bool = False) -> int:
     # The engine linker adds the compiler's runtime object as a separate input.
     # Prevent `-emit c-archive` from bundling that same object into the app archive;
     # current compiler builds include global source metadata there, so linking both
     # copies produces duplicate symbols.
     archive_env = dict(os.environ)
     archive_env["ELISA_RUNTIME_OBJ"] = "none"
-    return run_command([compiler, "-emit", "c-archive", "-o", str(archive), str(wrapper)],
-        env=archive_env)
+    command = [compiler, *(["-O2"] if optimize else []),
+        "-emit", "c-archive", "-o", str(archive), str(wrapper)]
+    return run_command(command, env=archive_env)
 
 
 def runtime_object_for_link(runtime_object: Path, archive: Path, build_dir: Path) -> Path:
@@ -495,7 +496,8 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
         write_entry_wrapper(wrapper, main_source,
             include_public_runtime=not args.no_public_runtime)
         stage_started = time.perf_counter()
-        status = compile_archive(compiler, wrapper, archive)
+        status = compile_archive(compiler, wrapper, archive,
+            optimize=build_options["native_optimize"])
         print(f"Elisa archive compile: {time.perf_counter() - stage_started:.2f}s", flush=True)
         if status != 0:
             return status, None, None

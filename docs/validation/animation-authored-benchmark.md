@@ -76,6 +76,13 @@ translation with unchanged directions/morph deltas, independent roots,
 multiple skins, mixed static/skinned placements and ignored mesh-only transforms.
 Source-length/module-hygiene policies and diff whitespace pass.
 
+Implementation-linked package bounds remain covered by
+`proof/animation_package_index.elisa` (110/110 obligations in the recorded
+Ozz-service proof run; unchanged and not replayed for this Python cooker change).
+That proof does not establish floating-point bind-shape matrix algebra or GPU
+deformation; the numerical and native gates above supply evidence for this
+fixture, with general floating-point formal verification still unproved.
+
 The [glTF skinning specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#joint-hierarchy)
 distinguishes joint hierarchy transforms from the ignored skinned mesh-node
 transform. Preserve that distinction, the source inverse-bind meaning and the
