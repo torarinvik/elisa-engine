@@ -368,3 +368,25 @@ the expected seven findings. The report has 15 obligations, seven replayed and
 one replay gap among eight certificates. The matrix's "fresh rebind symbol"
 assertion fails on replay accounting; this probe does not demonstrate acceptance
 of those false claims. Report: `build/validation/rejected-loop-counter-current.json`.
+
+## Clean paired provenance confirmed — 2026-10-07
+
+The build in session `91345` finished with status 0 and published generation
+`5333c30442174b81b48977ad3c84ab60`. Both compile inputs were unchanged, so the
+build reused the products and refreshed their immutable paired provenance.
+Manifest sidecar and binary SHA-256 checks passed. Both products record clean
+prover head `dfa1960ad80916ea294300e35d66dce2d7612c0d`, source-tree hash
+`ad8fed56051126d78d193ca0ca69af694bfd5933f1b96819339e65d9dc7747ae`.
+Proof binary SHA-256:
+`a6da6975ee256272a7b59f3bdabaea7642f16c7d9b26529f22bbba76375ed7ff`;
+replay binary SHA-256:
+`7cf149ef651cc605d7f80d61bad862197387b8008b5e21326c199a1e86e71580`.
+
+`test_portable_package_json_scan_boundaries.py` now passes its provenance and
+cap-1/cap/cap+1 checks with positive replay and bounded fresh-process refusals
+(`build/validation/proof-clean-package-scan.log`). `test_loop_state_joins.py`
+and `test_captured_loop_constants.py` still fail on this clean pair
+(`proof-clean-loop-state.log`, `proof-clean-captured-loop.log` in the same directory).
+This closes dirty-source provenance for the pair; it does not repair the matrix
+or establish whole-engine qualification. Next repair source-authenticated scalar
+snapshot and loop binding replay, then repeat the full matrix with clean products.
