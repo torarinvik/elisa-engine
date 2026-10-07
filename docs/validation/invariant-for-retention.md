@@ -140,3 +140,27 @@ Actual ActionInput remains 232/264, 32 findings, zero gaps/errors
 is repaired; this does not establish the actual capacity guard through all
 ActionInput calls/joins or immutable copy bounds across mutation. Those and
 full prover/shared/native qualification remain open.
+
+## Actual read-only call boundary isolated
+
+`scripts/diagnose_action_input_guard.py` runs four source variants against
+`bind_checked` without editing production source. The original has 37/41;
+removing only the conditional search gives 32/36. Replacing `state_slot` with
+literal zero gives 29/32, and replacing the call plus removing the search gives
+24/27. All have zero gaps/errors; the remaining three findings are later slot
+upper bounds. Log: `action-input-call-guard-diagnostic.log`. These intentionally
+failing diagnostic cases are not an acceptance gate.
+
+Prover `f93e1be0` adds `test/repro/read_only_search_call_guard.elisa`: the
+read-only search helper verifies, but its caller loses the field guard (9/10,
+one index-upper finding, zero gaps). Replacing only the helper body with a
+literal result gives 5/5, zero gaps. Reports: `read-only-search-call-guard.json`
+and `read-only-search-call-literal.json`.
+
+The direct-purity checker refuses all loop statements and mutations, including
+scoped accumulator updates, so the query uses ordinary call havoc. Preserves-only
+frames currently do not restore caller facts either. Next establish an independently
+source-authenticated read-only call boundary for bounded searches, with mutable
+callee/global/callback/alias controls. Do not classify arbitrary loops as pure or
+rewrite the production search into an unrolled/literal helper. Later slot bounds
+and immutable snapshots remain separate tasks.
