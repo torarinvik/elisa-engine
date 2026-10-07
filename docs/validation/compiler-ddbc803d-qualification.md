@@ -248,3 +248,13 @@ remain. It exits 1 normally in 9.65 seconds, sampled peak RSS 587,088 KiB.
 Engine artifact: `build/validation/elisascript-ddbc803d-worker-result-build.log`
 and JSON. Native worker execution and adversarial completion controls remain
 required before treating this synchronization path as qualified.
+
+HashContext's four updated fields now explicitly permit mutation through the
+existing borrowed advance_hash API. Validation receives a complete value
+snapshot, preserving the public value validator and checking before updates.
+The limb cross-product sum is bound in one expression; its masked summands
+fit u64. All eight hash_model diagnostics clear in the bounded compile;
+other launcher errors remain. It exits 1 normally in 11.30 seconds, sampled
+peak RSS 463,664 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-hash-context-build.log` and JSON.
+Hash state transitions and refusal behavior remain unexecuted on this compiler.
