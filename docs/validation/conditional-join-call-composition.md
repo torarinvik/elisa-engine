@@ -79,3 +79,25 @@ Retained build log: `build/validation/proof-loop-alias-exit-build.log`;
 report: `build/validation/conditional-join-loop-exit-candidate.json`. The build
 products from this uncommitted experiment must be refreshed from restored
 source before subsequent acceptance runs.
+
+## Exact certificate-context audit
+
+Refined the trace probe to set the one-based consumer certificate index to 21
+and iterate only certificate 20's cached fact origins. On restored committed
+source it returns 66, identifying zero-based trace 65, a branch-join fact at
+line 50 with one premise. This corrects the earlier all-traces audit's scope:
+trace 52 was the first failure in that scan, while trace 65 is the first
+rejected fact in this particular certificate's ordered context. Recursive
+summary/precondition validation must be traced before choosing a repair.
+The `finish` summaries bind their results directly to call expressions, not
+local aliases; the failed experiment does not establish a branch-local alias
+as the cause.
+
+Two additional ignored diagnostic copies retain both calls. Inlining `step(t)`
+into `n`, or putting it in a value-block initializer for `d`, each proves all
+22 obligations with zero gaps. The original fixture is unchanged. These
+comparisons narrow the producer/provenance interaction but do not close it.
+Reports: `conditional-join-{inline-step,step-result-block}.elisa.json`.
+Exact-context probe: `conditional-join-certificate-trace-probe` and its source
+and build log, all under `build/validation`. Restored paired build completed
+as generation `d7ff40e6f50e467b9889d8050ec34384`.
