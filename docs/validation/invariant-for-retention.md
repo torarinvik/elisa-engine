@@ -278,3 +278,43 @@ expression evaluation and contracts must continue seeing Invalid for the
 mutated record; restoring its old identifier at the branch join would revive
 stale field facts. Qualify direct and nested indexes, wrong bounds, shadowed
 places, dynamic arrays and changed-field old-value contracts before acceptance.
+
+### Index-boundary implementation candidate
+
+The uncommitted index_safety_substitution.elisa helper preserves a known declared
+fixed-array receiver only in an Index node whose substituted receiver is opaque.
+It recursively handles index positions, binary/unary and parenthesized expressions;
+other shapes keep the prior substitution behavior. Ordinary record values and
+contracts remain unchanged. Build proof-fixed-index-boundary-build.log reached
+terminal success with compiler 8006. The minimal conditional write proves fully
+through both JSON routes; out-of-bounds and changed-field controls refuse with
+zero gaps. Existing seven fixed count projection fixtures pass, retaining the
+rule that upper safety goals cannot be injected as type facts.
+
+Actual apply improves from 63/89 with 26 findings to 71/93 with 22 findings,
+zero gaps: all four opaque-bound findings disappear, while later index scalar
+bounds remain open. Removing the device write now produces the same result.
+This candidate still needs nested conditional/call/get/slice coverage, source
+shadowing and dynamic-array controls, an uncached sweep and clean provenance
+before qualification. Neither its narrow tests nor actual apply improvement
+establish full matrix compatibility.
+
+### Committed fixed-extent repair
+
+Prover `eae98b7e` extends the safety-only substitution to conditional expressions,
+call arguments and slices, and uses it inside the existing direct checked-get
+wrapper. Nine cases in test_conditional_fixed_extent.py run through both JSON
+routes: direct, conditional, call-argument and slice positives prove; invalid
+slice, shadowed smaller array, dynamic array without a bound, out-of-range index
+and changed-field negatives refuse with zero gaps and no semantic errors. The
+suite is wired into the full matrix. Fixed-count projection, region retention,
+record branch-state and mutable old-state suites also pass. Ordinary record
+substitution remains unchanged; unsupported expression shapes retain prior
+conservative handling.
+
+The real context is 244/267, 23 findings, zero gaps (previously 236/263, 27
+findings). Four opaque accesses now produce ordinary lower/upper obligations,
+so the total grows by four while eight additional certificates replay. The
+uncached sweep remains 71/73, failing only both ActionInput reports. Full matrix
+qualification and later loop-index facts remain open. Candidate descriptions
+above are historical stages, not the final acceptance counts.
