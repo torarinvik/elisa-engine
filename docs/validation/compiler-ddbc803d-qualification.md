@@ -146,3 +146,15 @@ Artifact: engine `build/validation/elisascript-ddbc803d-numeric-cstr-fixed-build
 and watchdog JSON. The preceding `numeric-cstr-build` attempt compiled unchanged
 source after an edit assertion failed; it is not evidence for this repair.
 Numeric formatting execution remains unverified.
+
+The permanent integer/character wrappers now use upstream's call-local
+`trusted Unsafe.Alias` exception. Review found sequential arena descriptor
+access: integer small-string/length-cache allocation goes through alloc_perm,
+and character formatting ignores its arena argument before its permanent
+copy. Returned strings refer to allocated storage, not the lent descriptor.
+Comments identify these paths; exclusivity checks remain active elsewhere.
+Both global-borrow diagnostics clear; runtime entrypoint diagnostics fall
+from 5 to 3. The bounded compile still exits 1 on other errors (7.59 seconds;
+sampled peak RSS 728,672 KiB). Engine artifact:
+`build/validation/elisascript-ddbc803d-arena-alias-build.log` and watchdog JSON.
+This establishes neither concurrent allocator safety nor an executed launcher.
