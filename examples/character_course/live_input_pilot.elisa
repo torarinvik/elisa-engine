@@ -18,6 +18,7 @@ module CourseLiveInputPilot:
                 pause_held: mutable bool
                 restart_held: mutable bool
                 saw_paused: mutable bool
+                saw_focus_clear: mutable bool
                 resumed: mutable bool
                 restarted: mutable bool
                 saw_fall: mutable bool
@@ -76,6 +77,7 @@ module CourseLiveInputPilot:
             TIMEOUT: i32 = 131
             COURSE_FAILED: i32 = 132
             CAPTURE: i32 = 145
+            FOCUS_CLEAR: i32 = 146
 
         const module Capture:
             WIN_PATH_VARIABLE: cstr = "ELISA_CHARACTER_COURSE_WIN_CAPTURE_PATH"
@@ -130,6 +132,7 @@ module CourseLiveInputPilot:
                 backward_held: false,
                 crouch_held: false, jump_held: false, lateral_held: false,
                 pause_held: false, restart_held: false, saw_paused: false,
+                saw_focus_clear: false,
                 resumed: false, restarted: false, saw_fall: false,
                 crossed_step: false, saw_crouch: false, released_crouch: false,
                 stood_after_crouch: false, jumped: false, reached_platform: false,
@@ -140,7 +143,7 @@ module CourseLiveInputPilot:
         # Called before input draining with the last simulated pose. Every key
         # goes through the same SDL pump and action bindings as player input.
         def tick(pilot: mutable Pilot&, elapsed_nanos: u64, ready: bool,
-            x: f32, y: f32, z: f32, crouched: bool, crouch_down: bool,
+            x: f32, y: f32, z: f32, crouched: bool, crouch_down: bool, forward_down: bool,
             grounded: bool, paused: bool, won: bool, failed: bool) -> void:
             if pilot.started and not pilot.finished:
                 pilot.crossed_step <- true if x >= Tune::STEP_CLEAR_X
@@ -156,8 +159,12 @@ module CourseLiveInputPilot:
                 if ready:
                     pilot.started_nanos <- elapsed_nanos
                     pilot.started <- true
-                    if CourseTestInput::push(CourseTestInput::Key.Pause, true):
-                        pilot.pause_held <- true
+                    forward_pushed: bool = CourseTestInput::push(CourseTestInput::Key.Forward, true)
+                    crouch_pushed: bool = CourseTestInput::push(CourseTestInput::Key.Crouch, true)
+                    pilot.forward_held <- forward_pushed
+                    pilot.crouch_held <- crouch_pushed
+                    focus_pushed: bool = CourseTestInput::lose_focus()
+                    if forward_pushed and crouch_pushed and focus_pushed:
                         pilot.stage <- Stage::PAUSING
                     else:
                         fail(pilot, Failure::INJECTION)
@@ -178,11 +185,19 @@ module CourseLiveInputPilot:
                     fail(pilot, Failure::TIMEOUT)
                 elif pilot.stage == Stage::PAUSING and paused:
                     pilot.saw_paused <- true
-                    if CourseTestInput::push(CourseTestInput::Key.Pause, false):
-                        pilot.pause_held <- false
-                        pilot.stage <- Stage::RESUME_RELEASED
+                    if forward_down or crouch_down:
+                        fail(pilot, Failure::FOCUS_CLEAR)
                     else:
-                        fail(pilot, Failure::INJECTION)
+                        pilot.saw_focus_clear <- true
+                        forward_released: bool = CourseTestInput::push(CourseTestInput::Key.Forward, false)
+                        crouch_released: bool = CourseTestInput::push(CourseTestInput::Key.Crouch, false)
+                        focus_restored: bool = CourseTestInput::regain_focus()
+                        if forward_released and crouch_released and focus_restored:
+                            pilot.forward_held <- false
+                            pilot.crouch_held <- false
+                            pilot.stage <- Stage::RESUME_RELEASED
+                        else:
+                            fail(pilot, Failure::INJECTION)
                 elif pilot.stage == Stage::RESUME_RELEASED and paused:
                     if CourseTestInput::push(CourseTestInput::Key.Pause, true):
                         pilot.pause_held <- true
@@ -279,4 +294,5 @@ module CourseLiveInputPilot:
             return 142 if not pilot.resumed
             return 143 if not pilot.restarted
             return 144 if not pilot.saw_fall
+            return Failure::FOCUS_CLEAR if not pilot.saw_focus_clear
             0

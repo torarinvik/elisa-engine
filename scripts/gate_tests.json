@@ -1,5 +1,13 @@
 [
  {
+  "name": "character-course-focus",
+  "source": "test/character_course_focus.elisa",
+  "flags": [],
+  "binary": "build/character-course-focus-test",
+  "args": [],
+  "message": "Course focus-loss policy tests passed."
+ },
+ {
   "name": "entity-id",
   "source": "test/entity_id.elisa",
   "flags": [],

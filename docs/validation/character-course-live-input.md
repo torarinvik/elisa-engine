@@ -192,3 +192,27 @@ python3 scripts/package_macos_app.py \
 ```
 
 The staged app is a local ignored build artifact, not a release package.
+
+## Suspended focus recovery (2026-10-07)
+
+The full course smoke passed with status 0 in 167.433 seconds including build
+and link. It queues W/C presses followed by an SDL focus-loss event, checks
+that the suspended course is paused and both actions are released, restores
+synthetic focus, resumes with P and completes the existing win/restart/fall
+route and presentation captures. This exercises SDL event translation and the
+actual suspended loop; it does not establish an OS application switch.
+
+Previously the loop drained input only on Running pumps, leaving focus loss
+unprocessed while Suspended. The suspended path now drains recorded events,
+changes input context to clear gameplay sources, pauses the clock/audio,
+cancels queued jumps and releases relative pointer mode. Returning to Running
+restores gameplay context with fresh sources. Simulation remains suspended.
+The recording retains both context transitions.
+
+`test/character_course_focus.elisa` passed. The implementation-linked state
+proof passed 41/41 obligations with all 41 kernel certificates replayed;
+`build/character-course-state-proof.json` has SHA256
+`33b736a2c6b11aa6d0127ce8cb96c62e3afc8964ff317987533d8765371326f9`.
+That proof covers pure phase policy, including repeated loss and terminal
+states; the native smoke covers the runtime path. Results remain in
+`build/native-smoke/character-course-live-input-smoke.json` and its log.

@@ -28,3 +28,33 @@ extern "C" int32_t elisa_application_v1_test_push_key(int32_t key, int32_t down)
     event.key.scancode = SDL_GetScancodeFromKey(keycode, nullptr);
     return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
 }
+
+// Synthetic window event for the live course pilot; it exercises SDL event
+// translation and gameplay handling, without claiming an OS focus switch.
+extern "C" int32_t elisa_application_v1_test_push_focus_lost() {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    SDL_Window* window = service.host.window();
+    if (window == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    SDL_Event event{};
+    event.type = SDL_EVENT_WINDOW_FOCUS_LOST;
+    event.window.type = SDL_EVENT_WINDOW_FOCUS_LOST;
+    event.window.windowID = SDL_GetWindowID(window);
+    return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
+}
+
+extern "C" int32_t elisa_application_v1_test_push_focus_gained() {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    SDL_Window* window = service.host.window();
+    if (window == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    SDL_Event event{};
+    event.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+    event.window.type = SDL_EVENT_WINDOW_FOCUS_GAINED;
+    event.window.windowID = SDL_GetWindowID(window);
+    return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
+}

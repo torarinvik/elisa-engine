@@ -24,6 +24,10 @@ module CourseState:
             else:
                 PHASE_PLAYING
 
+        def focus_loss_tag(current: i64) -> i64:
+            ensure result == (PHASE_PAUSED if current == PHASE_PLAYING else current)
+            PHASE_PAUSED if current == PHASE_PLAYING else current
+
         def next_attempt_count(current: i64) -> i64:
             ensure result == (1 if current < 1 else (current + 1 if current < MAX_ATTEMPTS else MAX_ATTEMPTS))
             if current < 1:
@@ -90,6 +94,13 @@ module CourseState:
 
         def toggle_pause(state: mutable State&) -> void:
             state.phase <- next_pause_tag(state.phase)
+
+        # Focus loss pauses active play once; repeated loss preserves pause
+        # and terminal outcomes. The result tells the loop to pause its clock.
+        def pause_on_focus_loss(state: mutable State&) -> bool:
+            was_playing: bool = state.phase == PHASE_PLAYING
+            state.phase <- focus_loss_tag(state.phase)
+            was_playing
 
         # Only active play can end. Falling takes precedence over reaching the
         # goal, so a position satisfying both conditions is always a failure.

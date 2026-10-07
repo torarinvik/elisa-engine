@@ -27,6 +27,12 @@ module CourseTestInput:
         @callconv(c)
         extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_test_push_focus_lost() -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_test_push_focus_gained() -> i32
+
         def native_key(key: Key) -> i32:
             match key:
                 Key.Right: NativeKey::RIGHT
@@ -42,3 +48,9 @@ module CourseTestInput:
     public:
         def push(key: Key, down: bool) -> bool:
             elisa_application_v1_test_push_key(native_key(key), 1 if down else 0) == 0
+
+        def lose_focus() -> bool:
+            elisa_application_v1_test_push_focus_lost() == 0
+
+        def regain_focus() -> bool:
+            elisa_application_v1_test_push_focus_gained() == 0

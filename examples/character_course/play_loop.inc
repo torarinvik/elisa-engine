@@ -13,6 +13,7 @@
             jump_queued: mutable bool = false
             previous_elapsed_nanos: mutable u64 = 0
             resize_serial: mutable u64 = 0
+            suspended: mutable bool = false
             clock: mutable Runtime::StepClock = Runtime::StepClock()
             # Invalid saved controls fall back to the defaults; the file is only
             # replaced when the player closes the rebind menu.
@@ -70,19 +71,45 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
                 elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
                     return 40
+                if running and pump == Application::PumpStatus.Suspended:
+                    _ = CourseControls::drain_gameplay_recorded(input, recording, recording_tick)
+                    if not suspended:
+                        _ = ActionInputReplay::feed_context(recording, input, recording_tick, ActionInput::Context.UI)
+                        recording_tick <- recording_tick + 1
+                        suspended <- true
+                    _ = CourseState::pause_on_focus_loss(&state)
+                    Runtime::set_paused(&clock, true)
+                    _ = CourseSounds::set_paused(&sounds, true)
+                    jump_queued <- false
+                    previous_elapsed_nanos <- 0
+                    if look_held:
+                        _ = Application::set_relative_mouse(false)
+                        look_held <- false
+                    if mode == 4:
+                        suspended_frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                        CourseCells::pilot_course(cells, suspended_frame.elapsed_nanos,
+                            crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
+                            ActionInput::action_down(input, CourseControls::ACTION_FORWARD),
+                            grounded, CourseState::phase(state) == CourseState::Phase.Paused,
+                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed)
                 if running and pump == Application::PumpStatus.Running:
+                    if suspended:
+                        _ = ActionInputReplay::feed_context(recording, input, recording_tick, ActionInput::Context.Gameplay)
+                        recording_tick <- recording_tick + 1
+                        suspended <- false
                     frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
                     if mode == 3:
                         CourseCells::pilot(cells, frame.elapsed_nanos)
                     elif mode == 4:
                         CourseCells::pilot_course(cells, frame.elapsed_nanos,
                             crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
+                            ActionInput::action_down(input, CourseControls::ACTION_FORWARD),
                             grounded, CourseState::phase(state) == CourseState::Phase.Paused,
                             CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed)
                     mood: i32 = CourseSounds::mood_for(menu_open, CourseState::phase(state) == CourseState::Phase.Paused)
@@ -150,8 +177,7 @@
                         look <- CourseLook::drain(look, settings.reduced_motion)
                         focus_lost: bool = CourseControls::drain_gameplay_recorded(input, recording, recording_tick)
                         recording_tick <- recording_tick + 1
-                        if focus_lost and CourseState::phase(state) == CourseState::Phase.Playing:
-                            CourseState::toggle_pause(&state)
+                        if focus_lost and CourseState::pause_on_focus_loss(&state):
                             Runtime::set_paused(&clock, true)
                             _ = CourseSounds::set_paused(&sounds, true)
                             jump_queued <- false

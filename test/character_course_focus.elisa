@@ -1,0 +1,18 @@
+include "../examples/character_course/state.elisa"
+
+def main() -> i32:
+    state: mutable CourseState::State = CourseState::State()
+    return 1 if not CourseState::pause_on_focus_loss(&state)
+    return 2 if CourseState::phase(state) != CourseState::Phase.Paused
+    return 3 if CourseState::pause_on_focus_loss(&state)
+    return 4 if CourseState::phase(state) != CourseState::Phase.Paused
+    CourseState::toggle_pause(&state)
+    return 5 if CourseState::phase(state) != CourseState::Phase.Playing
+    CourseState::update_outcome(&state, false, true)
+    return 6 if CourseState::pause_on_focus_loss(&state)
+    return 7 if CourseState::phase(state) != CourseState::Phase.Won
+    CourseState::restart(&state)
+    CourseState::update_outcome(&state, true, false)
+    return 8 if CourseState::pause_on_focus_loss(&state)
+    return 9 if CourseState::phase(state) != CourseState::Phase.Failed
+    0

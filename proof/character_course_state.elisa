@@ -4,6 +4,14 @@
 include "../examples/character_course/state.elisa"
 
 extend CourseState:
+    def prove_focus_loss_policy(current: i64) -> i64:
+        ensure result == (PHASE_PAUSED if current == PHASE_PLAYING else current)
+        focus_loss_tag(current)
+
+    def prove_repeated_focus_loss(current: i64) -> i64:
+        ensure result == focus_loss_tag(current)
+        focus_loss_tag(focus_loss_tag(current))
+
     def prove_pause_policy(current: i64) -> i64:
         ensure result == (PHASE_PAUSED if current == PHASE_PLAYING else (PHASE_PLAYING if current == PHASE_PAUSED else current))
         next_pause_tag(current)

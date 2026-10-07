@@ -81,12 +81,13 @@ Compiler: stage1 snapshot sha256 `7ccb9831…9ce3`, built from a dirty
 
 - **Physical controller:** not tested. Per-controller bindings are not
   implemented (all gamepads share one logical device).
-- **Focus/resize:** the new visible keyboard check did not establish focus-loss
+- **Focus/resize:** the synthetic focus smoke now verifies suspended-loop pause and cleared held actions (see `character-course-live-input.md`); the visible keyboard check did not establish OS focus-loss
   pause or a user-driven live resize; those still need an OS window-switch and
   resize check.
-- **Pointer input:** there is no mouse movement or scroll input. The legend
-  uses logical positions, which the canvas scales by the display DPI (see
-  [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)).
+- **Pointer input:** the current course implements relative mouse-look and
+  pointer presses/wheel navigation in the controls menu. Manual pointer and
+  display-DPI checks remain separate acceptance work; see
+  [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md).
 - **Key coverage:** only the portable key subset (codes 2001–2029) exists.
   Rebinding to keys outside it needs wider `Application` key codes.
 - **Gamepad rebinding:** gamepad bindings are fixed. Only keyboard slots can
