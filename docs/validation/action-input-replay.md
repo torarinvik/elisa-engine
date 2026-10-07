@@ -390,3 +390,30 @@ and `test_captured_loop_constants.py` still fail on this clean pair
 This closes dirty-source provenance for the pair; it does not repair the matrix
 or establish whole-engine qualification. Next repair source-authenticated scalar
 snapshot and loop binding replay, then repeat the full matrix with clean products.
+
+## For identity preservation replay — 2026-10-07
+
+Prover `9cd24ca7`, clean paired generation `9d50cfbe7ee945d4bf23ee70b1f215c9`,
+adds a source route for the first identity update in a for-loop preservation
+certificate. Replay matches the source owner, unsigned local declaration, exact
+assignment position, `count <- count` body, original invariant and the invariant
+with the current scalar replaced by the exact first rebind symbol. The certificate
+must contain that original invariant; entry and later-use goals cannot borrow
+this equation. Source primitive overrides and unsupported declaration environments
+refuse; wrapper walks retain depth limits. Direct captured locals, returned loop
+values and bound loop results use the same source check.
+
+`test_for_identity_update.py` passes seven cases through both JSON routes:
+three value forms accepted; wrong entry, growing update, wrong update and false
+invariant refused. It is included in the full matrix. The existing captured-loop
+constants suite now passes, including shadowed/sibling constants, duplicate capture
+and depth-budget controls. Logs: `proof-for-identity-controls.log` and
+`proof-for-identity-captured.log` under `build/validation/`.
+
+The loop-state fixture improves from 45/47 to 46/47 proven/replayed; only
+`alias_rebind` retains a replay gap (`proof-for-identity-loop-state.json`). Search
+break and checked block-result controls pass. The full uncached engine proof sweep
+remains 71/73 with only the two ActionInput reports failing
+(`proof-for-identity-engine-sweep.log`). Scalar field snapshots, alias rebind and
+other full-matrix failures remain open. Clean build provenance is recorded in
+`proof-for-identity-clean-build.log`; full matrix qualification is still required.
