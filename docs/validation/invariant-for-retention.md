@@ -191,3 +191,34 @@ source variants assert the binding-slot goal is proven
 remains 71/73 (`proof-pure-search-engine-sweep.log`). No engine runtime change.
 Immutable snapshots, later slot bounds, the callback preservation gap and full
 matrix/shared/native qualification remain open.
+
+## Region exit diagnostic — 2026-10-07
+
+An uncommitted prover candidate extends call-stable fact restoration to region
+blocks that declare locals. Build generation `5cf3351e5732499d9f56e41b89ca46b8`
+finished using the immutable compiler 8006 product. The actual `bind_checked`
+function reports 41/41 with zero replay gaps; the context reports 236/263,
+27 findings and zero gaps. The changed obligation total is retained explicitly.
+These candidate results do not establish full compatibility or acceptance.
+
+A minimal guarded outer scalar copy survives a region containing a fresh local
+and a literal-index aggregate write: 5/5, zero gaps. The insufficient-entry guard
+is refused with one finding and zero gaps; a same-name region shadow is also
+refused. The immutable-rebinding probe has a semantic error and is not a valid
+mutation control; rerun with a mutable declaration before accepting the repair.
+An inner-local-index variant has one index-upper replay gap, even though the
+post-region outer index replays. This is a separate source binding path to repair,
+not evidence that region-local indexing is qualified. Candidate logs and JSON
+are under ignored `build/validation/region-*` and `input-region-*` paths.
+
+### Qualified region retention slice
+
+Prover commit `3ed40ddd` additionally excludes every fact mentioning a region
+local before applying the scalar stability filter, including shadowed spellings.
+`test_region_outer_facts.py` is wired into the matrix: untouched and declaration-only
+cases prove through both JSON routes; insufficient guards, valid mutable rebinding,
+mutating calls and shadowing refuse with zero gaps and no semantic errors. Existing
+invariant-for and pure-search suites also pass. The filtered build retains actual
+bind_checked 41/41 and context 236/263, 27 findings, zero gaps. Its uncached engine
+sweep remains 71/73, failing only the two ActionInput reports. Full matrix remains
+unqualified. The inner-local-index replay gap above remains open independently.
