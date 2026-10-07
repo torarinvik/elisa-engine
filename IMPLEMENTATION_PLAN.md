@@ -62,7 +62,7 @@ Work on one bounded deliverable at a time. Rank by observed failures, shipping d
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
 **Current baseline:** compiler `ddbc803d` passes [215 uncached runtime tests](docs/validation/compiler-ddbc803d-qualification.md); `8006b660` retains non-proof shared-stage evidence;
-its matching prover pair builds successfully; prover `cb316eaa` passes all 73 uncached reports;
+its clean matching prover pair `f3ee9522` builds successfully and passes all 73 uncached reports;
 full prover matrix/shared/native qualification remains open. AudioAnimEvents passes 56/56 and SoundAssets 157/157 with zero replay gaps. The authored-rig, focus, resize,
 contact and audio-workload slices have local automated evidence. The historical
 relocated bundle predates the corrected guide outputs and needs refreshing.

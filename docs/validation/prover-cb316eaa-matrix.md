@@ -42,3 +42,22 @@ shadow and forged-position controls. Separately, the dependency-row probe has
 artifact: `build/validation/proof-cb316eaa-dependency-row.json`. Then repair the
 remaining complete-matrix failures and qualify a paired prover on the newest
 compiler product. Fresh full matrix/shared/native gates remain open.
+
+## Binding-sink qualification repair
+
+Prover test commit `f3ee9522` assigns distinct codes to the sink checks. The
+failure was the exact indexed-read initializer (`sink_indexed_read`, code 131).
+The production indexed-snapshot source auditor already accepts its equation
+when the entire source suffix is read-only; expecting it to be unsupported was
+obsolete. The source reconstruction checks declaration/type/position and audits
+the suffix, rather than assuming an arbitrary indexed equation.
+
+Changed this one expectation to acceptance and added three refused source
+controls: mutation of the array element, rebinding the index, and a later call.
+All assignment, record-field, indexed-write, call, nested-call, branch-join and
+return sink controls remain. The complete compiled source-binding harness now
+passes with explicit immutable 8006 compiler root; the loop fixture is proved
+with zero replay gaps. Log: `build/validation/proof-binding-sink-controls.log`.
+Source length and diff policy checks pass (harness 594 lines). No production
+replay predicate changed in this correction. Full matrix qualification remains
+open; the original 73-step failure result is retained above.

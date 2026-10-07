@@ -37,3 +37,24 @@ The complete 73-report engine proof sweep is established on the prior immutable
 [enum summary evidence](reference-free-enum-summary.md). Building and qualifying
 a paired prover on ddbc803d, the full prover matrix, shared/native gates and
 hosted pins remain required before adopting this tuple for those gates.
+
+## Paired prover acceptance
+
+Built committed prover `f3ee9522` with the immutable ddbc803d product, matching
+runtime and compiler parser snapshot. Both strict O2 products build successfully
+as clean generation `ac70e531389c4462b0906fdd9b74e5e5`.
+
+- Prover SHA256: `2b9c80f7934150f9fde494ead7d561e28581957db2ee3e6dfdc2dba555bd19b6`.
+- Replay SHA256: `f71eaaf7ae47b48161c37c03d66a01db2d1d289e5db919da779fe5ace500d68b`.
+- Build log: `build/validation/proof-ddbc803d-paired-build.log`.
+- `scripts/prove_all.py --no-cache -j2`: **73 total, zero cached, status 0**.
+  Log: `build/validation/proof-ddbc803d-engine-sweep.log`.
+- `test_loop_invariants_compile.py` with compiler binary/root/revision explicitly
+  set to the immutable ddbc snapshot: compiled source-bound replay controls pass;
+  original loop fixture proved with zero replay gaps. Log:
+  `build/validation/proof-ddbc803d-source-binding-controls.log`.
+
+This supersedes the paired-build prerequisite above. The complete compatibility
+matrix still needs its remaining failures repaired and a fresh run on this
+product; the retained old-product matrix ended with 73 failed steps. Shared and
+native gates, hosted pins and physical hardware checks remain open.
