@@ -39,11 +39,12 @@ and handle types.
 profiles under positive IDs. Profiles can be persistent or carry a finite
 duration in scaled simulation seconds. A dispatched `Spawn` event uses its
 payload as the profile ID; retrigger policy either rejects an active duplicate
-or replaces it. `WorldEvents::emit_world` snapshots the entity position into
+or replaces it. `WorldSchedule::emit_world` snapshots the entity position into
 the event, so effect creation does not need to borrow the World while consuming
-a queue phase. `WorldEffects::spawn_dispatched_events` attaches the native
-handle to the event owner, applies emitter time scale, and leaves transform
-following, timed expiry, and despawn cleanup to the existing bounded service.
+a phase. `WorldEffects::spawn_dispatched_events` reads each event under the
+schedule's world read token, revalidates the entity, attaches the native handle
+to the event owner, and applies emitter time scale. Transform following, timed
+expiry, and despawn cleanup stay in the existing bounded service.
 
 The focused event smoke verifies emitter and decal profiles, duplicate IDs,
 phase dispatch and per-owner position capture, the real Wicked emitter and
@@ -69,7 +70,7 @@ Native fixed-slot pooling, timed expiry, replace/reject retrigger policies, and
 owner cleanup are covered.
 
 `examples/environmental_effects` is an authored SDL3/Wicked environment vignette
-that routes two typed Spawn events through `WorldEvents`, a validated effect
+that routes two typed Spawn events through `WorldSchedule`, a validated effect
 catalog, and `WorldEffects`. The owner is a normal Elisa World entity; the
 native emitter follows and ticks with it, and the decal remains until owner
 cleanup. A few Elisa-authored ember and scorch meshes make the event's visual
@@ -86,9 +87,9 @@ WICKED_BUILD=../amazing-labyrinth-wickedengine/build-elisa-sdl3 \
 python3 scripts/environmental_effects_smoke.py
 ```
 
-On macOS 27.0 / Apple M5 the latest run changed 8,084 pixels in the 2,304,000-
-pixel capture. The separate native event smoke still checks emitter/decal
-component counts before and after a RenderScene restart.
+On macOS 27.0 / Apple M5 the 2026-10-07 run changed 4,994 pixels in the
+2,304,000-pixel capture. The separate native event smoke still checks
+emitter/decal component counts before and after a RenderScene restart.
 
 Render smoke group 238 (`test/render_scene_effect_memory_native.elisa`) checks
 memory as well as counts. Each cycle attaches an emitter and a decal to a World

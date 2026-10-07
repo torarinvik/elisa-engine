@@ -2,9 +2,11 @@
 
 This small SDL3/Wicked scene demonstrates gameplay-owned, event-driven effects.
 The glowing impact point is an Elisa `World` entity. A typed world event selects
-an emitter profile and a scorch decal profile from `WorldEffectAssets`; the
-`WorldEffects` service attaches both to that entity, ticks the sparks, and
-expires the emitter after five scaled seconds. The decal stays until cleanup.
+an emitter profile and a scorch decal profile from `WorldEffectAssets`;
+`WorldSchedule` dispatches the event under the simulation phase and validates
+the live owner before `WorldEffects` attaches both to that entity, ticks the
+sparks, and expires the emitter after five scaled seconds. The decal stays
+until cleanup.
 
 Build and run it from the engine root:
 

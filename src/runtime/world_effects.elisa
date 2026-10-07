@@ -3,7 +3,7 @@
 include "./render_scene_effects.elisa"
 include "./world_effect_assets.elisa"
 include "../world/world.elisa"
-include "../world/events.elisa"
+include "../world/schedule.elisa"
 include "../math/geometry.elisa"
 
 module WorldEffects:
@@ -188,15 +188,16 @@ module WorldEffects:
 
         # Spawn events select a validated authored profile through their payload
         # id. Dispatch has already filtered events to matching listeners.
-        def spawn_dispatched_events(effects: mutable Effects&, queue: WorldEvents::Queue&,
-            phase: WorldEvents::Phase,
+        def spawn_dispatched_events(effects: mutable Effects&,
+            frame: mutable WorldSchedule::Frame&,
+            world: World::World&,
             catalog: WorldEffectAssets::Catalog&, dispatched_count: usize) -> EventSpawnReport error[
-            WorldEffectsError, RenderScene::RenderSceneError, WorldEvents::EventError,
+            WorldEffectsError, RenderScene::RenderSceneError, WorldSchedule::Error,
             WorldEffectAssets::CatalogError]:
             spawned: mutable usize = 0
-            for _ in 0..<dispatched_count |effects, queue, phase, catalog, spawned, ordinal: usize = 0|:
-                event: WorldEvents::Event = try WorldEvents::dispatched_event_at(queue,
-                    phase, ordinal)
+            for _ in 0..<dispatched_count |effects, frame, world, catalog, spawned, ordinal: usize = 0|:
+                event: WorldEvents::Event = try WorldSchedule::dispatched_event_at(frame,
+                    world, ordinal)
                 ordinal <- ordinal + 1
                 continue if event.kind != WorldEvents::EventKind.Spawn
                 entity: World::EntityRef = event.entity

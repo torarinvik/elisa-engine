@@ -103,17 +103,22 @@ module EnvironmentalEffects:
                     1.0, 0.0, WorldEffectAssets::RetriggerPolicy.Replace))
 
         def dispatch_impact(world: World::World&, owner: World::EntityRef,
-            effects: mutable WorldEffects::Effects&, queue: mutable WorldEvents::Queue&,
+            effects: mutable WorldEffects::Effects&, frame: mutable WorldSchedule::Frame&,
             catalog: WorldEffectAssets::Catalog&) -> bool:
-            begun: bool = catch WorldEvents::begin_frame(queue):
+            begun: bool = catch WorldSchedule::begin_frame(frame):
                 ok: true
                 error failure: false
             return false if not begun
-            advanced: bool = catch WorldEvents::advance_phase(queue, WorldEvents::Phase.Simulation):
+            subscribed: bool = catch WorldSchedule::subscribe(frame, Layout::LISTENER_ID,
+                WorldEvents::Phase.Simulation):
+                ok: true
+                error failure: false
+            return false if not subscribed
+            advanced: bool = catch WorldSchedule::advance_phase(frame, WorldEvents::Phase.Simulation):
                 ok: true
                 error failure: false
             return false if not advanced
-            spark_emitted: bool = catch WorldEvents::emit_world(queue, world, WorldEvents::Event{
+            spark_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
                 phase: WorldEvents::Phase.Simulation,
                 kind: WorldEvents::EventKind.Spawn,
                 listener_id: Layout::LISTENER_ID,
@@ -125,7 +130,7 @@ module EnvironmentalEffects:
                 ok: true
                 error failure: false
             return false if not spark_emitted
-            scorch_emitted: bool = catch WorldEvents::emit_world(queue, world, WorldEvents::Event{
+            scorch_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
                 phase: WorldEvents::Phase.Simulation,
                 kind: WorldEvents::EventKind.Spawn,
                 listener_id: Layout::LISTENER_ID,
@@ -137,14 +142,17 @@ module EnvironmentalEffects:
                 ok: true
                 error failure: false
             return false if not scorch_emitted
-            dispatched: usize = catch WorldEvents::dispatch(queue, WorldEvents::Phase.Simulation):
+            dispatched: usize = catch WorldSchedule::dispatch_current(frame):
                 value: value
                 error failure: return false
             report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
-                effects, queue, WorldEvents::Phase.Simulation, catalog, dispatched):
+                effects, frame, world, catalog, dispatched):
                 value: value
                 error failure: return false
-            _ = WorldEvents::end_frame(queue)
+            ended: usize = catch WorldSchedule::end_frame(frame):
+                value: value
+                error failure: return false
+            _ = ended
             report.spawned == 2
 
         def pump_frames(count: usize, world: World::World&,
@@ -176,7 +184,7 @@ module EnvironmentalEffects:
 
         def run_initialized(smoke: bool) -> i32 error[
             RenderScene::RenderSceneError, World::WorldError,
-            WorldEffectAssets::CatalogError, WorldEvents::EventError]:
+            WorldEffectAssets::CatalogError]:
             try create_scene()
             if smoke:
                 try RenderScene::wait_for_pipelines(60000)
@@ -187,18 +195,16 @@ module EnvironmentalEffects:
                 Geometry::Vec3{x: 0.0, y: 1.15, z: 0.0}, Geometry::vec3_one())
             try World::world_set_transform(&world, owner, owner_pose)
             effects: mutable WorldEffects::Effects = WorldEffects::Effects()
-            queue: mutable WorldEvents::Queue = WorldEvents::Queue()
+            frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
             catalog: mutable WorldEffectAssets::Catalog = WorldEffectAssets::Catalog()
             try register_profiles(&catalog)
-            try WorldEvents::subscribe(&queue, Layout::LISTENER_ID,
-                WorldEvents::Phase.Simulation)
 
             if smoke:
                 return 10 if not pump_frames(4, &world, &effects)
                 baseline: cstr = Application::environment_value(
                     "ELISA_EFFECTS_BASELINE_CAPTURE")
                 return 11 if baseline == "" or not Application::save_screenshot(baseline)
-            if not dispatch_impact(&world, owner, &effects, &queue, catalog):
+            if not dispatch_impact(&world, owner, &effects, &frame, catalog):
                 return 12
             try create_impact_visuals()
             if smoke:

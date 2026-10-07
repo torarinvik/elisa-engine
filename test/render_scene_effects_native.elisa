@@ -232,18 +232,20 @@ module WorldEffectEventNativeTests:
 
         # Each spawn failure maps to its own code. Returning from a typed arm
         # beside `value: value` makes the stage1 backend decline the caller.
-        def spawn_events(effects: mutable WorldEffects::Effects&, queue: WorldEvents::Queue&,
+        def spawn_events(effects: mutable WorldEffects::Effects&,
+            frame: mutable WorldSchedule::Frame&, world: World::World&,
             catalog: WorldEffectAssets::Catalog&, dispatched: usize) -> EventSpawnOutcome:
             none: WorldEffects::EventSpawnReport = WorldEffects::EventSpawnReport{scanned: 0, spawned: 0}
-            catch WorldEffects::spawn_dispatched_events(effects, queue, WorldEvents::Phase.Simulation, catalog, dispatched):
+            catch WorldEffects::spawn_dispatched_events(effects, frame, world, catalog, dispatched):
                 value: EventSpawnOutcome{code: 0, report: value}
                 WorldEffects::WorldEffectsError.EntityAlreadyAttached: EventSpawnOutcome{code: 123, report: none}
                 WorldEffects::WorldEffectsError.Capacity: EventSpawnOutcome{code: 124, report: none}
                 WorldEffects::WorldEffectsError.BindingTableCorrupt: EventSpawnOutcome{code: 125, report: none}
-                WorldEvents::EventError.InactiveFrame: EventSpawnOutcome{code: 126, report: none}
-                WorldEvents::EventError.InvalidPhase: EventSpawnOutcome{code: 127, report: none}
-                WorldEvents::EventError.InvalidIndex: EventSpawnOutcome{code: 128, report: none}
+                WorldSchedule::Error.InactiveFrame: EventSpawnOutcome{code: 126, report: none}
+                WorldSchedule::Error.PhaseMismatch: EventSpawnOutcome{code: 127, report: none}
+                WorldSchedule::Error.EventUnavailable: EventSpawnOutcome{code: 128, report: none}
                 WorldEffectAssets::CatalogError.NotFound: EventSpawnOutcome{code: 129, report: none}
+                WorldSchedule::Error.InvalidEntity: EventSpawnOutcome{code: 130, report: none}
                 RenderScene::RenderSceneError.InvalidValue: EventSpawnOutcome{code: 141, report: none}
                 RenderScene::RenderSceneError.NotInitialized: EventSpawnOutcome{code: 142, report: none}
                 RenderScene::RenderSceneError.Capacity: EventSpawnOutcome{code: 143, report: none}
@@ -333,14 +335,14 @@ module WorldEffectEventNativeTests:
             return 65 if invalid_duration != 1 or WorldEffectAssets::profile_count(&catalog) != 3
             effects: mutable WorldEffects::Effects = WorldEffects::Effects()
             return 39 if WorldEffects::binding_count(&effects) != 0
-            queue: mutable WorldEvents::Queue = WorldEvents::Queue()
-            _ = catch WorldEvents::begin_frame(&queue):
+            frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+            _ = catch WorldSchedule::begin_frame(&frame):
                 ok: 0
                 error failure: return 6
-            _ = catch WorldEvents::subscribe(&queue, LISTENER_ID, WorldEvents::Phase.Simulation):
+            _ = catch WorldSchedule::subscribe(&frame, LISTENER_ID, WorldEvents::Phase.Simulation):
                 ok: 0
                 error failure: return 7
-            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+            _ = catch WorldSchedule::emit_world(&frame, &world, WorldEvents::Event{
                 phase: WorldEvents::Phase.Simulation,
                 kind: WorldEvents::EventKind.Spawn,
                 listener_id: LISTENER_ID,
@@ -351,7 +353,7 @@ module WorldEffectEventNativeTests:
             }):
                 ok: 0
                 error failure: return 8
-            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+            _ = catch WorldSchedule::emit_world(&frame, &world, WorldEvents::Event{
                 phase: WorldEvents::Phase.Simulation,
                 kind: WorldEvents::EventKind.Damage,
                 listener_id: 0,
@@ -362,7 +364,7 @@ module WorldEffectEventNativeTests:
             }):
                 ok: 0
                 error failure: return 9
-            _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+            _ = catch WorldSchedule::emit_world(&frame, &world, WorldEvents::Event{
                 phase: WorldEvents::Phase.Simulation,
                 kind: WorldEvents::EventKind.Spawn,
                 listener_id: LISTENER_ID,
@@ -374,7 +376,7 @@ module WorldEffectEventNativeTests:
                 ok: 0
                 error failure: return 46
             for _ in 0..<2:
-                _ = catch WorldEvents::emit_world(&queue, &world, WorldEvents::Event{
+                _ = catch WorldSchedule::emit_world(&frame, &world, WorldEvents::Event{
                     phase: WorldEvents::Phase.Simulation,
                     kind: WorldEvents::EventKind.Spawn,
                     listener_id: LISTENER_ID,
@@ -385,22 +387,22 @@ module WorldEffectEventNativeTests:
                 }):
                     ok: 0
                     error failure: return 57
-            _ = catch WorldEvents::advance_phase(&queue, WorldEvents::Phase.Simulation):
+            _ = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation):
                 ok: 0
                 error failure: return 10
-            dispatched: usize = catch WorldEvents::dispatch(&queue, WorldEvents::Phase.Simulation):
+            dispatched: usize = catch WorldSchedule::dispatch_current(&frame):
                 value: value
                 error failure: return 11
-            dispatched_spawn: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
-                &queue, WorldEvents::Phase.Simulation, 0):
+            dispatched_spawn: WorldEvents::Event = catch WorldSchedule::dispatched_event_at(
+                &frame, &world, 0):
                 value: value
                 error failure: return 27
-            dispatched_damage: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
-                &queue, WorldEvents::Phase.Simulation, 1):
+            dispatched_damage: WorldEvents::Event = catch WorldSchedule::dispatched_event_at(
+                &frame, &world, 1):
                 value: value
                 error failure: return 40
-            dispatched_decal: WorldEvents::Event = catch WorldEvents::dispatched_event_at(
-                &queue, WorldEvents::Phase.Simulation, 2):
+            dispatched_decal: WorldEvents::Event = catch WorldSchedule::dispatched_event_at(
+                &frame, &world, 2):
                 value: value
                 error failure: return 47
             return 41 if dispatched_damage.kind != WorldEvents::EventKind.Damage or dispatched_damage.payload != 999
@@ -414,7 +416,7 @@ module WorldEffectEventNativeTests:
                 error failure: return 30
             return 31 if resolved_profile.id != PROFILE_ID or resolved_profile.kind != WorldEffectAssets::DefinitionKind.Emitter or resolved_profile.time_scale != 0.75
             return 38 if resolved_profile.emitter.max_particles != PROFILE_PARTICLES or resolved_profile.emitter.count != PROFILE_COUNT or resolved_profile.emitter.lifetime != PROFILE_LIFETIME or resolved_profile.emitter.size != PROFILE_SIZE or resolved_profile.emitter.velocity.x != velocity.x or resolved_profile.emitter.velocity.y != velocity.y or resolved_profile.emitter.velocity.z != velocity.z
-            spawn_outcome: EventSpawnOutcome = spawn_events(&effects, &queue, &catalog, dispatched)
+            spawn_outcome: EventSpawnOutcome = spawn_events(&effects, &frame, &world, &catalog, dispatched)
             return spawn_outcome.code if spawn_outcome.code != 0
             event_report: WorldEffects::EventSpawnReport = spawn_outcome.report
             return 13 if dispatched != 5 or event_report.scanned != 5 or event_report.spawned != 4 or WorldEffects::binding_count(&effects) != 3
@@ -442,12 +444,14 @@ module WorldEffectEventNativeTests:
                 transient_position.x, transient_position.y, transient_position.z) != 1
             return 60 if not RenderSceneEffectsNativeTests::native_effect_counts_are(2, 1)
             duplicate_spawn: i32 = catch WorldEffects::spawn_dispatched_events(&effects,
-                &queue, WorldEvents::Phase.Simulation, &catalog, dispatched):
+                &frame, &world, &catalog, dispatched):
                 value: 0
                 WorldEffects::WorldEffectsError.EntityAlreadyAttached: 1
                 error failure: 2
             return 16 if duplicate_spawn != 1
-            _ = WorldEvents::end_frame(&queue)
+            _ = catch WorldSchedule::end_frame(&frame):
+                value: value
+                error failure: return 66
             expiry: WorldEffects::UpdateReport = catch WorldEffects::update(&world, &effects, 0.2):
                 value: value
                 error failure: return 61
