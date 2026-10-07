@@ -62,8 +62,8 @@ Work on one bounded deliverable at a time. Rank by observed failures, shipping d
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
 **Current baseline:** installed compiler `8006b660` passes 215 uncached runtime tests and non-proof shared stages;
-its matching prover pair builds successfully; the uncached proof sweep is now 70/73;
-three proof failures still block the shared gate. AudioAnimEvents passes 56/56 with zero replay gaps. The authored-rig, focus, resize,
+its matching prover pair builds successfully; the uncached proof sweep is now 71/73;
+two proof failures still block the shared gate. AudioAnimEvents passes 56/56 and SoundAssets 157/157 with zero replay gaps. The authored-rig, focus, resize,
 contact and audio-workload slices have local automated evidence. The historical
 relocated bundle predates the corrected guide outputs and needs refreshing.
 See [current compiler/gate evidence](docs/validation/compiler-8006b660-install.md)
@@ -71,7 +71,7 @@ and [targeted task details](docs/plans/runtime-next-slices.md).
 
 | Order | Highest-return deliverable | Acceptance / stop condition |
 |---|---|---|
-| 1 | **Restore the three remaining implementation-linked proofs — Q01.** Fix shared indexed/borrowed ActionInput places, then sound-asset parser loops. AudioAnimEvents now replays 56/56; preserve its bounded dispatch and enum resource controls. AudioVirtual now replays 109/109; preserve its source-call, indexed-capture and loop-entry controls. Keep each minimized accepted/rejected pair in the owning prover repository. | All 73 proofs pass uncached with complete original obligation inventories and replayed certificates. Never remove failing rows, weaken contracts, or count a passing helper as repaired engine coverage. |
+| 1 | **Restore the two remaining implementation-linked proofs — Q01.** Fix shared indexed/borrowed ActionInput places and bounded fact snapshots. SoundAssets now replays 157/157; preserve its local-digit, source-binding and mutation controls. AudioAnimEvents now replays 56/56; preserve its bounded dispatch and enum resource controls. AudioVirtual now replays 109/109; preserve its source-call, indexed-capture and loop-entry controls. Keep each minimized accepted/rejected pair in the owning prover repository. | All 73 proofs pass uncached with complete original obligation inventories and replayed certificates. Never remove failing rows, weaken contracts, or count a passing helper as repaired engine coverage. |
 | 2 | **Qualify one reproducible toolchain — Q01/Q03.** Use the installed compiler and matching runtime/parser sources; triage the full prover regression matrix and then rerun shared and native gates. Repair failures exposed by those runs before adding unrelated features. | Full prover matrix, shared check and native gate pass on recorded product hashes and source revisions, with structured failure/skip artifacts. Hardware-unavailable stages remain unverified. |
 | 3 | **Refresh the shipping client — Q02/Q04.** Rebuild optimized Character Course from clean source with the corrected generated guide assets; package and run the existing relocated/offline lifecycle checks. | Generated outputs match, all resource hashes and notices are checked, offline startup/restart/teardown pass with source and Homebrew denied. Keep separate-machine, signing and legal acceptance open until established. |
 | 4 | **Eliminate workstation-only setup — Q03.** Update hosted full-SHA pins only after compatible compiler/core/prover/ElisaScript products are qualified; exercise fail-closed bootstrap from a fresh checkout. The former unpublished-compiler blocker is superseded. | An actual hosted headless run provisions, builds and retains tests/proof/package artifacts. GPU evidence is separate. Do not call a workflow definition or local preflight a passing CI run. |
