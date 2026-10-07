@@ -83,7 +83,7 @@ def prepare() -> dict:
     _, counts = cook_gltf_geometry.cook_geometry_package(derived, "cesium-man", OUTPUT,
         animation_contract_path=OUTPUT.with_suffix(".anim"))
     joints, clips = struct.unpack_from("<II", OUTPUT.with_suffix(".anim").read_bytes(), 20)
-    if joints != 19 or clips != 1:
+    if joints != 20 or clips != 1:
         raise ValueError("cooked authored rig counts differ")
     report = {
         "source": str(SOURCE.relative_to(ROOT)), "source_sha256": SOURCE_SHA256,

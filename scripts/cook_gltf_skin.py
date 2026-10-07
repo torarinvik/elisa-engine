@@ -1,8 +1,8 @@
 """Normalize the bounded skin portion of a glTF runtime mesh package.
 
 The runtime package stores four influences per vertex and a parent-ordered rig.
-Authored inverse-bind matrices stay in the source skin palette order; when the
-optional glTF accessor is absent, the spec's identity matrices are made explicit.
+Inverse-bind matrices stay in source palette order. A common rest bind shape
+is factored into vertex streams without changing authored deformation.
 """
 
 from __future__ import annotations
@@ -214,16 +214,7 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
             if child == parent_index or source_parents[child] is not None:
                 raise ValueError("a skin node must have at most one parent")
             source_parents[child] = parent_index
-    # Skin transforms are evaluated relative to the first skinned mesh node.
-    # Ancestors shared by that node and the skeleton cancel from the palette;
-    # only the branch below the mesh-space root belongs in its local rig.
-    mesh_root = next((index for index, node in enumerate(nodes)
-        if isinstance(node, dict) and node.get("skin") == 0), None)
-    mesh_space_ancestors = set()
-    ancestor = mesh_root
-    while ancestor is not None:
-        mesh_space_ancestors.add(ancestor)
-        ancestor = source_parents[ancestor]
+    # A skin uses global joint transforms; mesh-node-only transforms are ignored.
     animations = document.get("animations", [])
     animated_nodes = set()
     for animation in animations if isinstance(animations, list) else []:
@@ -261,7 +252,7 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
             if ancestor in visited_ancestors:
                 raise ValueError("skin joint hierarchy contains a cycle")
             visited_ancestors.add(ancestor)
-            if (ancestor not in joint_set and ancestor not in mesh_space_ancestors and
+            if (ancestor not in joint_set and
                     (cook_gltf_nodes.local_matrix(nodes[ancestor]) != cook_gltf_nodes.IDENTITY or
                      ancestor in animated_nodes)):
                 rig_nodes.add(ancestor)
@@ -271,44 +262,34 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
 
     inverse_bind_matrices = _read_inverse_bind(document, buffer, skin, len(joints))
 
-    mesh_world = world_matrix(mesh_root)
-    mesh_inverse: tuple[float, ...] | None = None
     parents: dict[int, int | None] = {}
-    basis_by_boundary: dict[int | None, int] = {}
-    basis_records: dict[int, tuple[str, tuple[float, ...]]] = {}
-    next_basis = len(nodes)
     for node_index in rig_nodes:
         ancestor = source_parents[node_index]
         while ancestor is not None and ancestor not in rig_nodes:
             ancestor = source_parents[ancestor]
-        if ancestor is not None:
-            parents[node_index] = ancestor
-            continue
+        parents[node_index] = ancestor
 
-        boundary = source_parents[node_index]
-        while boundary is not None and boundary not in mesh_space_ancestors:
-            boundary = source_parents[boundary]
-        if boundary == mesh_root:
-            basis = cook_gltf_nodes.IDENTITY
-        else:
-            if mesh_inverse is None:
-                mesh_inverse = _inverse_affine(mesh_world, "skinned mesh-space root")
-            boundary_world = cook_gltf_nodes.IDENTITY if boundary is None else world_matrix(boundary)
-            basis = cook_gltf_nodes.multiply(mesh_inverse, boundary_world)
-        if all(abs(value - expected) <= 1.0e-6 for value, expected in zip(basis, cook_gltf_nodes.IDENTITY)):
-            parents[node_index] = None
-            continue
-        if boundary not in basis_by_boundary:
-            basis_id = next_basis
-            next_basis += 1
-            basis_by_boundary[boundary] = basis_id
-            name = f"skin_mesh_basis_{boundary if boundary is not None else 'root'}"
-            basis_records[basis_id] = (name, _rest_matrix_transform(basis, name))
-            parents[basis_id] = None
-        parents[node_index] = basis_by_boundary[boundary]
+    # The keyed contract uses inverse rest matrices. When every authored rest
+    # palette has one common bind shape, bake that shape into all vertex streams
+    # and remove it from inverse binds: G(t) I B^-1 (B v) == G(t) I v.
+    def row_matrix(values):
+        return tuple(values[column * 4 + row] for row in range(3) for column in range(4))
 
-    if len(rig_nodes) + len(basis_records) > MAX_RIG_NODES:
-        raise ValueError(f"skin rig hierarchy exceeds {MAX_RIG_NODES} nodes")
+    rest_palettes = [cook_gltf_nodes.multiply(world_matrix(node), row_matrix(
+        inverse_bind_matrices[bone * 16:bone * 16 + 16])) for bone, node in enumerate(joints)]
+    bind_shape = cook_gltf_nodes.IDENTITY
+    candidate = rest_palettes[0]
+    if all(abs(a - b) <= 1e-5 for matrix in rest_palettes for a, b in zip(matrix, candidate)):
+        bind_shape = candidate
+        shape_inverse = _inverse_affine(bind_shape, "skin bind shape")
+        adjusted = []
+        for bone in range(len(joints)):
+            matrix = cook_gltf_nodes.multiply(row_matrix(
+                inverse_bind_matrices[bone * 16:bone * 16 + 16]), shape_inverse)
+            adjusted.extend(matrix[row * 4 + column] if row < 3 else float(column == 3)
+                for column in range(4) for row in range(4))
+        inverse_bind_matrices = adjusted
+
     ordered: list[int] = []
     visiting: set[int] = set()
     visited: set[int] = set()
@@ -326,7 +307,7 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
         visited.add(node_index)
         ordered.append(node_index)
 
-    for node_index in (*basis_records, *joints):
+    for node_index in joints:
         visit(node_index)
     ordered_index = {node: index for index, node in enumerate(ordered)}
     source_ordered_index = {node: ordered_index[node] for node in rig_nodes}
@@ -334,20 +315,17 @@ def _normalize_single(document: dict, buffer: bytes) -> dict | None:
     rig_joints = []
     for node_index in ordered:
         parent = parents[node_index]
-        if node_index in basis_records:
-            name, rest = basis_records[node_index]
-        else:
-            node = document["nodes"][node_index]
-            name = node.get("name", f"joint_{node_index}")
-            if not isinstance(name, str) or not name:
-                raise ValueError("skin rig node names must be nonempty strings")
-            rest = _rest_transform(node, f"skin rig node {node_index}")
+        node = document["nodes"][node_index]
+        name = node.get("name", f"joint_{node_index}")
+        if not isinstance(name, str) or not name:
+            raise ValueError("skin rig node names must be nonempty strings")
+        rest = _rest_transform(node, f"skin rig node {node_index}")
         rig_joints.append({"name": name, "parent": -1 if parent is None else ordered_index[parent], "rest": rest})
     return {"bone_names": [rig_joints[source_ordered_index[node]]["name"] for node in joints],
         "joints": rig_joints, "cluster_joints": cluster_joints,
         "inverse_bind_matrices": inverse_bind_matrices,
         "source_node_indices": source_ordered_index,
-        "placement_palettes": {mesh_node: {"palette_offset": 0, "palette_count": len(joints)}
+        "placement_palettes": {mesh_node: {"palette_offset": 0, "palette_count": len(joints), "bind_shape": bind_shape}
             for mesh_node in (index for index, node in enumerate(nodes)
                 if isinstance(node, dict) and node.get("skin") == 0)}}
 
@@ -356,8 +334,8 @@ def normalize(document: dict, buffer: bytes) -> dict | None:
     """Return a combined bounded rig, or None for an unskinned document.
 
     Multi-skin scenes receive one rig branch per skinned mesh placement. That
-    keeps each joint hierarchy relative to its own mesh while letting the
-    runtime use one armature and palette for the cooked scene package.
+    preserves global joint ancestors while letting the runtime use one armature
+    and palette for the cooked scene package.
     """
     skins = document.get("skins", [])
     if not isinstance(skins, list) or not skins:
@@ -408,7 +386,7 @@ def _normalize_scene_skins(document: dict, buffer: bytes) -> dict:
         skin_index = node["skin"]
         rig_document = dict(document)
         rig_document["skins"] = [skins[skin_index]]
-        rig_document["animations"] = []
+        rig_document["animations"] = document.get("animations", [])
         rig_document["nodes"] = [dict(value) for value in nodes]
         for other_index, other in enumerate(rig_document["nodes"]):
             if other_index == node_index:
@@ -437,7 +415,8 @@ def _normalize_scene_skins(document: dict, buffer: bytes) -> dict:
         for source_node, rig_index in rig["source_node_indices"].items():
             source_node_indices.setdefault(source_node, []).append(rig_offset + rig_index)
         placement_palettes[node_index] = {
-            "palette_offset": palette_offset, "palette_count": len(rig["bone_names"])}
+            "palette_offset": palette_offset, "palette_count": len(rig["bone_names"]),
+            "bind_shape": rig["placement_palettes"][node_index]["bind_shape"]}
 
     if static_nodes:
         if len(bone_names) >= MAX_JOINTS:

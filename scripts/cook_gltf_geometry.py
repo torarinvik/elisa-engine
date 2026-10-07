@@ -271,10 +271,11 @@ def normalized_geometry(document: dict, buffer: bytes, simplify_ratio: float | N
     vertex_total = index_total = 0
     for placement, (mesh, node_index, authored_matrix) in enumerate(placements):
         # glTF explicitly ignores the transform of a node that instances a
-        # skinned mesh. Keep its metadata for scene queries, but do not bake it
-        # into vertex streams, indices, normals, tangents, or morph deltas.
+        # skinned mesh. Keep its metadata for scene queries. Bake only the
+        # normalized skin bind shape into geometry and morph streams.
         skinned_placement = skin is not None and "skin" in document["nodes"][node_index]
-        matrix = cook_gltf_nodes.IDENTITY if skinned_placement else authored_matrix
+        matrix = skin["placement_palettes"][node_index].get("bind_shape", cook_gltf_nodes.IDENTITY) \
+            if skinned_placement else authored_matrix
         block_for_position: dict = {}
         for primitive in document["meshes"][mesh]["primitives"]:
             if primitive.get("mode", 4) != 4:

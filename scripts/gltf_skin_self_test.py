@@ -15,6 +15,7 @@ import cook_gltf_animation
 import cook_gltf_geometry
 import cook_gltf_nodes
 import cook_gltf_skin
+import gltf_skin_bind_shape_self_test
 import gltf_skin_mikktspace_self_test
 import gltf_animation_self_test
 from cooked_meshopt_test_stream import decode_vertex_stream
@@ -33,6 +34,8 @@ TIP_INVERSE_BIND = (1.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0,
     -2.0, -1.0, 0.25, 1.0)
 INVERSE_BIND_MATRICES = ROOT_INVERSE_BIND + TIP_INVERSE_BIND
+COOKED_INVERSE_BIND_MATRICES = tuple(-0.75 if index % 16 == 14 else value
+    for index, value in enumerate(INVERSE_BIND_MATRICES))
 SECOND_INVERSE_BIND_MATRICES = (
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
     0.0, 0.0, 1.0, 0.0, -2.0, 0.0, 0.0, 1.0,
@@ -261,7 +264,7 @@ def inverse_bind_defaults_self_test(temporary: Path) -> int:
     buffer = cook_assets.source_bytes(temporary, cook_assets.read_gltf(
         json.dumps(document, separators=(",", ":")).encode("utf-8")))
     normalized = cook_gltf_geometry.normalized_geometry(document, buffer)
-    if normalized["skin"]["inverse_bind_matrices"] != list(INVERSE_BIND_MATRICES):
+    if normalized["skin"]["inverse_bind_matrices"] != list(COOKED_INVERSE_BIND_MATRICES):
         print("glTF skin self-test failed: surplus inverse bind entries changed palette order",
             file=sys.stderr)
         return 1
@@ -374,9 +377,9 @@ def self_test(temporary: Path) -> int:
             struct.unpack("<4i", base64.b64decode(sections["skin_joint_parents_b64"])) != (-1, 0, 1, 2) or
             struct.unpack("<2I", base64.b64decode(sections["skin_cluster_joints_b64"])) != (2, 3) or
             struct.unpack("<10f", base64.b64decode(sections["skin_joint_rest_b64"])[:40]) !=
-                (0.0, 0.0, -0.75, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0) or
+                (0.0, 0.0, 0.25, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0) or
             base64.b64decode(sections["skin_inverse_bind_matrices_b64"]) !=
-                struct.pack("<32f", *INVERSE_BIND_MATRICES) or
+                struct.pack("<32f", *COOKED_INVERSE_BIND_MATRICES) or
             sections.get("animation_0_sample_rate") != "30" or
             sections.get("animation_0_frames") != "31"):
         print("glTF skin self-test failed: package is unstable or incomplete", file=sys.stderr)
@@ -384,19 +387,19 @@ def self_test(temporary: Path) -> int:
     separate_package, _ = write_separate_root_package(temporary / "separate-root.pkg")
     separate_sections = dict(line.split("=", 1)
         for line in separate_package.read_text(encoding="utf-8").splitlines())
-    if (separate_sections.get("skin_joints") != "4" or
-            struct.unpack("<4i", base64.b64decode(separate_sections["skin_joint_parents_b64"])) !=
-                (-1, 0, 1, 2) or
-            struct.unpack("<2I", base64.b64decode(separate_sections["skin_cluster_joints_b64"])) != (2, 3) or
+    if (separate_sections.get("skin_joints") != "3" or
+            struct.unpack("<3i", base64.b64decode(separate_sections["skin_joint_parents_b64"])) !=
+                (-1, 0, 1) or
+            struct.unpack("<2I", base64.b64decode(separate_sections["skin_cluster_joints_b64"])) != (1, 2) or
             struct.unpack("<10f", base64.b64decode(separate_sections["skin_joint_rest_b64"])[:40]) !=
-                (0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
-        print("glTF skin self-test failed: separate-root basis was not preserved in the package",
+                (0.0, 0.0, 0.5, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
+        print("glTF skin self-test failed: separate-root global hierarchy was not preserved in the package",
             file=sys.stderr)
         return 1
     multi_skin_package, _ = write_multi_skin_package(temporary / "multi-skin.pkg")
     multi_skin_sections = dict(line.split("=", 1)
         for line in multi_skin_package.read_text(encoding="utf-8").splitlines())
-    multi_skin_parents = struct.unpack("<6i",
+    multi_skin_parents = struct.unpack("<7i",
         base64.b64decode(multi_skin_sections["skin_joint_parents_b64"]))
     multi_skin_clusters = struct.unpack("<4I",
         base64.b64decode(multi_skin_sections["skin_cluster_joints_b64"]))
@@ -406,14 +409,14 @@ def self_test(temporary: Path) -> int:
         decode_vertex_stream(multi_skin_sections, "skin_weights", 24, 16))
     active_indices = [multi_skin_indices[index * 4] for index in range(24)]
     if (multi_skin_sections.get("skin_bones") != "4" or
-            multi_skin_sections.get("skin_joints") != "6" or
-            multi_skin_parents != (-1, 0, 1, 2, -1, 4) or
-            multi_skin_clusters != (2, 3, 4, 5) or
+            multi_skin_sections.get("skin_joints") != "7" or
+            multi_skin_parents != (-1, 0, 1, 2, -1, 4, 5) or
+            multi_skin_clusters != (2, 3, 5, 6) or
             any(active_indices[index] not in (0, 1) for index in range(12)) or
             any(active_indices[index] not in (2, 3) for index in range(12, 24)) or
             any(multi_skin_weights[index * 4] != 1.0 for index in range(24)) or
             multi_skin_sections.get("animation_0_frames") != "31" or
-            len(base64.b64decode(multi_skin_sections["animation_0_samples_b64"])) != 6 * 31 * 40):
+            len(base64.b64decode(multi_skin_sections["animation_0_samples_b64"])) != 7 * 31 * 40):
         print("glTF skin self-test failed: multi-skin rig, palette remap, or animation was not combined",
             file=sys.stderr)
         return 1
@@ -458,18 +461,20 @@ def self_test(temporary: Path) -> int:
     shared_ancestor["nodes"][5]["translation"] = [5.0, -2.0, 3.0]
     shared_rig = normalized_skin(shared_ancestor)
     if (len(shared_rig["joints"]) != 4 or
-            shared_rig["joints"][0]["rest"] != (0.0, 0.0, -0.75, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
-        print("glTF skin self-test failed: shared mesh ancestors leaked into the rig", file=sys.stderr)
+            shared_rig["joints"][0]["rest"] != (5.0, -2.0, 3.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0)):
+        print("glTF skin self-test failed: shared joint ancestor was lost from the rig", file=sys.stderr)
+        return 1
+    if not gltf_skin_bind_shape_self_test.translation_preserves_streams(document, shared_ancestor, normalized):
         return 1
 
     nested_helper = deepcopy(document)
     nested_helper["nodes"][5]["children"] = [0]
     nested_helper["nodes"][0]["children"] = [4]
     nested_rig = normalized_skin(nested_helper)
-    if (len(nested_rig["joints"]) != 3 or
-            [joint["parent"] for joint in nested_rig["joints"]] != [-1, 0, 1] or
-            [joint for joint in nested_rig["cluster_joints"]] != [1, 2]):
-        print("glTF skin self-test failed: descendant helper hierarchy gained a mesh basis",
+    if (len(nested_rig["joints"]) != 5 or
+            [joint["parent"] for joint in nested_rig["joints"]] != [-1, 0, 1, 2, 3] or
+            [joint for joint in nested_rig["cluster_joints"]] != [3, 4]):
+        print("glTF skin self-test failed: joint hierarchy lost a shared or descendant ancestor",
             file=sys.stderr)
         return 1
 
@@ -477,9 +482,9 @@ def self_test(temporary: Path) -> int:
     separate_branch["nodes"][5]["children"] = [0]
     separate_branch["scenes"][0]["nodes"] = [5, 4, 3]
     separate_rig = normalized_skin(separate_branch)
-    if (len(separate_rig["joints"]) != 4 or
-            separate_rig["joints"][0]["rest"][:3] != (0.0, 0.0, -1.0)):
-        print("glTF skin self-test failed: separate skeleton root lacks a mesh-relative basis",
+    if (len(separate_rig["joints"]) != 3 or
+            separate_rig["joints"][0]["rest"][:3] != (0.0, 0.0, 0.5)):
+        print("glTF skin self-test failed: separate skeleton root lost its global basis",
             file=sys.stderr)
         return 1
 
@@ -488,15 +493,8 @@ def self_test(temporary: Path) -> int:
         "rotation": [0.0, 0.3826834323650898, 0.0, 0.9238795325112867],
         "scale": [2.0, 1.0, 1.0],
     })
-    try:
-        normalized_skin(sheared_basis)
-    except ValueError as error:
-        if "shear" not in str(error):
-            print(f"glTF skin self-test failed: sheared mesh-relative basis failed for another reason: {error}",
-                file=sys.stderr)
-            return 1
-    else:
-        print("glTF skin self-test failed: accepted a sheared mesh-relative basis", file=sys.stderr)
+    if normalized_skin(sheared_basis) != normalized_skin(document):
+        print("glTF skin self-test failed: mesh-only shear changed the joint rig", file=sys.stderr)
         return 1
 
     matrix_ancestor = deepcopy(document)
