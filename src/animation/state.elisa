@@ -33,7 +33,7 @@ module Anim:
             blend: mutable f32
             blend_left: mutable i64
             distance: mutable f32
-            events: mutable i64[Tune::MAX_EVENTS]
+            events: mutable i64[Anim::MAX_QUEUED_EVENTS]
             event_count: mutable usize
 
         def AnimState() -> AnimState:
@@ -53,7 +53,7 @@ module Anim:
             true
 
         def anim_event_at(state: AnimState&, index: usize) -> i64:
-            return -1 if index >= state.event_count
+            return -1 if index >= MAX_QUEUED_EVENTS or index >= state.event_count
             state.events[index]
 
         def anim_event_count(state: AnimState&) -> usize:
@@ -63,7 +63,9 @@ module Anim:
         # bounded queue that the built-in state machine uses.
         def anim_emit_event(state: mutable AnimState&, id: i64) -> bool:
             return false if id <= 0 or state.event_count >= MAX_QUEUED_EVENTS
-            state.events[state.event_count] <- id
+            region event_slot_scope:
+                slot: usize = state.event_count
+                state.events[slot] <- id
             state.event_count <- state.event_count + 1
             true
 
@@ -75,8 +77,10 @@ module Anim:
         module Playback:
             private:
                 def push_event(state: mutable AnimState&, id: i64) -> void:
-                    return if state.event_count >= Anim::Tune::MAX_EVENTS
-                    state.events[state.event_count] <- id
+                    return if state.event_count >= Anim::MAX_QUEUED_EVENTS
+                    region event_slot_scope:
+                        slot: usize = state.event_count
+                        state.events[slot] <- id
                     state.event_count <- state.event_count + 1
 
             public:

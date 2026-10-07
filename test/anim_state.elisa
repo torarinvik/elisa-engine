@@ -283,4 +283,14 @@ def main() -> i32:
     return 42 if not corrected
     return 43 if not near(chain_pose.models[1].position.z, 0.866)
     return 44 if not near(chain_pose.models[2].position.x, 1.0) or not pose_valid(&chain_pose)
+    oversized: mutable AnimState = AnimState()
+    oversized.event_count <- MAX_QUEUED_EVENTS + 1
+    return 230 if anim_event_at(&oversized, MAX_QUEUED_EVENTS) != -1
+    return 231 if anim_emit_event(&oversized, 42)
+    full: mutable AnimState = AnimState()
+    for index in 0..<MAX_QUEUED_EVENTS |full|:
+        return 232 if not anim_emit_event(&full, index.i64() + 1)
+    return 233 if anim_emit_event(&full, 99)
+    return 234 if anim_event_at(&full, MAX_QUEUED_EVENTS - 1) != MAX_QUEUED_EVENTS.i64()
+    return 235 if anim_event_at(&full, MAX_QUEUED_EVENTS) != -1
     0
