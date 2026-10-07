@@ -214,3 +214,13 @@ in either fragment; unrelated launcher errors remain. It exits 1 normally
 in 11.50 seconds, sampled peak RSS 635,776 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-allocator-refs-build.log` and JSON.
 Allocator behavior has not executed on the selected compiler.
+
+Concurrency allocation now preserves malloc's mutable pointer through return;
+AtomicCell constructs its generic slot from the supplied value rather than
+zeroing a potentially non-null type. Both associated diagnostics clear in
+the bounded compile, leaving nine concurrency diagnostics. The generic worker
+result seed still needs completion-protocol review; it was not replaced by
+unchecked uninitialized typed storage. The build exits 1 normally in
+20.92 seconds, sampled peak RSS 617,600 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-concurrency-init-build.log` and JSON.
+Runtime concurrency behavior remains unverified on the selected compiler.
