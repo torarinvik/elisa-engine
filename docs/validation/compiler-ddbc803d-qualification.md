@@ -133,3 +133,16 @@ reduction in the remaining compiler failures. The build exits 1 normally in
 11.53 seconds, sampled peak RSS 725,872 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-view-copy-build.log` and watchdog JSON.
 Copy behavior remains unexecuted on the selected compiler.
+
+Unsigned and floating-point scratch formatting now return `cstr` at their
+NUL-producing boundaries. Unsigned formatting checks the writing `snprintf`
+length; the float marker scan yields its boolean result with initial false,
+retaining the existing formatting and `.0` suffix algorithm. In the bounded
+build, runtime entrypoint diagnostics fall from 31 to 5. Remaining diagnostics
+include three concat/slice return mismatches and two newly reached global
+`perm_arena` borrow conflicts; they require explicit ownership review.
+The after build exits 1 normally in 7.86 seconds, sampled peak RSS 726,960 KiB.
+Artifact: engine `build/validation/elisascript-ddbc803d-numeric-cstr-fixed-build.log`
+and watchdog JSON. The preceding `numeric-cstr-build` attempt compiled unchanged
+source after an edit assertion failed; it is not evidence for this repair.
+Numeric formatting execution remains unverified.
