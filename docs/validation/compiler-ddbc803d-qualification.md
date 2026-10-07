@@ -185,3 +185,13 @@ The existing focused census suite passes, including matching and mismatched
 override controls. The actual 95db5c6b binary manifest passes the repaired
 identity check with ddbc803d; the full census comparison remains to be rerun.
 This harness repair does not establish the remaining matrix steps as passing.
+
+The C-string view, view-slice and byte-array view constructors now use the
+current upstream runtime's local carrier grants and extent checks. C-string
+inputs retain `cstr`; invalid signed extents and malformed byte-array storage
+return empty views before pointer arithmetic/indexing. The bounded build
+clears all four runtime-string-fragment diagnostics, including three internal
+carrier errors, while other launcher errors remain. It exits 1 normally in
+8.59 seconds, sampled peak RSS 727,056 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-view-carrier-build.log` and JSON.
+View behavior/lifetimes have not been runtime-qualified on this compiler.
