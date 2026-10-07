@@ -510,3 +510,38 @@ qualification, not a claim of a runtime behavior regression or completed snapsho
 repair. Next authenticate a scalar field copy at its next pure use before any
 source-field mutation; then implement bounds captured at declaration for later
 uses across mutation. Do not restore the index-specific type fact to hide gaps.
+
+## Field copy at the next indexed write — 2026-10-07
+
+Prover `2b9ec8d6`, clean pair `0d414014c0fd407288e0d15f3242b7ba`, authenticates
+an unsigned field-copy equation while the immediately following pure indexed
+assignment evaluates its index. Replay matches the original declaration,
+initializer, declaration/consumer positions and exact index goal, within the same
+source statement list. The source root must be an unshadowed formal; the local
+cannot shadow a formal. Unsigned widths come from the current certificate's type
+facts and must fit the declared local width. Calls, moves, local mutation in the
+consumer expression and source operator overrides refuse. Region and if scopes
+are traversed with depth/work limits. This is equally valid for a fresh mutable
+local: there is no intervening rebind before this read. It grants no equation at
+later uses after a source-field or local mutation.
+
+Seven cases pass through both JSON routes: immediate, fresh mutable and region
+copies accepted; insufficient guard, different field, rebound copy and changed
+current-field indexing refused, all with zero gaps. The suite is in the full matrix.
+The snapshot diagnostic returns to its original counts (4/5 for the open copy
+across mutation; passing local guard/parameter controls). All seven fixed-count
+fixtures now pass; the test correctly distinguishes IndexN's directly certified
+literal dimensions from `.count` goals. Loop-state controls pass.
+Logs under `build/validation/`: `proof-field-next-write-controls-clean.log`,
+`proof-field-next-write-snapshot-controls.log`, `proof-field-next-write-count-controls.log`,
+`proof-field-next-write-loop-controls.log`, and `proof-field-next-write-clean-build.log`.
+
+AudioAnimEvents is restored to 56/56, zero findings/errors/gaps
+(`field-next-write-audio-current.json`). The full uncached sweep is 71/73 again,
+only ActionInput context/deadzone failing (`proof-field-next-write-engine-sweep.log`).
+Actual input context remains 230/264 with 32 findings and two gaps
+(`field-next-write-action-input-current.json`): both gaps involve the scoped
+`device_index(event.device)` result used by apply, not a field-copy equation.
+Next authenticate those captured call summaries and implement immutable copied
+bounds at declaration for later consumption across record mutation. The fixed-index
+shortcut remains removed; full matrix/shared/native qualification remains open.
