@@ -168,3 +168,30 @@ guard or loop expression was changed. The required repair must execute block
 assignment bodies before binding their yield, preserve inner accumulator shadowing,
 and authenticate invariant/result facts independently in replay. Existing block
 declaration flattening rejects visible-name shadowing and is insufficient here.
+
+## Search-break invariant replay — 2026-10-07
+
+Generation `66108e65f1aa42439766e1540984b446` repairs the invariant minimum:
+`captured_search_invariant.elisa` now proves and independently replays 8/8, zero
+findings, gaps or semantic errors. Report:
+`build/validation/captured-search-invariant-repaired-6.json`; final build log:
+`build/validation/proof-search-break-build-6.log`. Initial drafts exposed a compiler
+backend decline on a literal constructor pattern and mismatches with parser wrapper
+and header type representation; these drafts were not published as qualified fixes.
+
+The new source replay rule matches the original value block, its single accumulator,
+loop binder, invariant and exact lowered assignment immediately followed by an
+unlabelled break. It requires the equality's assignment position and range binder
+identity to match, and allows that equality only at this break's original invariant
+obligation. It peels only empty capture-free outer wrappers. Header accumulators use
+the parser's bare usize type. No initial equality is retained at preservation and no
+new post-loop assertion is introduced. Calls, moves and source operator overrides in
+guards/iterables are refused by this rule.
+
+`test_search_break_replay.py` passes six cases on both routes: valid accepted; wide
+range, invalid initializer, false invariant, wrong break value and false exit
+postcondition refused. Captured-entry, local-digit and decimal-saturation controls
+pass. The suite is wired into the full prover matrix. Full uncached engine sweep
+remains 71/73, only the two ActionInput reports failing
+(`build/validation/proof-search-break-engine-sweep.log`). Block assignment and
+implicit bounded search result admission remain required; engine behavior is unchanged.
