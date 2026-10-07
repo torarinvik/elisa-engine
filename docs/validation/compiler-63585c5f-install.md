@@ -22,8 +22,13 @@ snapshot. The source freshness/provenance check passed before installation.
 Evidence: `build/validation/compiler-63585c5f-seed.log` and the installed
 `SNAPSHOT` and `bin/elisac-stage1.provenance.json` records.
 
-Both strict O2 prover products are being rebuilt with this compiler and an
-archived parser source at the same revision. Until that build and subsequent
-checks complete, the established engine qualification remains the earlier
-compiler's 68/73 proof sweep. Installation does not establish compatibility,
-performance gains, or completion of the shared gate.
+Both strict O2 prover products built with this compiler and archived parser
+sources at the same revision: generation `c6d45003b6804b5ba9eda3e238c2b689`.
+Seven accepted/rejected source call-result controls, two guarded-call controls
+and the malformed-source admission matrix passed. The uncached engine sweep
+remains 68/73 with the same five failing files. Evidence:
+`build/validation/prover-compiler-63585c5f-build.log` and
+`build/validation/proof-compiler-63585c5f-sweep.log`.
+
+These checks establish focused compatibility. Performance gains, the complete
+prover regression matrix and completion of the shared gate remain unverified.
