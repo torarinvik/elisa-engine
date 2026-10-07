@@ -82,3 +82,15 @@ ActionInput rows, four audio rows, motion overlay policy and sound-event
 assets. The shared gate and full prover regression matrix remain open.
 Evidence: `build/validation/proof-conditional-constants-full-sweep.log` and
 `build/application-capture-timing-proof.json`.
+
+## Broader prover compatibility audit
+
+Prover `671ec265` restores audio-music replay (35/35 obligations), bringing
+the uncached engine sweep to 66/73. The subsequent all-products build at
+`2a0d0804` completed, including portable replay. Its serial KEEP_GOING full
+prover matrix finished with 98 failed shell steps, including harness cascades.
+These are broader compatibility gaps; the engine sweep does not establish
+whole-prover compatibility. Build fixtures and provenance fixtures have since
+been repaired with focused passing tests; source/replay and mutation-harness
+failures still need triage. The native/shared gates remain open.
+Log: `build/validation/prover-2a0d0804-matrix.log`.
