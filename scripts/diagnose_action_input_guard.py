@@ -17,8 +17,8 @@ end = base.index("            region binding_slot_scope:", start)
 without_search = base[:start] + base[end:]
 call = "slot: mutable usize = state_slot(input, binding.action)"
 variants = (
-    ("original", base, 4),
-    ("no-search", without_search, 4),
+    ("original", base, 3),
+    ("no-search", without_search, 3),
     ("literal-call", base.replace(call, "slot: mutable usize = 0"), 3),
     ("literal-no-search", without_search.replace(call, "slot: mutable usize = 0"), 3),
 )
@@ -34,4 +34,7 @@ with tempfile.TemporaryDirectory(prefix="elisa-input-guard-") as directory:
         assert report["summary"]["finding_count"] == findings, (name, report["summary"])
         assert report["replay"]["gaps"] == 0, (name, report["replay"])
         assert not report["trust"]["trusted_assumptions"]
+        binding_goals = [goal for goal in report["goals"] if goal["rule"] == "index-upper"
+                         and goal["goal"].get("left", {}).get("name") == "binding_slot"]
+        assert binding_goals and all(goal["proven"] for goal in binding_goals), name
         print(name, report["summary"], report["replay"])

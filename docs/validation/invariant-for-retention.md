@@ -164,3 +164,30 @@ source-authenticated read-only call boundary for bounded searches, with mutable
 callee/global/callback/alias controls. Do not classify arbitrary loops as pure or
 rewrite the production search into an unrolled/literal helper. Later slot bounds
 and immutable snapshots remain separate tasks.
+
+## Finite read-only search call classified
+
+Prover `6732bf6b` recognizes a finite exclusive-range search with a fresh
+unsigned accumulator and no capture write-back. The only allowed writes assign
+the range binder to that accumulator; conditions/invariants must be supported
+read expressions without calls, transfers, overloaded operators or mutable
+global reads. Mutable parameters, effects and frame-changing contracts retain
+their existing exclusions. Nested search-body checks have depth/work limits.
+The existing verified-callee and purity dependency checks remain required.
+
+The minimal call-boundary reproducer now passes 10/10, zero gaps. The six-case
+suite accepts read-only and zero-iteration queries and rejects mutable callees,
+global reads, effectful callbacks and insufficient caller guards. Both JSON
+routes run. All cases have zero semantic errors/trusted assumptions; the rejected
+effectful callback retains one explicitly asserted preservation replay gap.
+That gap remains a qualification defect, not a passing replay claim. Existing
+pure-contract, captured-search and loop-state controls pass.
+
+Actual context improves to 233/264, 31 findings, zero gaps/errors
+(`pure-search-action-input.json`). `bind_checked` improves to 38/41: the binding
+slot upper bound now proves, leaving three later state-slot bounds. All four
+source variants assert the binding-slot goal is proven
+(`action-input-pure-search-guard-diagnostic.log`). The full uncached engine sweep
+remains 71/73 (`proof-pure-search-engine-sweep.log`). No engine runtime change.
+Immutable snapshots, later slot bounds, the callback preservation gap and full
+matrix/shared/native qualification remain open.
