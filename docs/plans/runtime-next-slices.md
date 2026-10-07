@@ -8,8 +8,8 @@ Character Course before promoting a subsystem-wide feature.
 
 | Order | Concrete next action | Why now / acceptance |
 | --- | --- | --- |
-| 1 | Retain stable scalar snapshot bounds across mutable input record writes needed by `ActionInput::bind_checked`. | First authenticate fixed-array count projection: current index-upper replay can use an index-specific bound imported as a type fact after a producer-only proof; the field-copy experiment exposes this shortcut. Checked identity accumulator bounds now survive block assignment and nested search bindings replay. After replacing index-specific type facts with count equalities, context coverage is 230/264 with two exposed replay gaps. Field-copy equations at the next pure indexed write are now authenticated, restoring AudioAnimEvents 56/56. The two input gaps are scoped device_index call-result summaries; authenticate those and capture bounds for later uses across mutation. Four bind_checked upper bounds remain: the copied binding-count and slot bounds are discarded around later aggregate mutation. Preserve accumulator shadowing, zero-iteration sentinel values and loop-body safety obligations; authenticate every exported fact from original source. See [current input evidence](../validation/action-input-replay.md). |
-| 2 | Close remaining indexed/borrowed `ActionInput::apply` bounds and finish both ActionInput reports. | Context report now proves/replays 230/264 with 32 findings and two replay gaps; ordinary-loop retention repairs all rebind_checked findings. AudioAnimEvents is restored to 56/56; SoundAssets 157/157 and AudioVirtual 109/109 remain preservation controls. The uncached engine sweep is 71/73, with action_input_context and action_input_deadzone failing. Each fix needs an implementation-linked result and invalid controls; stop only at all 73 complete reports. |
+| 1 | Retain stable scalar snapshot bounds across mutable input record writes needed by `ActionInput::bind_checked`. | First authenticate fixed-array count projection: current index-upper replay can use an index-specific bound imported as a type fact after a producer-only proof; the field-copy experiment exposes this shortcut. Checked identity accumulator bounds now survive block assignment and nested search bindings replay. After replacing index-specific type facts with count equalities, context coverage initially fell to 230/264 with two exposed replay gaps. Field-copy equations at the next pure indexed write are now authenticated, restoring AudioAnimEvents 56/56. Scoped device_index call-result aliases now authenticate inside value initializers: context coverage is 232/264 with zero replay gaps. Capture bounds for later uses across mutation. Four bind_checked upper bounds remain: the copied binding-count and slot bounds are discarded around later aggregate mutation. Preserve accumulator shadowing, zero-iteration sentinel values and loop-body safety obligations; authenticate every exported fact from original source. See [current input evidence](../validation/action-input-replay.md). |
+| 2 | Close remaining indexed/borrowed `ActionInput::apply` bounds and finish both ActionInput reports. | Context report now proves/replays 232/264 with 32 findings and zero replay gaps; ordinary-loop retention repairs all rebind_checked findings. AudioAnimEvents is restored to 56/56; SoundAssets 157/157 and AudioVirtual 109/109 remain preservation controls. The uncached engine sweep is 71/73, with action_input_context and action_input_deadzone failing. Each fix needs an implementation-linked result and invalid controls; stop only at all 73 complete reports. |
 | 3 | Run the full prover compatibility matrix, shared check and full native gate on one qualified immutable compiler product. | The full matrix finished with 73 failed steps. Clean paired generation 5333c304 now passes package JSON boundary/provenance checks; loop-state and captured-loop replay failures persist, alongside collection/loop-frame findings from the full run (see current input evidence). Repair those failures and rerun full qualification with exact product identities. Compiler 8006 runtime and non-proof shared stages pass. Native qualification first needs a rebuilt ElisaScript supporting explicit process timeouts and explicit selection of the existing pinned ../elisa-boxing-wickedengine checkout/archive ([evidence](../validation/compiler-8006b660-install.md)); sanitizer stages pass, application smokes remain skipped. Full prover compatibility is open. Capture terminal results, product/runtime hashes, all original counts and explicit skips. Fix actual failures without weakening acceptance. |
 | 4 | Rebuild and relocate optimized Character Course with current generated guide assets. | The earlier bundle has historical pre-refresh guide files. Verify generated-output equality, exact resource hashes, offline startup, restart and graceful teardown; retain old evidence as historical. |
 | 5 | Qualify compatible hosted pins and run clean-checkout headless CI. | Published compiler main now includes the formerly unavailable prerequisite. Verify compatible products before changing pins; retain actual provisioning/build/proof artifacts rather than claiming local preflight as CI. |
@@ -58,7 +58,8 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Reviewed `../Elisa-compiler/STYLE_GUIDE.md` at `665f40d7` on 2026-10-07.
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at `665f40d7` on 2026-10-07;
+the compiler checkout and guide revision are unchanged.
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
 
@@ -68,15 +69,21 @@ these additional checks within implementation slices:
   explicitly because compiler borrow exclusivity does not inspect them.
 - For the input proof repair, preserve scalar snapshot bounds at copy time.
   An immutable copy must keep its own bound after record mutation; equality to
-  the record's current field must expire. The minimal field-copy case fails
-  4/5 while parameter and explicit-local-guard controls pass 5/5. Keep value
-  blocks and loop results and repair source-authenticated replay in the prover.
+  the record's current field must expire. Immediate pure indexed writes now
+  replay authenticated field copies; later uses across mutation remain open.
+  The two scoped `device_index` result bindings in `apply` now authenticate
+  their source calls inside value-block initializers. Keep value
+  blocks and loop results; preserve shadowing and mutation refusals in replay.
 - Scope side-effect temporaries only after checking allocation escape and live
   views. Use block initializers or helpers when values need to escape; use a
   helper when intervening loop jumps prevent nesting.
 - Adopt strict lint as a diagnostic on touched code, then enable errors only
   for a clean directory. Preserve loop zero-iteration results and refuse forced
   rewrites where strict diagnostics explain why no valid rewrite exists.
+- Prefer tuple yields when a touched loop produces several results and optional
+  search results initialized to null when absence is part of the API. Use
+  explicit `->` yields; bare loops in value position are invalid. Container
+  value-threading remains design-only and must not become a prerequisite.
 
 ## Current evidence
 

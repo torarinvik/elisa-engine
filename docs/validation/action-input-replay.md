@@ -545,3 +545,24 @@ Actual input context remains 230/264 with 32 findings and two gaps
 Next authenticate those captured call summaries and implement immutable copied
 bounds at declaration for later consumption across record mutation. The fixed-index
 shortcut remains removed; full matrix/shared/native qualification remains open.
+
+## Scoped call-result aliases — 2026-10-07
+
+Prover `2d0aa811` traverses local declarations inside value-block initializers
+when authenticating call-summary aliases. The final expression participates in
+the lexical lifetime and mutation checks. Exact binding/call source positions,
+argument mapping and dependency certificates retain their existing validation;
+block-local aliases do not establish facts at consumers outside the block.
+
+`python3.14 ../elisa-engine-proof/scripts/test_scoped_summary_alias.py` passes
+five cases through both JSON routes: direct/nested scoped bindings accepted,
+rebound/out-of-range indices and wider callee results refused, all without gaps
+or semantic errors. The existing disjunction call-domain suite passes alias,
+reassignment, domain, false-claim and malformed-replay controls. The new suite
+is wired into the full matrix.
+
+`scoped-summary-action-input.json` records 264 obligations, 232 proven/replayed,
+32 findings, zero gaps and zero semantic errors. The uncached sweep remains
+71/73 (`proof-scoped-summary-engine-sweep.log`), with both ActionInput reports
+still failing on unproven obligations. Immutable copied bounds across mutation
+and full matrix/shared/native qualification remain open.
