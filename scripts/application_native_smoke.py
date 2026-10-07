@@ -345,11 +345,17 @@ def main() -> int:
         for name, entry in projects:
             if name == "physics-mesh-shapes-smoke":
                 shutil.rmtree(project / "build/cache/physics", ignore_errors=True)
+            project_settings = dict(settings)
+            if name == "character-course-live-input-smoke":
+                # Warm render resources at the largest size used by the pilot;
+                # the streaming memory bound then measures a fixed viewport.
+                project_settings["width"] = 1280
+                project_settings["height"] = 720
             manifest = {
                 "name": name,
                 "main": str(entry),
                 "output": f"build/{name}",
-                "application": settings,
+                "application": project_settings,
             }
             (project / "elisa.project.json").write_text(json.dumps(manifest), encoding="utf-8")
             command = [sys.executable, str(runner), "run", "--project", str(project),

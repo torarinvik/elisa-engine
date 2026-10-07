@@ -1,0 +1,29 @@
+# Pure page policy shared by course drawing and pointer hit testing.
+module CourseMenuView:
+    public:
+        const ROWS: i64 = 16
+
+        def count(available: i64) -> i64:
+            ensure result >= 1 and result <= ROWS
+            1 if available < 1 else (ROWS if available > ROWS else available)
+
+        def first(selected: i64, visible: i64) -> i64:
+            requires selected >= -1 and selected < ROWS
+            requires visible >= 1 and visible <= ROWS
+            ensure result >= 0 and result <= ROWS - visible
+            ensure selected < 0 or (result <= selected and selected < result + visible)
+            if selected < visible:
+                0
+            else:
+                selected - visible + 1
+
+        def hit(first: i64, visible: i64, slot: i64) -> i64:
+            requires slot >= -1 and slot <= ROWS
+            requires visible >= 1 and visible <= ROWS
+            requires first >= 0 and first <= ROWS
+            requires first + visible <= ROWS
+            ensure result == (first + slot if slot >= 0 and slot < visible else -1)
+            if slot >= 0 and slot < visible:
+                first + slot
+            else:
+                -1

@@ -1,0 +1,15 @@
+include "../examples/character_course/menu_view.elisa"
+
+def main() -> i32:
+    return 1 if CourseMenuView::count(-100) != 1 or CourseMenuView::count(100) != 16
+    return 2 if CourseMenuView::count(5) != 5
+    for visible in 1..<17:
+        for selected in 0..<16:
+            first: i64 = CourseMenuView::first(selected, visible)
+            return 3 if first < 0 or first + visible > 16
+            return 4 if selected < first or selected >= first + visible
+            for slot in 0..<visible:
+                return 5 if CourseMenuView::hit(first, visible, slot) != first + slot
+            return 6 if CourseMenuView::hit(first, visible, -1) != -1
+            return 7 if CourseMenuView::hit(first, visible, visible) != -1
+    0

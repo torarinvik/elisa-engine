@@ -1,0 +1,17 @@
+include "../examples/character_course/menu_view.elisa"
+
+extend CourseMenuView:
+    def prove_page_contains_selection(selected: i64, visible: i64) -> i64:
+        requires selected >= 0 and selected < ROWS
+        requires visible >= 1 and visible <= ROWS
+        ensure result <= selected and selected < result + visible
+        first(selected, visible)
+
+    def prove_page_hit(first_row: i64, visible: i64, slot: i64) -> i64:
+        requires visible >= 1 and visible <= ROWS
+        requires first_row >= 0 and first_row <= ROWS
+        requires first_row + visible <= ROWS
+        requires slot >= 0 and slot < visible
+        requires slot <= ROWS
+        ensure result == first_row + slot
+        hit(first_row, visible, slot)

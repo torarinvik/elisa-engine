@@ -14,6 +14,8 @@
             previous_elapsed_nanos: mutable u64 = 0
             resize_serial: mutable u64 = 0
             suspended: mutable bool = false
+            layout_height: mutable i32 = -1
+            layout_selected: mutable i64 = -2
             clock: mutable Runtime::StepClock = Runtime::StepClock()
             # Invalid saved controls fall back to the defaults; the file is only
             # replaced when the player closes the rebind menu.
@@ -71,7 +73,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, layout_height, layout_selected, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -125,7 +127,7 @@
                         # Keys first; pointer presses when no key acted.
                         step: mutable CourseControls::MenuStep = CourseControls::drain_menu(menu)
                         if step.result == CourseControls::MenuResult.Ignored:
-                            step <- drain_menu_pointer(menu, settings)
+                            step <- drain_menu_pointer(menu, settings, frame.logical_height)
                         menu <- step.menu
                         previous_elapsed_nanos <- frame.elapsed_nanos
                         if step.result == CourseControls::MenuResult.Closed:
@@ -164,6 +166,7 @@
                             else:
                                 settings <- CourseAccess::adjust(settings, menu.selected - CourseControls::SLOT_COUNT, step.delta)
                             _ = try layout_hud(legend, instruction, settings)
+                            layout_height <- -1
                             _ = try refresh_legend(legend, menu.keymap, pads, settings, menu.selected)
                             try refresh_device_rows(legend, device_picks)
                             _ = announce_row(menu.keymap, pads, settings, menu.selected)
@@ -332,6 +335,11 @@
                             _ = try advance_rigs(rigs, elapsed_delta.f32() / 1000000.0)
                         else:
                             previous_elapsed_nanos <- frame.elapsed_nanos
+                    selected_row: i64 = menu.selected if menu_open else -1
+                    if layout_height != frame.logical_height or layout_selected != selected_row:
+                        try fit_legend(legend, settings, frame.logical_height, selected_row)
+                        layout_height <- frame.logical_height
+                        layout_selected <- selected_row
                     caption_shown <- try show_caption(legend, captions, settings, frame.elapsed_nanos, caption_shown)
                     # Resize applies on every running frame, whatever input arrived.
                     if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:

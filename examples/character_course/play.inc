@@ -1,6 +1,6 @@
 # Interactive play loop, HUD text and the rebind menu, included in the
 # CharacterCourse private section.
-        # Nine rows: six key slots, then the three CourseAccess settings. The
+        # Sixteen rows cover keys, accessibility, pads and devices. The
         # panel backs the HUD in high contrast; `caption` names sound events.
         struct Legend:
             panel: mutable RenderScene::OverlayPanelHandle
@@ -177,13 +177,18 @@
                 CourseControls::step(menu, CourseControls::MenuResult.Ignored)
 
         # Like `drain_menu`: stops at Adjusted so each change is applied first.
-        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&) -> CourseControls::MenuStep:
+        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&, height: i32) -> CourseControls::MenuStep:
             current: mutable CourseControls::MenuStep = CourseControls::step(menu, CourseControls::MenuResult.Ignored)
             open: mutable bool = true
             scale: CourseAccess::Settings = settings
+            visible: i64 = legend_visible_rows(settings, height)
+            first: i64 = CourseMenuView::first(menu.selected, visible)
             event: mutable Application::PointerEvent = zeroed
-            while open and Application::next_pointer_event(&event) |current, open, scale, event|:
-                next: CourseControls::MenuStep = menu_pointer_event(current.menu, &scale, event)
+            while open and Application::next_pointer_event(&event) |current, open, scale, event, first, visible|:
+                next: mutable CourseControls::MenuStep = menu_pointer_event(current.menu, &scale, event)
+                if event.kind == Application::PointerEventKind.Button and event.pressed:
+                    slot: i64 = legend_hit(&scale, event.x, event.y)
+                    next <- CourseControls::menu_pointer(current.menu, CourseMenuView::hit(first, visible, slot), event.button)
                 if next.result != CourseControls::MenuResult.Ignored:
                     current <- next
                 open <- false if next.result == CourseControls::MenuResult.Adjusted
@@ -268,6 +273,33 @@
             try RenderScene::set_overlay_panel_size(legend.panel, legend_key_offset(settings) + CourseAccess::scaled(settings, Tune::LEGEND_KEY_WIDTH) + margin * 2.0,
                 caption_y - legend_row_y(settings, -1) + CourseAccess::scaled(settings, Tune::LEGEND_ROW_HEIGHT) + margin * 2.0)
             try RenderScene::set_overlay_panel_visible(legend.panel, settings.high_contrast)
+
+        # Reserve the header, caption and bottom margin without shrinking text.
+        def legend_visible_rows(settings: CourseAccess::Settings&, height: i32) -> i64:
+            row_height: f32 = CourseAccess::scaled(settings, Tune::LEGEND_ROW_HEIGHT)
+            available: f32 = height.f32() - legend_row_y(settings, 0) - row_height - 18.0
+            CourseMenuView::count((available / row_height).i64())
+
+        def fit_legend(legend: Legend&, settings: CourseAccess::Settings&, height: i32, selected: i64) -> void error[RenderScene::RenderSceneError]:
+            visible: i64 = legend_visible_rows(settings, height)
+            first: i64 = CourseMenuView::first(selected, visible)
+            labels: RenderScene::OverlayTextHandle[16] = legend.labels
+            keys: RenderScene::OverlayTextHandle[16] = legend.keys
+            scale: CourseAccess::Settings = settings
+            key_x: f32 = Tune::LEGEND_X + legend_key_offset(settings)
+            for row in 0..<CourseControls::MENU_ROWS |labels, keys, scale, visible, first, key_x|:
+                shown: bool = row >= first and row < first + visible
+                try RenderScene::set_overlay_text_visible(labels[row.usize()], shown)
+                try RenderScene::set_overlay_text_visible(keys[row.usize()], shown)
+                if shown:
+                    y: f32 = legend_row_y(&scale, row - first)
+                    try RenderScene::set_overlay_text_position(labels[row.usize()], Tune::LEGEND_X, y)
+                    try RenderScene::set_overlay_text_position(keys[row.usize()], key_x, y)
+            caption_y: f32 = legend_row_y(settings, visible)
+            try RenderScene::set_overlay_text_position(legend.caption, caption_anchor_x(settings), caption_y)
+            margin: f32 = CourseAccess::scaled(settings, Tune::LEGEND_PANEL_MARGIN)
+            try RenderScene::set_overlay_panel_size(legend.panel, legend_key_offset(settings) + CourseAccess::scaled(settings, Tune::LEGEND_KEY_WIDTH) + margin * 2.0,
+                caption_y - legend_row_y(settings, -1) + CourseAccess::scaled(settings, Tune::LEGEND_ROW_HEIGHT) + margin * 2.0)
 
         # The instruction line scales and recolours with the legend.
         def layout_hud(legend: Legend&, instruction: RenderScene::OverlayTextHandle, settings: CourseAccess::Settings&) -> void error[RenderScene::RenderSceneError]:

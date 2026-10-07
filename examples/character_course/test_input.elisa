@@ -33,6 +33,12 @@ module CourseTestInput:
         @callconv(c)
         extern elisa_application_v1_test_push_focus_gained() -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_test_set_window_size(width: i32, height: i32) -> i32
+
+        @callconv(c)
+        extern elisa_application_v1_test_trace_cell_memory(warm_gpu: i64, warm_cpu: i64, gpu: i64, cpu: i64)
+
         def native_key(key: Key) -> i32:
             match key:
                 Key.Right: NativeKey::RIGHT
@@ -54,3 +60,13 @@ module CourseTestInput:
 
         def regain_focus() -> bool:
             elisa_application_v1_test_push_focus_gained() == 0
+
+        def resize(width: i32, height: i32) -> bool:
+            elisa_application_v1_test_set_window_size(width, height) == 0
+
+        def window_matches(width: i32, height: i32) -> bool:
+            frame: mutable Application::FrameInfo = zeroed
+            Application::frame_info(&frame) and frame.logical_width == width and frame.logical_height == height and frame.pixel_width > 0 and frame.pixel_height > 0
+
+        def trace_cell_memory(warm_gpu: i64, warm_cpu: i64, gpu: i64, cpu: i64) -> void:
+            elisa_application_v1_test_trace_cell_memory(warm_gpu, warm_cpu, gpu, cpu)

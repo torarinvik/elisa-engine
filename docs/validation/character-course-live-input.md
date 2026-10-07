@@ -216,3 +216,11 @@ proof passed 41/41 obligations with all 41 kernel certificates replayed;
 That proof covers pure phase policy, including repeated loss and terminal
 states; the native smoke covers the runtime path. Results remain in
 `build/native-smoke/character-course-live-input-smoke.json` and its log.
+
+## Resize regression (2026-10-07)
+
+The latest run passed in 171.274 seconds with real window changes from
+1280×720 to 600×400 while paused and back during play, then the complete route
+and outcome captures. The retained PNGs are now 2560×1440 on this display.
+See [`course-resize.md`](course-resize.md) for paging policy evidence, the
+capture-allocation fix and the controls/DPI acceptance that remains open.

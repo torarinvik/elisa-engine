@@ -44,7 +44,10 @@ resize tests and course HUD helpers are the starting point for item 2.
 Focus recovery passed the full native course smoke on 2026-10-07 (167.433s),
 plus the focused state test and 41/41 implementation-linked proof obligations.
 Synthetic SDL focus loss/restoration is established; an OS window switch
-remains external acceptance. Resize/HUD behavior is the next executable slice.
+remains external acceptance. Resize/HUD behavior is the current slice. Paging policy passed its exhaustive
+test and 20/20 proof obligations; real pause/play resize plus full traversal
+passed (171.274s). Small controls captures and pointer checks remain open.
+See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live
 entity validation under its read token. The native effect smoke and the

@@ -1,5 +1,13 @@
 [
  {
+  "name": "character-course-menu-view",
+  "source": "test/character_course_menu_view.elisa",
+  "flags": [],
+  "binary": "build/character-course-menu-view-test",
+  "args": [],
+  "message": "Course menu viewport tests passed."
+ },
+ {
   "name": "character-course-focus",
   "source": "test/character_course_focus.elisa",
   "flags": [],

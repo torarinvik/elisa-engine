@@ -58,3 +58,11 @@ extern "C" int32_t elisa_application_v1_test_push_focus_gained() {
     event.window.windowID = SDL_GetWindowID(window);
     return SDL_PushEvent(&event) ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
 }
+
+extern "C" void elisa_application_v1_test_trace_cell_memory(int64_t warm_gpu,
+    int64_t warm_cpu, int64_t gpu, int64_t cpu) {
+    std::fprintf(stderr, "course cell memory warm_gpu=%lld warm_cpu=%lld gpu=%lld cpu=%lld\n",
+        static_cast<long long>(warm_gpu), static_cast<long long>(warm_cpu),
+        static_cast<long long>(gpu), static_cast<long long>(cpu));
+    std::fflush(stderr);
+}

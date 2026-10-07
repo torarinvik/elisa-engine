@@ -311,7 +311,10 @@ module CourseCells:
             else:
                 gpu_ok: bool = CellMemoryBudget::within(cells.warm_gpu, sample.gpu_usage, CellTune::GPU_ALLOWANCE)
                 cpu_ok: bool = CellMemoryBudget::within(cells.warm_cpu, sample.cpu_footprint, CellTune::CPU_ALLOWANCE)
-                cells.violations <- cells.violations + 1 if not gpu_ok or not cpu_ok
+                if not gpu_ok or not cpu_ok:
+                    if cells.violations == 0:
+                        CourseTestInput::trace_cell_memory(cells.warm_gpu, cells.warm_cpu, sample.gpu_usage, sample.cpu_footprint)
+                    cells.violations <- cells.violations + 1
             0
 
         def cells_push(cells: mutable Cells&, key: CourseTestInput::Key, down: bool) -> void:

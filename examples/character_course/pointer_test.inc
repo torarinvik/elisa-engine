@@ -77,6 +77,6 @@
             settings: CourseAccess::Settings = CourseAccess::defaults()
             menu: CourseControls::Menu = CourseControls::Menu(CourseControls::defaults())
             _ = CourseControls::discard_pointer()
-            idle: CourseControls::MenuStep = drain_menu_pointer(menu, &settings)
+            idle: CourseControls::MenuStep = drain_menu_pointer(menu, &settings, 900)
             return 165 if idle.result != CourseControls::MenuResult.Ignored or idle.menu.selected != menu.selected or CourseControls::discard_pointer() != 0
             0

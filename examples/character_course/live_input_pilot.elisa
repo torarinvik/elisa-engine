@@ -71,6 +71,8 @@ module CourseLiveInputPilot:
             FALLING: i32 = 12
             CAPTURING_WIN: i32 = 13
             CAPTURING_FALL: i32 = 14
+            PAUSE_RESIZED: i32 = 15
+            PLAY_RESIZED: i32 = 16
 
         const module Failure:
             INJECTION: i32 = 130
@@ -78,6 +80,7 @@ module CourseLiveInputPilot:
             COURSE_FAILED: i32 = 132
             CAPTURE: i32 = 145
             FOCUS_CLEAR: i32 = 146
+            RESIZE: i32 = 147
 
         const module Capture:
             WIN_PATH_VARIABLE: cstr = "ELISA_CHARACTER_COURSE_WIN_CAPTURE_PATH"
@@ -199,7 +202,14 @@ module CourseLiveInputPilot:
                         else:
                             fail(pilot, Failure::INJECTION)
                 elif pilot.stage == Stage::RESUME_RELEASED and paused:
-                    if CourseTestInput::push(CourseTestInput::Key.Pause, true):
+                    if CourseTestInput::resize(600, 400):
+                        pilot.stage <- Stage::PAUSE_RESIZED
+                    else:
+                        fail(pilot, Failure::RESIZE)
+                elif pilot.stage == Stage::PAUSE_RESIZED and paused:
+                    if not CourseTestInput::window_matches(600, 400):
+                        fail(pilot, Failure::RESIZE)
+                    elif CourseTestInput::push(CourseTestInput::Key.Pause, true):
                         pilot.pause_held <- true
                         pilot.stage <- Stage::RESUMING
                     else:
@@ -211,9 +221,17 @@ module CourseLiveInputPilot:
                     if pause_released and forward_pressed:
                         pilot.pause_held <- false
                         pilot.forward_held <- true
-                        pilot.stage <- Stage::WALKING
+                        if CourseTestInput::resize(1280, 720):
+                            pilot.stage <- Stage::PLAY_RESIZED
+                        else:
+                            fail(pilot, Failure::RESIZE)
                     else:
                         fail(pilot, Failure::INJECTION)
+                elif pilot.stage == Stage::PLAY_RESIZED:
+                    if CourseTestInput::window_matches(1280, 720):
+                        pilot.stage <- Stage::WALKING
+                    else:
+                        fail(pilot, Failure::RESIZE)
                 elif pilot.stage == Stage::RESTARTING:
                     near_start: bool = x >= Tune::RESTART_X - Tune::RESTART_TOLERANCE and x <= Tune::RESTART_X + Tune::RESTART_TOLERANCE and y >= Tune::RESTART_Y - Tune::RESTART_TOLERANCE and y <= Tune::RESTART_Y + Tune::RESTART_TOLERANCE and z >= Tune::RESTART_Z - Tune::RESTART_TOLERANCE and z <= Tune::RESTART_Z + Tune::RESTART_TOLERANCE
                     if near_start:
