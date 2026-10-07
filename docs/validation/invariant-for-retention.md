@@ -318,3 +318,22 @@ so the total grows by four while eight additional certificates replay. The
 uncached sweep remains 71/73, failing only both ActionInput reports. Full matrix
 qualification and later loop-index facts remain open. Candidate descriptions
 above are historical stages, not the final acceptance counts.
+
+## Remaining loop-index identity diagnostic
+
+The first failed actual apply index-lower goal is 0 <= Ident(index), with an
+identifier positioned at a later branch. Its surviving scalar and signed-width
+markers instead describe Tuple(Ident(index), binder-source-offset), the original
+lexical loop atom. The range inequalities are absent. Bounds repair therefore
+needs consistent binder identity through mutation and joins, not another static
+array count fact. Source positions and original marker shapes are retained in
+ignored apply-original.json.
+
+Minimal branch-local usize, pure bool-call and pure float-call variants of the
+conditional-record reproducer all prove (9/9, 12/12 and 10/10 respectively),
+zero gaps. In actual apply, eliminating fabsf calls leaves 71/91 with 20 findings;
+a literal magnitude leaves 67/87 with 20, and removing the magnitude local
+leaves the same 67/87. Removing either code or chord condition alone retains
+22 findings. None is an accepted production rewrite. These observations rule
+out a branch-local declaration or pure call alone and narrow the next repair
+to the actual sequence of writes and joins that severs lexical binder identity.
