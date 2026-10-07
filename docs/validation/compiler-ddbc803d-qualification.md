@@ -123,3 +123,13 @@ mismatches clear; the changed prelude has no diagnostics. The bounded build
 still exits 1 on other errors (5.23 seconds; sampled peak RSS 724,688 KiB).
 Artifact: `build/validation/elisascript-ddbc803d-char-cstr-build.log` and JSON.
 Runtime character formatting remains unverified.
+
+The view-to-string copy helper now preserves `cstr` through empty, short and
+long NUL-producing copy paths; its three callers no longer cast the result
+back to `u8&`. This boundary matches the actual terminated output. The bounded
+compile reports no diagnostics on the changed helper/callers, but the runtime
+entrypoint still has the same 31 diagnostics: this change establishes no
+reduction in the remaining compiler failures. The build exits 1 normally in
+11.53 seconds, sampled peak RSS 725,872 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-view-copy-build.log` and watchdog JSON.
+Copy behavior remains unexecuted on the selected compiler.
