@@ -34,3 +34,34 @@ No production replay change has been made in this diagnosis.
 Probe source, executable and build log: `collection-pop-trace-probe.elisa`,
 `collection-pop-trace-probe` and `collection-pop-trace-probe-build.log`, all
 under `build/validation`.
+
+## Repair accepted — prover bf0b403e
+
+The producer now records a literal captured pop value as `collection-pop-value`.
+Replay independently reconstructs a unique source owner and exact complete
+binding span, matching primitive darray element/local types and mutable-reference
+receiver. It requires a source nonempty guard and last-slot literal equality,
+refuses user functions named `pop`, unsupported scopes/imports and earlier
+non-contract statements, and permits only later same-receiver pops and return
+of the immutable capture. It never admits the temporary indexed equation as
+a post-pop fact. Count-only derivations omit premises naming the captured local.
+Other nonliteral candidate shapes retain their derivation path; this source
+route currently covers literal last-slot contracts with the audited body shape.
+
+- Original fixture: **8/8 certificates replay**, zero gaps.
+- Existing five rejected value/count claims: refused with zero replay gaps.
+- Compiled source controls: 13 cases, including wrong literal/local, start and
+  end span shifts, first-slot substitution, local write, prior pop, user pop
+  function, owned receiver, missing guard and element mismatch refusals; honest
+  captures and a later same-receiver pop accepted.
+- Uncached engine sweep: **73/73**, status 0 on final products.
+- Kernel inventory: **10 tables, 199 entries match source**. Added the new
+  boundary kind and documented four existing syntax/width helper dependencies
+  after inspecting their implementations; no checker predicate changed there.
+
+Logs under `build/validation`: `proof-pop-snapshot-final-regressions.log`,
+`proof-pop-snapshot-builtin-controls.log`, `proof-pop-snapshot-final-engine-sweep.log`,
+`proof-pop-snapshot-builtin-build.log` and `proof-pop-snapshot-clean-build.log`.
+Initial backend match declines are retained in build/retry logs; small helpers
+compile without dropping checks. Full matrix/shared/native qualification remains
+open and the terminal 72-failure matrix predates this repair.
