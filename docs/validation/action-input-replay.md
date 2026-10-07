@@ -474,3 +474,39 @@ snapshot diagnostic cases again match their baseline counts on both JSON routes
 left enabled. Next replace the index-specific type fact with a source-checked
 fixed-count fact and ordinary certificate derivation, then implement copied-bound
 pre-state replay with the uncovered premises visible.
+
+## Fixed-array count projection repaired — 2026-10-07
+
+Prover `95abf650`, clean pair `524c32109d4f4e3b9a2b3725c3ede70b`, replaces the
+single-index and slice index-specific type facts with the genuine type property
+`object.count == literal_extent`. The count also receives its usize/scalar type
+witness independently of aggregate scalar-walk budget. The ordinary upper-bound
+certificate must now replay the index or endpoint premises. Obligation counts
+remain unchanged. IndexN already certifies the literal dimension bound directly;
+the dynamic signed-count conversion route remains a separate review task.
+
+`test_fixed_count_projection.py` passes seven positive/negative fixtures, including
+nested record fields (26/26), literal indices and slices. Certificates must contain
+a count equality and cannot contain their own upper goal as a type-bound premise.
+Loop-state, checked block-result and search controls pass. The new suite is wired
+into the full matrix. Logs: `proof-fixed-count-controls.log`,
+`proof-fixed-count-loop-state.log`, `proof-fixed-count-block-controls.log`,
+`proof-fixed-count-search-controls.log`, `proof-fixed-count-clean-build.log` under
+`build/validation/`.
+
+The change exposes unsupported source-copy equations previously hidden by the
+index-specific fact. Actual input context is now 230/264 proven/replayed, 32
+findings and two replay gaps (`fixed-count-action-input-current.json`).
+AudioAnimEvents is 54/56 with two replay gaps in anim_emit_event and push_event
+(`fixed-count-audio-anim-current.json`). Both use an immutable scalar field copy
+at the immediately following array write. The minimal scalar-copy case now has
+3/5 proven/replayed, one ordinary finding and one replay gap; its passing local
+guard/parameter controls and invalid controls remain captured by the updated
+explicitly diagnostic script (`proof-fixed-count-snapshot-controls.log`).
+
+The full uncached engine sweep is now 70/73: ActionInput context/deadzone and
+AudioAnimEvents fail (`proof-fixed-count-engine-sweep.log`). This is incomplete
+qualification, not a claim of a runtime behavior regression or completed snapshot
+repair. Next authenticate a scalar field copy at its next pure use before any
+source-field mutation; then implement bounds captured at declaration for later
+uses across mutation. Do not restore the index-specific type fact to hide gaps.
