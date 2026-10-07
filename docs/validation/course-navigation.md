@@ -121,10 +121,12 @@ controller and renderer:
   staged and checked. See
   [`course-navigation-links.md`](course-navigation-links.md). Tiled or cached
   bakes and debug overlays remain open (N01).
-- Rig playback uses the engine's fixed-rate clip sampler (C02). Production ozz
-  sampling contexts are still not integrated or measured. The two rigs use
-  separate `create_mesh` instances, each with its own clip state; R08 shared
-  animated clones remain open.
+- The keyed course rig now uses the shared production Ozz animation library;
+  legacy packages retain the fixed-rate fallback. The native render smoke
+  checks independent playback and allocation-free steady ticks, and the
+  optimized clone benchmark records keyed CPU p50/p95/p99. The two posted
+  course rigs use separate `create_mesh` instances; animated clone ownership
+  and shared source/library state are covered by group 236 and the benchmark.
 - The rigs' rendered motion is checked through playback progress and the
   existing SDL3/Metal skinning smokes. Nobody has yet watched the guide patrol
   or the rigs in manual play.

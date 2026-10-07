@@ -91,12 +91,48 @@ with output in `build/native-smoke/character-course-smoke.log`. That gameplay
 run covers the route and lifecycle; the render crowd test separately asserts
 keyed ozz source selection and allocation behavior.
 
+## Optimized keyed clone benchmark (2026-10-07)
+
+Run from the engine root:
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN=../Elisa-compiler/bin/elisac-stage1 \
+/opt/homebrew/bin/python3.14 scripts/animation_ozz_benchmark.py
+```
+
+The harness builds both the Elisa archive and native bridge with
+`-O2`, then runs three isolated SDL3/Metal processes on macOS 27.0.1 / Apple
+M5. Each process creates eight instances from one keyed two-joint guide
+package, asserts that they share one decoded package and one immutable Ozz
+rig/clip library, and warms up for 300 group updates. Each of 600 measured
+samples times eight public `advance_animation` calls with independent clip
+speeds. The allocation probe reports zero allocations across the 4,800
+measured calls in each process.
+
+| Run | p50 µs / 8 instances | p95 µs | p99 µs | max µs | sampled CPU footprint peak | sampled GPU allocation peak |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 27.750 | 31.041 | 31.209 | 33.917 | 264,602,872 B | 400,392,192 B |
+| 2 | 28.291 | 29.958 | 30.083 | 30.625 | 257,951,064 B | 400,392,192 B |
+| 3 | 27.000 | 27.250 | 27.416 | 35.292 | 245,302,592 B | 400,392,192 B |
+
+The timed region covers animation API work only; it does not pump or render a
+frame, so no GPU frame-time claim is made. Memory is sampled before asset
+creation and every tenth measured update, outside the timed region; the table
+reports the highest sampled values, not an OS high-water mark. This synthetic
+two-joint fixture is a path-throughput baseline, not a production-rig target.
+Raw nanosecond samples and build hashes are in
+`build/animation-ozz-benchmark.json` (report SHA-256
+`8b07122b05a33ec3dd83e2e238422aa98118951509209493051877f725fad241`;
+executable SHA-256 `757a39ee957040a016ca7bbc0345a36be5816d8794dc46a408894f7308496847`).
+
 ## Gaps
 
 - The keyed source is opt-in at cook time; legacy assets remain on fixed-rate
   tracks until recooked with the `.anim` sidecar option.
 - First binding a clip set still prepares contexts and allocates. Steady-state
-  ticks allocate nothing. No CPU-time or p95 benchmark covers the render-scene
-  keyed path, and the ozz service test is not in `run_boundary_sanitized.py`.
+  ticks allocate nothing. The benchmark covers the synthetic two-joint guide
+  rig and does not establish costs for larger authored rigs; the ozz service
+  test is not in `run_boundary_sanitized.py`.
 - No new Elisa source policy was added, so the proof is unchanged:
   `proof/animation_package_index.elisa` remains proved/replayed at 110/110.

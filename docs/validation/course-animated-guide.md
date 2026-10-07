@@ -71,8 +71,12 @@ Both edits were reverted, and `walker.inc` matches the verified copy.
   scene samples it through the shared ozz library. The native crowd check
   asserts keyed source binding, independent playback, and zero allocations
   over 120 steady ticks; legacy packages continue through the fixed-rate
-  fallback. The first bind still allocates, and CPU-time/p95 measurement remains
-  open (C02; see `animation-ozz-service.md`).
-- Each rig is a separate `create_mesh` instance. Shared animated clones and
-  per-frame Elisa-sampled pose submission (R08) remain open.
+  fallback. The first bind still allocates. An optimized eight-instance keyed
+  clone benchmark records p50/p95/p99 and sampled memory in
+  [`animation-ozz-service.md`](animation-ozz-service.md).
+- The course creates its posted rigs and walker with separate `create_mesh`
+  calls. The animated-clone API shares the decoded package and immutable Ozz
+  library while retaining distinct Wicked meshes and armatures; group 236 and
+  the optimized benchmark cover that ownership path. `SampledPoseSchedule`
+  also submits per-frame Elisa-sampled poses (R08).
 - Nobody has yet watched the walker in manual play.

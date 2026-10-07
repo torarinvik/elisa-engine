@@ -95,4 +95,19 @@ extern "C" int32_t elisa_render_scene_v1_test_animated_asset_owners(int64_t hand
     if (!valid_handle(state, handle, slot) || state.instances[slot].animated_asset == nullptr) return -1;
     return int32_t(state.instances[slot].animated_asset.use_count());
 }
+
+// 1 when both animated instances retain the same immutable ozz rig/clip library.
+extern "C" int32_t elisa_render_scene_v1_test_ozz_library_shared(
+    int64_t first_handle, int64_t second_handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return 0;
+    size_t first = MAX_INSTANCES;
+    size_t second = MAX_INSTANCES;
+    if (!valid_handle(state, first_handle, first) || !valid_handle(state, second_handle, second) ||
+        first == second) return 0;
+    const auto& first_library = state.instances[first].ozz_library;
+    const auto& second_library = state.instances[second].ozz_library;
+    return first_library != nullptr && first_library == second_library ? 1 : 0;
+}
 #endif

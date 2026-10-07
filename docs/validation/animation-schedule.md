@@ -35,9 +35,13 @@ checked double-buffered submission. The native smoke samples an endpoint pose,
 submits it through Wicked, and checks that an out-of-range tick maps to
 `RenderSceneError.InvalidValue`.
 
-The scheduler currently advances Wicked clip players already loaded by a
-rendered instance. Feeding freshly sampled Elisa poses from the scheduler each
-frame, and sharing one source asset among animated clones, remain open work.
+`RenderSceneAnimationSchedule` advances Wicked clip players already loaded by
+a rendered instance. `SampledPoseSchedule` separately feeds freshly sampled
+Elisa poses every frame. Animated clones share their decoded cooked package;
+their Wicked mesh components, armatures and bones stay separate so each can
+deform and submit a pose independently. Clone ownership is covered by group
+236 (`test/render_scene_animation_clone_native.elisa`), and sampled poses by
+group 237 (`test/render_scene_pose_schedule_native.elisa`).
 
 ## Sampled Elisa poses each frame (2026-10-02)
 

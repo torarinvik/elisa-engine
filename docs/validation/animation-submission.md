@@ -21,8 +21,9 @@ through the public Elisa API, advances Wicked's armature update, and verifies
 each bone's state and bounds independently. It rejects an in-flight second
 submission, verifies explicit completion for both instances, and destroys both
 instances. The native bridge probe independently submits a morph weight and
-checks Wicked's morph-target state and owner validation. Elisa-driven runtime
-scheduling remains open R08 work.
+checks Wicked's morph-target state and owner validation. The clip-player and
+Elisa-sampled pose schedules are now implemented and covered separately in
+[`animation-schedule.md`](animation-schedule.md).
 
 ## Animated clones and device-consumed completion (2026-10-02)
 

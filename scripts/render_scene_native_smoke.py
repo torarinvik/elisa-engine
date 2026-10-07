@@ -311,10 +311,8 @@ def main() -> int:
     if not native_main.is_file():
         print(f"native smoke main does not exist: {native_main}", file=sys.stderr)
         return 2
-    status = run([
-        compiler, "-emit", "c-archive", "-o", str(archive),
-        str(native_main),
-    ])
+    status = run([compiler, *(["-O2"] if os.environ.get("ELISA_RENDER_SCENE_OPTIMIZE") == "1" else []),
+        "-emit", "c-archive", "-o", str(archive), str(native_main)])
     if status != 0:
         return status
     manifest = archive.with_suffix(".elisa-abi.json")
@@ -329,7 +327,8 @@ def main() -> int:
     # The bridge uses no RTTI; avoid requiring RenderPath3D typeinfo from
     # Wicked builds configured with WICKED_ENABLE_RTTI=OFF.
     command = [
-        cxx, "-std=c++17", "-O0", "-fno-rtti", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
+        cxx, "-std=c++17", "-O2" if os.environ.get("ELISA_RENDER_SCENE_OPTIMIZE") == "1" else "-O0",
+        "-fno-rtti", "-include", "filesystem", "-DWI_UNORDERED_MAP_TYPE=2",
         "-DWICKED_CMAKE_BUILD", "-DSDL3=1", "-D__OBJC_BOOL_IS_BOOL=1",
         "-DELISA_RENDER_SCENE_TEST_PROBE=1",
         "-I", str(build), "-I", str(ROOT / "native"), "-I", str(ROOT / "dependencies/meshoptimizer"),

@@ -1,0 +1,193 @@
+# Optimized keyed-ozz benchmark: time eight public RenderScene animation
+# advances per sample after binding and warming the shared source library.
+include "../src/runtime/application.elisa"
+include "../src/runtime/render_scene.elisa"
+include "../src/runtime/render_scene_animation_submission.elisa"
+include "../src/runtime/application_memory.elisa"
+include "../src/math/geometry.elisa"
+
+extend RenderScene:
+    public:
+        def native_benchmark_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
+
+@callconv(c)
+extern putchar(c: i32) -> i32
+@callconv(c)
+extern fflush(stream: i64) -> i32
+@callconv(c)
+extern elisa_render_scene_v1_test_animation_allocations() -> u64
+@callconv(c)
+extern elisa_render_scene_v1_test_animated_asset_shared(first: i64,
+    second: i64, expected_owners: i32) -> i32
+@callconv(c)
+extern elisa_render_scene_v1_test_ozz_library_shared(first: i64, second: i64) -> i32
+
+const module Setup:
+    WARMUP: i32 = 300
+    SAMPLES: usize = 600
+    DELTA: f32 = 0.016666667
+
+def emit_metric(kind: i32, value: u64) -> bool:
+    mutable digits: u64[20] = zeroed
+    mutable n: u64 = value
+    mutable count: usize = 0
+    while count == 0 or n > 0:
+        digits[count] <- n % 10
+        n <- n / 10
+        count <- count + 1
+    if kind == 0:
+        for c in [97, 110, 105, 109, 95, 110, 115, 61]:
+            _ = putchar(c)
+    elif kind == 1:
+        for c in [99, 112, 117, 95, 115, 97, 109, 112, 108, 101, 95, 112, 101, 97, 107, 95, 98, 121, 116, 101, 115, 61]:
+            _ = putchar(c)
+    else:
+        for c in [103, 112, 117, 95, 115, 97, 109, 112, 108, 101, 95, 112, 101, 97, 107, 95, 98, 121, 116, 101, 115, 61]:
+            _ = putchar(c)
+    while count > 0:
+        count <- count - 1
+        _ = putchar((digits[count] + 48).i32())
+    putchar(10) == 10
+
+def spawn_clone(source: RenderScene::InstanceHandle) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+    try RenderScene::create_animated_mesh_instance(source, Geometry::transform_identity(),
+        RenderScene::Color{red: 0.8, green: 0.9, blue: 1.0, alpha: 1.0})
+
+def start(handle: RenderScene::InstanceHandle, speed: f32) -> i32:
+    catch RenderScene::play_animation(handle, "lift", true, speed, 0.0):
+        ok: 0
+        error failure: 1
+
+def advance_group(a: RenderScene::InstanceHandle, b: RenderScene::InstanceHandle,
+    c: RenderScene::InstanceHandle, d: RenderScene::InstanceHandle,
+    e: RenderScene::InstanceHandle, f: RenderScene::InstanceHandle,
+    g: RenderScene::InstanceHandle, h: RenderScene::InstanceHandle) -> i32:
+    first: i32 = catch RenderScene::advance_animation(a, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    second: i32 = catch RenderScene::advance_animation(b, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    third: i32 = catch RenderScene::advance_animation(c, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    fourth: i32 = catch RenderScene::advance_animation(d, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    fifth: i32 = catch RenderScene::advance_animation(e, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    sixth: i32 = catch RenderScene::advance_animation(f, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    seventh: i32 = catch RenderScene::advance_animation(g, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    eighth: i32 = catch RenderScene::advance_animation(h, Setup::DELTA):
+        ok: 0
+        error failure: 1
+    first + second + third + fourth + fifth + sixth + seventh + eighth
+
+def destroy(handle: RenderScene::InstanceHandle) -> i32:
+    catch RenderScene::destroy(handle):
+        ok: 0
+        error failure: 1
+
+def max_i64(a: i64, b: i64) -> i64:
+    b if b > a else a
+
+def exercise() -> i32:
+    config: Application::Config = Application::Config{
+        title: "Elisa Keyed Animation Benchmark", width: 320, height: 200, hidden: true,
+    }
+    return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+    initialized: i32 = catch RenderScene::initialize(320, 200, 10.0):
+        ok: 0
+        error failure: 1
+    return 2 if initialized != 0
+    initial_memory: ApplicationMemory::Sample = catch ApplicationMemory::sample():
+        value: value
+        error failure: return 3
+    source: RenderScene::InstanceHandle = catch RenderScene::create_mesh(
+        "examples/character_course/rigs/guide_rig.pkg", Geometry::transform_identity(),
+        RenderScene::Color{red: 0.8, green: 0.9, blue: 1.0, alpha: 1.0}):
+        value: value
+        error failure: return 4
+    b: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    c: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    d: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    e: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    f: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    g: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    h: RenderScene::InstanceHandle = catch spawn_clone(source):
+        value: value
+        error failure: return 5
+    source_handle: i64 = RenderScene::native_benchmark_handle(source)
+    b_handle: i64 = RenderScene::native_benchmark_handle(b)
+    return 6 if elisa_render_scene_v1_test_animated_asset_shared(source_handle, b_handle, 8) != 1
+    p0: i32 = start(source, 1.0)
+    p1: i32 = start(b, 0.5)
+    p2: i32 = start(c, 0.75)
+    p3: i32 = start(d, 1.25)
+    p4: i32 = start(e, 0.9)
+    p5: i32 = start(f, 1.1)
+    p6: i32 = start(g, 0.6)
+    p7: i32 = start(h, 1.4)
+    return 7 if p0 + p1 + p2 + p3 + p4 + p5 + p6 + p7 != 0
+    return 8 if elisa_render_scene_v1_test_ozz_library_shared(source_handle, b_handle) != 1
+    loaded_memory: ApplicationMemory::Sample = catch ApplicationMemory::sample():
+        value: value
+        error failure: return 7
+    mutable cpu_peak: i64 = max_i64(initial_memory.cpu_footprint, loaded_memory.cpu_footprint)
+    mutable gpu_peak: i64 = max_i64(initial_memory.gpu_usage, loaded_memory.gpu_usage)
+    mutable warmup: i32 = 0
+    while warmup < Setup::WARMUP:
+        return 9 if advance_group(source, b, c, d, e, f, g, h) != 0
+        warmup <- warmup + 1
+    before: u64 = elisa_render_scene_v1_test_animation_allocations()
+    mutable samples: u64[Setup::SAMPLES] = zeroed
+    for sample in 0..<Setup::SAMPLES |samples|:
+        started: u64 = Application::uptime_nanos()
+        return 10 if advance_group(source, b, c, d, e, f, g, h) != 0
+        samples[sample] <- Application::uptime_nanos() - started
+        if sample % 10 == 0:
+            memory: ApplicationMemory::Sample = catch ApplicationMemory::sample():
+                value: value
+                error failure: return 11
+            cpu_peak <- max_i64(cpu_peak, memory.cpu_footprint)
+            gpu_peak <- max_i64(gpu_peak, memory.gpu_usage)
+    after: u64 = elisa_render_scene_v1_test_animation_allocations()
+    return 12 if after != before
+    for sample in 0..<Setup::SAMPLES |samples|:
+        return 13 if not emit_metric(0, samples[sample])
+    return 14 if not emit_metric(1, cpu_peak.u64()) or not emit_metric(2, gpu_peak.u64())
+    _ = fflush(0)
+    r0: i32 = destroy(source)
+    r1: i32 = destroy(b)
+    r2: i32 = destroy(c)
+    r3: i32 = destroy(d)
+    r4: i32 = destroy(e)
+    r5: i32 = destroy(f)
+    r6: i32 = destroy(g)
+    r7: i32 = destroy(h)
+    return 15 if r0 + r1 + r2 + r3 + r4 + r5 + r6 + r7 != 0
+    0
+
+def main() -> i32:
+    result: i32 = exercise()
+    _ = fflush(0)
+    return 16 if not Application::shutdown()
+    result
