@@ -99,3 +99,31 @@ Next concrete input prerequisite is qualified loop-range bounds: the minimal
 `0..<Limits::CAP` with literal `0..<4` checks3/3. Keep the real source spelling
 and reconstruct the source constant/loop bound rather than rewriting engine
 loops. Evidence files are under `build/validation/`.
+
+## Qualified constants inside captured value loops
+
+Prover `65dcf0fa` traverses qualified constant mentions and rewrites inside
+original value-block statements/yields, including returned and initializer
+loops. Namespace shadow scans now inspect nested expressions and loop/branch
+headers; ambiguous or shadowed names refuse. Original engine sources and
+contracts remain unchanged.
+
+Strict O2 pair `8483683a13bb4c07860f18ec80dbb21e` passes seven controls
+on both routes: returned, initializer and private loops; oversized range,
+parameter shadow and nested returned/initializer body shadows refuse. The
+record-array controls and kernel inventory also pass. The existing
+qualified_constants_body replay gap remains, so its full script is still red.
+No assertion was weakened to accommodate it.
+
+ActionInput now proves102/180 obligations (all102 replayed), with82 findings
+down from100. Changes in obligation count follow normalization of source
+constants; incomplete obligations remain visible. Sound assets stays153/157.
+Fresh uncached engine sweep remains69/73 with the same four failed files.
+Evidence: `build/validation/prover-qualified-block-final-build.log`,
+`input-qualified-block.json` and `proof-qualified-block-sweep.log`.
+
+A minimal readonly record guard using `index >= 4 or not items[index].live`
+already proves3/3, retained as `record_short_circuit_index_control.elisa`.
+Thus the remaining ActionInput guard bounds must be isolated with mutable
+borrow/place qualifications rather than assuming short-circuit traversal is
+unimplemented. Opaque math-call summaries also remain a separate prerequisite.
