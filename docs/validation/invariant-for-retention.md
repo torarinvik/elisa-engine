@@ -241,3 +241,22 @@ proves 7/7 with zero gaps (capture-free and literal-write variants also 7/7;
 no-write 5/5). Capture syntax or an indexed write alone does not reproduce the
 remaining actual apply failures. Continue isolating its aggregate bindings,
 conditional field updates and callee effects without changing production shape.
+
+## Conditional record update loses fixed extent
+
+The minimal `test/repro/conditional_record_write_fixed_extent.elisa` in the prover
+reproduces an actual apply failure: inside a captured bounded loop, conditionally
+write Store.active, then read Store.flags[index]. It reports 7/8, one
+index-bounds-opaque finding, zero gaps and zero semantic errors. Removing the
+capture does not change this result. The earlier unconditional-write minimal
+case passes 7/7. The branch join deliberately invalidates a parameter's post-state
+when arms disagree (`proof_restore_branch_values`), to avoid turning a mutated
+field's equality to its old value into a reflexive proof. Recovering fixed array
+extent must preserve that mutation refusal rather than restoring the stale root.
+
+Actual apply source variants corroborate this path: original 63/89 with 26
+findings; remove last_active_device write 71/93 with 22 findings and no opaque
+bounds. Replacing state_slot with zero leaves 54/80 and the same 26 findings;
+removing refresh_action leaves 30/56 and the same 26. All have zero replay gaps.
+Removing loop captures produces 46/47 with a proposition-type finding, and is
+not an accepted production rewrite. Evidence is in ignored apply-*.json files.
