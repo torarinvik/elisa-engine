@@ -278,3 +278,17 @@ The fresh uncached engine sweep remains 68/73 with the same five failing files.
 Evidence: `build/validation/prover-indexed-snapshot-final-build.log`,
 `proof-indexed-snapshot-final-sweep.log`, and the prover's
 `docs/validation/indexed-scalar-snapshots.md`. Full qualification remains open.
+
+## Captured loop entry repair — 2026-10-07
+
+Prover `7ac19530` reconstructs the returned for-loop accumulator at the original
+invariant entry. Exact invariant positions, owner/declaration identity and absence
+of loop-state premises keep that initial equality out of preservation/exit.
+Compiler `63585c5f`, strict O2 pair `f37be51f77cc4de78d6deccdc2bc5134`:
+seven CLI controls, six direct source-predicate refusals at O0/O2 and existing
+call/frame/admission controls pass. AudioVirtual replays **109/109** with no gaps.
+The fresh uncached engine sweep improves to **69/73**; remaining files are
+`action_input_context`, `action_input_deadzone`, `audio_anim_events` and
+`sound_event_assets`. Evidence: `build/validation/prover-captured-entry-final-build.log`,
+`captured-entry-source-runtime.log`, `proof-captured-entry-final-sweep.log` and
+the prover's `docs/validation/captured-loop-entries.md`. Full gates remain open.
