@@ -445,3 +445,32 @@ The uncached engine sweep remains 71/73, only the two ActionInput reports failin
 other matrix failures and scalar field snapshots across actual record mutation
 remain open. Full matrix qualification still needs a fresh complete run after
 those fixes. No runtime source behavior changed in this slice.
+
+## Unsigned field-copy experiment and index trust shortcut — 2026-10-07
+
+A temporary producer call to `proof_transfer_numeric_snapshot_facts` for unsigned
+field initializers makes the minimal copy case 5/5 and a variant with no earlier
+index access 3/3. Stale current-field indexing, insufficient entry guard and
+mutable copy rebind remain refused. The actual ActionInput context remains
+232/264 with the same four bind_checked upper findings and zero replay gaps.
+Reports: `build/validation/field-copy-experiment-minimal.json`,
+`field-copy-no-prior-index.json`, and `field-copy-experiment-action-input.json`.
+
+The apparent minimal replay success does not validate the copied bound's
+pre-state premises. In `src/proof/check/index_checks.elisa`, the fixed-array route
+runs `proof_goal(index < literal_extent)` without recording its derivation and
+then imports `index < object.count` as a type-bound fact. The final certificate
+contains that upper goal itself under type-bound provenance. Replay can use this
+fact without the copied-bound proof step. A true array type fact is
+`object.count == literal_extent`; a particular index's bound needs its checked
+premises. Authenticate that conversion before claiming snapshot replay success.
+The signed-count conversion route and IndexN projection need the same review.
+
+The experiment was removed after its build finished. The original clean prover
+source was restored and paired generation `513c2f1efd2a4c118c0f00793529d9ca` was
+published successfully (`proof-field-copy-restore-build.log`). The original six
+snapshot diagnostic cases again match their baseline counts on both JSON routes
+(`field-copy-restored-controls.log`). No producer experiment is committed or
+left enabled. Next replace the index-specific type fact with a source-checked
+fixed-count fact and ordinary certificate derivation, then implement copied-bound
+pre-state replay with the uncovered premises visible.
