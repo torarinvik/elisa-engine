@@ -29,3 +29,11 @@ from the loop state. Direct constructor locals also need a separate substitution
 repair (zeroed fields currently become zeroed.count). Neither engine source was
 changed to hide those failures. Probes: audio-local-record-dispatch.elisa/JSON
 and local-record-index-fixed.json in build/validation. Full matrix remains open.
+
+## Captured mutation retention
+
+The paired product generation `33cfc686b86e4bc79273392cfb97d74f` retains explicitly traced fixed-array count equalities rooted in a live record binding across captured record mutation. Ordinary runtime count facts still require type-bound provenance.
+
+`python3.14 ../elisa-engine-proof/scripts/test_local_record_fixed_index.py` passes 13 cases through both whole-file and function routes. New controls accept counter mutation before an in-range element write, reject an oversized loop, reject a smaller shadowed record under the outer bound, and accept its own checked bound. The mutation reproducer improves from 3/4 to 4/4 with all certificates replayed and no gaps.
+
+This does not establish AudioAnimEvents completion: the isolated dispatch probe remains 38/42 with four findings, including its index upper bound. Both record-field and copied-slot guard probes still refuse that obligation. No audio production source was changed. Build log: `build/validation/proof-fixed-extent-retention-build.log`; ignored probe reports: `build/validation/local-record-{loop,shadow}-retention-after.json` and `build/validation/audio-local-record-slot-guard.json`.
