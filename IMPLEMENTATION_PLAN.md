@@ -62,8 +62,8 @@ Work on one bounded deliverable at a time. Rank by observed failures, shipping d
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
 **Current baseline:** installed compiler `96761822` passes 214 Elisa tests and
-the non-proof shared stages. The latest uncached engine proof sweep passes 67/73;
-six failures still block the shared gate. The authored-rig, focus, resize,
+the non-proof shared stages. The latest uncached engine proof sweep passes 68/73;
+five failures still block the shared gate. The authored-rig, focus, resize,
 contact and audio-workload slices have local automated evidence. The historical
 relocated bundle predates the corrected guide outputs and needs refreshing.
 See [current compiler/gate evidence](docs/validation/new-compiler-shared-gate.md)
@@ -71,7 +71,7 @@ and [targeted task details](docs/plans/runtime-next-slices.md).
 
 | Order | Highest-return deliverable | Acceptance / stop condition |
 |---|---|---|
-| 1 | **Restore the six remaining implementation-linked proofs — Q01.** Fix shared original-source call/result and frame mappings first where they unblock audio and motion; then indexed/borrowed ActionInput and animation-event places, and sound-asset parser loops. Keep each minimized accepted/rejected pair in the owning prover repository. | All 73 proofs pass uncached with complete original obligation inventories and replayed certificates. Never remove failing rows, weaken contracts, or count a passing helper as repaired engine coverage. |
+| 1 | **Restore the five remaining implementation-linked proofs — Q01.** Fix shared original-source call/result and frame mappings first where they unblock audio and motion; then indexed/borrowed ActionInput and animation-event places, and sound-asset parser loops. Keep each minimized accepted/rejected pair in the owning prover repository. | All 73 proofs pass uncached with complete original obligation inventories and replayed certificates. Never remove failing rows, weaken contracts, or count a passing helper as repaired engine coverage. |
 | 2 | **Qualify one reproducible toolchain — Q01/Q03.** Use the installed compiler and matching runtime/parser sources; triage the full prover regression matrix and then rerun shared and native gates. Repair failures exposed by those runs before adding unrelated features. | Full prover matrix, shared check and native gate pass on recorded product hashes and source revisions, with structured failure/skip artifacts. Hardware-unavailable stages remain unverified. |
 | 3 | **Refresh the shipping client — Q02/Q04.** Rebuild optimized Character Course from clean source with the corrected generated guide assets; package and run the existing relocated/offline lifecycle checks. | Generated outputs match, all resource hashes and notices are checked, offline startup/restart/teardown pass with source and Homebrew denied. Keep separate-machine, signing and legal acceptance open until established. |
 | 4 | **Eliminate workstation-only setup — Q03.** Update hosted full-SHA pins only after compatible compiler/core/prover/ElisaScript products are qualified; exercise fail-closed bootstrap from a fresh checkout. The former unpublished-compiler blocker is superseded. | An actual hosted headless run provisions, builds and retains tests/proof/package artifacts. GPU evidence is separate. Do not call a workflow definition or local preflight a passing CI run. |

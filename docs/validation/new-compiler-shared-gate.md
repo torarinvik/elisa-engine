@@ -249,3 +249,19 @@ previous and new product; full prover compatibility and shared/native gates
 remain open. Evidence: build/validation/prover-source-call-result-final-build.log,
 audio-triggers-call-result.json and proof-source-call-result-final-sweep.log;
 prover docs/validation/source-call-result-capture.md.
+
+## Signed motion-overlay snapshots restored (2026-10-07)
+
+Successful same-width signed scalar calls now capture original source locals and
+reinstantiate exact-site summaries under those symbols. Signed clamp-chain
+controls prove 13/13 and reject an invalid bound 12/13; unsigned alias, guarded
+call and complete condition-call regressions remain passing. MotionOverlayPolicy
+now proves/replays 72/72 with no findings. Final strict all-products O2 build
+passes, generation 01a9c1dc48dc4ca3befeae4d70653e3e. The fresh uncached engine
+sweep passes 68/73; five failures remain: both ActionInput rows, audio_anim_events,
+audio_virtual and sound_event_assets. Full prover/shared/native qualification
+remains open. Before this change, main's committed platform/provenance gains
+were merged; combined fixture dependencies pass 10 provenance tests plus
+independent-root and source/compiler race checks. Evidence:
+build/validation/prover-signed-call-snapshot-final-build.log and
+proof-signed-call-snapshot-final-sweep.log; prover docs/validation/signed-call-snapshots.md.
