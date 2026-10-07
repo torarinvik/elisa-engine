@@ -63,3 +63,19 @@ exit context and retain pre-loop, stale, shadowed and branch-only refusals.
 
 Diagnostic source/build log/executable:
 `build/validation/conditional-join-trace-probe{.elisa,-build.log,}`.
+
+## Loop-body consumer experiment
+
+Built a candidate that audited body-local aliases at the body end only when
+the exact consuming certificate contained source-authenticated guard and
+invariant facts for that loop header. The paired strict O2 build succeeded;
+the original fixture still reported 22 obligations, 20 proven and two gaps.
+Removed the candidate production change. This experiment does not establish
+a sufficient repair: branch-scoped summaries feeding the guarded join also
+need their own authenticated consuming context. Do not bypass lexical lifetime
+or let a branch-only value reach an unconditional consumer.
+
+Retained build log: `build/validation/proof-loop-alias-exit-build.log`;
+report: `build/validation/conditional-join-loop-exit-candidate.json`. The build
+products from this uncommitted experiment must be refreshed from restored
+source before subsequent acceptance runs.
