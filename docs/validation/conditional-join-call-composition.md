@@ -101,3 +101,25 @@ Reports: `conditional-join-{inline-step,step-result-block}.elisa.json`.
 Exact-context probe: `conditional-join-certificate-trace-probe` and its source
 and build log, all under `build/validation`. Restored paired build completed
 as generation `d7ff40e6f50e467b9889d8050ec34384`.
+
+## Summary validator gate isolated
+
+A diagnostic-only copy of `proof_replay_function_summary_is_valid`, returning
+a separate integer at each refusal, audited trace 60 under certificate 20's
+context. Exit **14** means `proof_replay_summary_source_call` reports unknown,
+before argument mapping or prerequisite-certificate replay. This supersedes
+the earlier hypothesis that consumer lifetime alone explains the join failure.
+
+Source reconstruction in `deterministic_call_sites.elisa` stores the resolved
+initializer for each ordinary declaration: `d = step(t)` becomes call text,
+and a subsequent `n = t + d` becomes `t + step(t)`. The producer's signed-call
+path in `check/returns/declarations.elisa` intentionally captures the result
+under local `d` and records the later call as `finish(t + d, end)`. Replay's
+source reconstruction therefore does not find that exact symbolic call.
+The next repair must independently authenticate the signed local call-result
+snapshot, including its source type, callee, span and intervening writes,
+rather than broadly accepting mismatched actuals or repeatable call text.
+
+Diagnostic artifacts under `build/validation`:
+`conditional-join-summary-gate-probe.elisa`, its executable and `-build.log`.
+Production prover source remains clean.
