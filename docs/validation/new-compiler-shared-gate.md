@@ -94,3 +94,23 @@ whole-prover compatibility. Build fixtures and provenance fixtures have since
 been repaired with focused passing tests; source/replay and mutation-harness
 failures still need triage. The native/shared gates remain open.
 Log: `build/validation/prover-2a0d0804-matrix.log`.
+
+## Source-bound frame certificate groundwork
+
+Prover `753b49f5` builds all products with compiler `96761822`. Frame replay now
+has canonical arena places/policy predicates, exact source owner and formal type
+reconstruction, independent header/body policy decoding, nominal field checks,
+exact direct write matching and composed fact-free source checks. Allowance and
+preservation remain distinct predicates so their existing events and diagnostics
+can be retained. Focused adversarial controls pass at O0/O2; the full arena runtime
+passes at O0, source admission refuses six malformed classes on twelve routes,
+and the kernel inventory matches ten tables / 188 entries.
+
+This does not close static frame obligation accounting: source spec/preservation
+binding and per-event producer/certificate admission are still pending, as are
+qualified/generic type paths and nested/alias/dynamic/callee mappings. The fresh
+uncached engine sweep remains 66/73 with the same seven failing rows. The full
+prover compatibility matrix and engine shared/native gates remain open. Evidence:
+`build/validation/prover-frame-allowance-build.log`,
+`build/validation/proof-frame-allowance-sweep.log`, and the prover's
+`docs/validation/obligation-attempt-accounting-gap.md`.
