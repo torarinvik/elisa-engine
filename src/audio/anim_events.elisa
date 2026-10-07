@@ -26,7 +26,7 @@ module AudioAnimEvents:
             valid: mutable bool
             consumed: mutable usize
             count: mutable usize
-            events: mutable Dispatch[AudioAnimEvents::MAX_STATE_EVENTS]
+            events: mutable Dispatch[Anim::MAX_QUEUED_EVENTS]
 
         def DispatchBatch() -> DispatchBatch:
             DispatchBatch{valid: false, consumed: 0, count: 0, events: zeroed}
@@ -136,7 +136,9 @@ module AudioAnimEvents:
                 id: i64 = Anim::anim_event_at(state, index)
                 value: Binding = get(bindings, id.u64())
                 if value.defined:
-                    batch.events[batch.count] <- Dispatch{
+                    slot: usize = batch.count
+                    return DispatchBatch() if slot >= Anim::MAX_QUEUED_EVENTS
+                    batch.events[slot] <- Dispatch{
                         animation_event: value.animation_event,
                         sound_event: value.sound_event,
                         gain_permille: heard_gain(value),
