@@ -81,8 +81,9 @@ Compiler: stage1 snapshot sha256 `7ccb9831…9ce3`, built from a dirty
 
 - **Physical controller:** not tested. Per-controller bindings are not
   implemented (all gamepads share one logical device).
-- **Manual play:** a person has not yet played with the legend, the rebind
-  menu, focus pause or a live resize.
+- **Focus/resize:** the new visible keyboard check did not establish focus-loss
+  pause or a user-driven live resize; those still need an OS window-switch and
+  resize check.
 - **Pointer input:** there is no mouse movement or scroll input. The legend
   uses logical positions, which the canvas scales by the display DPI (see
   [`overlay-dpi-scaling.md`](overlay-dpi-scaling.md)).
@@ -90,3 +91,20 @@ Compiler: stage1 snapshot sha256 `7ccb9831…9ce3`, built from a dirty
   Rebinding to keys outside it needs wider `Application` key codes.
 - **Gamepad rebinding:** gamepad bindings are fixed. Only keyboard slots can
   be rebound.
+
+## Manual keyboard review (2026-10-07)
+
+The current-source optimized app at `build/CharacterCourse-Q02-2026-10-07.app`
+(build identity `7e2702b4a9b956e4`) was opened visibly. P showed the paused
+controls, Tab opened the rebind menu, and the selected Forward row changed from
+W to H with a visible legend update. Rebinding it to W restored the default;
+closing the menu displayed `Controls saved`. A fresh app launch displayed W,
+confirming the saved profile reloads. R restarted from the paused state into
+the playing view, and Escape exited with `process_exit_status=0`.
+
+The retained launcher log is
+`build/validation/character-course-q02-controls-2026-10-07.log` (SHA-256
+`9bbc4abfe8e96cf5118375ee4a023870a09a854b9bfebea17249be754b2c8f1c`). It
+records build identity and clean exit; the on-screen state changes were
+observed live and are described above. Physical controller behavior, focus
+loss, live window resize, held crouch, and full traversal remain unverified.
