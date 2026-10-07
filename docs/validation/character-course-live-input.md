@@ -139,3 +139,56 @@ that unrelated physics probe.
 
 Manual visible keyboard traversal remains unverified; the hidden route and its
 captured win/fall presentations are covered above.
+
+## Visible controls review (2026-10-07; Q07a remains open)
+
+The October 3 packaged app was stale: its `main.elisa` hash matched the current
+entry, but its manifest had no include-closure hash. Pressing R in that binary
+ended the process with status 3, so that behavior is not attributed to current
+source. A new build from clean engine commit `8ef3d4c2` produced binary SHA-256
+`e679de6d9f400f5b2c0862ab5baa7a2045707d281685e85854eb41ba97e0d0fa` using the
+Stage1 compiler script SHA-256
+`2f28e5c9ab40101fbc99c7a0b67f5d86cbba0b1fadf735384767487da60de2b3`. Its
+manifest records no tracked or untracked source changes.
+
+For this review, the binary was packaged under `build/` with the 392 compiled
+Metal shader binaries from Wicked's prepared shader tree. It launched to the
+course scene and presented the keyboard/controller legend. P displayed the
+paused status, Tab opened and closed the rebind menu, and R while paused
+restarted the character at the entrance and resumed play. The fresh app stayed
+open after restart and exited with status 0 when its window was closed. This
+replaces the stale-binary observation; it does not complete a human traversal.
+
+The available computer-use key API emits discrete key presses and has no
+key-down/hold operation. Repeated W/Up taps did not produce an observable
+continuous walk, so visible traversal, held crouch, and manual summit/fall
+presentation remain unverified. The hidden SDL-input route and its captured
+win/fall images above still pass. The concrete prerequisite for closing Q07a is
+a hold-capable interactive keyboard session (or a user-observed manual run).
+
+Build and stage commands, run from the engine root:
+
+```sh
+ELISA_COMPILER_BIN=../Elisa-compiler/scripts/elisac_stage1.sh \
+ELISA_RUNTIME_OBJ=../Elisa-compiler/build/runtime/elisacore_runtime.o \
+WICKED_ROOT=../elisa-boxing-wickedengine \
+WICKED_BUILD=../elisa-boxing-wickedengine/build-elisa-sdl3 \
+ELISA_SDL3_LIB_DIR=/opt/homebrew/lib \
+ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1 \
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+PYTHON_BIN=/opt/homebrew/bin/python3.14 \
+/opt/homebrew/bin/python3.14 scripts/elisa_build_run.py build \
+  --project examples/character_course \
+  --output /private/tmp/character-course-q07a-manual-2026-10-07
+
+python3 scripts/package_macos_app.py \
+  --project examples/character_course \
+  --executable /private/tmp/character-course-q07a-manual-2026-10-07 \
+  --output build/CharacterCourse-Q07a-2026-10-07.app \
+  --name 'Character Course Q07a' \
+  --bundle-id org.elisa.character-course.q07a-review \
+  --shader-root ../elisa-boxing-wickedengine/WickedEngine/shaders \
+  --compiled-shaders-only
+```
+
+The staged app is a local ignored build artifact, not a release package.
