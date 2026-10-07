@@ -154,3 +154,28 @@ The source-level float proposition acceptance/rejection cases pass. The later
 The previous pair `8483683a13bb4c07860f18ec80dbb21e` reproduces the same failure
 (`build/validation/float-forgery-baseline.log`). This is an existing kernel defect
 and a required next repair; this evidence does not qualify the full prover matrix.
+
+### Portable IEEE ordering repair — 2026-10-07
+
+The pre-existing forged negated-order acceptance is repaired in both replay paths:
+comparison-atom matching and exact negative facts. Ordered complements now require
+integer operands. A source-neutral recursive classifier recognizes typed integer
+literals, witnessed names/fields, pinned integer constants, integer arithmetic,
+integer conditional branches and witnessed unsigned elements. This preserves the
+engine's existing integer proof coverage; it does not interpret float atoms numerically.
+
+During the repair, a concurrent compiler install changed the build inputs; the
+provenance guard refused publication. The final pair was rebuilt with installed
+`75568f889c2e556afaa8e4810bedf5c57f523245` and matching compiler source/runtime:
+generation `0b506c3368d04f3ea61ad1e13ab96563`.
+`test.d/13-float-propositions.sh` now passes, including `test_float_literal_forgery.py`
+with all four direct order complements and nested Boolean projection variants;
+valid exact negated atoms and literal-atom controls replay. Mixed float/integer
+bounds controls and the 10-table/194-entry kernel inventory pass.
+The final uncached engine sweep remains **69/73**, with the same four original
+failures. The first narrow integer classifier produced nine extra replay failures;
+the final recursive classifier restores all nine without weakening any test.
+Logs: `build/validation/proof-float-negation-build-3.log`,
+`float-negation-final-controls.log`, `float-forgery-final.log`, and
+`proof-float-negation-final-sweep.log`. Full matrix and shared/native qualification
+with the new installed compiler remain open.
