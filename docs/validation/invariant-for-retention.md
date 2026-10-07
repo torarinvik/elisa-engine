@@ -91,3 +91,31 @@ transfers, operator overrides and alias writes. Assignment-root collection must
 also inspect block initializers before narrowing escaping-reference invalidation.
 The entry replay walker separately needs to find this exact nested assignment
 site without admitting stale post-loop initializer equalities.
+
+## Bounded value-block effects and writes
+
+Prover `6889cdda` classifies direct/parenthesized value blocks by walking their
+statements and final expressions. Effect classification and assignment-root
+collection fail closed at depth 64 or 4096 work units. Calls, transfers, parallel
+loops, unsupported statements and source operator overrides remain effectful.
+Other expression shapes keep the existing conservative call/move detection.
+Nested block writes in declarations, assignments, conditions, iterables, match
+guards, returns and contracts now enter the mutation set. Nested block writes
+also disqualify extent retention conservatively.
+
+Pure bodies that write only witnessed outer scalars do not exercise unrelated
+escaped references; scoped local writes do not count as writes to the outer
+frame. Reference/record writes and lends keep broader invalidation. Branch joins
+can now retain prior guards across read-only loop-value assignments.
+
+`test_value_block_effect_retention.py` passes six cases through both JSON routes:
+conditional read and zero iterations accepted; nested/direct record writes,
+mutating calls and insufficient entry bounds refused. Every case has zero
+semantic errors, replay gaps and trusted assumptions. Existing loop-state,
+invariant-retention and captured-search suites pass. The new suite is wired into
+the full matrix. The original conditional scalar-invariant reproducer improves
+to 7/8, zero findings, one nested entry replay gap (`block-effects-conditional.json`).
+ActionInput remains 232/264, zero gaps (`block-effects-action-input.json`);
+the uncached sweep remains 71/73 (`proof-block-effects-engine-sweep.log`).
+Nested initializer authentication, snapshot bounds and full qualification remain
+open. No engine runtime code changed in this slice.
