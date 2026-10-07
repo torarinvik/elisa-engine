@@ -12,7 +12,7 @@ Character Course before promoting a subsystem-wide feature.
 | 2 (automated complete) | Resize the running course in play, pause and controls | Verify logical/drawable dimensions, camera aspect and readable HUD at small and large sizes. Reuse the existing native resize hook and retain captures. Fix clipping or stale layout exposed by the check. Physical DPI/display changes remain separate evidence. |
 | 3 (automated complete) | One production worker-event consumer under `WorldSchedule` | Reuse Jolt's existing bounded contact queue. Resolve contact participants through checked body bindings before routing a crate impact to gameplay/audio. Reject stale world epochs and wrong access phases; retain overflow and unsubscribe evidence. Avoid constructing another public scheduler or generic queue before a producer needs it. |
 | 4 (automated complete) | Measure the course's actual audio workload | Record voice/stream counts, memory and underruns during route, pause, reload and teardown. Exercise existing cancellation/device recovery rather than adding another audio feature. Physical listening and unplug/reconnect remain explicitly unverified until performed. |
-| 5 | Cook and measure the pinned authored Cesium Man rig | Reuse Ozz's local glTF fixture (19 skin joints, one clip; retain its Cesium CC BY attribution). Exercise the normal geometry/keyed-contract cook and eight independent rendered instances. Target p99 <=1 ms per eight-instance CPU update and zero steady allocations; record package/source hashes and sampled memory. Fix an actual import or sampling defect before adding animation graph features. |
+| 5 | Cook and measure the pinned authored Cesium Man rig | Reuse Ozz's local Cesium Man glTF fixture (19 skin joints, one clip; retain its CC BY attribution). Record the explicit neutral-material/weight-normalized benchmark variant because the pinned source has unsupported sampler state and invalid weight sums; keep importer rejection intact. Exercise the normal geometry/keyed-contract cook and eight independent rendered instances. Target p99 <=1 ms per eight-instance CPU update and zero steady allocations; record package/source hashes and sampled memory. Fix an actual import or sampling defect before adding animation graph features. |
 | 6 | Rebuild and relocate the updated game | Verify optimized clean provenance, resource hashes, offline startup and graceful teardown after the preceding runtime changes. Keep separate-machine testing, signing and legal review visible as external acceptance work. |
 
 The existing live-input pilot already covers pause/resume, held crouch,
@@ -63,7 +63,10 @@ resource release. A measured screenshot-encoding stall was fixed without
 increasing audio buffers; focused lifecycle/stream sanitizers pass.
 [Audio workload evidence](../validation/course-audio-workload.md) keeps
 physical listening/device changes and whole-audio-heap accounting separate.
-The next slice is cooking and measuring the pinned authored rig.
+The authored rig now cooks as an explicit benchmark variant and meets the
+CPU/allocation target, but its presentation exposes a skin-space conversion
+defect. Keep slice 5 open until upright rendered deformation passes; see
+[authored benchmark evidence](../validation/animation-authored-benchmark.md).
 See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live

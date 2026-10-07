@@ -110,4 +110,34 @@ extern "C" int32_t elisa_render_scene_v1_test_ozz_library_shared(
     const auto& second_library = state.instances[second].ozz_library;
     return first_library != nullptr && first_library == second_library ? 1 : 0;
 }
+// Benchmark assertions outside the timed region: exact keyed library size
+// and different sampled poses establish real sampling and independent time.
+extern "C" int32_t elisa_render_scene_v1_test_animation_library_counts(
+    int64_t handle, int32_t joints, int32_t clips) {
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    size_t slot = MAX_INSTANCES;
+    if (!state.initialized || !on_owner_thread(state) || !valid_handle(state, handle, slot)) return 0;
+    const auto& library = state.instances[slot].ozz_library;
+    return library != nullptr && library->keyed_contract &&
+        library->rig.joint_count() == joints && library->clips.size() == size_t(clips) ? 1 : 0;
+}
+
+extern "C" uint64_t elisa_render_scene_v1_test_animation_pose_hash(int64_t handle) {
+    auto& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    size_t slot = MAX_INSTANCES;
+    if (!state.initialized || !on_owner_thread(state) || !valid_handle(state, handle, slot)) return 0;
+    const auto& pose = state.instances[slot].ozz_current_pose;
+    if (pose.empty()) return 0;
+    uint64_t hash = 14695981039346656037ull;
+    for (float value : pose) {
+        if (!std::isfinite(value)) return 0;
+        uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        for (unsigned byte = 0; byte < 4; ++byte)
+            hash = (hash ^ uint8_t(bits >> (byte * 8))) * 1099511628211ull;
+    }
+    return hash == 0 ? 1 : hash;
+}
 #endif
