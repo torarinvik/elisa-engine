@@ -285,3 +285,39 @@ bounds remain because block assignment still discards its accumulator result
 precision. Next carry checked, source-authenticated accumulator bounds through the
 assignment scope and branch join. Full prover matrix/shared/native qualification
 remains open.
+
+## Checked identity accumulator result bounds — 2026-10-07
+
+Generation `495680a60ab645d585777823bf6a1789` preserves a checked upper-bound
+invariant at a block assignment when the block yields the same usize accumulator
+name as its existing outer target. The exact two-statement value-block shape is
+required (accumulator declaration, for loop); only nonnegative literal upper-bound
+facts present at normal private-scope exit are eligible. The fact must have an
+original loop-invariant trace for that loop's source line and owner. The original
+fact and trace are reused; initial equalities, arbitrary body facts and renamed
+results do not escape. Invalid entry/preservation removes the invariant at loop
+exit and therefore grants no result bound.
+
+Replay now locates the lowered search assignment within bounded original-source
+statement trees, including nested if branches. Owner identity, assignment position,
+loop binder identity, immediate unlabelled break and invariant goal remain exact.
+Primitive operator overrides in the original invariant refuse this route. The walk
+requires one unique match and retains depth/work limits. This removes the earlier
+contract-only owner-prefix restriction for the source-positioned break binding.
+
+`test_block_result_bounds.py` passes nine cases through both routes: identity, nested
+assignment and zero iterations accepted; invalid entry/preservation, loose invariant,
+wide range, later rebind and different result name refused. Block assignment, mixed
+record arithmetic, search replay and IEEE literal-forgery controls pass. New suite
+is wired into the full prover matrix. Build:
+`build/validation/proof-block-invariant-result-build-2.log`.
+
+Engine bind_checked now states the checked search invariant. Runtime: all 215 tests
+pass uncached in 32s (`build/validation/action-input-search-result-runtime.log`).
+Actual context report `build/validation/action-input-block-result-current.json`:
+264 obligations, 232 proven/replayed, 32 findings, zero gaps or errors. Full engine
+sweep remains 71/73 (`build/validation/proof-block-invariant-result-engine-sweep.log`).
+The actual probe retains slot <= MAX_ACTIONS immediately after assignment; later
+mutable input writes drop it and the copied binding-count bound. Four bind_checked
+upper findings remain. Next repair stable scalar snapshot facts across aggregate
+mutation; do not count assignment-exit retention as completed bind_checked coverage.

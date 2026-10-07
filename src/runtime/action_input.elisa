@@ -153,6 +153,7 @@ module ActionInput:
             slot: mutable usize = state_slot(input, binding.action)
             if slot == Limits::MAX_ACTIONS:
                 slot <- for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS, input| -> slot:
+                    invariant slot <= Limits::MAX_ACTIONS
                     break index if not input.states[index].live
                 return BindResult.Capacity if slot == Limits::MAX_ACTIONS
             region binding_slot_scope:
