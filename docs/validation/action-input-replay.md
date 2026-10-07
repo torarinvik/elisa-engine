@@ -253,3 +253,35 @@ record is 8/8. An unrelated float function also does not reproduce the failure.
 Next repair integer goal admission when a parameter record contains floats, preserving
 all IEEE false-law refusals. Then verify the state_slot bounded contract and carry
 source-authenticated search bounds through block assignment and branch joins.
+
+## Integer loop binders in mixed records — 2026-10-07
+
+Generation `5f8c12fefafb4cfea21de65368e874a3` fixes the float-mode integer filter.
+Counting-loop binders are internal tagged tuple atoms; the filter previously dropped
+their integer premises even when an exact signed width witness existed. Tuple syntax
+now admits integer ordering only with an exact unsigned-place or signed type witness.
+No float type/receiver witness grants integer arithmetic. Qualified contract prefixes
+in the search-break replay rule use the same validated normalization as its other
+source expressions. Build: `build/validation/proof-mixed-search-build-2.log`.
+
+`test_mixed_record_search.py` passes seven cases on both routes: f32/f64 records
+accepted; wide range, invalid initializer/break, NaN reflexivity and NaN ordering
+refused. All IEEE literal forgery controls pass. Eleven search-break cases, captured
+entry, read-only outer index, block assignment, float ownership and deterministic
+operator/global controls pass. New suite is included in the prover matrix.
+
+The actual state_slot contract probe now proves/replays 9/9, no errors or gaps
+(`build/validation/state-slot-contract-mixed-repaired-2.json`). Engine state_slot
+therefore now declares `ensure result <= Limits::MAX_ACTIONS` with the matching
+loop invariant, retaining its loop expression and zero-iteration sentinel.
+All 215 runtime tests pass uncached in 28s, forced unavailable audio device
+(`build/validation/action-input-state-slot-runtime.log`).
+
+Actual context report: `build/validation/action-input-mixed-search.json`,
+261 obligations, 229 proven/replayed, 32 findings, zero replay gaps or errors.
+Full uncached engine sweep remains 71/73
+(`build/validation/proof-mixed-search-engine-sweep.log`). Four bind_checked upper
+bounds remain because block assignment still discards its accumulator result
+precision. Next carry checked, source-authenticated accumulator bounds through the
+assignment scope and branch join. Full prover matrix/shared/native qualification
+remains open.

@@ -16,7 +16,9 @@ module ActionInput:
             2
 
         def state_slot(input: Input&, action: i64) -> usize:
+            ensure result <= Limits::MAX_ACTIONS
             for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS| -> slot:
+                invariant slot <= Limits::MAX_ACTIONS
                 break index if input.states[index].live and input.states[index].action == action
 
         def deadzone_valid(deadzone: f32) -> bool:
