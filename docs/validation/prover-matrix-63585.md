@@ -48,3 +48,24 @@ High ROI next repairs:
 After repairs, run the matrix on a clean frozen revision and repeat the uncached
 73-row engine corpus, shared gate and native gate. Hosted pins and packaging
 qualification remain downstream requirements.
+
+## Captured initializer entry repair
+
+Prover `78e9c1c1`/`ffd6bcd9` reconstructs the original captured-loop entry
+inside a scalar initializer. It peels only empty capture-free parser wrappers
+with a depth bound, then retains exact header initializer, invariant expression,
+position, owner, environment and entry-only checks. Nonempty scopes and ambiguous
+same-name declarations remain refused. Initial facts do not become exit facts.
+
+Committed pair generation `91648f9978994d12b05a446624294f37` passes the four
+new initializer controls on both JSON routes and all seven existing captured
+entry controls. Valid entry proves completely; wrong initial value, invalid
+update and stale exit equality refuse. The first rebuild exposed the parser's
+empty wrapper and failed the control; qualification applies to the repaired
+second build, not that earlier product.
+
+The unchanged sound-event implementation now replays 151/157 certificates with
+zero findings and six gaps. Remaining rows: number preservation, two read_fields
+entry facts, number-call admission inside read_fields, and two dependent wrapper
+summaries. Evidence: `build/validation/sound-assets-captured-initializer.json` and
+`prover-captured-wrapper-build.log`. Full shared/native qualification stays open.
