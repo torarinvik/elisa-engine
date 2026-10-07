@@ -417,3 +417,31 @@ remains 71/73 with only the two ActionInput reports failing
 (`proof-for-identity-engine-sweep.log`). Scalar field snapshots, alias rebind and
 other full-matrix failures remain open. Clean build provenance is recorded in
 `proof-for-identity-clean-build.log`; full matrix qualification is still required.
+
+## Scalar copy/restore for preservation — 2026-10-07
+
+Prover `e5ea68af`, clean paired generation `45671c341a4145f2a0a2487735af8b54`,
+authenticates the exact three-statement for body: invariant, immutable unsigned
+scalar copy of the accumulator, and plain assignment restoring that copy. Both
+binding equations are admitted only at this loop's original preservation goal.
+Owner, unsigned accumulator declaration, source positions of the copy/assignment,
+source invariant and original range binder/offset are checked. The range witness
+separates preservation from entry certificates sharing a line and goal. Calls,
+extra body writes, mutable copies, source primitive overrides and unsupported
+prefixes/environments do not receive this route; source wrapper walks are bounded.
+
+The full `test_loop_state_joins.py` now passes: 47/47 obligations proven/replayed,
+including alias_rebind, with its existing adversarial fixture still refused.
+`test_for_alias_update.py` passes six cases through both JSON routes, all with
+zero gaps: copy/restore accepted; missing entry bound, different copy, changed
+update, mutable changed copy and stale later postcondition refused. The new suite
+is included in the full matrix. Identity-update and captured-constant suites pass.
+Logs under `build/validation/`: `proof-for-alias-controls-clean.log`,
+`proof-for-alias-loop-state-clean.log`, `proof-for-alias-identity-controls.log`,
+`proof-for-alias-captured-controls.log`, and `proof-for-alias-clean-build.log`.
+
+The uncached engine sweep remains 71/73, only the two ActionInput reports failing
+(`proof-for-alias-engine-sweep.log`). This repairs one existing full-matrix fixture;
+other matrix failures and scalar field snapshots across actual record mutation
+remain open. Full matrix qualification still needs a fresh complete run after
+those fixes. No runtime source behavior changed in this slice.
