@@ -260,3 +260,21 @@ bounds. Replacing state_slot with zero leaves 54/80 and the same 26 findings;
 removing refresh_action leaves 30/56 and the same 26. All have zero replay gaps.
 Removing loop captures produces 46/47 with a proposition-type finding, and is
 not an accepted production rewrite. Evidence is in ignored apply-*.json files.
+
+### Safety boundary identified
+
+The opaque receiver originates before extent lookup: `proof_check_index_safety`
+in statement_checks.elisa substitutes the whole source expression, and
+`proof_restore_branch_values` has intentionally set the disagreeing mutable
+parameter root to Invalid. Thus Store.flags becomes Field(Invalid, flags).
+`proof_check_index_access` rejects that receiver before consulting fixed_names.
+The declared fixed extent is still available but source place identity has been
+lost. This is not an absent arithmetic bound or a callee summary failure.
+
+The repair belongs at the index-safety substitution boundary: preserve a
+source-authenticated fixed-array place solely for its extent, while substituting
+index expressions and dynamic-count receivers with the current state. Ordinary
+expression evaluation and contracts must continue seeing Invalid for the
+mutated record; restoring its old identifier at the branch join would revive
+stale field facts. Qualify direct and nested indexes, wrong bounds, shadowed
+places, dynamic arrays and changed-field old-value contracts before acceptance.
