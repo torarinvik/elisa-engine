@@ -41,3 +41,25 @@ focused harness now passes, including wrong-owner, argument, span, reassignment
 and forged-binding refusals. Log:
 `build/validation/proof-qualified-call-harness-selection.log`. No production
 proof rule was relaxed. The live full matrix began before this test repair.
+
+## Terminal matrix and first rejected trace
+
+The owned full matrix terminated with status 1 and **72 failed steps**.
+Retained log: `build/validation/proof-79155ac4-ddbc803d-full-matrix.log`;
+structured failure contexts: the adjacent `-summary.json`. This run began
+before the qualified-call harness correction; that one failure now has separate
+passing focused evidence, and the remaining total has not been rerun.
+
+A source-level diagnostic executable, compiled with the immutable ddbc803d
+product, parsed the original fixture and checked each `walk` trace with owner
+line 41 and consumer line 45. It returned 53, identifying zero-based trace 52,
+a function summary at line 48 restated over local `d`. The source lifetime
+validator rejects consumers before their binding line. The loop-invariant
+certificate uses header line 45 although its body binds `d` at line 48. This
+audit result identifies the first rejected trace in that context; it does not
+yet prove the full certificate's rejection path or authorize relaxing the
+consumer-order guard. A repair must authenticate the particular loop-body
+exit context and retain pre-loop, stale, shadowed and branch-only refusals.
+
+Diagnostic source/build log/executable:
+`build/validation/conditional-join-trace-probe{.elisa,-build.log,}`.
