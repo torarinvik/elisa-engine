@@ -204,3 +204,13 @@ clear in the bounded build; other launcher errors remain. It exits 1 normally
 in 9.38 seconds, sampled peak RSS 530,128 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-ir-hash-build.log` and watchdog JSON.
 Runtime effect identity behavior remains unverified on this compiler.
+
+Allocator return paths now retain mutable pointer qualifiers through fixed
+buffer allocation, arena allocation/reallocation and arena formatting. The
+free-list split reference is initialized from its computed in-block address
+with explicit pointer effects, replacing an invalid zeroed non-null reference.
+The bounded compile clears all eight arena/heap diagnostics and reports none
+in either fragment; unrelated launcher errors remain. It exits 1 normally
+in 11.50 seconds, sampled peak RSS 635,776 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-allocator-refs-build.log` and JSON.
+Allocator behavior has not executed on the selected compiler.
