@@ -61,12 +61,12 @@ A linked library, a policy enum, or one successful scene is not a public runtime
 Work on one bounded deliverable at a time. Rank by observed failures, shipping dependencies, reuse across clients and decisive acceptance.
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
-**Current baseline:** compiler `50b16e68` passed 214 uncached tests and non-proof shared stages;
-installed `75568f88` now has a matching IEEE-repaired prover; the uncached proof sweep remains 69/73;
+**Current baseline:** installed compiler `8006b660` passes 215 uncached runtime tests and non-proof shared stages;
+its matching prover pair builds successfully; the uncached proof sweep remains 69/73;
 four proof failures still block the shared gate. The authored-rig, focus, resize,
 contact and audio-workload slices have local automated evidence. The historical
 relocated bundle predates the corrected guide outputs and needs refreshing.
-See [current compiler/gate evidence](docs/validation/new-compiler-shared-gate.md)
+See [current compiler/gate evidence](docs/validation/compiler-8006b660-install.md)
 and [targeted task details](docs/plans/runtime-next-slices.md).
 
 | Order | Highest-return deliverable | Acceptance / stop condition |

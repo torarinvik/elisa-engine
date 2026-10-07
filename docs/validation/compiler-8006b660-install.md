@@ -25,3 +25,20 @@ assets failures (`build/validation/compiler-8006-proof-sweep.log`).
 Fixed-array admission, scalar float ownership and IEEE literal forgery controls
 all pass (`build/validation/compiler-8006-focused.log`). Full compatibility matrix
 and shared/native qualification remain open.
+
+## Shared check terminal result
+
+Ran `scripts/check.elisascript` through the installed ElisaScript launcher with
+`DEVELOPER_DIR=/Library/Developer/CommandLineTools`, `PYTHON_BIN=/opt/homebrew/bin/python3.14`,
+`ELISA_COMPILER_BIN=$HOME/.elisac/elisac-stage1`, the paired engine prover,
+`WICKED_ROOT=../WickedEngine` resolved absolutely, and
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=1`. Exit status **1** at the proof stage.
+
+All preceding stages passed: 215 runtime tests (cached compiles), SDL3 platform,
+three Godot probes, native unit suites, interactive validator, scene serialization,
+skin limits/influences, locale/artifact checks, Metal render/motion, four native
+navigation tests, and owner/privacy rejection fixtures. Locale errors in the log
+are deliberate negative self-test inputs. Physical audio is unverified. The proof
+stage has 69 cached passes and four freshly failed reports; validation.json is
+not emitted because the overall gate failed. This is not full native-gate evidence.
+Log: `build/validation/compiler-8006-shared-check.log`.
