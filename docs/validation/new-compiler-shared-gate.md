@@ -66,3 +66,19 @@ Its runtime implementation and contracts have not been weakened.
 Logs: `build/validation/prover-d3609076-clean-build.log` and
 `build/validation/proof-d3609076-full-sweep.log`. Reports remain in
 `build/*-proof.json`.
+
+## Capture timing replay restored
+
+Prover commits `8fb5bb87`, `c85737cb` and `fd5518b6` reconstruct immutable
+conditional equations, captured local reads and independently checked literal
+constant rebinding. Seven conditional regressions and five enum regressions
+pass, including invalid bounds, mutable inputs and constant shadowing.
+The actual engine capture-timing proof now proves and replays all 11
+obligations, with no findings or semantic errors. Its implementation and
+contracts remain unchanged.
+
+The latest uncached sweep passes 65/73. Eight failures remain: the two
+ActionInput rows, four audio rows, motion overlay policy and sound-event
+assets. The shared gate and full prover regression matrix remain open.
+Evidence: `build/validation/proof-conditional-constants-full-sweep.log` and
+`build/application-capture-timing-proof.json`.
