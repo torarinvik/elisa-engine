@@ -147,3 +147,24 @@ contributes 12 obligations. Build log: `build/validation/proof-for-outer-index-b
 Full uncached engine sweep remains 71/73 with only the two ActionInput failures
 (`build/validation/proof-for-outer-index-engine-sweep.log`). Next fix the captured
 search-loop assignment in bind_checked and indexed apply bounds.
+
+## Captured search-loop assignment minima — 2026-10-07
+
+Prover commit `90160163` stores three actual source minima rather than changing
+engine loop syntax. `captured_search_assignment.elisa` (8 lines) rejects assignment
+of a loop value before checking its body: 3/4, one expression-unsupported finding.
+`captured_search_declaration.elisa` admits declaration of the same search: 4/5, one
+upper-bound finding on the post-loop write after excluding the sentinel.
+`captured_search_invariant.elisa` explicitly states `slot <= 4`: all 8 producer
+obligations certify, but only 7 replay, exposing a third source-binding gap.
+All three have zero semantic errors. Reports are under
+`build/validation/input-minima/search-{assignment,declaration,invariant}.elisa.json`;
+the assignment's original report is `captured-search-assignment.json`.
+
+A diagnostic-only variant using `return if slot >= 4` instead of sentinel equality
+passes 5/5 and replays. This is evidence that the remaining declaration failure is
+the missing bounded search result, not generic indexed-write admission. No engine
+guard or loop expression was changed. The required repair must execute block
+assignment bodies before binding their yield, preserve inner accumulator shadowing,
+and authenticate invariant/result facts independently in replay. Existing block
+declaration flattening rejects visible-name shadowing and is insufficient here.
