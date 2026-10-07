@@ -123,3 +123,25 @@ rather than broadly accepting mismatched actuals or repeatable call text.
 Diagnostic artifacts under `build/validation`:
 `conditional-join-summary-gate-probe.elisa`, its executable and `-build.log`.
 Production prover source remains clean.
+
+## Repair accepted — prover 9180dc2b
+
+Independent source reconstruction now preserves a signed call-result local's
+identity when its declared primitive signed type exactly matches the return
+type of one uniquely named source function. Alias and ambiguous return types
+remain unsupported by this new route. Existing effect detection, reassignment,
+shadowing, reset points and exact call/span/owner/argument checks remain in place.
+No loop-consumer lifetime exception was needed.
+
+The original conditional_join fixture and its fully qualified spelling each
+prove **22/22**, replay **22/22**, with zero gaps. The new regression script
+also requires rejected conditional joins and rejected loop state joins to
+remain refused with zero gaps and no trusted assumptions. Compiled deterministic
+loop-call controls and rebind/alias forgery controls pass unchanged. Full
+uncached engine proof sweep: **73/73**, status 0.
+
+Logs in `build/validation`: `proof-signed-snapshot-regressions.log`,
+`proof-signed-snapshot-loop-controls.log`, `proof-signed-snapshot-alias-controls.log`,
+`proof-signed-snapshot-engine-sweep.log`, and paired build/clean-build logs.
+The terminal 72-failure full matrix predates this repair and the qualified-call
+harness correction; it must be rerun to establish the remaining failure count.
