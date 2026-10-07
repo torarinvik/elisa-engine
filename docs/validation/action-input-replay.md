@@ -342,3 +342,20 @@ pre-state premises at the declaration, with an independently checked immutable
 local lifetime at consumption. Preserve refusal of stale field indexing, mutable
 local rebind and insufficient entry guards. Do not add redundant engine guards
 or grant persistent equality to the current record field.
+
+## Full matrix qualification in progress — 2026-10-07
+
+The keep-going full matrix is running against generation
+`495680a60ab645d585777823bf6a1789`; log:
+`build/validation/proof-current-full-matrix.log`, owned session `39578`.
+No terminal result is claimed in this note. Beyond the earlier loop-state gaps,
+collection-frame and loop-exit-frame fixtures report replay gaps. Portable package
+identity validation also refuses these prebuilt products because their recorded
+prover source is dirty at `eb5c14b1`, although the source changes have since been
+committed. Source-binding harness failures need separate exact-source diagnosis.
+
+After the live matrix ends, rebuild both products from clean committed prover
+source with the immutable compiler 8006 snapshot, record fresh identities, and
+rerun failed cases plus the complete matrix. A clean-source rebuild addresses
+provenance; it does not establish that replay or harness failures are repaired.
+The engine's 71/73 proof result remains partial and does not qualify the matrix.
