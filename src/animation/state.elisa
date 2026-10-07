@@ -104,7 +104,10 @@ module Anim:
                     return if state.blend_left <= 0
                     state.blend_left <- state.blend_left - 1
                     done: i64 = Anim::Tune::BLEND_TICKS - state.blend_left
-                    state.blend <- done.f32() / Anim::Tune::BLEND_TICKS.f32()
+                    region blend_scope:
+                        progress: f32 = done.f32()
+                        duration: f32 = Anim::Tune::BLEND_TICKS.f32()
+                        state.blend <- progress / duration
 
     public:
         def anim_play(state: mutable AnimState&, clip: Clip) -> void:
