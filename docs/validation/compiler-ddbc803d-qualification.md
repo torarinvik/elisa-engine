@@ -168,3 +168,20 @@ functions. Other string-view carrier and source compatibility errors remain.
 It exits 1 normally in 7.23 seconds, sampled peak RSS 726,944 KiB. Artifact:
 engine `build/validation/elisascript-ddbc803d-concat-slice-build.log` and JSON.
 These operations have not executed on the selected compiler.
+
+## Full compatibility matrix — prover 95db5c6b
+
+The Python 3.14 full matrix completed with status 1 and 63 failed steps,
+compared with the preceding run's 72. This is a failing qualification result;
+shared/native gates remain open. The new entry-count and pop source controls,
+signed call snapshots, qualified call-summary controls and kernel audit pass.
+Retained full log: `build/validation/proof-95db5c6b-ddbc803d-full-matrix.log`;
+its `-summary.json` records every KEEP_GOING failure and preceding context.
+
+One census failure checked the repository's old compiler pin despite the
+explicit build revision override. The census now honors ELISA_COMPILER_REV
+while retaining source-tree, binary SHA, Stage1 and frontend provenance checks.
+The existing focused census suite passes, including matching and mismatched
+override controls. The actual 95db5c6b binary manifest passes the repaired
+identity check with ddbc803d; the full census comparison remains to be rerun.
+This harness repair does not establish the remaining matrix steps as passing.
