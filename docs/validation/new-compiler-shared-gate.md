@@ -134,3 +134,22 @@ dynamic and callee effects, portable source-context replay, the complete prover
 matrix, compiler qualification and full engine plan remain open. Evidence:
 build/validation/prover-frame-cli-build.log and proof-frame-cli-sweep.log;
 prover docs/validation/frame-report-source-correspondence.md.
+
+## Portable frame export qualification (2026-10-07)
+
+The prover now includes canonical identities and portable kernel replay for all
+frame-spec/frame-allow/frame-preserve certificates. The positive preservation
+fixture exports/replays all five certificates; thirteen identity/rule/predicate/
+hypothesis mutations are refused, including exact statement-mismatch checks on
+valid arena mutations. Workspace frame controls pass at O0/O2. Existing portable
+qualification passes eighteen positive packages, structured/schema attacks and
+576 raw byte mutations across 594 bounded decoder runs without crashes.
+All-products strict O2 build passes, generation
+2c120cc80c774876b7d8f06f766b3ba6. Admission diagnostics/mutation routes and
+193-entry kernel inventory pass. Portable trust remains adapter-supplied source
+correspondence with unauthenticated source; valid theorem subsets do not prove
+whole-source completeness. The engine sweep remains 66/73 with the same seven
+failures. Broader source frame mappings and full compiler/engine qualification
+remain open. Evidence: build/validation/prover-portable-frame-build.log,
+portable-frame-final-suite.log and proof-portable-frame-sweep.log; prover
+docs/validation/portable-frame-certificates.md.
