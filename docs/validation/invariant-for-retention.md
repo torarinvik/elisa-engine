@@ -385,3 +385,23 @@ semantics. The original expressions include indexed reads through a copied
 Binding record as well as scalar Boolean conditions. Continue isolating the
 fact filtering and short-circuit/index safety paths with these expressions;
 do not remove live chord or active logic to make the proof pass.
+
+## Availability prelude isolates all remaining apply findings
+
+Deleting only apply's initial available value-block lookup and its early return
+makes the remaining actual function prove 85/85, zero gaps. Replacing that
+prelude with available = true plus the original early-return form also proves
+85/85. Production is still 73/93 with 20 findings. This source variant preserves
+all binding/chord logic, indexed writes, state_slot and refresh_action calls.
+It is stronger isolation than Boolean literal variants: the preceding device
+lookup changes how later loop facts are retained. Availability must remain in
+production; the next repair must handle its effect on subsequent proof state.
+
+Minimal copied-record and short-circuit cases prove 13/13, with qualified range
+constant also 13/13; adding the math import or fabsf yields 22/22 across the
+whole minimal unit. An unqualified range constant has a separate 7/13 result
+and six findings. A first small device-lookup prelude has two findings at its
+uncontracted lookup, so it does not yet reproduce the later-loop failure.
+Ignored apply-no-prelude/literal-available JSON and copied-record-* artifacts
+retain all counts. No matching heavy compiler build process was live during
+this diagnostic turn; the mocap product update remains independently qualified.
