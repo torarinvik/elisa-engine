@@ -1,6 +1,6 @@
 # Mocap-cleanup engine track (M)
 
-**Requested:** 2026-09-30 by the user, through the boxing-animation session. Its purpose is to support a new Cascadeur-style mocap-cleanup app in `../mocap-cleaner`, with its UI in elisa-ui and possibly elisa-designer. **Status:** this is a plan only. No M item has started, and the user confirms before each large item begins.
+**Requested:** 2026-09-30 by the user, through the boxing-animation session. Its purpose is to support a new Cascadeur-style mocap-cleanup app in `../mocap-cleaner`, with its UI in elisa-ui and possibly elisa-designer. **Status:** M01–M08 have recorded implementation evidence below. The active client gap is FBX character surface preservation; previous skeleton-only FBX acceptance does not establish this newer requirement.
 
 ## Where the work lives
 
@@ -67,7 +67,37 @@ Each item follows the main plan's execution contract: a public Elisa API, positi
   Progress on 2026-09-30: `MotionFilters` (Gaussian, median, de-spike, zero-phase Butterworth, quaternion continuity) matches the numpy output of clean_leg_motion.py to 1e-9. `MotionQuat` adds slerp, swing/twist, hinge angle and aim. The filter-tap bounds are proved. IK, the grounded-pivot and pelvis checks, and quaternion-normalisation proofs are still open. See docs/validation/motion-filters.md. `LegChain` adds two-bone leg IK with a knee pole, ankle-wring measure, soft limit and the knee-turn search, matching clean_leg_motion.py's logic under Blender to 1e-4. The search bounds are proved. See docs/validation/leg-chain-ik.md. `FootPivot` adds the grounded heel/ball pivot with its ground weight and clip-end fade, matching Blender to 1e-4. The fade frame counting is proved. See docs/validation/foot-pivot.md. `PelvisSmoothing` adds the faded pelvis path smoothing and the lower-only height de-bob, matching numpy to 1e-9. The fade-span choice is proved. See docs/validation/pelvis-smoothing.md.
   Progress on 2026-10-01 (M08): quaternion normalisation is proved. `normalize`/`vnormalize` used a `length <= EPSILON` guard, which NaN passes, so they could divide by NaN. They now guard with `not (length > EPSILON)` and divide only through `MotionQuatGuard::scale` (`requires length > EPSILON`). `proof/motion_quat_guard.elisa` proves 8/8 under the prover's new float mode (syntactic only, no IEEE arithmetic assumed), and the `<=` mutant fails both the proof and the NaN tests. See docs/validation/motion-filters.md.
 
-**Suggested first slice** (to confirm with the user first): M08 math and M02 pose override. They are headless-testable, unblock the app's first de-spike tool, and need no UI decision. M01 follows, using the shared-Metal-texture hosting decided for it.
+## Active client gaps — 2026-10-07
+
+The user authorized coordination with the mocap-cleaner chat. Its current Studio
+uses `ViewportDraw`/Metal and `GlbDocument`/`GlbSkinMesh`, rather than Wicked
+`RenderScene`. Its isolated engine checkout is `../elisa-engine-mocap`, branch
+`mocap-track`, reported revision `a0ec5e05`; inspect actual commits before integration.
+
+1. **M06 FBX character surfaces (highest client priority).** The existing
+   `elisa_fbx_to_glb(input, output, rate)` preserves animation but omits mesh and
+   skin; the v3 cooker package does not satisfy Studio's editable GLB path.
+   Preserve nodes, mesh, joint indices/weights, inverse binds and animation in
+   the derived GLB. Acceptance: a skinned animated FBX opens with a posed character
+   surface, follows edited poses/playback, and toggles between surface and skeleton.
+   Original FBX bytes remain unchanged. Unsupported surfaces report an explicit
+   skeleton fallback; malformed input and conversion failure leave no partial output.
+   Compare bind/animated poses and joint space against independent fixture evidence.
+   The mocap chat's worker owns the converter implementation in its isolated
+   checkout; engine main owns review/integration of reusable commits, avoiding
+   duplicate edits. App toggles and timeline policy remain app responsibilities.
+2. **Failed-build recovery ownership.** Review the client's retained-lock
+   `OwnedIncomplete` admission with revision-3 failure-event/tree/lease evidence.
+   Require active-builder refusal, interruption-safe original/quarantine trees,
+   source preservation and restart recovery before enabling mutations.
+3. **Variant-aware cleanup receipts/restore.** Preserve exact variant identity
+   and actual executable seals; do not fabricate a seal for an incomplete build.
+   Keep this separate from FBX work and qualify each destructive recovery path.
+
+Promote only demonstrated engine gaps with a reproduction and outcome acceptance.
+Bring reusable changes to main after review; preserve project-specific cleanup
+repairs in the client checkout. Previous M completion marks describe their linked
+historical acceptance, not the new surface/recovery requirements above.
 
 ## Out of engine scope
 

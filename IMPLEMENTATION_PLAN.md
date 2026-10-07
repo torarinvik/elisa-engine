@@ -84,8 +84,8 @@ proof features. Broader source mapping is justified by a concrete failing report
 Do not rerun unchanged expensive benchmarks or start another renderer/animation/audio
 showcase while release gates remain red. Once a slice passes, advance to the next;
 record new failures and promotion triggers in the targeted plan. The mocap M track
-remains in [its separate plan](docs/plans/mocap-engine-track.md) until that app returns
-to scope. External hardware, signing or license decisions do not block ready local work.
+is active for the FBX surface gap in [its coordinated plan](docs/plans/mocap-engine-track.md).
+External hardware, signing or license decisions do not block ready local work.
 
 ## Deferred work and promotion triggers
 
