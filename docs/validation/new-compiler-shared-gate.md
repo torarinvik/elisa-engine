@@ -211,3 +211,20 @@ This does not qualify the complete prover matrix or close shared/native gates.
 Evidence: build/validation/prover-frame-caller-events-final-build.log and
 proof-frame-caller-events-sweep.log; prover
 docs/validation/frame-caller-event-integration.md. Full plan scope remains open.
+
+## Complete original local-call accounting (2026-10-07)
+
+Prover 42c6fc0e tracks immutable scalar local declarations, exact original call
+initializers and read-only builtin scalar darray count/index expressions. The
+full condition-call fixture now proves/replays all 30 obligations (previously 28),
+with no findings or admission invariant failure. Original bound identities,
+callee effects and ordinary bounds/preconditions remain checked; reassignment,
+type/container shadowing and unsupported scopes refuse complete inventory.
+Thirty-seven runtime controls pass at O0/O2, direct/call frame CLI and malformed
+source admission controls pass, and portable frame mutations remain refused.
+Strict all-products O2 build succeeds, generation ea3896a8da7a440ca20b90fc89d56882.
+
+The fresh uncached sweep remains 66/73 with the same seven engine failures. Full
+prover compatibility and shared/native gates remain open. Evidence:
+build/validation/prover-frame-indexed-binding-build.log and
+proof-frame-indexed-binding-sweep.log; prover docs/validation/frame-indexed-binding.md.
