@@ -195,3 +195,12 @@ carrier errors, while other launcher errors remain. It exits 1 normally in
 8.59 seconds, sampled peak RSS 727,056 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-view-carrier-build.log` and JSON.
 View behavior/lifetimes have not been runtime-qualified on this compiler.
+
+The IR effect identity hash helper now has an IR-specific name, preventing
+resolution to Ast's private same-named helper, and binds its cross-product
+sum as one immutable expression. This preserves the limb formula: each masked
+summand is at most 2^32−1, so their sum fits u64. All five ir_model diagnostics
+clear in the bounded build; other launcher errors remain. It exits 1 normally
+in 9.38 seconds, sampled peak RSS 530,128 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-ir-hash-build.log` and watchdog JSON.
+Runtime effect identity behavior remains unverified on this compiler.
