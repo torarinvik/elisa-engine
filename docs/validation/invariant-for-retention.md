@@ -119,3 +119,24 @@ ActionInput remains 232/264, zero gaps (`block-effects-action-input.json`);
 the uncached sweep remains 71/73 (`proof-block-effects-engine-sweep.log`).
 Nested initializer authentication, snapshot bounds and full qualification remain
 open. No engine runtime code changed in this slice.
+
+## Nested assignment entry authenticated
+
+Prover `167f3f1d` locates loop initializer entry inside nested plain-name
+`<-` assignments. It walks statement scopes with depth 64/work 4096 limits,
+requires one matching site, and retains exact declaration/initializer/invariant
+positions and original-entry-only checks. An outer declaration of the same
+name is not the scoped accumulator's reaching definition.
+
+The original conditional reproducer now passes 8/8, zero gaps.
+`test_captured_search_entry.py` passes ten cases through both JSON routes,
+including conditional wrong initializer/preservation/bound refusals. Existing
+initializer, identity-update and module-constant controls pass, including stale
+exit and shadowed invariant claims. These tests remain in the full matrix.
+
+Actual ActionInput remains 232/264, 32 findings, zero gaps/errors
+(`nested-entry-action-input.json`). The uncached sweep remains 71/73
+(`proof-nested-entry-engine-sweep.log`). The generic conditional-search defect
+is repaired; this does not establish the actual capacity guard through all
+ActionInput calls/joins or immutable copy bounds across mutation. Those and
+full prover/shared/native qualification remain open.
