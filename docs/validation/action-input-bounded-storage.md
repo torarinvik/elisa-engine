@@ -57,3 +57,31 @@ The full 73-row uncached engine sweep remains **69/73**, with the same failures:
 ActionInput context/deadzone, AudioAnimEvents and SoundAssets. Reports:
 `build/validation/input-bounded-storage.json` and `proof-bounded-storage-sweep.log`.
 Full shared/native gates and broader toolchain matrix qualification remain open.
+
+## Float ownership classification follow-up
+
+Prover `b5ff462f` adds `f32`/`f64` to the ownership scalar classifier; this does not
+add integer arithmetic witnesses or IEEE numerical laws. It also recognizes copies
+into an extern whose unique source declaration has plain scalar parameters and a
+plain scalar/void result. Parameter ranges, all retained pointer/provenance flags,
+return qualifiers, local callee shadowing and declaration collisions are checked.
+Effect rows and native result facts remain separate checks; no body, purity or
+no-retention guarantee is inferred. References and moves retain resource handling.
+
+Strict O2 pair `48df3f7c3d2547479426c7604e056b45` uses compiler `75568f88` and
+unchanged replay code. Eleven controls pass both whole-file and function routes:
+f32/f64 and mutable scalar values, float fields/elements and an integer field are
+accepted; explicit field borrows, overlapping mutable float borrows, unknown f32/f64
+reference calls and NaN reflexivity are refused. Extern effect containment controls,
+IEEE literal forgeries, mixed float/integer bounds, scalar-field priority, record
+fixed arrays, qualified block ranges and the kernel inventory also pass.
+
+ActionInput now has **217 obligations, 177 replayed certificates, zero replay gaps**,
+and 43 findings. The false `fabsf` resource refusals are gone; the `bind` wrapper
+still has an opaque resource call. Inventory changes reflect removal of invalid
+resource obligations, not removal of source checks. The uncached sweep remains
+**69/73** with the same four failures; the module is not fully proved.
+Logs: `build/validation/proof-float-resource-build-3.log`,
+`input-scalar-extern-resource-final.json`, and
+`proof-scalar-extern-resource-final-sweep.log`. Full prover matrix qualification
+and shared/native gate completion remain open.
