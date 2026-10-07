@@ -279,3 +279,34 @@ and `motion_overlay_policy`); `audio_virtual` and `sound_event_assets` still
 have unproven obligations, and `glb_layout_index` has a source-obligation
 inventory mismatch. The fixture's proof is complete, but those engine proofs
 remain unproved, so the native shared check and Q01 are not green.
+
+## Unique nested source inventory (2026-10-07; Q01 remains open)
+
+Proof commit `351dec90` lets the independent literal-ensure inventory accept a
+nested function only when its bare name is unique across the complete parsed
+source. It still records duplicate names as unsupported. The CLI regression
+fixture `examples/source_obligation_inventory_nested_scope.elisa` proves and
+replays 2/2 obligations; the duplicate-name fixture is rejected as unsupported
+with all 4 certificates replayed. The engine proof
+`proof/glb_layout_index.elisa` now proves and replays 82/82 obligations without
+the previous source-obligation-inventory finding.
+
+The uncached command
+`python3 ../elisa-engine/scripts/prove_all.py "$PWD/build/elisa-proof" --no-cache -j 4`
+now fully proves 63/71 engine inputs. Eight remain: unsupported
+`action_input_context` and `action_input_deadzone`; replay gaps in
+`application_capture_timing`, `audio_music`, `audio_triggers`, and
+`motion_overlay_policy`; and unproven obligations in `audio_virtual` and
+`sound_event_assets`. The product SHA-256 is
+`273b2393a9b1f4aee826f40155fe67b406c36538c56c3eecf2f6b9c1cfc6b9bd`, built
+with the proof project’s pinned Stage1 `23a0e16a854cddec3016746a0cb9480db0c4db22`.
+Its manifest marked the proof source dirty during the build; the implementation
+files in that product match the subsequently committed source, while test
+fixtures were committed afterward.
+
+The full `scripts/tests/test_report_inventory_completeness.py` mutation harness
+remains unverified: Stage1 declined its reduced-report test fixture at
+`proof_report_declaration_function_kind_matches@8 (for statement)`. Direct CLI
+checks for unique nested, duplicate nested, and GLB inventory outcomes passed;
+the harness failure is not counted as a pass. The native shared check remains
+blocked on the remaining proof reports and the prior wrapper/toolchain gaps.
