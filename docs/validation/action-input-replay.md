@@ -97,3 +97,27 @@ Generation `7e138bc0c2674c559c9a56e89787d74a` records complete seven-protocol se
 The snapshot reproducer now proves/replays all bounded writes; wide/missing guards and shared writes remain refused in both proof routes. Float resources (11), local records (16), fixed index (7), enum resource (5), local decimal (11), numeric-cast refusal, operator/global stability and IEEE forgery controls pass. Indexed-boolean predicate remains unqualified at 19/22 replay: the saved pre-change product fc31a8ca has the same three gaps.
 
 ActionInput advances past every snapshot-budget refusal, checking 242 obligations with 201 replayed, zero gaps and 41 findings. The larger inventory includes rows previously skipped by budget refusal; this is not proof completion. Full uncached engine coverage stays 71/73, only the two ActionInput reports fail. Reports/logs: `build/validation/action-input-protocol-groups.json`, `build/validation/proof-protocol-group-engine-sweep.log`, `build/validation/proof-protocol-group-build-2.log`. Next triage: builtin float call-result operator admission and the newly reached indexed binding/state writes.
+
+## Float call result admission — 2026-10-07
+
+Paired generation `13db254a25114c8a89925719b2e66627` uses the same exact
+compiler `8006b660` snapshot. Build: `build/validation/proof-float-call-shape-build-2.log`.
+The runtime protocol gate now reads declared source function return types and validated,
+unique extern signature return metadata for `f32`/`f64` in float mode. Extern admission
+requires matching nonvariadic arity, valid parameter/return metadata, a nonreference
+nonoptional result, and no source function of the same callable name. Source protocol
+overrides still refuse admission. This changes receiver classification only; it adds
+no IEEE arithmetic identities, purity or repeated-call congruence.
+
+`test_float_call_result_shape.py` passes six cases through both whole-file and function
+routes: extern f32/f64 and source f32 accepted; NaN-result reflexivity, overridden
+equality and record-valued results refused. Existing float resource, literal forgery
+and compact snapshot controls pass. The test is included in the prover matrix.
+
+Actual context report: `build/validation/action-input-float-call-shape-2.json`,
+244 obligations, 205 proven/replayed, 39 findings, zero replay gaps or semantic errors.
+Previously 242/201 with 41 findings; previously stopped expressions now contribute
+additional obligations. `approx_eq` and `refresh_action` unsupported-expression rows
+are gone. Deadzone report: `build/validation/action-input-deadzone-float-call-shape.json`.
+Both engine proofs still fail. Next inspect the remaining `bind_checked` expression
+and bounds on copied binding/state slots. Full matrix qualification remains open.
