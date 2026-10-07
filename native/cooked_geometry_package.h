@@ -62,6 +62,10 @@ struct CookedGeometry {
     std::vector<SkinJoint> skin_joints;
     std::vector<uint32_t> skin_cluster_joints;
     std::vector<AnimationClip> animation_clips;
+    // Optional keyed elisa-anim-v1 source embedded by cooked assets that opt
+    // into production ozz sampling. Legacy packages keep using their sampled
+    // animation_clips until recooked.
+    std::vector<uint8_t> animation_contract;
     struct MorphTarget {
         std::vector<float> positions;
         std::vector<float> normals;

@@ -100,6 +100,7 @@ bool cooked_geometry_bytes(const elisa::assets::CookedGeometry& geometry, size_t
         !add_geometry_bytes(geometry.skin_weights.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.skin_inverse_bind_matrices.size(), sizeof(float), total) ||
         !add_geometry_bytes(geometry.skin_cluster_joints.size(), sizeof(uint32_t), total) ||
+        !add_geometry_bytes(geometry.animation_contract.size(), sizeof(uint8_t), total) ||
         !add_geometry_bytes(geometry.subsets.size(), sizeof(elisa::assets::CookedGeometry::Subset), total)) return false;
     for (const std::string& name : geometry.skin_bone_names) {
         if (!add_geometry_bytes(name.size(), 1, total)) return false;

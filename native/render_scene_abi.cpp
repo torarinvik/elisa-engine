@@ -36,6 +36,7 @@
 #include "bundle_texture.h"
 #include "snapshot_asset_worker.h"
 #include "ozz_animation_service.h"
+#include "elisa_anim_v1.h"
 #include <DirectXMath.h>
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE) && defined(TRACY_ENABLE)
 #include <tracy/Tracy.hpp> // file scope: the probe header sits in namespace {}

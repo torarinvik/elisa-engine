@@ -37,8 +37,9 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         animation_contract_path: Path | None = None) -> tuple[Path, dict]:
     """Write a geometry package; textured sources require a containing bundle.
 
-    With ``animation_contract_path`` the rig and clips are also written in the
-    validated ``elisa-anim-v1`` contract (``cook_animation_contract``).
+    With ``animation_contract_path`` the validated ``elisa-anim-v1`` contract
+    is both embedded for the native runtime and written as a sidecar for Elisa
+    asset/event loading.
     """
     asset_path = geometry_cooker.safe_asset_path(asset_path)
     source_path = source_path.expanduser().resolve(strict=True)
@@ -52,6 +53,11 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
     geometry = geometry_cooker.normalized_geometry(document,
         cook_assets.source_bytes(source_path.parent, document), simplify_ratio,
         generate_lightmap_uv, lightmap_resolution, lightmap_padding)
+    contract_bytes = None
+    if animation_contract_path is not None:
+        if geometry["skin"] is None or not geometry["animation_clips"]:
+            raise ValueError("animation contract output needs an animated skinned asset")
+        contract_bytes = cook_animation_contract.encode(geometry["skin"], geometry["animation_clips"])
     if geometry["images"] and not allow_textures:
         raise ValueError("material textures need an .elpk bundle output")
     raw_streams = [
@@ -112,6 +118,10 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         *cook_gltf_animation.package_lines(geometry["animation_clips"],
             0 if geometry["skin"] is None else len(geometry["skin"]["joints"]),
             len(geometry["scene"]["mesh_placements"]), len(geometry["morph_targets"])),
+        *(["animation_contract_format=elisa-anim-v1",
+            f"animation_contract_bytes={len(contract_bytes)}",
+            "animation_contract_b64=" + base64.b64encode(contract_bytes).decode("ascii")]
+            if contract_bytes is not None else []),
         *geometry_cooker.morph_lines(geometry, include_vertex_streams=False),
         *geometry_cooker.scene_lines(geometry),
     ]
@@ -143,9 +153,6 @@ def cook_geometry_package(source_path: Path, asset_path: str, output_path: Path,
         raw_package_bytes = ("\n".join(raw_lines) + "\n").encode("utf-8")
         if len(raw_package_bytes) > 64 * 1024 * 1024:
             raise ValueError("Godot cooked geometry package exceeds the 64 MiB runtime limit")
-    contract_bytes = None
-    if animation_contract_path is not None:
-        contract_bytes = cook_animation_contract.encode(geometry["skin"], geometry["animation_clips"])
     output_path.write_bytes(package_bytes)
     if contract_bytes is not None:
         animation_contract_path = animation_contract_path.expanduser().resolve()

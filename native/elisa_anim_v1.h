@@ -8,6 +8,8 @@
 // prove in-bounds and consistent.
 #include "ozz_animation_service.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -29,6 +31,7 @@ struct Clip {
 
 struct Package {
     uint32_t rig_id = 0;
+    std::vector<uint32_t> joint_ids;
     std::vector<int32_t> parents;
     OzzRig rig;
     std::vector<Clip> clips;
@@ -47,10 +50,20 @@ inline bool floats(const std::vector<uint8_t>& bytes, size_t at, float* out, siz
     std::memcpy(out, bytes.data() + at, count * 4);
     return true;
 }
-inline uint32_t fnv(const std::vector<uint8_t>& bytes, size_t start) {
+inline uint32_t fnv(const std::vector<uint8_t>& bytes, size_t start, size_t end) {
     uint32_t hash = 2166136261u;
-    for (size_t at = start; at < bytes.size(); ++at) hash = (hash ^ bytes[at]) * 16777619u;
+    for (size_t at = start; at < end; ++at) hash = (hash ^ bytes[at]) * 16777619u;
     return hash;
+}
+inline uint32_t fnv(const std::vector<uint8_t>& bytes, size_t start) {
+    return fnv(bytes, start, bytes.size());
+}
+inline bool valid_transform(const float* pose) {
+    if (!elisa::animation::detail::finite_pose(pose) || pose[7] == 0.0f ||
+        pose[8] == 0.0f || pose[9] == 0.0f) return false;
+    const float length = std::sqrt(pose[3] * pose[3] + pose[4] * pose[4] +
+        pose[5] * pose[5] + pose[6] * pose[6]);
+    return std::isfinite(length) && std::abs(length - 1.0f) <= 0.002f;
 }
 } // namespace detail
 
@@ -63,17 +76,26 @@ inline Package load(const std::vector<uint8_t>& bytes) {
     if (bytes.size() < kHeaderBytes || bytes.size() > kMaxBytes) return {};
     word(bytes, 0, magic); word(bytes, 4, version); word(bytes, 8, total); word(bytes, 12, checksum);
     word(bytes, 16, rig_id); word(bytes, 20, joints); word(bytes, 24, clip_count);
-    if (magic != kMagic || version != 1 || total != bytes.size() || checksum != detail::fnv(bytes, 16) ||
+    float meters_per_unit = 0.0f;
+    if (!detail::floats(bytes, 28, &meters_per_unit, 1) || magic != kMagic || version != 1 ||
+        total != bytes.size() || checksum != detail::fnv(bytes, 16) || rig_id == 0 ||
+        meters_per_unit != 1.0f ||
         joints < 1 || joints > kMaxJoints || clip_count > kMaxClips) return {};
+    const size_t joint_end = kHeaderBytes + size_t(joints) * kJointBytes;
+    if (joint_end > bytes.size() || detail::fnv(bytes, kHeaderBytes, joint_end) != rig_id) return {};
     std::vector<float> rest(size_t(joints) * kPoseFloats);
+    package.joint_ids.resize(joints);
     package.parents.resize(joints);
     size_t at = kHeaderBytes;
     for (uint32_t joint = 0; joint < joints; ++joint, at += kJointBytes) {
-        uint32_t parent = 0;
-        if (!word(bytes, at + 4, parent) ||
+        uint32_t id = 0, parent = 0;
+        if (!word(bytes, at, id) || !word(bytes, at + 4, parent) ||
             !detail::floats(bytes, at + 8, rest.data() + size_t(joint) * kPoseFloats, kPoseFloats)) return {};
         const int32_t signed_parent = int32_t(parent);
         if (signed_parent < -1 || signed_parent >= int32_t(joint)) return {};
+        if (id == 0 || std::find(package.joint_ids.begin(), package.joint_ids.begin() + joint, id) !=
+                package.joint_ids.begin() + joint) return {};
+        package.joint_ids[joint] = id;
         package.parents[joint] = signed_parent;
     }
     package.rig_id = rig_id;
@@ -87,6 +109,8 @@ inline Package load(const std::vector<uint8_t>& bytes) {
             !word(bytes, at + 20, events)) return {};
         if (clip_rig != rig_id || tracks != joints || ticks_per_second == 0 || duration_ticks == 0 ||
             events > kMaxEvents) return {};
+        if (id == 0 || std::any_of(package.clips.begin(), package.clips.end(),
+                [id](const Clip& clip) { return clip.id == id; })) return {};
         at += kClipHeaderBytes;
         // First pass: bound the clip and size key storage so pointers stay valid.
         size_t scan = at, total_keys = 0;
@@ -112,13 +136,19 @@ inline Package load(const std::vector<uint8_t>& bytes) {
                 uint32_t tick = 0;
                 float* pose = key_storage.data() + stored * kPoseFloats;
                 if (!word(bytes, at, tick) || !detail::floats(bytes, at + 4, pose, kPoseFloats)) return {};
-                if (tick > duration_ticks || (key > 0 && tick <= previous_tick)) return {};
+                if (tick > duration_ticks || (key > 0 && tick <= previous_tick) ||
+                    !detail::valid_transform(pose)) return {};
                 previous_tick = tick;
                 track_keys[track].push_back({float(tick) / tps, pose});
             }
         }
-        at += size_t(events) * kEventBytes;
-        if (at > bytes.size()) return {};
+        uint32_t previous_event_tick = 0;
+        for (uint32_t event = 0; event < events; ++event, at += kEventBytes) {
+            uint32_t event_id = 0, tick = 0;
+            if (!word(bytes, at, event_id) || !word(bytes, at + 4, tick) || event_id == 0 ||
+                tick > duration_ticks || (event > 0 && tick < previous_event_tick)) return {};
+            previous_event_tick = tick;
+        }
         Clip clip;
         clip.id = id;
         clip.duration_seconds = duration;

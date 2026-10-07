@@ -3,15 +3,22 @@
 # instance, every advance_animation tick runs ozz sampling into instance-owned
 # scratch and must add zero heap allocations (counted by the test probe).
 include "../src/runtime/render_scene.elisa"
+extend RenderScene:
+    public:
+        def native_test_handle(handle: InstanceHandle) -> i64:
+            handle.native_value
 
 module RenderSceneAnimationCrowdNativeTests:
     private:
         const MORPHED: cstr = "build/cooked/subsets/morphed-skinned.pkg"
         const ROOTED: cstr = "build/cooked/subsets/root-motion-skinned.pkg"
+        const KEYED: cstr = "examples/character_course/rigs/guide_rig.pkg"
         const TICKS: i32 = 120
 
         @callconv(c)
         extern elisa_render_scene_v1_test_animation_allocations() -> u64
+        @callconv(c)
+        extern elisa_render_scene_v1_test_animation_contract_source(handle: i64) -> i32
 
         def spawn(path: cstr) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
             try RenderScene::create_mesh(path, Geometry::transform_identity(),
@@ -49,6 +56,31 @@ module RenderSceneAnimationCrowdNativeTests:
 
     public:
         def exercise() -> i32:
+            keyed_a: RenderScene::InstanceHandle = catch spawn(KEYED):
+                value: value
+                error failure: return 8
+            keyed_b: RenderScene::InstanceHandle = catch spawn(KEYED):
+                value: value
+                error failure: return 8
+            return 9 if start(keyed_a, "lift", 1.0) + start(keyed_b, "lift", 0.5) != 0
+            keyed_source_a: i32 = elisa_render_scene_v1_test_animation_contract_source(RenderScene::native_test_handle(keyed_a))
+            keyed_source_b: i32 = elisa_render_scene_v1_test_animation_contract_source(RenderScene::native_test_handle(keyed_b))
+            return 10 if keyed_source_a != 1 or keyed_source_b != 1
+            return 11 if step(keyed_a, 0.17) + step(keyed_b, 0.63) != 0
+            keyed_before: u64 = elisa_render_scene_v1_test_animation_allocations()
+            mutable keyed_tick: i32 = 0
+            mutable keyed_misses: i32 = 0
+            while keyed_tick < TICKS:
+                keyed_misses <- keyed_misses + step(keyed_a, 0.016) + step(keyed_b, 0.013)
+                keyed_tick <- keyed_tick + 1
+            return 15 if keyed_misses != 0
+            keyed_after: u64 = elisa_render_scene_v1_test_animation_allocations()
+            return 16 if keyed_after != keyed_before
+            keyed_a_phase: f32 = progress(keyed_a)
+            keyed_b_phase: f32 = progress(keyed_b)
+            return 12 if keyed_a_phase < 0.0 or keyed_b_phase < 0.0 or keyed_a_phase == keyed_b_phase
+            return 13 if remove(keyed_a) + remove(keyed_b) != 0
+
             a: RenderScene::InstanceHandle = catch spawn(MORPHED):
                 value: value
                 error failure: return 1
@@ -76,6 +108,9 @@ module RenderSceneAnimationCrowdNativeTests:
             morphed: i32 = start(a, "lift", 1.0) + start(b, "drop", 0.5) + start(c, "lift", 1.7) + start(d, "drop", 1.2)
             rooted: i32 = start(e, "root-motion", 1.0) + start(f, "root-motion", 0.6) + start(g, "root-motion", 1.4)
             return 2 if morphed + rooted + start(h, "root-motion", 0.8) != 0
+            legacy_source_a: i32 = elisa_render_scene_v1_test_animation_contract_source(RenderScene::native_test_handle(a))
+            legacy_source_e: i32 = elisa_render_scene_v1_test_animation_contract_source(RenderScene::native_test_handle(e))
+            return 14 if legacy_source_a != 0 or legacy_source_e != 0
             # Warm-up: binds each shared ozz library and prepares both contexts.
             return 3 if tick_group(a, b, c, d, e, f, g, h, 0) != 0
             before: u64 = elisa_render_scene_v1_test_animation_allocations()

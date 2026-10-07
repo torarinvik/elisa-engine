@@ -6,6 +6,7 @@
 struct OzzAnimationLibrary {
     elisa::animation::OzzRig rig;
     std::vector<elisa::animation::OzzClip> clips;  // parallel to the cooked clips
+    bool keyed_contract = false;
     // Per clip, the full pose at time 0 and at its duration (root cycle deltas).
     std::vector<float> clip_start_poses;
     std::vector<float> clip_end_poses;
@@ -13,21 +14,79 @@ struct OzzAnimationLibrary {
     std::shared_ptr<const elisa::assets::CookedGeometry> asset;
 };
 
+uint32_t animation_name_id(const std::string& name) {
+    uint32_t hash = 2166136261u;
+    for (unsigned char byte : name) hash = (hash ^ byte) * 16777619u;
+    return hash == 0 ? 1 : hash;
+}
+
+bool contract_rig_matches(const elisa::animation::anim_v1::Package& contract,
+    const std::vector<elisa::assets::CookedGeometry::SkinJoint>& joints) {
+    namespace anim = elisa::animation;
+    if (!contract.valid() || contract.joint_ids.size() != joints.size() ||
+        contract.parents.size() != joints.size() || contract.rig.rest.size() != joints.size() * anim::kPoseFloats) {
+        return false;
+    }
+    for (size_t joint = 0; joint < joints.size(); ++joint) {
+        if (contract.joint_ids[joint] != animation_name_id(joints[joint].name) ||
+            contract.parents[joint] != joints[joint].parent_index) return false;
+        for (size_t component = 0; component < anim::kPoseFloats; ++component) {
+            const float expected = joints[joint].rest_local[component];
+            const float cooked = contract.rig.rest[joint * anim::kPoseFloats + component];
+            if (!std::isfinite(expected) || !std::isfinite(cooked) ||
+                std::abs(expected - cooked) > 1.0e-5f) return false;
+        }
+    }
+    return true;
+}
+
 std::shared_ptr<const OzzAnimationLibrary> build_ozz_animation_library(
+    const std::shared_ptr<const elisa::assets::CookedGeometry>& asset,
     const std::vector<elisa::assets::CookedGeometry::SkinJoint>& joints,
     const std::vector<elisa::assets::CookedGeometry::AnimationClip>& clips) {
     namespace anim = elisa::animation;
+    namespace anim_v1 = elisa::animation::anim_v1;
     auto library = std::make_shared<OzzAnimationLibrary>();
     const size_t joint_count = joints.size();
     if (joint_count == 0) return nullptr;
-    std::vector<int32_t> parents(joint_count);
-    std::vector<float> rest(joint_count * anim::kPoseFloats);
-    for (size_t index = 0; index < joint_count; ++index) {
-        parents[index] = joints[index].parent_index;
-        std::copy(joints[index].rest_local.begin(), joints[index].rest_local.end(),
-            rest.begin() + ptrdiff_t(index * anim::kPoseFloats));
+    anim_v1::Package contract;
+    if (asset != nullptr && !asset->animation_contract.empty()) {
+        contract = anim_v1::load(asset->animation_contract);
+        if (!contract_rig_matches(contract, joints) || contract.clips.size() != clips.size()) return nullptr;
+        std::vector<bool> bound(contract.clips.size(), false);
+        library->clips.resize(clips.size());
+        for (size_t index = 0; index < clips.size(); ++index) {
+            const uint32_t id = animation_name_id(clips[index].name);
+            size_t match = contract.clips.size();
+            for (size_t candidate = 0; candidate < contract.clips.size(); ++candidate) {
+                if (contract.clips[candidate].id == id) {
+                    if (match != contract.clips.size()) return nullptr;
+                    match = candidate;
+                }
+            }
+            if (match == contract.clips.size()) return nullptr;
+            const float duration_delta = std::abs(contract.clips[match].duration_seconds - clips[index].duration_seconds);
+            const float duration_tolerance = clips[index].sample_rate > 0
+                ? 1.0f / float(clips[index].sample_rate) + 1.0e-5f : 0.0f;
+            if (bound[match] ||
+                !contract.clips[match].ozz.valid() || !(clips[index].duration_seconds > 0.0f) ||
+                duration_delta > duration_tolerance) return nullptr;
+            bound[match] = true;
+            library->clips[index] = std::move(contract.clips[match].ozz);
+        }
+        if (std::find(bound.begin(), bound.end(), false) != bound.end()) return nullptr;
+        library->rig = std::move(contract.rig);
+        library->keyed_contract = true;
+    } else {
+        std::vector<int32_t> parents(joint_count);
+        std::vector<float> rest(joint_count * anim::kPoseFloats);
+        for (size_t index = 0; index < joint_count; ++index) {
+            parents[index] = joints[index].parent_index;
+            std::copy(joints[index].rest_local.begin(), joints[index].rest_local.end(),
+                rest.begin() + ptrdiff_t(index * anim::kPoseFloats));
+        }
+        library->rig = anim::build_rig(parents.data(), rest.data(), joint_count);
     }
-    library->rig = anim::build_rig(parents.data(), rest.data(), joint_count);
     if (!library->rig.valid()) return nullptr;
     const size_t pose_floats = joint_count * anim::kPoseFloats;
     library->clip_start_poses.assign(clips.size() * pose_floats, 0.0f);
@@ -36,15 +95,17 @@ std::shared_ptr<const OzzAnimationLibrary> build_ozz_animation_library(
     context.prepare(library->rig, int(joint_count));
     for (size_t index = 0; index < clips.size(); ++index) {
         const auto& clip = clips[index];
-        const bool sized = clip.frame_count > 0 &&
-            clip.local_transforms.size() == size_t(clip.frame_count) * pose_floats;
-        library->clips.push_back(sized ? anim::build_fixed_rate_clip(library->rig, clip.local_transforms.data(),
-            clip.frame_count, float(clip.sample_rate), clip.duration_seconds) : anim::OzzClip{});
-        const anim::OzzClip& built = library->clips.back();
-        if (!built.valid()) return nullptr;
-        const float end = std::max(clip.duration_seconds, 0.0f);
-        if (!context.sample(library->rig, built, 0.0f, library->clip_start_poses.data() + index * pose_floats) ||
-            !context.sample(library->rig, built, end, library->clip_end_poses.data() + index * pose_floats)) {
+        if (!library->keyed_contract) {
+            const bool sized = clip.frame_count > 0 &&
+                clip.local_transforms.size() == size_t(clip.frame_count) * pose_floats;
+            library->clips.push_back(sized ? anim::build_fixed_rate_clip(library->rig, clip.local_transforms.data(),
+                clip.frame_count, float(clip.sample_rate), clip.duration_seconds) : anim::OzzClip{});
+        }
+        const anim::OzzClip& active = library->clips[index];
+        if (!active.valid()) return nullptr;
+        const float end = std::max(active.duration_seconds, 0.0f);
+        if (!context.sample(library->rig, active, 0.0f, library->clip_start_poses.data() + index * pose_floats) ||
+            !context.sample(library->rig, active, end, library->clip_end_poses.data() + index * pose_floats)) {
             return nullptr;
         }
     }
@@ -57,14 +118,14 @@ std::shared_ptr<const OzzAnimationLibrary> ozz_library_for_asset(
     const std::vector<elisa::assets::CookedGeometry::SkinJoint>& joints,
     const std::vector<elisa::assets::CookedGeometry::AnimationClip>& clips) {
     static std::unordered_map<const void*, std::weak_ptr<const OzzAnimationLibrary>> cache;
-    if (asset == nullptr) return build_ozz_animation_library(joints, clips);
+    if (asset == nullptr) return build_ozz_animation_library(asset, joints, clips);
     for (auto entry = cache.begin(); entry != cache.end();) {
         entry = entry->second.expired() ? cache.erase(entry) : std::next(entry);
     }
     if (auto found = cache.find(asset.get()); found != cache.end()) {
         if (auto library = found->second.lock()) return library;
     }
-    auto built = build_ozz_animation_library(joints, clips);
+    auto built = build_ozz_animation_library(asset, joints, clips);
     if (built == nullptr) return nullptr;
     std::const_pointer_cast<OzzAnimationLibrary>(built)->asset = asset;
     cache[asset.get()] = built;
@@ -109,6 +170,10 @@ bool sample_ozz_full_pose(InstanceSlot& instance, elisa::animation::OzzContextSl
     }
     if (size_t(clip_index) >= library.clips.size()) return false;
     const auto& clip = instance.animation_clips[size_t(clip_index)];
+    float sample_time = animation_time(clip, time, loop);
+    if (library.keyed_contract && clip.duration_seconds > 0.0f) {
+        sample_time *= library.clips[size_t(clip_index)].duration_seconds / clip.duration_seconds;
+    }
     return slot.ensure(library.rig).sample(library.rig, library.clips[size_t(clip_index)],
-        animation_time(clip, time, loop), output);
+        sample_time, output);
 }

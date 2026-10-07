@@ -68,4 +68,8 @@ reaches the sampler.
 
 ## Gaps
 
-Production ozz sampling is C02. FBX cooking into this format is A09.
+The native renderer consumes the embedded contract as its ozz clip source for
+assets cooked with the `.anim` sidecar option; legacy packages retain their
+sampled tracks. C02 runtime validation and measured allocation evidence are in
+[`animation-ozz-service.md`](animation-ozz-service.md). FBX cooking into this
+format is A09.

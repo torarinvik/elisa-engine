@@ -7,12 +7,32 @@ namespace elisa::assets::detail {
 inline bool parse_geometry_animations(const probe::PackageIndex& package,
     CookedGeometry& geometry, std::string& error) {
     const auto count_section = package.sections.find("animation_clips");
+    const auto contract_format = package.sections.find("animation_contract_format");
+    const auto contract_size = package.sections.find("animation_contract_bytes");
+    const auto contract_data = package.sections.find("animation_contract_b64");
+    const size_t contract_fields = size_t(contract_format != package.sections.end()) +
+        size_t(contract_size != package.sections.end()) + size_t(contract_data != package.sections.end());
+    if (contract_fields != 0 && (contract_fields != 3 || count_section == package.sections.end())) {
+        error = "incomplete cooked animation contract metadata";
+        return false;
+    }
     if (count_section == package.sections.end()) return true;
     uint64_t clip_count = 0;
     if (!parse_count(package, "animation_clips", clip_count) ||
         clip_count > MAX_GEOMETRY_ANIMATION_CLIPS) {
         error = "invalid cooked geometry animation clip count";
         return false;
+    }
+    if (contract_fields != 0) {
+        uint64_t expected_bytes = 0;
+        if (contract_format->second != "elisa-anim-v1" || geometry.skin_joints.empty() ||
+            clip_count == 0 || !parse_count(package, "animation_contract_bytes", expected_bytes) ||
+            expected_bytes == 0 || expected_bytes > 64u * 1024u * 1024u ||
+            !decode_base64(contract_data->second, geometry.animation_contract) ||
+            geometry.animation_contract.size() != expected_bytes) {
+            error = "invalid cooked animation contract metadata or bytes";
+            return false;
+        }
     }
     const size_t joint_count = geometry.skin_joints.size();
     const size_t morph_count = geometry.morph_targets.size();

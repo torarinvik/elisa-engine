@@ -184,6 +184,14 @@ int main(int argc, char** argv) {
         std::vector<uint8_t> flipped = bytes;
         flipped[40] ^= 0x01;
         expect(!anim::anim_v1::load(flipped).valid(), "checksum mismatch refused");
+        std::vector<uint8_t> rig_id = bytes;
+        put_word(rig_id, 16, 1);
+        reseal(rig_id);
+        expect(!anim::anim_v1::load(rig_id).valid(), "stale rig identity refused");
+        std::vector<uint8_t> units = bytes;
+        put_word(units, 28, 0x40000000u); // 2 metres per unit is not the engine contract.
+        reseal(units);
+        expect(!anim::anim_v1::load(units).valid(), "non-engine animation units refused");
         std::vector<uint8_t> parent = bytes;
         put_word(parent, 32 + 4, 2); // root claims a later parent
         reseal(parent);
@@ -196,6 +204,54 @@ int main(int argc, char** argv) {
         put_word(track, 32 + joints * 112 + 24, 1); // first track names joint 1
         reseal(track);
         expect(!anim::anim_v1::load(track).valid(), "out-of-order track refused");
+        std::vector<uint8_t> joint = bytes;
+        uint32_t first_joint_id = 0;
+        anim::anim_v1::detail::word(joint, 32, first_joint_id);
+        put_word(joint, 32 + 112, first_joint_id);
+        put_word(joint, 16, anim::anim_v1::detail::fnv(joint, 32, 32 + joints * 112));
+        reseal(joint);
+        expect(!anim::anim_v1::load(joint).valid(), "duplicate joint identity refused");
+        const size_t clip_at = 32 + joints * 112;
+        const size_t first_key = clip_at + 24 + 8;
+        std::vector<uint8_t> nan_key = bytes;
+        put_word(nan_key, first_key + 4, 0x7fc00000u);
+        reseal(nan_key);
+        expect(!anim::anim_v1::load(nan_key).valid(), "non-finite animation key refused");
+        std::vector<uint8_t> zero_scale = bytes;
+        put_word(zero_scale, first_key + 4 + 7 * 4, 0);
+        reseal(zero_scale);
+        expect(!anim::anim_v1::load(zero_scale).valid(), "zero animation scale refused");
+        size_t event_at = clip_at + 24;
+        for (size_t joint_index = 0; joint_index < joints; ++joint_index) {
+            uint32_t keys = 0;
+            anim::anim_v1::detail::word(bytes, event_at + 4, keys);
+            event_at += 8 + size_t(keys) * anim::anim_v1::kKeyBytes;
+        }
+        uint32_t events = 0, duration_ticks = 0;
+        anim::anim_v1::detail::word(bytes, clip_at + 8, duration_ticks);
+        anim::anim_v1::detail::word(bytes, clip_at + 20, events);
+        expect(events >= 2, "guide animation supplies ordered event pairs");
+        if (events >= 2) {
+            std::vector<uint8_t> invalid_event = bytes;
+            put_word(invalid_event, event_at, 0);
+            reseal(invalid_event);
+            expect(!anim::anim_v1::load(invalid_event).valid(), "zero animation event id refused");
+            std::vector<uint8_t> invalid_event_tick = bytes;
+            put_word(invalid_event_tick, event_at + 4, duration_ticks + 1);
+            reseal(invalid_event_tick);
+            expect(!anim::anim_v1::load(invalid_event_tick).valid(), "out-of-range animation event refused");
+            std::vector<uint8_t> unordered_events = bytes;
+            put_word(unordered_events, event_at + 4, duration_ticks);
+            put_word(unordered_events, event_at + anim::anim_v1::kEventBytes + 4, 0);
+            reseal(unordered_events);
+            expect(!anim::anim_v1::load(unordered_events).valid(), "out-of-order animation events refused");
+        }
+        std::vector<uint8_t> duplicate_clip = bytes;
+        duplicate_clip.insert(duplicate_clip.end(), bytes.begin() + ptrdiff_t(clip_at), bytes.end());
+        put_word(duplicate_clip, 8, uint32_t(duplicate_clip.size()));
+        put_word(duplicate_clip, 24, 2);
+        reseal(duplicate_clip);
+        expect(!anim::anim_v1::load(duplicate_clip).valid(), "duplicate clip identity refused");
     }
 
     // Stress: many characters, independent clips/times, zero allocations per tick.

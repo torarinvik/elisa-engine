@@ -67,8 +67,12 @@ Both edits were reverted, and `walker.inc` matches the verified copy.
 - The rig is the synthetic two-joint panel and its `lift` clip, not a walk
   cycle. Stride locking is exercised, but there is no authored locomotion
   asset, and foot contact is not checked.
-- Clip sampling still uses the engine's fixed-rate sampler. Production ozz
-  contexts are not integrated or measured (C02).
+- `guide_rig.pkg` now embeds the keyed `elisa-anim-v1` contract and the render
+  scene samples it through the shared ozz library. The native crowd check
+  asserts keyed source binding, independent playback, and zero allocations
+  over 120 steady ticks; legacy packages continue through the fixed-rate
+  fallback. The first bind still allocates, and CPU-time/p95 measurement remains
+  open (C02; see `animation-ozz-service.md`).
 - Each rig is a separate `create_mesh` instance. Shared animated clones and
   per-frame Elisa-sampled pose submission (R08) remain open.
 - Nobody has yet watched the walker in manual play.

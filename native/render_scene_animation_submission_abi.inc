@@ -92,6 +92,18 @@ enum AnimationStateProbeMatch : int32_t {
     ANIMATION_HIERARCHY_MATCH = 1 << 4,
 };
 
+// Reports which clip source the bound runtime library uses: 1 is the embedded
+// elisa-anim-v1 source, 0 is the legacy fixed-rate package track, -1 is stale.
+extern "C" int32_t elisa_render_scene_v1_test_animation_contract_source(int64_t handle) {
+    RenderSceneService& state = service();
+    std::lock_guard<std::mutex> guard(state.mutex);
+    if (!state.initialized || !on_owner_thread(state)) return -1;
+    size_t slot = MAX_INSTANCES;
+    if (!valid_handle(state, handle, slot)) return -1;
+    const auto& library = state.instances[slot].ozz_library;
+    return library != nullptr && library->keyed_contract ? 1 : 0;
+}
+
 extern "C" int32_t elisa_render_scene_v1_test_animation_submission(
     int64_t handle, float expected_x, float expected_morph, int32_t expected_pending) {
     if (!std::isfinite(expected_x) || !std::isfinite(expected_morph) ||

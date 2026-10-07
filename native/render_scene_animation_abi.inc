@@ -93,6 +93,11 @@ int32_t start_animation(int64_t handle, const char* clip_name, int32_t loop, flo
     if (next_clip < 0 || instance.joint_entities.size() != instance.skin_joints.size()) {
         return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     }
+    // Validate and bind the shared rig/clip source before changing playback
+    // state, so a malformed embedded contract cannot partially start a clip.
+    if (!instance.skin_joints.empty() && !ensure_ozz_animation(instance)) {
+        return ELISA_RENDER_SCENE_BACKEND_FAILED;
+    }
     if (loop != 0 && size_t(next_clip) < instance.animation_curve_modes.size() &&
         instance.animation_curve_modes[size_t(next_clip)] == 1) return ELISA_RENDER_SCENE_INVALID_ARGUMENT;
     const bool has_current = instance.animation_clip >= 0 &&
