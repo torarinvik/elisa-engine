@@ -1,4 +1,4 @@
-# Targeted runtime delivery — 2026-10-07
+# Targeted runtime delivery — 2026-10-08
 
 This refines the active queue in `IMPLEMENTATION_PLAN.md`. The full backlog
 remains open. Select a concrete defect or missing acceptance result in the
@@ -8,8 +8,8 @@ Character Course before promoting a subsystem-wide feature.
 
 | Order | Concrete next action | Why now / acceptance |
 | --- | --- | --- |
-| 1 | Encode the checked resource call summary for ActionInput::bind and finish both ActionInput reports. | Private declaration frames in prover 34f5ef7c repair the leaked availability-block local: actual apply 91/91; context 264/265 with one bind resource-summary refusal and zero gaps. Eight scalar-result/capture/reuse and invalid-mutation cases pass both JSON routes, alongside prior scope and stale-state controls. The uncached sweep remains 71/73, failing both ActionInput reports. Preserve production availability and scoped names; repair exact call-region/source mapping with invalid alias/lifetime controls, then require all 73 complete reports. See [scope evidence](../validation/invariant-for-retention.md). |
-| 2 | Authenticate immutable scalar snapshot bounds across record mutation. | Immediate field-copy indexed writes replay, but the later-use snapshot reproducer remains 4/5; local-guard and parameter controls prove 5/5. Capture independent copy bounds before mutation while expiring equality to current fields. Preserve wrong-entry, stale-field and rebound-copy refusals. Scope repair does not establish this separate source pre-state relationship. See [input evidence](../validation/action-input-replay.md) and [scope evidence](../validation/invariant-for-retention.md). |
+| 1 (proof sweep complete) | ActionInput resource summaries now replay; advance to full toolchain qualification. | Prover cb316eaa audits every payload of uniquely resolved ordinary enums, including enums nested in structs, while refusing reference payloads, recursion and hierarchy types. Actual context is 265/265 with zero gaps; the uncached engine sweep passes all 73 reports. Seven new cases pass both JSON routes, with existing alias/overlap, enum, scope and mutation controls retained. See [resource-summary evidence](../validation/reference-free-enum-summary.md). |
+| 2 (follow-up reproducer) | Authenticate immutable scalar snapshot bounds across record mutation. | Immediate field-copy indexed writes replay, but the later-use snapshot reproducer remains 4/5; local-guard and parameter controls prove 5/5. Capture independent copy bounds before mutation while expiring equality to current fields. Preserve wrong-entry, stale-field and rebound-copy refusals. The completed engine sweep does not establish this separate source pre-state relationship; full toolchain qualification is the next release prerequisite. See [input evidence](../validation/action-input-replay.md) and [scope evidence](../validation/invariant-for-retention.md). |
 | 3 | Run the full prover compatibility matrix, shared check and full native gate on one qualified immutable compiler product. | The full matrix finished with 73 failed steps. Clean paired generation 5333c304 now passes package JSON boundary/provenance checks; loop-state and captured-loop replay failures persist, alongside collection/loop-frame findings from the full run (see current input evidence). Repair those failures and rerun full qualification with exact product identities. Compiler 8006 runtime and non-proof shared stages pass. Native qualification first needs a rebuilt ElisaScript supporting explicit process timeouts and explicit selection of the existing pinned ../elisa-boxing-wickedengine checkout/archive ([evidence](../validation/compiler-8006b660-install.md)); sanitizer stages pass, application smokes remain skipped. Full prover compatibility is open. Capture terminal results, product/runtime hashes, all original counts and explicit skips. Fix actual failures without weakening acceptance. |
 | 4 | Rebuild and relocate optimized Character Course with current generated guide assets. | The earlier bundle has historical pre-refresh guide files. Verify generated-output equality, exact resource hashes, offline startup, restart and graceful teardown; retain old evidence as historical. |
 | 5 | Qualify compatible hosted pins and run clean-checkout headless CI. | Published compiler main now includes the formerly unavailable prerequisite. Verify compatible products before changing pins; retain actual provisioning/build/proof artifacts rather than claiming local preflight as CI. |
@@ -58,8 +58,10 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at `665f40d7` on 2026-10-07;
-the compiler checkout and guide revision are unchanged.
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `ddbc803d`
+on 2026-10-08. Section 6 now marks owned value-threading and builtin container
+value forms as working in Stage1. This source review does not qualify a new
+compiler/prover/runtime tuple for the engine.
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
 
@@ -83,7 +85,8 @@ these additional checks within implementation slices:
 - Prefer tuple yields when a touched loop produces several results and optional
   search results initialized to null when absence is part of the API. Use
   explicit `->` yields; bare loops in value position are invalid. Container
-  value-threading remains design-only and must not become a prerequisite.
+  value-threading is now available in Stage1; adopt it at owned update sites
+  when already touching them and after qualifying the selected compiler product.
 - When changing an accumulator to a loop result, keep the initializer as the
   zero-iteration result and preserve each early-break value. For optional search
   results, keep absence explicit as null; migrate an existing sentinel API only
@@ -92,6 +95,31 @@ these additional checks within implementation slices:
   about untouched outer scalars. The current input diagnostic isolates this
   boundary; qualify the prover repair against shadowing, rebinding, local escape
   and effectful calls before accepting it. Keep the production region in place.
+
+### Owned updates: targeted adoption
+
+- Prefer `xs <- xs.push(v)`, `xs <- xs.clear()`, `xs, last <- xs.pop()`,
+  `xs, item <- xs.remove_at(i)`, `d <- d.put(k, v)` and `d, found <- d.remove(k)`
+  at existing owned update sites. The first target of a two-result builtin
+  must be the original container. `remove_at` and dicts require the Stage1 runtime;
+  darray `insert` has no supported in-place or value form yet.
+- A threaded helper takes an owning container or struct by value without
+  `mutable`, writes it and returns that same value on every return, optionally
+  with one additional tuple result. Scalars and views are not threaded owners.
+  Put a moved field back in the same statement (`s.items <- f(s.items)`).
+- Retain mutable-reference helpers for fields reached through borrowed owners,
+  arenas and side-effect-only operations. A move into a different result ends
+  the original binding's usable lifetime. Do not drop the returned owner.
+- Inspect expression-position calls and function-value uses before converting a
+  helper: those keep by-value semantics and prevent its other calls from using
+  the in-place rewrite. Global threading uses a local copy; preserve reads of
+  the global made by the callee.
+- Highest return: qualify the new compiler product first, then use these forms
+  in the next owned collection change needed by a named consumer. Preserve
+  loop capture/result initialization, failure behavior and resource proofs.
+  Avoid a separate API migration or style sweep. The guide records identical
+  machine code at O0/O2 for its parity fixtures; this establishes no new engine
+  speedup. Stage0 rejects writing these by-value parameters.
 
 ## Current evidence
 
