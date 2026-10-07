@@ -1713,5 +1713,13 @@
   "binary": "build/viewport_mesh-test",
   "args": [],
   "message": null
+ },
+ {
+  "name": "action_input_capacity_bounds",
+  "source": "test/action_input_capacity_bounds.elisa",
+  "flags": [],
+  "binary": "build/action_input_capacity_bounds-test",
+  "args": [],
+  "message": null
  }
 ]

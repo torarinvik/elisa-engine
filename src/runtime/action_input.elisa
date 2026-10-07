@@ -10,6 +10,7 @@ module ActionInput:
             DEVICE_COUNT: usize = 3
 
         def device_index(device: Device) -> usize:
+            ensure result < Limits::DEVICE_COUNT
             return 0 if device == Device.Keyboard
             return 1 if device == Device.Mouse
             2
@@ -36,12 +37,14 @@ module ActionInput:
             ensure result == (context_code(current) != context_code(next))
             context_code(current) != context_code(next)
 
+        # Bound scans by storage capacity, then stop at the live prefix.
         def refresh_action(input: mutable Input&, slot: usize) -> void:
             return if slot >= Limits::MAX_ACTIONS or not input.states[slot].live
             action: i64 = input.states[slot].action
             down: mutable bool = false
             value: mutable f32 = 0.0
-            for index in 0..<input.binding_count |input, action|:
+            for index in 0..<Limits::MAX_BINDINGS |input, action|:
+                break if index >= input.binding_count
                 binding: Binding = input.bindings[index]
                 if binding.live and binding.action == action and binding.context == input.context:
                     down <- true if input.binding_down[index]
@@ -138,7 +141,8 @@ module ActionInput:
             return BindResult.InvalidAction if binding.action <= 0
             return BindResult.InvalidCode if binding.code <= 0 or binding.chord_code < 0 or binding.chord_code == binding.code
             return BindResult.InvalidDeadzone if not deadzone_valid(binding.deadzone)
-            for index in 0..<input.binding_count:
+            for index in 0..<Limits::MAX_BINDINGS:
+                break if index >= input.binding_count
                 existing: Binding = input.bindings[index]
                 return BindResult.DuplicateBinding if existing.live and existing.action == binding.action and existing.device == binding.device and existing.code == binding.code and existing.chord_code == binding.chord_code and existing.context == binding.context
             return BindResult.Capacity if input.binding_count >= Limits::MAX_BINDINGS
@@ -162,17 +166,18 @@ module ActionInput:
 
         # Binding at `index`, or a non-live zero binding past the end.
         def binding_at(input: Input&, index: usize) -> Binding:
-            return Binding{action: 0, device: Device.Keyboard, code: 0, chord_code: 0, deadzone: 0.0, context: Context.Gameplay, live: false} if index >= input.binding_count
+            return Binding{action: 0, device: Device.Keyboard, code: 0, chord_code: 0, deadzone: 0.0, context: Context.Gameplay, live: false} if index >= Limits::MAX_BINDINGS or index >= input.binding_count
             input.bindings[index]
 
         # Points an existing binding at a new code/chord, keeping its action,
         # device, dead zone and context. The same checks as bind apply, and the
         # old key's held state is dropped so a rebind never leaves it stuck.
         def rebind_checked(input: mutable Input&, index: usize, code: i64, chord_code: i64) -> BindResult:
-            return BindResult.InvalidAction if index >= input.binding_count
+            return BindResult.InvalidAction if index >= Limits::MAX_BINDINGS or index >= input.binding_count
             return BindResult.InvalidCode if code <= 0 or chord_code < 0 or chord_code == code
             current: Binding = input.bindings[index]
-            for other in 0..<input.binding_count:
+            for other in 0..<Limits::MAX_BINDINGS:
+                break if other >= input.binding_count
                 existing: Binding = input.bindings[other]
                 return BindResult.DuplicateBinding if other != index and existing.live and existing.action == current.action and existing.device == current.device and existing.code == code and existing.chord_code == chord_code and existing.context == current.context
             input.bindings[index] <- Binding{action: current.action, device: current.device, code: code, chord_code: chord_code, deadzone: current.deadzone, context: current.context, live: current.live}
@@ -195,7 +200,8 @@ module ActionInput:
         def set_context(input: mutable Input&, context: Context) -> void:
             return if not context_changes(input.context, context)
             input.context <- context
-            for index in 0..<input.binding_count |input|:
+            for index in 0..<Limits::MAX_BINDINGS |input|:
+                break if index >= input.binding_count
                 input.binding_down[index] <- false
                 input.binding_values[index] <- 0.0
                 input.source_down[index] <- false
@@ -211,7 +217,8 @@ module ActionInput:
             input.connected[device_index(device)] <- connected
             if not connected:
                 input.last_active_device <- Device.Keyboard if input.last_active_device == device
-                for index in 0..<input.binding_count |input, device|:
+                for index in 0..<Limits::MAX_BINDINGS |input, device|:
+                    break if index >= input.binding_count
                     if input.bindings[index].device == device:
                         input.binding_down[index] <- false
                         input.binding_values[index] <- 0.0
@@ -224,7 +231,8 @@ module ActionInput:
         # Clears held state while keeping the device available. Application
         # focus-loss signals can use this without pretending a device detached.
         def clear_device_state(input: mutable Input&, device: Device) -> void:
-            for index in 0..<input.binding_count |input, device|:
+            for index in 0..<Limits::MAX_BINDINGS |input, device|:
+                break if index >= input.binding_count
                 if input.bindings[index].device == device:
                     input.binding_down[index] <- false
                     input.binding_values[index] <- 0.0
@@ -242,7 +250,8 @@ module ActionInput:
 
         def apply(input: mutable Input&, event: Event) -> void:
             return if not input.connected[device_index(event.device)]
-            for index in 0..<input.binding_count |input, event|:
+            for index in 0..<Limits::MAX_BINDINGS |input, event|:
+                break if index >= input.binding_count
                 binding: Binding = input.bindings[index]
                 if binding.live and binding.context == input.context and binding.device == event.device:
                     if binding.code == event.code:

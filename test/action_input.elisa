@@ -357,6 +357,26 @@ def checked_binding_tests() -> i32:
         error failure: 2
     return 54 if typed_capacity != 0
 
+    # Exercise both ends of the full live prefix through the bounded scans.
+    return 80 if ActionInput::binding_count(&full_bindings) != 64
+    return 81 if ActionInput::binding_at(&full_bindings, 63).code != 163
+    return 82 if ActionInput::binding_at(&full_bindings, 64).live
+    return 83 if ActionInput::rebind_checked(&full_bindings, 64, 165, 0) != ActionInput::BindResult.InvalidAction
+    ActionInput::apply(&full_bindings, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 163, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 84 if not ActionInput::action_down(&full_bindings, 1)
+    ActionInput::clear_device_state(&full_bindings, ActionInput::Device.Keyboard)
+    return 85 if ActionInput::action_down(&full_bindings, 1)
+    return 86 if ActionInput::rebind_checked(&full_bindings, 63, 165, 0) != ActionInput::BindResult.Bound
+    ActionInput::apply(&full_bindings, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 165, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 87 if not ActionInput::action_down(&full_bindings, 1)
+    ActionInput::set_context(&full_bindings, ActionInput::Context.UI)
+    return 88 if ActionInput::action_down(&full_bindings, 1)
+    ActionInput::set_context(&full_bindings, ActionInput::Context.Gameplay)
+    ActionInput::apply(&full_bindings, ActionInput::Event{device: ActionInput::Device.Keyboard, code: 100, value: 1.0, pressed: true, released: false, chord_down: false})
+    return 89 if not ActionInput::action_down(&full_bindings, 1)
+    ActionInput::set_connected(&full_bindings, ActionInput::Device.Keyboard, false)
+    return 90 if ActionInput::action_down(&full_bindings, 1)
+
     # Game clients can separate keyboard presets, gameplay, and menu actions
     # without exhausting distinct action state slots.
     full_actions: mutable ActionInput::Input = ActionInput::Input()

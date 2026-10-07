@@ -1,0 +1,22 @@
+include "../src/runtime/action_input.elisa"
+extend ActionInput:
+    public:
+        def oversized_count_probe() -> i32:
+            input: mutable Input = Input()
+            binding: Binding = Binding{action: 1, device: Device.Keyboard, code: 100, chord_code: 0, deadzone: 0.0, context: Context.Gameplay, live: true}
+            return 1 if bind_checked(&input, binding) != BindResult.Bound
+            input.binding_count <- 4096
+            return 2 if binding_at(&input, 64).live
+            return 3 if rebind_checked(&input, 64, 200, 0) != BindResult.InvalidAction
+            apply(&input, Event{device: Device.Keyboard, code: 100, value: 1.0, pressed: true, released: false, chord_down: false})
+            return 4 if not action_down(&input, 1)
+            clear_device_state(&input, Device.Keyboard)
+            return 5 if action_down(&input, 1)
+            set_context(&input, Context.UI)
+            set_connected(&input, Device.Keyboard, false)
+            return 6 if bind_checked(&input, binding) != BindResult.DuplicateBinding
+            candidate: Binding = Binding{action: 1, device: Device.Keyboard, code: 101, chord_code: 0, deadzone: 0.0, context: Context.Gameplay, live: true}
+            return 7 if bind_checked(&input, candidate) != BindResult.Capacity
+            0
+def main() -> i32:
+    ActionInput::oversized_count_probe()
