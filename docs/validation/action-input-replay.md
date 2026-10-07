@@ -321,3 +321,24 @@ The actual probe retains slot <= MAX_ACTIONS immediately after assignment; later
 mutable input writes drop it and the copied binding-count bound. Four bind_checked
 upper findings remain. Next repair stable scalar snapshot facts across aggregate
 mutation; do not count assignment-exit retention as completed bind_checked coverage.
+
+## Scalar copy bound diagnosis — 2026-10-07
+
+`../elisa-engine-proof/scripts/diagnose_scalar_field_snapshot.py` records six
+minimal cases through whole-source and function JSON routes. The safe field copy
+has 4/5 obligations proven/replayed; explicit local guard and parameter controls
+have 5/5. Stale current-field indexing and an insufficient entry guard each leave
+two obligations open; rebinding the mutable copy to the extent leaves one open.
+All twelve reports have zero replay gaps, semantic errors or trusted assumptions.
+Log: `build/validation/scalar-field-snapshot-controls.log`. This is a diagnostic
+for an open defect, not a passing acceptance gate or engine coverage increase.
+
+Producer mutation cleanup already retains facts stated directly over the local.
+The missing step is capturing a receiver-free consequence at declaration time.
+Existing numeric snapshot transfer uses proof-step premises, whose replay occurs
+at the later consumer line. A mutable field-copy equality cannot be made globally
+live there: the source field may have changed. The fix needs authenticated
+pre-state premises at the declaration, with an independently checked immutable
+local lifetime at consumption. Preserve refusal of stale field indexing, mutable
+local rebind and insufficient entry guards. Do not add redundant engine guards
+or grant persistent equality to the current record field.
