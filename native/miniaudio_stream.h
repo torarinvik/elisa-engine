@@ -288,6 +288,14 @@ public:
         return count;
     }
 
+    // Caller holds the service mutex; ring storage is allocated by the owner.
+    uint64_t allocated_ring_bytes() const {
+        uint64_t bytes = 0;
+        for (const Stream& stream : streams_)
+            bytes += static_cast<uint64_t>(stream.ring.capacity()) * sizeof(int16_t);
+        return bytes;
+    }
+
     // Call only while no device callback can run.
     void shutdown(std::mutex& mutex) {
         for (Stream& stream : streams_) {

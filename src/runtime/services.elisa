@@ -321,6 +321,8 @@ module RuntimeServices:
             raise RuntimeServicesError.AudioUnavailable if session_status != 0
             AudioRuntime::active_voice_count()
 
+        include "./services_audio_workload.inc"
+
         # Host lifecycle wrappers keep Application statuses but reject use
         # after session shutdown.
         def pump(session: mutable Session&) -> Application::PumpStatus error[RuntimeServicesError]:

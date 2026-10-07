@@ -297,6 +297,25 @@ extern "C" int32_t elisa_audio_v1_active_voice_count(void) {
     return static_cast<int32_t>(audio_service().service.active_voices());
 }
 
+extern "C" int32_t elisa_audio_v1_workload_snapshot(uint32_t* clips, uint32_t* voices,
+    uint32_t* streams, uint64_t* pcm_bytes, uint64_t* ring_bytes,
+    uint64_t* callbacks, uint64_t* contended_callbacks) {
+    if (clips == nullptr || voices == nullptr || streams == nullptr ||
+        pcm_bytes == nullptr || ring_bytes == nullptr || callbacks == nullptr ||
+        contended_callbacks == nullptr) return ELISA_AUDIO_INVALID_ARGUMENT;
+    const int32_t status = require_audio_service();
+    if (status != ELISA_AUDIO_OK) return status;
+    const probe::audio::WorkloadSnapshot snapshot = audio_service().service.workload_snapshot();
+    *clips = snapshot.clips;
+    *voices = snapshot.voices;
+    *streams = snapshot.streams;
+    *pcm_bytes = snapshot.pcm_bytes;
+    *ring_bytes = snapshot.ring_bytes;
+    *callbacks = snapshot.callbacks;
+    *contended_callbacks = snapshot.contended_callbacks;
+    return ELISA_AUDIO_OK;
+}
+
 extern "C" int32_t elisa_audio_v1_set_voice_budget(int32_t bus, uint32_t budget) {
     if (bus < ELISA_AUDIO_BUS_MUSIC || bus > ELISA_AUDIO_BUS_UI || budget > probe::audio::MAX_VOICES) {
         return ELISA_AUDIO_INVALID_ARGUMENT;

@@ -171,6 +171,10 @@ void concurrent_checks(const std::string& path) {
             std::this_thread::sleep_for(std::chrono::milliseconds(8));
         }
     };
+    const audio::WorkloadSnapshot loaded = service.workload_snapshot();
+    check(loaded.streams == 1 && loaded.clips == 0 && loaded.voices == 0 &&
+        loaded.pcm_bytes == 0 && loaded.ring_bytes == 2 * RATE,
+        "stream snapshot counts reserved decoder and both allocated rings");
     pump_for(250);
     const audio::StreamStatus running = service.stream_status(music);
     check(running.frames_played > 0 && running.underrun_frames == 0, "the device consumes a refilled stream");
@@ -185,6 +189,9 @@ void concurrent_checks(const std::string& path) {
     const audio::StreamStatus recovered = service.stream_status(music);
     check(recovered.state == audio::StreamState::Playing && recovered.frames_played > paused_at &&
         recovered.underrun_frames == 0, "a stream keeps playing across device recovery");
+    const audio::WorkloadSnapshot reopened = service.workload_snapshot();
+    check(reopened.streams == 1 && reopened.ring_bytes == loaded.ring_bytes &&
+        reopened.callbacks > 0, "recovery retains stream buffers and callbacks advance");
     check(service.seek_stream(music, 100) == audio::StreamSeekStatus::Seeked, "seek while the device runs");
     pump_for(100);
     const audio::StreamStatus sought = service.stream_status(music);
@@ -196,6 +203,9 @@ void concurrent_checks(const std::string& path) {
     check(service.stop_stream(music) && service.active_streams() == 0 &&
         service.stream_status(music).state == audio::StreamState::Invalid,
         "stop cancels a recovered stream while the callback runs");
+    const audio::WorkloadSnapshot canceled = service.workload_snapshot();
+    check(canceled.streams == 0 && canceled.pcm_bytes == 0 && canceled.ring_bytes == loaded.ring_bytes,
+        "cancellation releases decoder ownership and retains fixed rings");
     const audio::StreamHandle replacement = service.open_stream(path.c_str(), true,
         audio::Bus::Music, 0.0f, opened);
     check(opened == audio::StreamOpenStatus::Opened && replacement.slot == music.slot &&
@@ -208,6 +218,9 @@ void concurrent_checks(const std::string& path) {
         static_cast<unsigned long long>(recovered.underrun_frames),
         static_cast<unsigned long long>(service.contended_callbacks()));
     service.shutdown();
+    const audio::WorkloadSnapshot stopped = service.workload_snapshot();
+    check(stopped.streams == 0 && stopped.pcm_bytes == 0 && stopped.ring_bytes == 0,
+        "shutdown frees streamed workload storage");
 }
 
 // Voice virtualization support: a voice realized from virtual starts at the

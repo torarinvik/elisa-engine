@@ -49,3 +49,14 @@ runs on live null devices under ASan/UBSan and TSan from
 Removing the injection hook makes nine checks fail (negative control). No
 physical output device was unplugged; loss is simulated with miniaudio's
 `stopped` notification.
+
+## Workload snapshots (2026-10-07)
+
+`AudioRuntime::workload_snapshot` and the session-checked
+`RuntimeServices::audio_workload_snapshot` expose live resource counts,
+allocated PCM/ring capacities and cumulative callback/contention counts.
+Decoder/device internals and allocator overhead are excluded. Lifecycle and
+stream harnesses verify buffer retention on recovery/cancellation and release
+on shutdown under ASan/UBSan and TSan. The Character Course uses actual sounds
+for route and binding-reload measurements; see
+[workload evidence](course-audio-workload.md).

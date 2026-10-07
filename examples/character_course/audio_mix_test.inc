@@ -143,13 +143,29 @@
         def reload_live_test(session: mutable RuntimeServices::Session&) -> bool:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+            workload: mutable CourseAudioWorkload::Stats = CourseAudioWorkload::Stats()
+            before: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                value: value
+                error failure: return false
+            measured: mutable bool = CourseAudioWorkload::sample(session, &sounds, &workload, 4)
             fired: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::PLAYED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 5) == CourseSounds::PLAYED
             reloaded: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED
+            after: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                value: value
+                error failure: return false
+            measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 5) and measured
+            stable: bool = after.clips == before.clips and after.streams == before.streams and after.pcm_bytes == before.pcm_bytes and after.ring_bytes == before.ring_bytes
             kept: bool = CourseSounds::event_voices(&sounds) == 1 and CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::DUPLICATE
             removed: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::FIRE_FAILED
             restored: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::RELOADED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::PLAYED
+            measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 6) and measured
             throttled: bool = CourseSounds::poll_reload(&sounds, 100) == CourseSounds::UNCHANGED and CourseSounds::poll_reload(&sounds, 700) == CourseSounds::UNCHANGED
-            CourseSounds::stop(&sounds) and fired and reloaded and kept and removed and restored and throttled and audio_idle(session)
+            stopped: bool = CourseSounds::stop(&sounds)
+            released: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                value: value
+                error failure: return false
+            buffers_released: bool = released.clips == 0 and released.voices == 0 and released.streams == 0 and released.pcm_bytes == 0 and released.ring_bytes == before.ring_bytes
+            stopped and fired and reloaded and kept and removed and restored and throttled and audio_idle(session) and measured and stable and buffers_released and workload.music_underruns == 0 and workload.victory_underruns == 0
 
         # Live audio: the guide's authored foot plants sound when its clip
         # passes them, once per tick, and a reload that drops the bindings

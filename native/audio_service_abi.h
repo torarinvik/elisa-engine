@@ -68,6 +68,10 @@ int32_t elisa_audio_v1_set_voice_spatial(uint32_t slot, uint32_t generation,
     float gain, float pitch_ratio);
 int32_t elisa_audio_v1_set_bus_gain(int32_t bus, float gain);
 int32_t elisa_audio_v1_active_voice_count(void);
+// Allocated PCM/ring capacities exclude decoder/device internals and overhead.
+int32_t elisa_audio_v1_workload_snapshot(uint32_t* clips, uint32_t* voices,
+    uint32_t* streams, uint64_t* pcm_bytes, uint64_t* ring_bytes,
+    uint64_t* callbacks, uint64_t* contended_callbacks);
 int32_t elisa_audio_v1_set_voice_budget(int32_t bus, uint32_t budget);
 // A paused bus keeps its voices and streams in place without advancing them.
 int32_t elisa_audio_v1_set_bus_paused(int32_t bus, int32_t paused);

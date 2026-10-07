@@ -2,6 +2,7 @@
 
 // CPU-only encoder for completed readback buffers. Row padding is not encoded.
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -18,15 +19,27 @@ enum class PixelOrder { RGBA, BGRA, RGB10A2, BGR10A2 };
 // Bound accepted pixel storage and hence the encoded file size.
 inline constexpr size_t MAX_RGBA_BYTES = 256u * 1024u * 1024u;
 
-inline uint32_t png_crc(const uint8_t* data, size_t size) {
-    uint32_t crc = 0xffffffffu;
-    for (size_t index = 0; index < size; ++index) {
-        crc ^= data[index];
-        for (int bit = 0; bit < 8; ++bit) {
-            crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
-        }
+// PNG's fixed CRC polynomial; constexpr storage adds no runtime allocation.
+inline constexpr std::array<uint32_t, 256> PNG_CRC_TABLE = [] {
+    std::array<uint32_t, 256> table{};
+    for (uint32_t byte = 0; byte < table.size(); ++byte) {
+        uint32_t value = byte;
+        for (int bit = 0; bit < 8; ++bit)
+            value = (value >> 1) ^ (0xedb88320u & (0u - (value & 1u)));
+        table[byte] = value;
     }
-    return ~crc;
+    return table;
+}();
+
+inline uint32_t png_crc_update(uint32_t crc, const uint8_t* data, size_t size) {
+    const uint32_t* table = PNG_CRC_TABLE.data();
+    for (size_t index = 0; index < size; ++index)
+        crc = (crc >> 8) ^ table[(crc ^ data[index]) & 255u];
+    return crc;
+}
+
+inline uint32_t png_crc(const uint8_t* data, size_t size) {
+    return ~png_crc_update(0xffffffffu, data, size);
 }
 
 inline void png_u32(std::vector<uint8_t>& output, uint32_t value) {
@@ -84,36 +97,41 @@ inline bool save_rgba_png(const uint8_t* raw, size_t size, uint32_t width,
     uint32_t crc = 0xffffffffu;
     const auto write_crc_bytes = [&](const uint8_t* bytes, size_t length) {
         write_bytes(bytes, length);
-        for (size_t index = 0; index < length; ++index) {
-            crc ^= bytes[index];
-            for (int bit = 0; bit < 8; ++bit)
-                crc = (crc >> 1) ^ (0xedb88320u & (0u - (crc & 1u)));
-        }
+        crc = png_crc_update(crc, bytes, length);
     };
     const uint8_t type[] = {'I', 'D', 'A', 'T'};
     write_crc_bytes(type, sizeof(type));
     const uint8_t zlib_header[] = {0x78, 0x01};
     write_crc_bytes(zlib_header, sizeof(zlib_header));
-    std::vector<uint8_t> block;
-    block.reserve(65535);
+    std::vector<uint8_t> block(65535);
+    uint8_t* block_bytes = block.data();
+    size_t block_used = 0;
     size_t emitted = 0;
     uint32_t sum_a = 1;
     uint32_t sum_b = 0;
     const auto flush_block = [&]() {
-        const uint16_t length = uint16_t(block.size());
+        // Adler-32 reduces every 5552 bytes, the standard overflow-safe bound.
+        for (size_t begin = 0; begin < block_used; begin += 5552) {
+            const size_t end = std::min(block_used, begin + 5552);
+            for (size_t index = begin; index < end; ++index) {
+                sum_a += block_bytes[index];
+                sum_b += sum_a;
+            }
+            sum_a %= 65521u;
+            sum_b %= 65521u;
+        }
+        const uint16_t length = uint16_t(block_used);
         const uint16_t inverse = uint16_t(~length);
         const uint8_t block_header[] = {uint8_t(emitted + length == filtered_size ? 1 : 0),
             uint8_t(length), uint8_t(length >> 8), uint8_t(inverse), uint8_t(inverse >> 8)};
         write_crc_bytes(block_header, sizeof(block_header));
-        write_crc_bytes(block.data(), block.size());
-        emitted += block.size();
-        block.clear();
+        write_crc_bytes(block_bytes, block_used);
+        emitted += block_used;
+        block_used = 0;
     };
     const auto emit = [&](uint8_t value) {
-        block.push_back(value);
-        sum_a = (sum_a + value) % 65521u;
-        sum_b = (sum_b + sum_a) % 65521u;
-        if (block.size() == 65535) flush_block();
+        block_bytes[block_used++] = value;
+        if (block_used == 65535) flush_block();
     };
     for (uint32_t row = 0; row < height; ++row) {
         emit(0); // PNG filter None
@@ -135,7 +153,7 @@ inline bool save_rgba_png(const uint8_t* raw, size_t size, uint32_t width,
             for (uint8_t channel : rgba) emit(channel);
         }
     }
-    if (!block.empty()) flush_block();
+    if (block_used != 0) flush_block();
     const uint32_t adler = (sum_b << 16) | sum_a;
     const uint8_t checksum[] = {uint8_t(adler >> 24), uint8_t(adler >> 16),
         uint8_t(adler >> 8), uint8_t(adler)};

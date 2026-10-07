@@ -38,6 +38,16 @@ module AudioRuntime:
             Playing
             Finished
 
+        # Buffer capacities exclude decoder/device internals and overhead.
+        struct WorkloadSnapshot:
+            clips: usize
+            voices: usize
+            streams: usize
+            pcm_bytes: u64
+            ring_bytes: u64
+            callbacks: u64
+            contended_callbacks: u64
+
         struct StreamStatus:
             state: StreamState
             frames_played: u64
@@ -186,6 +196,11 @@ module AudioRuntime:
 
         @callconv(c)
         extern elisa_audio_v1_active_stream_count() -> i32
+
+        @callconv(c)
+        extern elisa_audio_v1_workload_snapshot(clips: mutable u32&, voices: mutable u32&,
+            streams: mutable u32&, pcm_bytes: mutable u64&, ring_bytes: mutable u64&,
+            callbacks: mutable u64&, contended_callbacks: mutable u64&) -> i32
 
         @callconv(c)
         extern elisa_audio_v1_contended_callbacks(count: mutable u64&) -> i32
@@ -388,6 +403,20 @@ module AudioRuntime:
             count: i32 = elisa_audio_v1_active_stream_count()
             try check_status(Status::OK if count >= 0 else count)
             count.usize()
+
+        def workload_snapshot() -> WorkloadSnapshot error[AudioError]:
+            clips: mutable u32 = 0
+            voices: mutable u32 = 0
+            streams: mutable u32 = 0
+            pcm_bytes: mutable u64 = 0
+            ring_bytes: mutable u64 = 0
+            callbacks: mutable u64 = 0
+            contended: mutable u64 = 0
+            try check_status(elisa_audio_v1_workload_snapshot(&clips, &voices, &streams,
+                &pcm_bytes, &ring_bytes, &callbacks, &contended))
+            WorkloadSnapshot{clips: clips.usize(), voices: voices.usize(), streams: streams.usize(),
+                pcm_bytes: pcm_bytes, ring_bytes: ring_bytes, callbacks: callbacks,
+                contended_callbacks: contended}
 
         # Device callbacks that emitted silence rather than wait for the lock.
         def contended_callbacks() -> u64 error[AudioError]:

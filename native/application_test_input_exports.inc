@@ -99,3 +99,15 @@ extern "C" void elisa_application_v1_test_trace_cell_jump(int64_t stage,
         static_cast<long long>(stage), start_height, peak_height, grounded, jumped, input_seen);
     std::fflush(stderr);
 }
+
+extern "C" void elisa_application_v1_test_trace_course_audio(int32_t stage,
+    uint64_t clips, uint64_t voices, uint64_t streams, uint64_t pcm_bytes,
+    uint64_t ring_bytes, uint64_t callbacks, uint64_t contended,
+    uint64_t music_underruns, uint64_t victory_underruns) {
+    std::fprintf(stderr, "course audio stage=%d clips=%llu voices=%llu streams=%llu pcm_bytes=%llu ring_bytes=%llu callbacks=%llu contended=%llu music_underruns=%llu victory_underruns=%llu\n",
+        stage, static_cast<unsigned long long>(clips), static_cast<unsigned long long>(voices),
+        static_cast<unsigned long long>(streams), static_cast<unsigned long long>(pcm_bytes),
+        static_cast<unsigned long long>(ring_bytes), static_cast<unsigned long long>(callbacks),
+        static_cast<unsigned long long>(contended), static_cast<unsigned long long>(music_underruns),
+        static_cast<unsigned long long>(victory_underruns));
+}

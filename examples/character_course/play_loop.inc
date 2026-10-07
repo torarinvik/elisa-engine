@@ -52,6 +52,7 @@
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             if CourseSounds::start(&sounds, session) != CourseSounds::STARTED:
                 _ = CourseSounds::stop(&sounds)
+            audio_workload: mutable CourseAudioWorkload::Stats = CourseAudioWorkload::Stats()
             sound_tick: mutable u64 = 0
             contact_stats: mutable CourseContactAudio::Stats = CourseContactAudio::Stats()
             guide_agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
@@ -74,7 +75,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, layout_height, layout_selected, clock, keymap, legend, menu_open, menu, sounds, sound_tick, contact_stats, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, layout_height, layout_selected, clock, keymap, legend, menu_open, menu, sounds, sound_tick, contact_stats, audio_workload, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -124,6 +125,9 @@
                     _ = CourseSounds::play_music(&sounds, CourseSounds::music_for(CourseState::phase(state) == CourseState::Phase.Won), frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::poll_reload(&sounds, frame.elapsed_nanos / 1000000)
                     _ = CourseSounds::update(&sounds)
+                    if mode == 4:
+                        audio_stage: i32 = 2 if menu_open or CourseState::phase(state) == CourseState::Phase.Paused else 1
+                        return 224 if not CourseAudioWorkload::sample(session, &sounds, &audio_workload, audio_stage)
                     if menu_open:
                         # Keys first; pointer presses when no key acted.
                         step: mutable CourseControls::MenuStep = CourseControls::drain_menu(menu)
@@ -204,6 +208,8 @@
                                 state, sounds, beacons, &grounded, &crouched,
                                 &jump_queued, &clock, &previous_elapsed_nanos,
                                 frame.elapsed_nanos, avatar, instruction, look)
+                            if mode == 4 and restarted:
+                                return 224 if not CourseAudioWorkload::sample(session, &sounds, &audio_workload, 3)
                             if not restarted:
                                 _ = catch RenderScene::set_overlay_text(instruction,
                                     "Restart incomplete; see the application log"):
@@ -356,6 +362,9 @@
             no_pointer: ActionPointerReplay::Log = ActionPointerReplay::Log()
             _ = ActionInputStore::save_recording(RECORDING_KEY, &recording, &no_pointer)
             _ = CourseSounds::stop(&sounds)
+            if mode == 4:
+                audio_result: i32 = CourseAudioWorkload::finish(session, &audio_workload)
+                return audio_result if audio_result != 0
             try CourseBeacons::release(beacons)
             try CourseProps::release(session, &props)
             try release_legend(&legend)

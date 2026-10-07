@@ -11,8 +11,8 @@ Character Course before promoting a subsystem-wide feature.
 | 1 (automated complete) | Focus-loss recovery through the live course loop | Hold movement and crouch, lose focus, verify automatic pause and cleared actions, then resume and finish the existing route. Run through SDL event translation; record an OS window-switch separately. Prevents stuck movement and unintended gameplay after switching applications. |
 | 2 (automated complete) | Resize the running course in play, pause and controls | Verify logical/drawable dimensions, camera aspect and readable HUD at small and large sizes. Reuse the existing native resize hook and retain captures. Fix clipping or stale layout exposed by the check. Physical DPI/display changes remain separate evidence. |
 | 3 (automated complete) | One production worker-event consumer under `WorldSchedule` | Reuse Jolt's existing bounded contact queue. Resolve contact participants through checked body bindings before routing a crate impact to gameplay/audio. Reject stale world epochs and wrong access phases; retain overflow and unsubscribe evidence. Avoid constructing another public scheduler or generic queue before a producer needs it. |
-| 4 | Measure the course's actual audio workload | Record voice/stream counts, memory and underruns during route, pause, reload and teardown. Exercise existing cancellation/device recovery rather than adding another audio feature. Physical listening and unplug/reconnect remain explicitly unverified until performed. |
-| 5 | Validate keyed animation on representative content | Use the course's independent instances, then an authored rig with a stated joint/clip count. Record optimized CPU percentiles, allocations and sampled memory. Add transitions/root motion only when the game's motion exposes a concrete need. |
+| 4 (automated complete) | Measure the course's actual audio workload | Record voice/stream counts, memory and underruns during route, pause, reload and teardown. Exercise existing cancellation/device recovery rather than adding another audio feature. Physical listening and unplug/reconnect remain explicitly unverified until performed. |
+| 5 | Cook and measure the pinned authored Cesium Man rig | Reuse Ozz's local glTF fixture (19 skin joints, one clip; retain its Cesium CC BY attribution). Exercise the normal geometry/keyed-contract cook and eight independent rendered instances. Target p99 <=1 ms per eight-instance CPU update and zero steady allocations; record package/source hashes and sampled memory. Fix an actual import or sampling defect before adding animation graph features. |
 | 6 | Rebuild and relocate the updated game | Verify optimized clean provenance, resource hashes, offline startup and graceful teardown after the preceding runtime changes. Keep separate-machine testing, signing and legal review visible as external acceptance work. |
 
 The existing live-input pilot already covers pause/resume, held crouch,
@@ -56,7 +56,14 @@ also passes real crate contact delivery through the scheduled Audio phase
 consumed by residual fall speed; its original rise threshold remains intact.
 Classification has 8/8 implementation-linked proof obligations.
 [Contact delivery evidence](../validation/world-physics-contacts.md) records the
-remaining physical-listening limit. The next slice is actual audio workload measurement.
+remaining physical-listening limit. Actual course audio workload measurement now
+passes the live route (194.134s) and binding reload (186.636s), with
+zero stream underruns, bounded measured PCM/ring capacities and explicit
+resource release. A measured screenshot-encoding stall was fixed without
+increasing audio buffers; focused lifecycle/stream sanitizers pass.
+[Audio workload evidence](../validation/course-audio-workload.md) keeps
+physical listening/device changes and whole-audio-heap accounting separate.
+The next slice is cooking and measuring the pinned authored rig.
 See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live

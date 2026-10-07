@@ -1,0 +1,74 @@
+# Measurements for the existing live course pilot, using actual audio assets.
+include "./sounds.elisa"
+
+module CourseAudioWorkload:
+    private:
+        @callconv(c)
+        extern elisa_application_v1_test_trace_course_audio(stage: i32, clips: u64,
+            voices: u64, streams: u64, pcm_bytes: u64, ring_bytes: u64,
+            callbacks: u64, contended: u64, music_underruns: u64, victory_underruns: u64)
+
+    public:
+        struct Stats:
+            samples: mutable u64
+            paused_samples: mutable u64
+            restarts: mutable u64
+            clips: mutable u64
+            voices: mutable u64
+            streams: mutable u64
+            pcm_bytes: mutable u64
+            ring_bytes: mutable u64
+            callbacks: mutable u64
+            contended: mutable u64
+            music_underruns: mutable u64
+            victory_underruns: mutable u64
+            last_stage: mutable i32
+
+        def Stats() -> Stats:
+            Stats{samples: 0, paused_samples: 0, restarts: 0, clips: 0, voices: 0,
+                streams: 0, pcm_bytes: 0, ring_bytes: 0, callbacks: 0, contended: 0,
+                music_underruns: 0, victory_underruns: 0, last_stage: 0}
+
+        def sample(session: RuntimeServices::Session&, sounds: CourseSounds::Sounds&,
+            stats: mutable Stats&, stage: i32) -> bool:
+            snapshot: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                value: value
+                error failure: return false
+            music: AudioRuntime::StreamStatus = CourseSounds::music_status(sounds)
+            victory: AudioRuntime::StreamStatus = CourseSounds::victory_status(sounds)
+            stats.samples <- stats.samples + 1
+            stats.paused_samples <- stats.paused_samples + 1 if stage == 2
+            stats.restarts <- stats.restarts + 1 if stage == 3
+            stats.clips <- snapshot.clips.u64() if snapshot.clips.u64() > stats.clips
+            stats.voices <- snapshot.voices.u64() if snapshot.voices.u64() > stats.voices
+            stats.streams <- snapshot.streams.u64() if snapshot.streams.u64() > stats.streams
+            stats.pcm_bytes <- snapshot.pcm_bytes if snapshot.pcm_bytes > stats.pcm_bytes
+            stats.ring_bytes <- snapshot.ring_bytes if snapshot.ring_bytes > stats.ring_bytes
+            stats.callbacks <- snapshot.callbacks
+            stats.contended <- snapshot.contended_callbacks
+            stats.music_underruns <- music.underrun_frames if music.underrun_frames > stats.music_underruns
+            stats.victory_underruns <- victory.underrun_frames if victory.underrun_frames > stats.victory_underruns
+            if stage != stats.last_stage:
+                elisa_application_v1_test_trace_course_audio(stage, snapshot.clips.u64(), snapshot.voices.u64(),
+                    snapshot.streams.u64(), snapshot.pcm_bytes, snapshot.ring_bytes, snapshot.callbacks,
+                    snapshot.contended_callbacks, music.underrun_frames, victory.underrun_frames)
+                stats.last_stage <- stage
+            true
+
+        def finish(session: RuntimeServices::Session&, stats: Stats&) -> i32:
+            elisa_application_v1_test_trace_course_audio(9, stats.clips, stats.voices, stats.streams,
+                stats.pcm_bytes, stats.ring_bytes, stats.callbacks, stats.contended,
+                stats.music_underruns, stats.victory_underruns)
+            stopped: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                value: value
+                error failure: return 224
+            elisa_application_v1_test_trace_course_audio(10, stopped.clips.u64(), stopped.voices.u64(),
+                stopped.streams.u64(), stopped.pcm_bytes, stopped.ring_bytes, stopped.callbacks,
+                stopped.contended_callbacks, 0, 0)
+            return 225 if stats.samples == 0 or stats.paused_samples == 0 or stats.restarts == 0 or stats.callbacks == 0
+            return 226 if stats.clips < 8 or stats.voices == 0 or stats.streams != 2
+            return 227 if stats.clips > 16 or stats.voices > 32 or stats.pcm_bytes > 8388608 or stats.ring_bytes > 1048576
+            return 228 if stats.music_underruns != 0 or stats.victory_underruns != 0
+            return 229 if stopped.clips != 0 or stopped.voices != 0 or stopped.streams != 0 or stopped.pcm_bytes != 0
+            return 230 if stopped.ring_bytes != stats.ring_bytes
+            0

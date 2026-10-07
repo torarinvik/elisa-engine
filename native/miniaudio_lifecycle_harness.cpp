@@ -83,16 +83,27 @@ void initialization_failure() {
 void loss_and_reopen() {
     audio::Service service;
     check(service.initialize_null(RATE, 1), "lifecycle service initializes");
+    const audio::WorkloadSnapshot empty = service.workload_snapshot();
+    check(empty.clips == 0 && empty.voices == 0 && empty.streams == 0 &&
+        empty.pcm_bytes == 0 && empty.ring_bytes == 2 * RATE,
+        "workload snapshot counts allocated silent stream rings");
     const std::vector<uint8_t> wav = tone_wav(RATE);
     const audio::ClipHandle clip = service.decode_clip(wav.data(), wav.size(), RATE, 1);
     const audio::VoiceHandle voice = service.play(clip, true);
     check(callbacks_advance(service), "the live device calls back");
+    const audio::WorkloadSnapshot loaded = service.workload_snapshot();
+    check(loaded.clips == 1 && loaded.voices == 1 && loaded.streams == 0 &&
+        loaded.pcm_bytes >= RATE * sizeof(int16_t) && loaded.ring_bytes == empty.ring_bytes &&
+        loaded.callbacks > 0, "workload snapshot observes PCM, voice and callbacks");
     service.request_device_recovery_for_test();
     check(service.take_device_recovery_request() && !service.take_device_recovery_request(),
         "device loss raises one recovery request");
     check(service.reopen_null() && audio::Service::open_devices_for_test() == 1,
         "reopen after loss keeps exactly one device");
     check(!service.voice_live(voice) && service.clip_live(clip), "reopen ends voices and keeps clips");
+    const audio::WorkloadSnapshot recovered = service.workload_snapshot();
+    check(recovered.clips == 1 && recovered.voices == 0 && recovered.pcm_bytes == loaded.pcm_bytes &&
+        recovered.ring_bytes == loaded.ring_bytes, "recovery preserves owned buffers and ends voices");
     const audio::VoiceHandle replay = service.play(clip, true);
     check(replay.slot < audio::MAX_VOICES && callbacks_advance(service),
         "the reopened device plays and calls back");
@@ -116,6 +127,10 @@ void loss_and_reopen() {
     service.request_device_recovery_for_test();
     check(!service.take_device_recovery_request() && audio::Service::open_devices_for_test() == 0 &&
         callbacks_quiet(service) && !service.clip_live(clip), "shutdown leaves no device, callback or clip");
+    const audio::WorkloadSnapshot stopped = service.workload_snapshot();
+    check(stopped.clips == 0 && stopped.voices == 0 && stopped.streams == 0 &&
+        stopped.pcm_bytes == 0 && stopped.ring_bytes == 0,
+        "shutdown releases every measured buffer and resource");
 }
 
 void repeated_cycles() {

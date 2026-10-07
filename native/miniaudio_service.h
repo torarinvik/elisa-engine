@@ -6,6 +6,7 @@
 // through fixed rings (miniaudio_stream.h) refilled by the owner thread.
 #include "miniaudio.h"
 #include "miniaudio_stream.h"
+#include "miniaudio_workload_types.h"
 
 #include <algorithm>
 #include <array>
@@ -342,12 +343,7 @@ public:
         return ClipReleaseStatus::Released;
     }
 
-    uint32_t active_voices() const {
-        std::lock_guard<std::mutex> guard(mutex_);
-        uint32_t count = 0;
-        for (const Voice& voice : voices_) count += voice.live ? 1 : 0;
-        return count;
-    }
+#include "miniaudio_workload_api.inc"
 
     void mix_for_test(int16_t* output, uint32_t frames) {
         if (output == nullptr) return;

@@ -41,11 +41,11 @@ int main(int argc, char** argv) {
             elisa::capture::PixelOrder::RGB10A2, argv[2])) return 5;
     if (!elisa::capture::save_rgba_png(reinterpret_cast<const uint8_t*>(&packed), 4, 1, 1, 4,
             elisa::capture::PixelOrder::BGR10A2, argv[3])) return 6;
-    for (int fixture = 0; fixture < 2; ++fixture) {
-        const uint32_t width = fixture == 0 ? 5461 : 1024;
-        const uint32_t height = fixture == 0 ? 3 : 40;
+    for (int fixture = 0; fixture < 3; ++fixture) {
+        const uint32_t width = fixture == 0 ? 5461 : (fixture == 1 ? 1024 : 2560);
+        const uint32_t height = fixture == 0 ? 3 : (fixture == 1 ? 40 : 1440);
         std::vector<uint8_t> raw(size_t(width) * height * 4);
-        for (size_t i = 0; i < raw.size(); ++i) raw[i] = uint8_t(i % 251);
+        for (size_t i = 0; i < raw.size(); ++i) raw[i] = fixture == 2 ? 255 : uint8_t(i % 251);
         largest = 0;
         if (!elisa::capture::save_rgba_png(raw.data(), raw.size(), width, height,
             size_t(width) * 4, elisa::capture::PixelOrder::RGBA, argv[4 + fixture])) return 7;
@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
         image = root / "capture.png"
         packed_image = root / "packed.png"
         metal_packed_image = root / "metal-packed.png"
-        block_images = [root / "exact-block.png", root / "multi-block.png"]
+        block_images = [root / "exact-block.png", root / "multi-block.png", root / "full-size.png"]
         source.write_text(harness, encoding="utf-8")
         subprocess.run([compiler, "-std=c++17", "-I", str(ROOT), str(source), "-o", str(binary)], check=True)
         subprocess.run([str(binary), str(image), str(packed_image), str(metal_packed_image), *map(str, block_images)], check=True)
@@ -109,8 +109,8 @@ int main(int argc, char** argv) {
         raise ValueError("unexpected R10G10B10A2 conversion")
     if idat_pixels(metal_packed_encoded) != bytes((0, 0, 127, 255, 255)):
         raise ValueError("unexpected BGR10A2 conversion")
-    for data, width, height in zip(block_encoded, (5461, 1024), (3, 40)):
-        raw = bytes(i % 251 for i in range(width * height * 4))
+    for data, width, height in zip(block_encoded, (5461, 1024, 2560), (3, 40, 1440)):
+        raw = bytes([255]) * (width * height * 4) if width == 2560 else bytes(i % 251 for i in range(width * height * 4))
         expected = b"".join(b"\0" + raw[row * width * 4:(row + 1) * width * 4] for row in range(height))
         if idat_pixels(data) != expected:
             raise ValueError("stored-block boundary corrupted scanlines")
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
             if binascii.crc32(chunk) & 0xFFFFFFFF != crc:
                 raise ValueError("bad streaming chunk CRC")
             offset += size + 12
-    print("RGBA PNG self-test passed (BGRA swap, packed RGB/BGR 10-bit, padded rows, bounds, CRC, pixels, block boundaries, largest encoder allocation <= 64 KiB).")
+    print("RGBA PNG self-test passed (BGRA swap, packed RGB/BGR 10-bit, padded rows, bounds, CRC, pixels, block boundaries, full-size maximum-byte Adler sums, largest encoder allocation <= 64 KiB).")
     return 0
 
 
