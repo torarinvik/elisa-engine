@@ -158,3 +158,13 @@ from 5 to 3. The bounded compile still exits 1 on other errors (7.59 seconds;
 sampled peak RSS 728,672 KiB). Engine artifact:
 `build/validation/elisascript-ddbc803d-arena-alias-build.log` and watchdog JSON.
 This establishes neither concurrent allocator safety nor an executed launcher.
+
+Concat, scratch concat and string slice now accept optional `cstr` inputs and
+return `cstr`, preserving that guarantee in unchanged-input return paths.
+Copied paths convert only after writing the terminator or interning a copy;
+size guards and slice clamping are retained. The bounded build clears all
+three remaining runtime entrypoint diagnostics, with no diagnostics on these
+functions. Other string-view carrier and source compatibility errors remain.
+It exits 1 normally in 7.23 seconds, sampled peak RSS 726,944 KiB. Artifact:
+engine `build/validation/elisascript-ddbc803d-concat-slice-build.log` and JSON.
+These operations have not executed on the selected compiler.
