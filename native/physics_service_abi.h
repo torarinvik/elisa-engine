@@ -290,6 +290,10 @@ int32_t elisa_physics_v1_contact_at(uint64_t world_generation, uint32_t index,
 int32_t elisa_physics_v1_clear_contacts(uint64_t world_generation);
 int32_t elisa_physics_v1_body_position(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float* x, float* y, float* z);
+// Opaque key used by contact records; never a World EntityId or save-game ID.
+// Ownership, world generation and body generation are checked before writing.
+int32_t elisa_physics_v1_body_contact_key(uint64_t world_generation, uint32_t slot,
+    uint64_t body_generation, uint64_t* contact_key);
 int32_t elisa_physics_v1_body_pose(uint64_t world_generation, uint32_t slot,
     uint64_t body_generation, float* position_x, float* position_y, float* position_z,
     float* rotation_x, float* rotation_y, float* rotation_z, float* rotation_w);

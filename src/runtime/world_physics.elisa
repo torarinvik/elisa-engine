@@ -165,6 +165,29 @@ module WorldPhysics:
             body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
             try RuntimeServices::physics_body_pose(session, body)
 
+        # Opaque participant key for joining a binding to Jolt contact records.
+        def body_contact_key(session: RuntimeServices::Session&, bindings: Bindings&,
+            entity: World::EntityRef) -> u64 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            index: usize = binding_index(bindings, entity)
+            raise WorldPhysicsError.BindingNotFound if index == Sentinel::NO_BINDING
+            body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+            try RuntimeServices::physics_body_contact_key(session, body)
+
+        # Unknown/unbound participants return the invalid reference. A matching
+        # binding must still belong to this live World and the current session.
+        def contact_reference(session: RuntimeServices::Session&, world: World::World&,
+            bindings: Bindings&, key: u64) -> World::EntityRef error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldPhysicsError]:
+            none: World::EntityRef = World::EntityRef{world_epoch: 0, id: 0}
+            return none if key == 0
+            for index in 0..<bindings.count |session, world, bindings, key|:
+                body: PhysicsRuntime::BodyHandle = try PhysicsRuntime::ServiceBodyHandles::get(&bindings.bodies, index)
+                candidate: u64 = try RuntimeServices::physics_body_contact_key(session, body)
+                if candidate == key:
+                    reference: World::EntityRef = bindings.entities[index]
+                    raise WorldPhysicsError.EntityUnavailable if not World::world_is_live(world, reference)
+                    return reference
+            none
+
         # Stage every pose before publishing any of them. A stale entity or body
         # therefore cannot leave half of this synchronization pass in World.
         def sync_world(session: RuntimeServices::Session&, world: mutable World::World&,

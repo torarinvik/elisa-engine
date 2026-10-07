@@ -413,6 +413,18 @@ extern "C" int32_t elisa_physics_v1_body_position(uint64_t world_generation,
     return ELISA_PHYSICS_OK;
 }
 
+extern "C" int32_t elisa_physics_v1_body_contact_key(uint64_t world_generation,
+    uint32_t slot, uint64_t body_generation, uint64_t* contact_key) {
+    if (contact_key == nullptr) return ELISA_PHYSICS_INVALID_ARGUMENT;
+    const int32_t status = require_world(world_generation);
+    if (status != ELISA_PHYSICS_OK) return status;
+    PhysicsService& state = physics_service();
+    BodySlot* body = resolve_body(state, slot, body_generation);
+    if (body == nullptr) return ELISA_PHYSICS_INVALID_HANDLE;
+    *contact_key = static_cast<uint64_t>(body->entity);
+    return ELISA_PHYSICS_OK;
+}
+
 extern "C" int32_t elisa_physics_v1_body_pose(uint64_t world_generation,
     uint32_t slot, uint64_t body_generation, float* position_x, float* position_y,
     float* position_z, float* rotation_x, float* rotation_y, float* rotation_z,

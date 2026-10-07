@@ -49,6 +49,10 @@ test and 20/20 proof obligations; real pause/play resize, small-menu captures
 at three text sizes, paged SDL pointer clicks and full traversal passed
 (230.790s). Physical pointer/DPI and tiny-window decisions remain open.
 The next executable slice is the checked Jolt contact consumer under `WorldSchedule`.
+Its checked participant lookup now passes the native pose gate (52.021s),
+including wrong World epochs, despawn, body replacement and session restart.
+[Contact identity evidence](../validation/world-physics-contacts.md) records the
+remaining phase delivery and course-consumer work.
 See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live

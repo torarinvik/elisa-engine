@@ -129,6 +129,30 @@ module WorldPhysicsPoseProbe:
                 value: value
                 error failure: return 5
             return 6 if not rotations_match(initial_body_pose.rotation, initial.rotation)
+            contact_key: u64 = catch WorldPhysics::body_contact_key(session, direct_bindings, entity):
+                value: value
+                error failure: return 60
+            return 61 if contact_key == 0
+            joined: World::EntityRef = catch WorldPhysics::contact_reference(session, world, direct_bindings, contact_key):
+                value: value
+                error failure: return 62
+            return 63 if joined.id != entity.id or joined.world_epoch != entity.world_epoch
+            unknown: World::EntityRef = catch WorldPhysics::contact_reference(session, world, direct_bindings, 0):
+                value: value
+                error failure: return 64
+            return 65 if unknown.id != 0 or unknown.world_epoch != 0
+            other_world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 66
+            other_entity: World::EntityRef = catch World::world_spawn(&other_world, World::Actor.Player):
+                value: value
+                error failure: return 66
+            return 66 if other_entity.id != entity.id or other_entity.world_epoch == entity.world_epoch
+            wrong_world: i32 = catch WorldPhysics::contact_reference(session, other_world, direct_bindings, contact_key):
+                value: 0
+                WorldPhysics::WorldPhysicsError.EntityUnavailable: 1
+                error failure: 2
+            return 67 if wrong_world != 1
 
             direct_step: i32 = catch RuntimeServices::physics_fixed_step(session,
                 Runtime::fixed_step_seconds()):
@@ -151,6 +175,55 @@ module WorldPhysicsPoseProbe:
                 ok: 0
                 error failure: 1
             return 13 if direct_cleanup != 0 or WorldPhysics::binding_count(direct_bindings) != 0
+            unbound: World::EntityRef = catch WorldPhysics::contact_reference(session, world, direct_bindings, contact_key):
+                value: value
+                error failure: return 68
+            return 69 if unbound.id != 0 or unbound.world_epoch != 0
+
+            other_bindings: mutable WorldPhysics::Bindings = WorldPhysics::Bindings()
+            other_bound: i32 = catch WorldPhysics::bind(session, other_world, &other_bindings,
+                other_entity, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
+                ok: 0
+                error failure: 1
+            return 72 if other_bound != 0
+            other_key: u64 = catch WorldPhysics::body_contact_key(session, other_bindings, other_entity):
+                value: value
+                error failure: return 73
+            removed: i32 = catch World::world_despawn(&other_world, other_entity):
+                ok: 0
+                error failure: 1
+            return 74 if removed != 0
+            dead_reference: i32 = catch WorldPhysics::contact_reference(session, other_world, other_bindings, other_key):
+                value: 0
+                WorldPhysics::WorldPhysicsError.EntityUnavailable: 1
+                error failure: 2
+            return 75 if dead_reference != 1
+            other_unbound: i32 = catch WorldPhysics::unbind(session, &other_bindings, other_entity):
+                ok: 0
+                error failure: 1
+            return 76 if other_unbound != 0
+            replacement: World::EntityRef = catch World::world_spawn(&other_world, World::Actor.Player):
+                value: value
+                error failure: return 77
+            replacement_bound: i32 = catch WorldPhysics::bind(session, other_world, &other_bindings,
+                replacement, PhysicsRuntime::BodyKind.Dynamic,
+                Geometry::Vec3{x: 0.5, y: 0.5, z: 0.5}, 1.0):
+                ok: 0
+                error failure: 1
+            return 77 if replacement_bound != 0
+            replacement_key: u64 = catch WorldPhysics::body_contact_key(session, other_bindings, replacement):
+                value: value
+                error failure: return 78
+            return 78 if replacement_key == other_key or replacement_key == 0
+            expired_key: World::EntityRef = catch WorldPhysics::contact_reference(session, other_world, other_bindings, other_key):
+                value: value
+                error failure: return 79
+            return 79 if expired_key.id != 0 or expired_key.world_epoch != 0
+            replacement_unbound: i32 = catch WorldPhysics::unbind(session, &other_bindings, replacement):
+                ok: 0
+                error failure: 1
+            return 79 if replacement_unbound != 0
 
             hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
             if not WorldHierarchy::hierarchy_spawn(&hierarchy, entity.id, initial):
@@ -333,12 +406,20 @@ module WorldPhysicsPoseProbe:
                 ok: 0
                 error failure: 1
             return 23 if stale_bind != 0
+            stale_key: u64 = catch WorldPhysics::body_contact_key(session, stale_bindings, entity):
+                value: value
+                error failure: return 70
             stale_session_closed: bool = RuntimeServices::shutdown(session)
             return 24 if not stale_session_closed
             stale_reopened: RuntimeServices::OpenStatus = RuntimeServices::open(session,
                 config, requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
                 AudioRuntime::MIN_CHANNEL_COUNT, report)
             return 25 if stale_reopened != RuntimeServices::OpenStatus.FallbackRequired
+            stale_contact: i32 = catch WorldPhysics::contact_reference(session, world, stale_bindings, stale_key):
+                value: 0
+                PhysicsRuntime::PhysicsError.StaleWorld: 1
+                error failure: 2
+            return 71 if stale_contact != 1
             stale_sync_status: i32 = catch WorldPhysics::advance_and_sync(session,
                 &world, stale_bindings, Runtime::fixed_step_micros()):
                 value: 0

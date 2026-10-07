@@ -238,6 +238,8 @@ module PhysicsRuntime:
             Removed
 
         struct ContactEvent:
+            # Native participant keys, not World entity IDs. Resolve through
+            # WorldPhysics bindings before addressing a World entity.
             entity_a: u64
             entity_b: u64
             position: Geometry::Vec3
