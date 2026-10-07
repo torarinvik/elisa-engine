@@ -69,3 +69,28 @@ zero findings and six gaps. Remaining rows: number preservation, two read_fields
 entry facts, number-call admission inside read_fields, and two dependent wrapper
 summaries. Evidence: `build/validation/sound-assets-captured-initializer.json` and
 `prover-captured-wrapper-build.log`. Full shared/native qualification stays open.
+
+## Mutable captured-for entry facts
+
+Prover `65f072ec`/`66fe2168` reconstructs exact original invariant entries for
+mutable scalar locals captured by a top-level for statement. Each initializer
+must be a literal or immutable primitive integer formal, with matching owner,
+source declaration and trace positions. Between declaration and loop, only
+independently checked integer declarations are allowed; calls, writes and unknown
+statements refuse. Original invariant expression and all root position fields
+must match. Loop-state premises cannot admit an entry equality. Body shadowing
+of the target is refused. This adds no preservation or exit-state admission.
+
+Pair generation `cf5a07edb0a64c34a4acff20d5e36346` passes six focused controls
+on both report routes: valid entries, wrong initial count, body shadowing,
+intervening write/call and stale exit. The minimal entry control still has
+unrelated unsupported preservation bindings; its assertions qualify the two
+entry certificates, not a complete function proof. Existing captured initializer
+and seven captured-entry controls pass, as do malformed source admission on
+all 12 routes and the kernel inventory.
+
+The unchanged sound-event parser now replays 153/157 certificates, with zero
+findings and four gaps: number preservation, the number call within read_fields,
+and two dependent wrapper summaries. Evidence:
+`build/validation/sound-assets-mutable-entry-final.json` and
+`prover-mutable-entry-final-build.log`. Full qualification remains open.
