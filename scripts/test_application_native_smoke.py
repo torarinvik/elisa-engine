@@ -13,6 +13,7 @@ from pathlib import Path
 from application_native_smoke import (
     MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS,
     character_course_presentation_error,
+    character_course_menu_error,
     native_smoke_environment,
 )
 from packaged_maze_smoke import application_environment as packaged_maze_environment
@@ -109,6 +110,23 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
             fall_path.write_bytes(rgba_png(width, height, win_pixels))
             self.assertIn("changed outcome HUD",
                 character_course_presentation_error(win_path, fall_path) or "")
+
+    def test_course_menu_requires_all_changed_small_window_captures(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            directory = Path(temporary_directory)
+            self.assertIn("Missing", character_course_menu_error(directory) or "")
+            for index, name in enumerate(("100", "125", "150", "bottom")):
+                pixels = bytes((240 + index, 240 + index, 240 + index, 255)) * 600 * 400
+                (directory / f"menu-{name}.png").write_bytes(rgba_png(600, 400, pixels))
+            self.assertIsNone(character_course_menu_error(directory))
+            first_image = (directory / "menu-100.png").read_bytes()
+            (directory / "menu-100.png").write_bytes(rgba_png(600, 400, bytes((32, 32, 32, 255)) * 600 * 400))
+            self.assertIn("bright text", character_course_menu_error(directory) or "")
+            (directory / "menu-100.png").write_bytes(first_image)
+            (directory / "menu-125.png").write_bytes((directory / "menu-100.png").read_bytes())
+            self.assertIn("did not change", character_course_menu_error(directory) or "")
+            (directory / "menu-125.png").write_bytes(rgba_png(600, 300, bytes((32, 32, 32, 255)) * 600 * 300))
+            self.assertIn("dimensions", character_course_menu_error(directory) or "")
 
 
 if __name__ == "__main__":

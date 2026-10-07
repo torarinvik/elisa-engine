@@ -137,6 +137,34 @@ def character_course_presentation_error(win_path: Path, fall_path: Path) -> str 
     return None
 
 
+def character_course_menu_error(directory: Path) -> str | None:
+    dimensions = None
+    previous = None
+    for name in ("100", "125", "150", "bottom"):
+        path = directory / f"menu-{name}.png"
+        decoded = decode_capture_png(path.read_bytes()) if path.exists() else None
+        if decoded is None:
+            return f"Missing or invalid Character Course menu capture: {path}"
+        width, height, pixels = decoded
+        if width < 600 or height < 400 or width * 2 != height * 3:
+            return f"Character Course menu capture has unexpected small-window dimensions: {width}x{height}"
+        if dimensions is not None and dimensions != (width, height):
+            return "Character Course menu captures changed dimensions unexpectedly."
+        dimensions = (width, height)
+        visible = sum(1 for index in range(0, len(pixels), 4)
+            if max(pixels[index:index + 3]) > MIN_VISIBLE_CHANNEL_VALUE)
+        if visible < MIN_VISIBLE_CAPTURE_PIXELS:
+            return "Character Course menu capture is empty."
+        text_pixels = sum(1 for y in range(min(height, 600)) for x in range(width)
+            if min(pixels[(y * width + x) * 4:(y * width + x) * 4 + 3]) >= 230)
+        if text_pixels < MIN_VISIBLE_CAPTURE_PIXELS:
+            return "Character Course menu capture has no readable bright text."
+        if previous == pixels:
+            return "Character Course menu capture did not change after size/selection input."
+        previous = pixels
+    return None
+
+
 def write_physics_mesh_fixture(project: Path) -> None:
     """Create a tiny valid cooked tetrahedron for the native physics API smoke."""
     positions = (
@@ -383,6 +411,10 @@ def main() -> int:
             if name == "character-course-live-input-smoke":
                 environment["ELISA_CHARACTER_COURSE_WIN_CAPTURE_PATH"] = str(character_course_win_capture)
                 environment["ELISA_CHARACTER_COURSE_FALL_CAPTURE_PATH"] = str(character_course_fall_capture)
+                for menu_capture in ("100", "125", "150", "BOTTOM"):
+                    menu_path = character_course_captures / ("menu-" + menu_capture.lower() + ".png")
+                    menu_path.unlink(missing_ok=True)
+                    environment["ELISA_COURSE_MENU_" + menu_capture + "_CAPTURE_PATH"] = str(menu_path)
             started = time.monotonic()
             completed = subprocess.run(command, env=environment, check=False,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
@@ -394,7 +426,9 @@ def main() -> int:
                 capture_error = character_course_presentation_error(
                     character_course_win_capture, character_course_fall_capture)
                 if capture_error is None:
-                    capture_note = ("Validated Character Course win/fall presentation captures at "
+                    capture_error = character_course_menu_error(character_course_captures)
+                if capture_error is None:
+                    capture_note = ("Validated Character Course small-menu and win/fall presentation captures at "
                         f"{character_course_win_capture} and {character_course_fall_capture}.")
                     print(capture_note)
                     output += capture_note + "\n"

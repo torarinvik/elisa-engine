@@ -99,7 +99,7 @@
                             crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
                             ActionInput::action_down(input, CourseControls::ACTION_FORWARD),
                             grounded, CourseState::phase(state) == CourseState::Phase.Paused,
-                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed)
+                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed, menu_open, menu.selected, settings.text_scale)
                 if running and pump == Application::PumpStatus.Running:
                     if suspended:
                         _ = ActionInputReplay::feed_context(recording, input, recording_tick, ActionInput::Context.Gameplay)
@@ -113,7 +113,7 @@
                             crouched, ActionInput::action_down(input, CourseControls::ACTION_CROUCH),
                             ActionInput::action_down(input, CourseControls::ACTION_FORWARD),
                             grounded, CourseState::phase(state) == CourseState::Phase.Paused,
-                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed)
+                            CourseState::phase(state) == CourseState::Phase.Won, CourseState::phase(state) == CourseState::Phase.Failed, menu_open, menu.selected, settings.text_scale)
                     mood: i32 = CourseSounds::mood_for(menu_open, CourseState::phase(state) == CourseState::Phase.Paused)
                     look_wanted: bool = CourseState::phase(state) == CourseState::Phase.Playing and not menu_open
                     if look_wanted != look_held:

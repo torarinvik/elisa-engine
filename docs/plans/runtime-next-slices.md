@@ -9,7 +9,7 @@ Character Course before promoting a subsystem-wide feature.
 | Order | Deliverable | Acceptance and value |
 | --- | --- | --- |
 | 1 (automated complete) | Focus-loss recovery through the live course loop | Hold movement and crouch, lose focus, verify automatic pause and cleared actions, then resume and finish the existing route. Run through SDL event translation; record an OS window-switch separately. Prevents stuck movement and unintended gameplay after switching applications. |
-| 2 | Resize the running course in play, pause and controls | Verify logical/drawable dimensions, camera aspect and readable HUD at small and large sizes. Reuse the existing native resize hook and retain captures. Fix clipping or stale layout exposed by the check. Physical DPI/display changes remain separate evidence. |
+| 2 (automated complete) | Resize the running course in play, pause and controls | Verify logical/drawable dimensions, camera aspect and readable HUD at small and large sizes. Reuse the existing native resize hook and retain captures. Fix clipping or stale layout exposed by the check. Physical DPI/display changes remain separate evidence. |
 | 3 | One production worker-event consumer under `WorldSchedule` | Reuse Jolt's existing bounded contact queue. Resolve contact participants through checked body bindings before routing a crate impact to gameplay/audio. Reject stale world epochs and wrong access phases; retain overflow and unsubscribe evidence. Avoid constructing another public scheduler or generic queue before a producer needs it. |
 | 4 | Measure the course's actual audio workload | Record voice/stream counts, memory and underruns during route, pause, reload and teardown. Exercise existing cancellation/device recovery rather than adding another audio feature. Physical listening and unplug/reconnect remain explicitly unverified until performed. |
 | 5 | Validate keyed animation on representative content | Use the course's independent instances, then an authored rig with a stated joint/clip count. Record optimized CPU percentiles, allocations and sampled memory. Add transitions/root motion only when the game's motion exposes a concrete need. |
@@ -44,9 +44,11 @@ resize tests and course HUD helpers are the starting point for item 2.
 Focus recovery passed the full native course smoke on 2026-10-07 (167.433s),
 plus the focused state test and 41/41 implementation-linked proof obligations.
 Synthetic SDL focus loss/restoration is established; an OS window switch
-remains external acceptance. Resize/HUD behavior is the current slice. Paging policy passed its exhaustive
-test and 20/20 proof obligations; real pause/play resize plus full traversal
-passed (171.274s). Small controls captures and pointer checks remain open.
+remains external acceptance. Resize/HUD automated acceptance passed: paging has its exhaustive
+test and 20/20 proof obligations; real pause/play resize, small-menu captures
+at three text sizes, paged SDL pointer clicks and full traversal passed
+(230.790s). Physical pointer/DPI and tiny-window decisions remain open.
+The next executable slice is the checked Jolt contact consumer under `WorldSchedule`.
 See [resize evidence](../validation/course-resize.md).
 
 `66911c90` routes effect payload consumption through `WorldSchedule`, with live

@@ -97,7 +97,7 @@
                 "Beacon lit (1/3)"
 
         def menu_hint() -> cstr:
-            "Menu: Up/Down or click a row | press a key, Left/Right or click | Tab done"
+            "Up/Down select | click or type | Tab done"
 
         def legend_header(menu_open: bool) -> cstr:
             "Rebinding (Esc/Tab closes)" if menu_open else "Controls | Tab while paused to rebind"

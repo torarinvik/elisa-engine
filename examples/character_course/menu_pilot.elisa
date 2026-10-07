@@ -1,0 +1,83 @@
+# Runs the small-window controls path through the real SDL queues.
+include "./test_input.elisa"
+
+module CourseMenuPilot:
+    public:
+        affine struct Pilot:
+            private:
+                stage: mutable i32
+                settle_frames: mutable i32
+                failed: mutable bool
+
+    private:
+        const CAPTURE_SETTLE_FRAMES: i32 = 8
+
+        def settled(pilot: mutable Pilot&) -> bool:
+            pilot.settle_frames <- pilot.settle_frames + 1
+            ready: bool = pilot.settle_frames >= CAPTURE_SETTLE_FRAMES
+            pilot.settle_frames <- 0 if ready else pilot.settle_frames
+            ready
+
+        def tap(key: CourseTestInput::Key) -> bool:
+            down: bool = CourseTestInput::push(key, true)
+            up: bool = CourseTestInput::push(key, false)
+            down and up
+
+        def capture(variable: cstr) -> bool:
+            path: cstr = Application::environment_value(variable)
+            path == "" or Application::save_screenshot(path)
+
+    public:
+        def Pilot() -> Pilot:
+            Pilot{stage: 0, settle_frames: 0, failed: false}
+
+        def failed(pilot: Pilot&) -> bool:
+            pilot.failed
+
+        def tick(pilot: mutable Pilot&, opened: bool, selected: i64, text_scale: i64) -> bool:
+            return false if pilot.failed
+            ok: mutable bool = true
+            if pilot.stage == 0:
+                ok <- tap(CourseTestInput::Key.Tab)
+                pilot.stage <- 1
+            elif pilot.stage == 1 and opened:
+                ok <- selected == 0 and text_scale == 100 and tap(CourseTestInput::Key.Up)
+                pilot.stage <- 2
+            elif pilot.stage == 2 and selected == 15 and settled(pilot):
+                ok <- capture("ELISA_COURSE_MENU_100_CAPTURE_PATH") and CourseTestInput::click(22.0, 88.0)
+                pilot.stage <- 3
+            elif pilot.stage == 3 and selected == 5:
+                ok <- tap(CourseTestInput::Key.Down)
+                pilot.stage <- 4
+            elif pilot.stage == 4 and selected == 6:
+                ok <- tap(CourseTestInput::Key.Right)
+                pilot.stage <- 5
+            elif pilot.stage == 5 and text_scale == 125 and settled(pilot):
+                ok <- selected == 6 and capture("ELISA_COURSE_MENU_125_CAPTURE_PATH") and tap(CourseTestInput::Key.Right)
+                pilot.stage <- 6
+            elif pilot.stage == 6 and text_scale == 150 and settled(pilot):
+                ok <- selected == 6 and capture("ELISA_COURSE_MENU_150_CAPTURE_PATH") and CourseTestInput::click(22.0, 123.0)
+                pilot.stage <- 7
+            elif pilot.stage == 7 and selected == 1:
+                first: bool = tap(CourseTestInput::Key.Up)
+                second: bool = tap(CourseTestInput::Key.Up)
+                ok <- first and second
+                pilot.stage <- 8
+            elif pilot.stage == 8 and selected == 15 and settled(pilot):
+                ok <- capture("ELISA_COURSE_MENU_BOTTOM_CAPTURE_PATH")
+                for _ in 0..<9 |ok|:
+                    pushed: bool = tap(CourseTestInput::Key.Up)
+                    ok <- pushed and ok
+                pilot.stage <- 9
+            elif pilot.stage == 9 and selected == 6:
+                first: bool = tap(CourseTestInput::Key.Left)
+                second: bool = tap(CourseTestInput::Key.Left)
+                ok <- first and second
+                pilot.stage <- 10
+            elif pilot.stage == 10 and text_scale == 100:
+                ok <- tap(CourseTestInput::Key.Tab)
+                pilot.stage <- 11
+            elif pilot.stage == 11 and not opened:
+                pilot.stage <- 12
+            pilot.failed <- true if not ok
+            pilot.stage == 12 and not pilot.failed

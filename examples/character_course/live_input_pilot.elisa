@@ -1,5 +1,5 @@
 # Hidden integration pilot for the ordinary SDL input and character loop.
-include "./test_input.elisa"
+include "./menu_pilot.elisa"
 
 module CourseLiveInputPilot:
     public:
@@ -33,6 +33,7 @@ module CourseLiveInputPilot:
                 jump_deadline_nanos: mutable u64
                 jump_observe_until_nanos: mutable u64
                 jump_start_height: mutable f32
+                menu: mutable CourseMenuPilot::Pilot
                 failure: mutable i32
 
     private:
@@ -141,13 +142,13 @@ module CourseLiveInputPilot:
                 stood_after_crouch: false, jumped: false, reached_platform: false,
                 reached_goal_lane: false, started_nanos: 0,
                 jump_deadline_nanos: 0, jump_observe_until_nanos: 0,
-                jump_start_height: 0.0, failure: 0}
+                jump_start_height: 0.0, menu: CourseMenuPilot::Pilot(), failure: 0}
 
         # Called before input draining with the last simulated pose. Every key
         # goes through the same SDL pump and action bindings as player input.
         def tick(pilot: mutable Pilot&, elapsed_nanos: u64, ready: bool,
             x: f32, y: f32, z: f32, crouched: bool, crouch_down: bool, forward_down: bool,
-            grounded: bool, paused: bool, won: bool, failed: bool) -> void:
+            grounded: bool, paused: bool, won: bool, failed: bool, menu_open: bool, selected: i64, text_scale: i64) -> void:
             if pilot.started and not pilot.finished:
                 pilot.crossed_step <- true if x >= Tune::STEP_CLEAR_X
                 pilot.saw_crouch <- true if crouched and x >= Tune::CROUCH_ENTER_X and x <= Tune::CROUCH_EXIT_X
@@ -209,11 +210,11 @@ module CourseLiveInputPilot:
                 elif pilot.stage == Stage::PAUSE_RESIZED and paused:
                     if not CourseTestInput::window_matches(600, 400):
                         fail(pilot, Failure::RESIZE)
-                    elif CourseTestInput::push(CourseTestInput::Key.Pause, true):
+                    elif CourseMenuPilot::failed(&pilot.menu):
+                        fail(pilot, Failure::INJECTION)
+                    elif CourseMenuPilot::tick(&pilot.menu, menu_open, selected, text_scale) and CourseTestInput::push(CourseTestInput::Key.Pause, true):
                         pilot.pause_held <- true
                         pilot.stage <- Stage::RESUMING
-                    else:
-                        fail(pilot, Failure::INJECTION)
                 elif pilot.stage == Stage::RESUMING and not paused:
                     pilot.resumed <- true
                     pause_released: bool = CourseTestInput::push(CourseTestInput::Key.Pause, false)

@@ -17,7 +17,7 @@ lets the existing streaming-memory check warm render resources first.
 
 ## Evidence
 
-- `character-course-live-input-smoke`: status 0, 171.274 seconds including
+- `character-course-live-input-smoke`: status 0, 230.790 seconds including
   build/link, SDL3/Metal, silent audio fallback. Its original streaming
   allowances remain 8 MiB GPU and 16 MiB CPU above warm peaks.
 - `application-async-capture-smoke`: status 0; resize-safe asynchronous output
@@ -31,6 +31,28 @@ lets the existing streaming-memory check warm render resources first.
 - Win/fall PNGs are decoded by the smoke runner and retained under
   `build/validation/character-course-presentation/`. The win image was inspected
   at 2560×1440: the summit instruction and all sixteen rows are readable.
+
+## Small controls through SDL
+
+The course pilot opens controls at 600×400, wraps keyboard selection from row
+0 to row 15, then clicks the top visible slot at 100% and asserts row 5 was
+selected. It selects Text size and changes it to 125% and 150%; at 150%, a
+click on the top visible slot must select row 1. It wraps to row 15 again,
+restores 100%, closes controls and resumes the complete route. Clicks are
+synthetic SDL button-down/up events translated by the ordinary pointer queue.
+
+Four retained images (`menu-100.png`, `menu-125.png`, `menu-150.png` and
+`menu-bottom.png`) are 1200×800 on this display. All were inspected: labels,
+values, selection highlighting and the complete hint fit. The old hint was
+clipped; it now reads `Up/Down select | click or type | Tab done`. Captures wait
+eight frames for glyph rendering to settle after size/selection changes;
+early images at new font sizes had omitted glyphs or no HUD text.
+
+The runner requires all four PNGs, matching dimensions with the small-window
+aspect ratio, visible bright text and changed images. These pixel checks do
+not replace the visual review. Seven runner tests passed, including missing,
+unchanged, wrong-size and scene-only rejection cases. The existing pure page
+proof remains 20/20; this run establishes its native SDL consumer path.
 
 ## Allocation defect exposed by larger captures
 
@@ -51,8 +73,8 @@ retained under `build/validation/course-resize/before-direct-staging.*`.
 
 ## Remaining acceptance
 
-The small controls menu still needs retained captures at several selections
-and text sizes, with actual pointer presses against paged rows. This run does
-not establish user-driven resizing, physical DPI/display changes or an OS
-focus switch. Tiny windows that cannot fit a header, row and caption need a
-separate minimum-size/layout decision. The targeted resize slice remains open.
+Synthetic SDL clicks and resizing do not establish physical pointer input,
+user-driven resizing, DPI/display changes or an OS focus switch. Tiny windows
+that cannot fit a header, row and caption still need a minimum-size/layout
+decision. Automated acceptance of the named 600×400 and 1280×720 resize slice
+is complete; those external and tiny-window cases remain in the full backlog.

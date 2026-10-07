@@ -11,6 +11,9 @@ module CourseTestInput:
             Pause
             Restart
             Backward
+            Tab
+            Up
+            Down
 
     private:
         const module NativeKey:
@@ -23,6 +26,9 @@ module CourseTestInput:
             PAUSE: i32 = 7
             RESTART: i32 = 8
             BACKWARD: i32 = 9
+            TAB: i32 = 10
+            UP: i32 = 11
+            DOWN: i32 = 12
 
         @callconv(c)
         extern elisa_application_v1_test_push_key(key: i32, down: i32) -> i32
@@ -39,6 +45,9 @@ module CourseTestInput:
         @callconv(c)
         extern elisa_application_v1_test_trace_cell_memory(warm_gpu: i64, warm_cpu: i64, gpu: i64, cpu: i64)
 
+        @callconv(c)
+        extern elisa_application_v1_test_click(x: f32, y: f32) -> i32
+
         def native_key(key: Key) -> i32:
             match key:
                 Key.Right: NativeKey::RIGHT
@@ -50,6 +59,9 @@ module CourseTestInput:
                 Key.Pause: NativeKey::PAUSE
                 Key.Restart: NativeKey::RESTART
                 Key.Backward: NativeKey::BACKWARD
+                Key.Tab: NativeKey::TAB
+                Key.Up: NativeKey::UP
+                Key.Down: NativeKey::DOWN
 
     public:
         def push(key: Key, down: bool) -> bool:
@@ -70,3 +82,6 @@ module CourseTestInput:
 
         def trace_cell_memory(warm_gpu: i64, warm_cpu: i64, gpu: i64, cpu: i64) -> void:
             elisa_application_v1_test_trace_cell_memory(warm_gpu, warm_cpu, gpu, cpu)
+
+        def click(x: f32, y: f32) -> bool:
+            elisa_application_v1_test_click(x, y) == 0

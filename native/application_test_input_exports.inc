@@ -2,7 +2,7 @@
 // Pushes a real SDL keyboard event, so it travels the same pump, key-code
 // mapping and action-binding path as a key the player presses. Only the keys
 // a pilot needs are accepted: 1 Right arrow, 2 Left arrow, 3 Escape,
-// 4 Space, 5 C, 6 W, 7 P, 8 R and 9 S.
+// 4 Space, 5 C, 6 W, 7 P, 8 R, 9 S, 10 Tab, 11 Up and 12 Down.
 extern "C" int32_t elisa_application_v1_test_push_key(int32_t key, int32_t down) {
     SDL_Keycode keycode = 0;
     if (key == 1) keycode = SDLK_RIGHT;
@@ -14,6 +14,9 @@ extern "C" int32_t elisa_application_v1_test_push_key(int32_t key, int32_t down)
     else if (key == 7) keycode = SDLK_P;
     else if (key == 8) keycode = SDLK_R;
     else if (key == 9) keycode = SDLK_S;
+    else if (key == 10) keycode = SDLK_TAB;
+    else if (key == 11) keycode = SDLK_UP;
+    else if (key == 12) keycode = SDLK_DOWN;
     else return ELISA_APPLICATION_INVALID_ARGUMENT;
     ApplicationService& service = application_service();
     std::lock_guard<std::mutex> guard(service.mutex);
@@ -65,4 +68,27 @@ extern "C" void elisa_application_v1_test_trace_cell_memory(int64_t warm_gpu,
         static_cast<long long>(warm_gpu), static_cast<long long>(warm_cpu),
         static_cast<long long>(gpu), static_cast<long long>(cpu));
     std::fflush(stderr);
+}
+
+extern "C" int32_t elisa_application_v1_test_click(float x, float y) {
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    SDL_Window* window = service.host.window();
+    if (window == nullptr) return ELISA_APPLICATION_INVALID_STATE;
+    SDL_Event event{};
+    event.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+    event.button.windowID = SDL_GetWindowID(window);
+    event.button.button = SDL_BUTTON_LEFT;
+    event.button.down = true;
+    event.button.x = x;
+    event.button.y = y;
+    const bool down = SDL_PushEvent(&event);
+    event.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.type = SDL_EVENT_MOUSE_BUTTON_UP;
+    event.button.down = false;
+    const bool up = SDL_PushEvent(&event);
+    return down && up ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
 }

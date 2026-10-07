@@ -83,8 +83,9 @@ Compiler: stage1 snapshot sha256 `7ccb9831…9ce3`, built from a dirty
   implemented (all gamepads share one logical device).
 - **Focus/resize:** synthetic focus verifies suspended-loop pause and cleared
   actions. The real SDL window resize pilot verifies small paused and large
-  playing dimensions; see [`course-resize.md`](course-resize.md). Small controls
-  captures/pointer checks, OS focus switching and physical DPI remain open.
+  playing dimensions and paged SDL clicks at 100%/150%, with readable captures
+  at 100%/125%/150%; see [`course-resize.md`](course-resize.md). Physical pointer
+  input, OS focus switching and physical DPI remain open.
 - **Pointer input:** the current course implements relative mouse-look and
   pointer presses/wheel navigation in the controls menu. Manual pointer and
   display-DPI checks remain separate acceptance work; see

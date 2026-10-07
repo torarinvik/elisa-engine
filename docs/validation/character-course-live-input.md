@@ -224,3 +224,9 @@ The latest run passed in 171.274 seconds with real window changes from
 and outcome captures. The retained PNGs are now 2560×1440 on this display.
 See [`course-resize.md`](course-resize.md) for paging policy evidence, the
 capture-allocation fix and the controls/DPI acceptance that remains open.
+
+The latest extended run passed in 230.790 seconds. Before resuming it also
+opens the small controls menu, checks paged SDL pointer selections, captures
+three text sizes plus the bottom page, restores 100% and closes controls.
+All four small-menu images passed the runner checks and visual review; see
+[`course-resize.md`](course-resize.md) for their paths and evidence limits.
