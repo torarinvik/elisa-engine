@@ -153,7 +153,9 @@ module ActionInput:
                 slot <- for index in 0..<Limits::MAX_ACTIONS |slot: usize = Limits::MAX_ACTIONS, input| -> slot:
                     break index if not input.states[index].live
                 return BindResult.Capacity if slot == Limits::MAX_ACTIONS
-            input.bindings[input.binding_count] <- binding
+            region binding_slot_scope:
+                binding_slot: usize = input.binding_count
+                input.bindings[binding_slot] <- binding
             input.binding_count <- input.binding_count + 1
             if input.states[slot].live and input.states[slot].action == binding.action:
                 return BindResult.Bound

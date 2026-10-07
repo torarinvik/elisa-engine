@@ -107,3 +107,24 @@ audio animation events and sound event assets. Logs:
 `build/validation/input-scoped-slots-runtime.log`,
 `input-scoped-slots-proof-sweep.log`, and `input-scoped-slots.json`.
 Full prover compatibility and shared/native qualification remain open.
+
+## Stable binding insertion slot
+
+Binding insertion now copies the checked count into a local inside
+`region binding_slot_scope` before indexing. No allocation escapes this region.
+This removes the remaining opaque mutable target for that write without changing
+validation order or the later count increment. The actual report now replays
+**199/228 obligations**, with **zero gaps** and 33 findings. Runtime tests pass
+**215/215** (208 cached compiles, seven rebuilt), and the uncached proof sweep
+still has the same four failures (**69/73**). Logs:
+`build/validation/input-binding-slot-source.json`,
+`input-binding-slot-runtime.log`, and `input-binding-slot-sweep.log`.
+
+A proposed tuple loop result for refresh_action was checked in an isolated copy.
+It has no semantic errors after removing the immutable action capture, but the
+prover rejects two kernel propositions and drops to 169/201 replayed obligations.
+The production scan is retained pending a prover fix. A six-line bool/f32 tuple
+loop additionally reproduces an unsupported-expression finding with no semantic
+errors. Reproductions: `build/validation/input-loop-value.elisa` and
+`mixed-loop-result.elisa`, with matching JSON reports. Follow up with paired
+accepted/rejected source replay controls before adopting this compiler style.
