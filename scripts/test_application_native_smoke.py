@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep automated application launches silent even when the user has audio enabled."""
+"""Check audio route selection and capture acceptance for application smokes."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pathlib import Path
 
 from application_native_smoke import (
     MIN_CHARACTER_COURSE_HUD_CHANGED_PIXELS,
+    DEVICE_REOPEN_SMOKES,
     character_course_presentation_error,
     character_course_menu_error,
     native_smoke_environment,
@@ -43,6 +44,13 @@ class ApplicationNativeSmokeTests(unittest.TestCase):
         self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "1")
         self.assertEqual(environment["ELISA_PROJECT_ROOT"], "/tmp/project")
         self.assertEqual(environment["PATH"], "/usr/bin")
+
+    def test_application_device_probe_allows_named_device_open(self) -> None:
+        self.assertIn("application-native-smoke", DEVICE_REOPEN_SMOKES)
+        self.assertIn("character-course-relaunch-smoke", DEVICE_REOPEN_SMOKES)
+        self.assertNotIn("world-audio-scale-smoke", DEVICE_REOPEN_SMOKES)
+        environment = native_smoke_environment({}, allow_device_reopen=True)
+        self.assertEqual(environment["ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE"], "0")
 
     def test_course_relaunch_reopens_saved_device_by_default(self) -> None:
         environment = native_smoke_environment(

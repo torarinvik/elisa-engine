@@ -23,6 +23,7 @@ import native_smoke_artifacts
 
 
 ROOT = Path(__file__).resolve().parents[1]
+DEVICE_REOPEN_SMOKES = frozenset(("character-course-relaunch-smoke", "application-native-smoke"))
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 PNG_MINIMUM_LENGTH = 45
 PNG_RGBA8_HEADER = bytes((8, 6, 0, 0, 0))
@@ -38,7 +39,7 @@ CAPTURE_PIXEL_CHANNEL_DELTA = 8
 def native_smoke_environment(
     source: dict[str, str], *, allow_device_reopen: bool = False
 ) -> dict[str, str]:
-    """Keep app smokes quiet regardless of user audio settings."""
+    """Use silent audio except for fixtures that explicitly test device opening."""
     environment = dict(source)
     # The relaunch case normally validates that a saved output device can be
     # reopened. A caller can still force every app smoke onto the null route,
@@ -393,7 +394,7 @@ def main() -> int:
             if name in ("world-hierarchy-render-smoke", "world-save-physics-smoke"):
                 command.append("--no-public-runtime")
             environment = native_smoke_environment(os.environ,
-                allow_device_reopen=name == "character-course-relaunch-smoke")
+                allow_device_reopen=name in DEVICE_REOPEN_SMOKES)
             environment["ELISA_USER_DATA_DIR"] = str(project / "user-data")
             environment["ELISA_PROJECT_ROOT"] = str(project)
             screenshot = project / f"{name}-frame.png"

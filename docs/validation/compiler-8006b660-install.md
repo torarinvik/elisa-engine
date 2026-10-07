@@ -87,3 +87,28 @@ hash-verified LOD levels and seven malformed LOD controls. Logs:
 `geometry-subset-bind-shape.log` (corrected expectations pass).
 Full native build and application smokes still require rerunning; the launcher
 timeout compatibility prerequisite remains open.
+
+## Native build and public Application smoke
+
+With compiler 8006, corrected geometry expectations and the pinned boxing
+Wicked checkout/build, `wicked_probe.elisascript build-gate` exits **0**.
+Log: `build/validation/compiler-8006-wicked-build-gate-final.log`. It covers
+asset cooking/loader controls, native probe build, KTX2 HDR and ASTC GPU upload
+checks and 29 CLI/build tests. Probe SHA256:
+`6b361320c43707be62687c33fd104a322910750e5d5222d4f071dfae3845fc2e`;
+embedded game archive SHA256:
+`6aa086d46da70b8ca11863c5ce54f83f4ada325a263427abeec88d5bf727de2e`.
+
+The public Application smoke initially exits 211: its device-by-name opening
+assertion conflicts with the runner's forced null-audio route. The runner now
+allows device reopening for application-native-smoke as well as course relaunch;
+an explicit caller force still takes precedence. Eight runner controls pass,
+including selection and override semantics. With
+`ELISA_AUDIO_FORCE_DEVICE_UNAVAILABLE=0`,
+`python3.14 scripts/application_native_smoke.py --only application-native-smoke`
+exits **0**, including device-opening and application cleanup assertions.
+Logs: `build/validation/compiler-8006-application-native-smoke.log` (refusal),
+`compiler-8006-application-native-device-smoke.log` (pass); structured result:
+`compiler-8006-application-native-device-smoke.json`. This checks opening/closing
+real devices, not audible output quality. The full native application matrix and
+canonical launcher timeout support remain open.
