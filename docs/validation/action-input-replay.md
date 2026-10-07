@@ -195,3 +195,33 @@ pass. The suite is wired into the full prover matrix. Full uncached engine sweep
 remains 71/73, only the two ActionInput reports failing
 (`build/validation/proof-search-break-engine-sweep.log`). Block assignment and
 implicit bounded search result admission remain required; engine behavior is unchanged.
+
+## Scoped block assignment execution — 2026-10-07
+
+Prover `8fb5b812`, paired generation `70a24da921204155bd18681ae8289ef4`,
+checks an existing plain local's `<-` value-block assignment before the expression
+fallback. It executes every body statement and the yielded expression in a private
+symbolic scope, with copied fixed-place state, normal frame-write checking and the
+existing analysis budgets. A header accumulator may shadow the outer target.
+Nested safety, call and contract obligations are checked rather than skipped.
+
+At exit the handler exports flow validity/transfers and conservatively invalidates
+the assigned outer target and every root reachable through the block's writes,
+borrows or calls. Local facts and accumulator entry values are not exported. Result
+precision remains intentionally unavailable until original-source result evidence
+is implemented; this is an admission/coverage repair, not bounded-result completion.
+Field/index assignment targets and compound assignments retain prior handling.
+
+`test_value_block_assignment.py` passes eight cases on both routes: guarded shadowed
+and distinct accumulators and zero iterations accepted; wide iteration range, wide
+post-guard, sentinel-only guard, other outer mutation and false stale-result
+postcondition refused. Search-break replay, read-only outer index and captured-entry
+controls pass. The suite is wired into the prover matrix.
+
+Actual ActionInput report `build/validation/action-input-block-assignment-2.json`:
+257 obligations, 225 proven/replayed, 32 findings, zero gaps or semantic errors.
+The captured assignment unsupported row is gone and its loop body contributes
+checked safety obligations. All four remaining bind_checked findings are upper
+bounds on the search result. Full uncached engine sweep remains 71/73 with only
+the two ActionInput failures (`build/validation/proof-value-block-assignment-engine-sweep.log`).
+Build log: `build/validation/proof-value-block-assignment-build-2.log`.
