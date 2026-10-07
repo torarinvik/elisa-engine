@@ -153,3 +153,22 @@ failures. Broader source frame mappings and full compiler/engine qualification
 remain open. Evidence: build/validation/prover-portable-frame-build.log,
 portable-frame-final-suite.log and proof-portable-frame-sweep.log; prover
 docs/validation/portable-frame-certificates.md.
+
+## Scalar contract frame inventory (2026-10-07)
+
+Prover 30018eac closes contract-placement accounting by reconstructing call-free
+primitive scalar body contracts alongside frame clauses. The full fixture keeps
+31 obligations and now replays all 31 certificates, with zero findings and no
+admission invariant failure. Unknown contract calls/operators/types still
+refuse complete inventory; the logical checker retains every scalar predicate
+obligation. Event/owner controls pass at O0/O2, full/summary route regressions
+assert the exact 31 count, and strict all-products O2 build succeeds, generation
+7f7fc181b9bf425f9f8bf71b5b8a87f3. Frame CLI/portable controls, admission matrix,
+invariant diagnostics and 193-entry kernel inventory pass.
+
+Condition-call positions remain at goal-attempt-coverage (30 producer events,
+14 certificates). The fresh uncached engine sweep remains 66/73 with the same
+seven failures. Broader arithmetic/call/alias/branch mappings, complete compiler
+qualification and full engine plan remain open. Evidence:
+build/validation/prover-frame-scalar-contracts-build.log and
+proof-frame-scalar-contracts-sweep.log; prover docs/validation/frame-scalar-contracts.md.
