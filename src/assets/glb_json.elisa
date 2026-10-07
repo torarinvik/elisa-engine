@@ -19,11 +19,11 @@ module GlbJson:
             kind: u8
             # Byte range in the buffer; a string's excludes its quotes.
             start: usize
-            stop: usize
+            stop: mutable usize
             # Members of an object, elements of an array.
-            size: usize
+            size: mutable usize
             # The first token past this value's subtree.
-            after: usize
+            after: mutable usize
 
     private:
         const module Expect:
