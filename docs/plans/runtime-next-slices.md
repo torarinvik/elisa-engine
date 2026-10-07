@@ -60,8 +60,9 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `ddbc803d`
 on 2026-10-08. Section 6 now marks owned value-threading and builtin container
-value forms as working in Stage1. This source review does not qualify a new
-compiler/prover/runtime tuple for the engine.
+value forms as working in Stage1. The immutable ddbc803d product separately
+passes 215 uncached runtime tests and the 73-report engine proof sweep; full
+prover matrix/shared/native qualification remains open ([evidence](../validation/compiler-ddbc803d-qualification.md)).
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
 
@@ -120,6 +121,14 @@ these additional checks within implementation slices:
   Avoid a separate API migration or style sweep. The guide records identical
   machine code at O0/O2 for its parity fixtures; this establishes no new engine
   speedup. Stage0 rejects writing these by-value parameters.
+- For each consumer-driven adoption, record the exact owned call site and audit
+  every return and caller before changing its signature. Keep expression-position
+  and function-value callers in that audit. Require unchanged outputs, error
+  paths, zero-iteration behavior and resource lifetimes in the slice's existing
+  acceptance checks; retain moved-owner, borrowed-field and wrong tuple-target
+  refusal coverage in the owning compiler. Promote the pattern only after the
+  selected engine/prover path accepts it. A parser accepting the syntax alone
+  is insufficient evidence for a public API migration.
 
 ## Current evidence
 

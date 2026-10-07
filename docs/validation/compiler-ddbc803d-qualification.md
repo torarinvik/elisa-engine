@@ -58,3 +58,20 @@ This supersedes the paired-build prerequisite above. The complete compatibility
 matrix still needs its remaining failures repaired and a fresh run on this
 product; the retained old-product matrix ended with 73 failed steps. Shared and
 native gates, hosted pins and physical hardware checks remain open.
+
+## Native launcher prerequisite — bounded attempt
+
+On 2026-10-08, compiled ElisaScript checkout `36a3374a` directly with the
+immutable ddbc803d wrapper at O0, using the engine watchdog's 180-second and
+1,572,864 KiB RSS limits. The attempt terminated normally with status 1 after
+5.85 seconds; peak sampled RSS was 728,880 KiB. No launcher was installed.
+
+The compiler rejects the script checkout's vendored runtime: assignments to
+immutable `exponent_marker` and `decimal_marker` at lines 43–44, and `cstr`
+returns receiving references starting at line 247. These source compatibility
+errors must be resolved before qualifying the launcher required for explicit
+native process deadlines. This attempt does not qualify the shared/native gate.
+
+Retained artifacts: `build/validation/elisascript-ddbc803d-build.log` and its
+`.log.json` watchdog report. The script validation hold and override environment
+were left unchanged; this was the bounded engine integration build.
