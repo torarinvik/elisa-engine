@@ -172,3 +172,22 @@ seven failures. Broader arithmetic/call/alias/branch mappings, complete compiler
 qualification and full engine plan remain open. Evidence:
 build/validation/prover-frame-scalar-contracts-build.log and
 proof-frame-scalar-contracts-sweep.log; prover docs/validation/frame-scalar-contracts.md.
+
+## Scalar arithmetic frame inventory (2026-10-07)
+
+The prover now independently reconstructs builtin scalar arithmetic/comparison
+RHS and returns when primitive operand types and absence of unknown operator
+implementations are established. The condition-call fixture keeps 30 obligations
+and increases replay from 14 to 18 certificates: bump and measure each receive
+source-backed frame-spec/frame-allow proofs. The remaining caller mappings still
+fail goal-attempt-coverage. Contract-placement remains fully proved at 31/31.
+Twenty-nine event controls pass at O0/O2; CLI/portable frame controls, admission
+mutation matrix, exact-count invariant diagnostics and 193-entry kernel inventory
+pass. Strict all-products O2 build succeeds, generation
+13f91374164147aab0349f145eb44869. The live compiler checkout advanced to 1a7b0d96;
+this qualification uses installed immutable compiler 96761822 with matching
+runtime/parser sources and explicit ELISA_STAGE1_ROOT, without a stale override.
+Engine sweep remains 66/73 with the same seven failures. Broader mappings and
+full engine/compiler qualification remain open. Evidence:
+build/validation/prover-frame-scalar-values-build.log and
+proof-frame-scalar-values-sweep.log; prover docs/validation/frame-scalar-values.md.
