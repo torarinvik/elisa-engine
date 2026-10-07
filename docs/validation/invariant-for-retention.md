@@ -405,3 +405,23 @@ uncontracted lookup, so it does not yet reproduce the later-loop failure.
 Ignored apply-no-prelude/literal-available JSON and copied-record-* artifacts
 retain all counts. No matching heavy compiler build process was live during
 this diagnostic turn; the mocap product update remains independently qualified.
+
+## Value-block declaration flattening leaks local names
+
+Further prelude variants isolate the source spelling: removing the early return
+still leaves 20 findings; yielding true instead of the indexed lookup also leaves
+20. Flattening the lookup to a device_slot declaration outside the block proves
+93/93, and renaming only the block's internal slot to device_slot also proves
+93/93. Literal slot retains 20 findings plus two separate replay gaps. These are
+controls, not production rewrites.
+
+proof_flatten_value_block_declaration currently expands initializer statements
+into the outer frame without expiring their locals. Its comment assumes a later
+same-name declaration rebinds normally, but shadow handling invalidates unrelated
+facts. The committed value_block_local_reuse.elisa reproducer has a guarded
+availability block with an internal slot and a later fresh slot inside a loop:
+13/19, six findings, zero gaps/errors. Rename only the expired inner slot and
+it proves 19/19. Source-exact declarations and yields must instead execute in
+private scope, exporting the result and valid outer effects while expiring all
+block locals. Preserve accumulator identity, source summary authentication,
+zero iterations and mutation refusal while replacing this flattening path.
