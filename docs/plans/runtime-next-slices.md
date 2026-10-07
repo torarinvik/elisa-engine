@@ -56,6 +56,28 @@ resize tests and course HUD helpers are the starting point for item 2.
 - Retain deferred editor, multiplayer, scale and platform tasks. Promote them
   when a named consumer or measured budget makes their acceptance actionable.
 
+## Compiler style guidance applied to the active queue
+
+Reviewed `../Elisa-compiler/STYLE_GUIDE.md` at `665f40d7` on 2026-10-07.
+The loop, region and strict-lint guidance is already in the main plan. Apply
+these additional checks within implementation slices:
+
+- At mutable-reference call sites, check aliases through reference locals,
+  returned and conditional references, containers and function values. Use
+  disjoint fields or scalar inputs with returned results. Review Unsafe aliases
+  explicitly because compiler borrow exclusivity does not inspect them.
+- For the input proof repair, preserve scalar snapshot bounds at copy time.
+  An immutable copy must keep its own bound after record mutation; equality to
+  the record's current field must expire. The minimal field-copy case fails
+  4/5 while parameter and explicit-local-guard controls pass 5/5. Keep value
+  blocks and loop results and repair source-authenticated replay in the prover.
+- Scope side-effect temporaries only after checking allocation escape and live
+  views. Use block initializers or helpers when values need to escape; use a
+  helper when intervening loop jumps prevent nesting.
+- Adopt strict lint as a diagnostic on touched code, then enable errors only
+  for a clean directory. Preserve loop zero-iteration results and refuse forced
+  rewrites where strict diagnostics explain why no valid rewrite exists.
+
 ## Current evidence
 
 Focus recovery passed the full native course smoke on 2026-10-07 (167.433s),
