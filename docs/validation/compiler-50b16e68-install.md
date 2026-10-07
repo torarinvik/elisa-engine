@@ -179,3 +179,28 @@ Logs: `build/validation/proof-float-negation-build-3.log`,
 `float-negation-final-controls.log`, `float-forgery-final.log`, and
 `proof-float-negation-final-sweep.log`. Full matrix and shared/native qualification
 with the new installed compiler remain open.
+
+### Direct scalar witness priority — 2026-10-07
+
+Aggregate traversal could exhaust the existing witness budgets before reaching a
+record's trailing scalar count. A minimized record with eight fixed arrays and a
+`used: usize` field failed a valid guarded index despite `requires used <= 4`.
+The collector now visits direct scalar fields first, then aggregates, retaining
+both traversal and per-function limits. No integer capacity invariant is invented.
+
+Pair `87a538351562444ebe0fdb2adace5a53` uses compiler `75568f88` and the unchanged
+replay product. `test_scalar_field_priority.py` passes five controls on both routes:
+scalar-first and scalar-last are fully proved/replayed; a count bound of five,
+missing capacity condition and missing index guard are refused. Mixed float bounds,
+record fixed-array, qualified block-range, IEEE forgery and kernel inventory controls
+pass. The uncached engine sweep remains **69/73**, with the same four failures.
+
+ActionInput's analyzed inventory changes from 180 to **216** obligations, with
+**129** replayed certificates and zero replay gaps. This is not a directly comparable
+pass ratio: eight previously closed `refresh_action` goals no longer close after
+analysis reaches additional opaque calls/state invalidation. The earlier
+`refresh_action` fact-budget stop is gone, and more `rebind_checked` indexing is
+analyzed. Private `binding_count` capacity invariants, opaque math/resource calls,
+mutable loop facts and the newly exposed late bounds remain required work.
+Logs: `build/validation/proof-scalar-priority-build.log`,
+`input-scalar-priority.json`, and `proof-scalar-priority-sweep.log`.
