@@ -225,3 +225,31 @@ checked safety obligations. All four remaining bind_checked findings are upper
 bounds on the search result. Full uncached engine sweep remains 71/73 with only
 the two ActionInput failures (`build/validation/proof-value-block-assignment-engine-sweep.log`).
 Build log: `build/validation/proof-value-block-assignment-build-2.log`.
+
+## Qualified search constants and mixed record mode — 2026-10-07
+
+Prover `487346df`, generation `081ffdc430de423b883cd17217f70322`, normalizes
+qualified integer constants in local source equations using the existing exact
+source-path, declaration/value and shadowing validator. Both global-constant trace
+kinds can carry a qualified reference; the kind alone grants no constant value.
+Search replay normalizes the initializer, invariant and iterable before matching.
+`captured_search_qualified_constant.elisa` now proves/replays 8/8 with no errors/gaps
+(`build/validation/qualified-search-repaired.json`). Ten search cases pass on both
+routes, including another module's same-leaf constant as an accepted control and a
+wrong-owner initializer as a refusal. Captured-entry and local-digit controls pass.
+Build: `build/validation/proof-qualified-search-build-3.log`. Engine sweep remains
+71/73, only the two ActionInput failures
+(`build/validation/proof-qualified-search-engine-sweep.log`).
+
+A diagnostic-only state_slot contract/invariant probe now replays all seven
+certificates but still has two producer failures (preservation and the postcondition),
+report `build/validation/state-slot-contract-qualified-2.json`. No engine source
+contract was committed from this incomplete probe. Adding 4/8/12/16 unrelated integer
+array fields to the passing search minimum does not reproduce these failures. Adding
+one unused f32 field does: `examples/captured_search_float_record.elisa` is 6/8,
+zero replay gaps/errors, two producer failures. Its otherwise identical integer-only
+record is 8/8. An unrelated float function also does not reproduce the failure.
+
+Next repair integer goal admission when a parameter record contains floats, preserving
+all IEEE false-law refusals. Then verify the state_slot bounded contract and carry
+source-authenticated search bounds through block assignment and branch joins.
