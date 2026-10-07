@@ -123,3 +123,27 @@ Evidence: `build/validation/nested-trace-debug.txt`,
 `nested-digit-loop-before.json`, `direct-digit-loop.json` and
 `nested-digit-without-update.json`. This narrows the next implementation task;
 it does not qualify the full prover matrix or engine gate.
+
+## First captured-for saturation preservation repair
+
+Prover `bd2e036b` authenticates the original returned captured-for header,
+single invariant and single decimal saturation assignment. A contract-only
+function prefix independently fixes the first fresh-symbol ordinal; the
+accumulator starts at zero with primitive `u64` type, and the digit is an
+immutable `u64` formal with an original `requires digit <= 9`. The cap is
+limited to 10 through 10^18, so the guarded multiply/add fits in `u64`.
+Exact source positions, original invariant premise and overloaded-operator
+checks remain required. No producer substitution helper is used by replay.
+
+Strict O2 pair `5aaa928e0c6341659153dfc5da8ee700` now replays all four
+obligations in the direct-digit reproducer. Seven controls pass on both report
+routes: valid update, wrong divisor, widened/missing digit bound, wrong
+multiplier, stale exit and earlier write/fresh-symbol ambiguity. Existing
+captured initializer and mutable-for entry controls pass; kernel inventory
+remains 10 tables / 194 entries. Build evidence:
+`build/validation/prover-for-saturation-final-build.log`.
+
+The real parser still needs scoped digit declarations and its earlier source
+call authenticated; this deliberately limited source slice does not qualify
+the parser or the four failing engine rows. Add forged-source/runtime controls
+when extending that scope, then rerun the uncached engine corpus and full matrix.
