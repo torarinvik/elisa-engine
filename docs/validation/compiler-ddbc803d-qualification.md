@@ -224,3 +224,14 @@ unchecked uninitialized typed storage. The build exits 1 normally in
 20.92 seconds, sampled peak RSS 617,600 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-concurrency-init-build.log` and JSON.
 Runtime concurrency behavior remains unverified on the selected compiler.
+
+Platform concurrency wrappers now explicitly grant pointer conversion where
+Win32 opaque handles are recovered for lock/condition operations and where
+pool worker state/record pointers are recovered from submitted handles.
+Comments identify Win32 initialization and the nonzero record uintptr
+round-trip as the source of those handles. Eight conversion diagnostics clear,
+leaving only the generic worker-result seed error in the concurrency fragment.
+The bounded compile exits 1 on remaining errors in 5.25 seconds, sampled peak
+RSS 658,880 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-concurrency-casts-build.log` and JSON.
+No Windows execution or pool synchronization behavior is established.
