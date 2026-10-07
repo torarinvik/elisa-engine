@@ -29,3 +29,22 @@ The new suite is wired into the full prover matrix. Full matrix, shared and
 native qualification remain open. Captured record read/write classification,
 captured-result replay and copy-time snapshot authentication remain required;
 this change does not establish the captured ActionInput search's final bounds.
+
+## Untouched reference captures
+
+Prover `aaabd616` exempts an untouched mutable-reference parameter capture from
+write-back when the body has no calls/transfers/overloaded operators and every
+recorded write is to a witnessed scalar. It copies the reference without moving
+or changing the referent. Other captures and body effects remain conservative.
+
+The focused suite now has six cases through both JSON routes: a captured
+read-only loop with `invariant true` passes 8/8; a captured field mutation is
+refused. Captured-loop entry controls and loop-state controls pass. The original
+search reproducer improves to 7/8, zero findings/errors, one remaining replay
+gap on the scalar invariant-entry certificate (`read-capture-repaired.json`).
+Its post-search copy/indexed write now proves. This isolates source replay from
+guard retention; it does not count as full acceptance of that reproducer.
+
+ActionInput remains 232/264, zero gaps (`read-capture-action-input.json`); the
+full uncached engine sweep remains 71/73 (`proof-read-capture-engine-sweep.log`).
+Captured scalar invariant-entry replay and ActionInput bounds remain open.
