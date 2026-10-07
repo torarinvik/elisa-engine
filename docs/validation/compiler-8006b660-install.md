@@ -42,3 +42,25 @@ are deliberate negative self-test inputs. Physical audio is unverified. The proo
 stage has 69 cached passes and four freshly failed reports; validation.json is
 not emitted because the overall gate failed. This is not full native-gate evidence.
 Log: `build/validation/compiler-8006-shared-check.log`.
+
+## Native gate prerequisites and sanitizer evidence
+
+The canonical native-gate command fails at source checking with the installed
+ElisaScript: run_process expects two arguments, while the gate uses a third
+timeout argument. Building current ElisaScript `36a3374a` with compiler 8006
+also fails (280 diagnostic log lines, including immutable assignments, cstr
+return mismatches, invalidated argv views, and missing final else branches).
+Log: `build/validation/elisascript-8006-build.log`. A compatible rebuilt launcher
+is required; do not remove the explicit five/ten-minute deadlines.
+
+An experimental wrapper reached the gate stages but was removed after confirming
+the old launcher's default 120-second deadline would undercut those deadlines.
+Its attempt is retained separately and does not qualify the canonical gate:
+`build/validation/compiler-8006-native-gate-attempt.json` and
+`compiler-8006-native-gate.log`. Headless status is 0: ASan/UBSan boundary and
+navigation tests, audio stream/lifecycle ASan/UBSan and TSan, and asset-worker
+TSan all pass. Source length and module hygiene pass. Dependency and native-build
+statuses are 1: Wicked checkout `18066af2ac774249ee523be8eb494f04410c89a2` differs
+from manifest `fd790f55b3237a9d266335ec742faeacc3cc9228`. Application is explicitly
+skipped. Restore the pinned dependency in an isolated checkout with matching
+archives, or qualify an intentional pin update before rerunning the gate.
