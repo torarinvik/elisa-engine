@@ -566,3 +566,20 @@ is wired into the full matrix.
 71/73 (`proof-scoped-summary-engine-sweep.log`), with both ActionInput reports
 still failing on unproven obligations. Immutable copied bounds across mutation
 and full matrix/shared/native qualification remain open.
+
+## Guard loss before copying — 2026-10-07
+
+Inspection of context goal 86 shows that `bind_checked` has already lost the
+`input.binding_count < MAX_BINDINGS` guard before `binding_slot` is declared.
+Goals 88/90/92 then lack the slot range after the binding-table write. Thus the
+four findings cannot all be attributed to copied bounds across later mutation.
+
+The minimized `test/repro/read_only_search_field_bound.elisa` in the prover
+retains the original field guard, a read-only search with a captured record,
+and a subsequent scalar copy/indexed write. Reports under `build/validation/`
+show: `read-capture-copy.json` 6/8 with one replay gap; removing the record
+capture gives 7/8 with zero gaps (`read-capture-copy-no-capture.json`); removing
+the loop gives 3/3 with zero gaps (`read-capture-copy-no-loop.json`). All have
+zero semantic errors. Repair loop read/write classification and captured-result
+source replay alongside copy-time snapshot authentication; preserve mutation,
+alias and shadowing refusals. These are diagnostic results, not acceptance.
