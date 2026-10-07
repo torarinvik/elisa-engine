@@ -53,6 +53,7 @@
             if CourseSounds::start(&sounds, session) != CourseSounds::STARTED:
                 _ = CourseSounds::stop(&sounds)
             sound_tick: mutable u64 = 0
+            contact_stats: mutable CourseContactAudio::Stats = CourseContactAudio::Stats()
             guide_agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
             rigs: Rigs = optional_rigs()
             walker: mutable Walker = optional_walker(session, &guide)
@@ -73,7 +74,7 @@
                     "Saved accessibility settings were invalid; defaults restored")
             else:
                 _ = try refresh_status(instruction, state, crouched)
-            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, layout_height, layout_selected, clock, keymap, legend, menu_open, menu, sounds, sound_tick, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
+            while running |session, input, character, avatar, instruction, crouched, state, jump_queued, previous_elapsed_nanos, resize_serial, suspended, layout_height, layout_selected, clock, keymap, legend, menu_open, menu, sounds, sound_tick, contact_stats, grounded, guide, guide_agent, rigs, walker, beacons, props, settings, captions, caption_shown, pads, look, look_held, recording, recording_tick, mode, cells, cell_runtime, cell_world, device_list, device_picks|:
                 pump: Application::PumpStatus = try RuntimeServices::pump(session)
                 if pump == Application::PumpStatus.ExitRequested:
                     running <- false
@@ -280,7 +281,7 @@
                             direction: Geometry::Vec3 = movement_direction_look(input, look)
                             if jump_queued and jump_sounds and due_steps > 0:
                                 captions <- CourseAccess::caption(captions, &settings, CourseSounds::EVENT_JUMP, frame.elapsed_nanos)
-                            for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds, guide, guide_agent|:
+                            for _ in 0..<due_steps |session, character, direction, jump_queued, sounds, sound_tick, jump_sounds, guide, guide_agent, props, contact_stats|:
                                 sound_tick <- sound_tick + 1
                                 try patrol_guide(session, guide, guide_agent)
                                 jump_speed: f32 = Tune::JUMP_SPEED if jump_queued else 0.0
@@ -291,6 +292,10 @@
                                 jump_queued <- false
                                 _ = try RuntimeServices::physics_fixed_step(session,
                                     Runtime::fixed_step_seconds())
+                                contacts_ok: bool = catch CourseContactAudio::step(session, &props, &sounds, sound_tick, &contact_stats):
+                                    ok: true
+                                    error failure: false
+                                return 273 if not contacts_ok
                             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                                 session, character)
                             CourseState::update_outcome(&state,
@@ -307,7 +312,8 @@
                             ground: PhysicsRuntime::CharacterGround = try RuntimeServices::physics_character_ground(session, character)
                             now_grounded: bool = ground.state == PhysicsRuntime::CharacterGroundState.OnGround
                             CourseCells::observe_pilot(cells, pose.position, crouched,
-                                ActionInput::action_down(input, CourseControls::ACTION_CROUCH)) if mode == 3
+                                ActionInput::action_down(input, CourseControls::ACTION_CROUCH), now_grounded,
+                                ActionInput::action_pressed(input, CourseControls::ACTION_JUMP)) if mode == 3
                             # Footsteps and landings come from the authored triggers; the
                             # landing caption shows for every touchdown, heard or not.
                             _ = CourseSounds::track(&sounds, now_grounded, pose.position, sound_tick)
@@ -356,6 +362,8 @@
             try release_walker(&walker)
             try NavMesh::unload(guide.mesh)
             closed_cells: i32 = CourseCells::close(cells, cell_runtime, cell_world)
+            contact_result: i32 = CourseContactAudio::verdict(&contact_stats)
+            return contact_result if (mode == 3 or mode == 4) and contact_result != 0
             return CourseCells::verdict(cells, closed_cells) if mode == 3
             return CourseCells::course_verdict(cells, closed_cells) if mode == 4
             0

@@ -59,3 +59,27 @@ Validation on 2026-09-26:
 P05 character movement and the interactive course are complete. Broader vehicle,
 constraint, ragdoll, and navigation gameplay remain tracked under P06–P09 and
 N01–N04.
+
+## First-contact jump regression — 2026-10-07
+
+The live cell pilot exposed a grounded jump consumed by residual fall speed.
+At first contact, the controller reported OnGround with vertical velocity
+-6.231466; requesting speed 5 left velocity -1.231466. Space reached the action
+and native movement API, but the character rose only about 0.016 m.
+
+`native/physics_character_abi.inc` now preserves the backend's horizontal
+movement and ensures a grounded jump reaches at least support vertical velocity
+plus requested speed. Higher upward momentum is preserved. Airborne and
+non-jump movement use the existing backend behavior. Non-finite velocity or
+launch targets are rejected before correction.
+
+The shared `native/character_jump_policy.h` passes 144 finite cases and the
+observed regression; disabling the correction fails the negative control with
+status 1. The cell pilot now waits for standing/ground support and reports its
+stage, baseline, peak and observed jump action on completion. Its original
+0.15 m rise threshold is unchanged. The native cell gate passed in 196.867s:
+baseline -0.035638, peak 1.153066. Native WorldPhysics character/contact checks
+passed in 60.727s and physics queries in 53.903s. The updated main live-input route also passed in 203.575s. These are native tests, not a whole-program formal proof.
+
+See [scheduled contact delivery](world-physics-contacts.md) for the work that
+exposed the failure and the retained pre-fix diagnostic.

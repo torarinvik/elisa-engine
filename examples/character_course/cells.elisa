@@ -88,6 +88,9 @@ module CourseCells:
                 action_deadline_nanos: mutable u64
                 action_start_height: mutable f32
                 player_height: mutable f32
+                player_grounded: mutable bool
+                jump_peak_height: mutable f32
+                jump_input_seen: mutable bool
                 saw_crouch: mutable bool
                 released_crouch: mutable bool
                 stood_after_crouch: mutable bool
@@ -359,7 +362,7 @@ module CourseCells:
                 player_z: 0.0, warm_gpu: 0, warm_cpu: 0,
                 heading: 0, legs: 0, quit_sent: false, started_nanos: 0,
                 action_stage: 0, action_deadline_nanos: 0,
-                action_start_height: 0.0, player_height: 0.0,
+                action_start_height: 0.0, player_height: 0.0, player_grounded: false, jump_peak_height: 0.0, jump_input_seen: false,
                 saw_crouch: false, released_crouch: false,
                 stood_after_crouch: false, jumped: false,
                 live_pilot: CourseLiveInputPilot::Pilot()}
@@ -403,8 +406,12 @@ module CourseCells:
         # The mode-3 smoke uses this to prove that injected keys reached the
         # real character controller, not just the standalone mapping tests.
         def observe_pilot(cells: mutable Cells&, position: Geometry::Vec3,
-            crouched: bool, crouch_held: bool) -> void:
+            crouched: bool, crouch_held: bool, grounded: bool, jump_pressed: bool) -> void:
+            cells.jump_input_seen <- true if jump_pressed
             cells.player_height <- position.y
+            cells.player_grounded <- grounded
+            if cells.action_stage >= 3:
+                cells.jump_peak_height <- position.y if position.y > cells.jump_peak_height
             if cells.action_stage > 0:
                 cells.saw_crouch <- true if crouched
                 cells.released_crouch <- true if cells.saw_crouch and not crouch_held
@@ -432,8 +439,11 @@ module CourseCells:
                     cells_push(cells, CourseTestInput::Key.Crouch, false)
                     cells.action_stage <- 2
                     cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_STAND_NANOS
-                elif cells.action_stage == 2 and elapsed_nanos >= cells.action_deadline_nanos:
+                # Standing may leave the resized capsule airborne briefly;
+                # issue jump only after the controller reports ground support.
+                elif cells.action_stage == 2 and elapsed_nanos >= cells.action_deadline_nanos and cells.player_grounded and cells.stood_after_crouch:
                     cells.action_start_height <- cells.player_height
+                    cells.jump_peak_height <- cells.player_height
                     cells_push(cells, CourseTestInput::Key.Space, true)
                     cells.action_stage <- 3
                     cells.action_deadline_nanos <- elapsed_nanos + CellTune::PILOT_JUMP_NANOS
@@ -485,6 +495,7 @@ module CourseCells:
             return CellTune::PILOT_CROUCH_CODE if not cells.saw_crouch
             return CellTune::PILOT_RELEASE_CODE if not cells.released_crouch
             return CellTune::PILOT_STAND_CODE if not cells.stood_after_crouch
+            CourseTestInput::trace_cell_jump(cells.action_stage, cells.action_start_height, cells.jump_peak_height, cells.player_grounded, cells.jumped, cells.jump_input_seen)
             return CellTune::PILOT_JUMP_CODE if not cells.jumped
             0
 

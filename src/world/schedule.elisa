@@ -77,6 +77,14 @@ module WorldSchedule:
                 error failure: false
             raise Error.EventRejected if not accepted
 
+        def remaining_event_capacity(frame: Frame&) -> usize error[Error]:
+            raise Error.InactiveFrame if not frame.active
+            raise Error.PhaseMismatch if not phases_aligned(frame)
+            WorldEvents::remaining_capacity(frame.events)
+
+        def listener_subscribed(frame: Frame&, listener_id: i64, phase: WorldEvents::Phase) -> bool:
+            frame.active and phases_aligned(frame) and WorldEvents::listener_subscribed(frame.events, listener_id, phase)
+
         def emit_world(frame: mutable Frame&, world: World::World&,
             event: WorldEvents::Event) -> void error[Error]:
             raise Error.InactiveFrame if not frame.active

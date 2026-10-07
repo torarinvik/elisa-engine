@@ -1,0 +1,6 @@
+# Pure cue eligibility; copied participant keys stay opaque.
+module WorldContactPolicy:
+    public:
+        def eligible(added: bool, trigger: bool, a: u64, b: u64) -> bool:
+            ensure result == (added and not trigger and a != 0 and b != 0 and a != b)
+            added and not trigger and a != 0 and b != 0 and a != b

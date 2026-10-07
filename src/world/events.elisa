@@ -174,3 +174,9 @@ module WorldEvents:
 
             def delivered_count(queue: Queue&) -> usize:
                 queue.delivered
+
+            def remaining_capacity(queue: Queue&) -> usize:
+                Limits::MAX_EVENTS - queue.event_count
+
+            def listener_subscribed(queue: Queue&, listener_id: i64, phase: Phase) -> bool:
+                listener_id > 0 and subscription_matches(queue, listener_id, phase)

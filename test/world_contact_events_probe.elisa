@@ -1,0 +1,90 @@
+# Native body ownership plus adversarial copied-contact delivery.
+include "../src/runtime/world_contact_events.elisa"
+
+module WorldContactEventsProbe:
+    private:
+        def packet(key: u64, kind: PhysicsRuntime::ContactKind, trigger: bool) -> PhysicsRuntime::ContactEvent:
+            PhysicsRuntime::ContactEvent{entity_a: key, entity_b: key + 1,
+                position: Geometry::vec3_zero(), normal: Geometry::vec3_zero(),
+                penetration_depth: 0.0, kind: kind, trigger: trigger, sequence: 1}
+
+    public:
+        def run(session: RuntimeServices::Session&, world: World::World&,
+            bindings: WorldPhysics::Bindings&, key: u64, entity: World::EntityRef) -> i32 error[WorldSchedule::Error]:
+            frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+            try WorldSchedule::begin_frame(&frame)
+            try WorldSchedule::subscribe(&frame, 5, WorldEvents::Phase.Audio)
+            contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
+            wrong_phase: i32 = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 0, 0, 5, 123):
+                value: 0
+                WorldContactEvents::WorldContactError.WrongPhase: 1
+                error failure: 2
+            return 100 if wrong_phase != 1
+            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation)
+            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics)
+            try WorldSchedule::unsubscribe(&frame, 5)
+            unsubscribed: i32 = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 0, 0, 5, 123):
+                value: 0
+                WorldContactEvents::WorldContactError.UnknownListener: 1
+                error failure: 2
+            return 101 if unsubscribed != 1
+            try WorldSchedule::subscribe(&frame, 5, WorldEvents::Phase.Audio)
+            writer: mutable WorldAccess::Token = try WorldSchedule::acquire_write(&frame)
+            conflict: i32 = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 0, 0, 5, 123):
+                value: 0
+                WorldSchedule::Error.AccessConflict: 1
+                error failure: 2
+            try WorldSchedule::release_access(&frame, &writer)
+            return 102 if conflict != 1
+            oversized: i32 = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 65, 0, 5, 123):
+                value: 0
+                WorldContactEvents::WorldContactError.InvalidCount: 1
+                error failure: 2
+            return 103 if oversized != 1
+            contacts.events[0] <- packet(key, PhysicsRuntime::ContactKind.Persisted, false)
+            contacts.events[1] <- packet(key, PhysicsRuntime::ContactKind.Removed, false)
+            contacts.events[2] <- packet(key, PhysicsRuntime::ContactKind.Added, true)
+            filtered: WorldContactEvents::Report = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 3, 0, 5, 123):
+                value: value
+                error failure: return 104
+            return 105 if filtered.emitted != 0 or filtered.filtered_contacts != 3
+            other_world: mutable World::World = catch World::World():
+                value: value
+                error failure: return 115
+            other_entity: World::EntityRef = catch World::world_spawn(&other_world, World::StaticObject.Structure):
+                value: value
+                error failure: return 115
+            return 115 if other_entity.id != entity.id
+            contacts.events[0] <- packet(key, PhysicsRuntime::ContactKind.Added, false)
+            stale: WorldContactEvents::Report = catch WorldContactEvents::enqueue(&frame, session, &other_world, bindings, &contacts, 1, 0, 5, 123):
+                value: value
+                error failure: return 116
+            return 117 if stale.rejected != 1 or stale.unbound != 1 or stale.emitted != 0
+            for _ in 0..<63 |frame, world, entity|:
+                try WorldSchedule::emit_world(&frame, world, WorldEvents::Event{
+                    phase: WorldEvents::Phase.Audio, kind: WorldEvents::EventKind.AudioCue,
+                    listener_id: 5, entity: entity, position: Geometry::vec3_zero(),
+                    payload: 1, delivered: false})
+            for index in 0..<64 |contacts, key|:
+                contacts.events[index] <- packet(key, PhysicsRuntime::ContactKind.Added, false)
+            report: WorldContactEvents::Report = catch WorldContactEvents::enqueue(&frame, session, world, bindings, &contacts, 64, 7, 5, 123):
+                value: value
+                error failure: return 106
+            return 107 if report.emitted != 1 or report.queue_dropped != 63 or report.unbound != 64
+            return 108 if report.native_dropped != 7 or report.rejected != 0 or report.filtered_contacts != 0
+            remaining: usize = try WorldSchedule::remaining_event_capacity(&frame)
+            return 109 if remaining != 0
+            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Animation)
+            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Render)
+            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Audio)
+            delivered: usize = try WorldSchedule::dispatch_current(&frame)
+            return 110 if delivered != 64
+            event: WorldEvents::Event = try WorldSchedule::dispatched_event_at(&frame, world, 63)
+            return 111 if event.payload != 123 or event.entity.id != entity.id or event.entity.world_epoch != entity.world_epoch
+            return 112 if event.kind != WorldEvents::EventKind.AudioCue or not event.delivered
+            pose: mutable Geometry::Transform = Geometry::transform_identity()
+            return 113 if not World::world_try_transform(world, entity, &pose)
+            return 113 if event.position.y != pose.position.y
+            try WorldSchedule::unsubscribe(&frame, 5)
+            _ = try WorldSchedule::end_frame(&frame)
+            0

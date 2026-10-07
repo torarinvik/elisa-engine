@@ -1,6 +1,7 @@
 # Verifies pose sync, kinematic targets, and stale-error preservation.
 include "./world_hierarchy_render_probe.elisa"
 include "./physics_character_probe.elisa"
+include "./world_contact_events_probe.elisa"
 
 module WorldPhysicsPoseProbe:
     private:
@@ -137,6 +138,10 @@ module WorldPhysicsPoseProbe:
                 value: value
                 error failure: return 62
             return 63 if joined.id != entity.id or joined.world_epoch != entity.world_epoch
+            contact_events: i32 = catch WorldContactEventsProbe::run(session, world, direct_bindings, contact_key, entity):
+                value: value
+                error failure: return 114
+            return contact_events if contact_events != 0
             unknown: World::EntityRef = catch WorldPhysics::contact_reference(session, world, direct_bindings, 0):
                 value: value
                 error failure: return 64

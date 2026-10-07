@@ -1,0 +1,14 @@
+include "../src/runtime/world_contact_policy.elisa"
+
+extend WorldContactPolicy:
+    def prove_triggers_filtered(added: bool, a: u64, b: u64) -> bool:
+        ensure not result
+        eligible(added, true, a, b)
+
+    def prove_persisted_removed_filtered(trigger: bool, a: u64, b: u64) -> bool:
+        ensure not result
+        eligible(false, trigger, a, b)
+
+    def prove_duplicate_filtered(added: bool, trigger: bool, key: u64) -> bool:
+        ensure not result
+        eligible(added, trigger, key, key)

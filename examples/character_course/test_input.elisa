@@ -48,6 +48,9 @@ module CourseTestInput:
         @callconv(c)
         extern elisa_application_v1_test_click(x: f32, y: f32) -> i32
 
+        @callconv(c)
+        extern elisa_application_v1_test_trace_cell_jump(stage: i64, start_height: f32, peak_height: f32, grounded: i32, jumped: i32, input_seen: i32)
+
         def native_key(key: Key) -> i32:
             match key:
                 Key.Right: NativeKey::RIGHT
@@ -79,6 +82,9 @@ module CourseTestInput:
         def window_matches(width: i32, height: i32) -> bool:
             frame: mutable Application::FrameInfo = zeroed
             Application::frame_info(&frame) and frame.logical_width == width and frame.logical_height == height and frame.pixel_width > 0 and frame.pixel_height > 0
+
+        def trace_cell_jump(stage: i64, start_height: f32, peak_height: f32, grounded: bool, jumped: bool, input_seen: bool) -> void:
+            elisa_application_v1_test_trace_cell_jump(stage, start_height, peak_height, 1 if grounded else 0, 1 if jumped else 0, 1 if input_seen else 0)
 
         def trace_cell_memory(warm_gpu: i64, warm_cpu: i64, gpu: i64, cpu: i64) -> void:
             elisa_application_v1_test_trace_cell_memory(warm_gpu, warm_cpu, gpu, cpu)

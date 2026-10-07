@@ -52,10 +52,31 @@ def main() -> int:
         if test_result.returncode != 0:
             print("Native gamepad mapping test failed.", file=sys.stderr)
             return test_result.returncode
+    jump_status = run_character_jump_policy_test(compiler)
+    if jump_status != 0:
+        return jump_status
     probe_status = run_application_test_probe_fallback_test(compiler)
     if probe_status != 0:
         return probe_status
     return run_ozz_service_test(compiler)
+
+
+def run_character_jump_policy_test(compiler: list[str]) -> int:
+    """Exercise the native jump policy and ensure removing its clamp fails."""
+    with tempfile.TemporaryDirectory(prefix="elisa-character-jump-") as temporary_directory:
+        for negative in (False, True):
+            executable = Path(temporary_directory) / ("negative" if negative else "policy")
+            flags = ["-DELISA_TEST_DISABLE_GROUNDED_JUMP"] if negative else []
+            built = subprocess.run([*compiler, "-std=c++17", "-O2", *flags,
+                str(ROOT / "test/character_jump_policy.cpp"), "-o", str(executable)], check=False)
+            if built.returncode != 0:
+                return built.returncode
+            tested = subprocess.run([str(executable)], check=False)
+            expected = 1 if negative else 0
+            if tested.returncode != expected:
+                print("Grounded jump policy or its negative control failed.", file=sys.stderr)
+                return tested.returncode or 2
+    return 0
 
 
 def run_application_test_probe_fallback_test(compiler: list[str]) -> int:

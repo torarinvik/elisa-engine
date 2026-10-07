@@ -92,3 +92,10 @@ extern "C" int32_t elisa_application_v1_test_click(float x, float y) {
     const bool up = SDL_PushEvent(&event);
     return down && up ? ELISA_APPLICATION_OK : ELISA_APPLICATION_INITIALIZATION_FAILED;
 }
+
+extern "C" void elisa_application_v1_test_trace_cell_jump(int64_t stage,
+    float start_height, float peak_height, int32_t grounded, int32_t jumped, int32_t input_seen) {
+    std::fprintf(stderr, "course cell jump stage=%lld start=%.6f peak=%.6f grounded=%d jumped=%d input_seen=%d\n",
+        static_cast<long long>(stage), start_height, peak_height, grounded, jumped, input_seen);
+    std::fflush(stderr);
+}

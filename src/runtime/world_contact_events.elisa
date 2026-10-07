@@ -1,0 +1,86 @@
+# Owner-thread consumer of copied Jolt contact records, under WorldSchedule.
+include "./world_physics.elisa"
+include "./world_contact_policy.elisa"
+include "../world/schedule.elisa"
+
+module WorldContactEvents:
+    public:
+        enum WorldContactError:
+            WrongPhase
+            UnknownListener
+            InvalidCount
+            AccessConflict
+
+        struct Report:
+            emitted: mutable usize
+            unbound: mutable usize
+            rejected: mutable usize
+            queue_dropped: mutable usize
+            filtered_contacts: mutable usize
+            native_dropped: u32
+
+    private:
+        enum Outcome:
+            Emitted
+            Unbound
+            Rejected
+            Full
+
+        def route(frame: mutable WorldSchedule::Frame&, session: RuntimeServices::Session&,
+            world: World::World&, bindings: WorldPhysics::Bindings&, key: u64,
+            listener: i64, payload: i64) -> Outcome:
+            reference: World::EntityRef = catch WorldPhysics::contact_reference(session, world, bindings, key):
+                value: value
+                error failure: return Outcome.Rejected
+            return Outcome.Unbound if reference.id == 0
+            capacity: usize = catch WorldSchedule::remaining_event_capacity(frame):
+                value: value
+                error failure: return Outcome.Rejected
+            return Outcome.Full if capacity == 0
+            emitted: bool = catch WorldSchedule::emit_world(frame, world,
+                WorldEvents::Event{phase: WorldEvents::Phase.Audio,
+                    kind: WorldEvents::EventKind.AudioCue, listener_id: listener,
+                    entity: reference, position: Geometry::vec3_zero(),
+                    payload: payload, delivered: false}):
+                ok: true
+                error failure: false
+            Outcome.Emitted if emitted else Outcome.Rejected
+
+        def account(report: mutable Report&, outcome: Outcome) -> void:
+            if outcome == Outcome.Emitted:
+                report.emitted <- report.emitted + 1
+            elif outcome == Outcome.Unbound:
+                report.unbound <- report.unbound + 1
+            elif outcome == Outcome.Full:
+                report.queue_dropped <- report.queue_dropped + 1
+            else:
+                report.rejected <- report.rejected + 1
+
+    public:
+        # Caller polls after each completed fixed step, before another step can
+        # reset the native queue. Entity poses must already be synchronized.
+        def enqueue(frame: mutable WorldSchedule::Frame&, session: RuntimeServices::Session&,
+            world: World::World&, bindings: WorldPhysics::Bindings&,
+            contacts: PhysicsRuntime::ContactBuffer&, count: usize, native_dropped: u32,
+            listener: i64, payload: i64) -> Report error[WorldContactError, WorldSchedule::Error]:
+            raise WorldContactError.WrongPhase if WorldSchedule::current_phase(frame) != WorldEvents::Phase.Physics
+            raise WorldContactError.InvalidCount if count > 64
+            raise WorldContactError.UnknownListener if not WorldSchedule::listener_subscribed(frame, listener, WorldEvents::Phase.Audio)
+            token: mutable WorldAccess::Token = try WorldSchedule::acquire_read(frame)
+            report: mutable Report = Report{emitted: 0, unbound: 0, rejected: 0,
+                queue_dropped: 0, filtered_contacts: 0, native_dropped: native_dropped}
+            for index in 0..<count |frame, session, world, bindings, contacts, listener, payload, report|:
+                contact: PhysicsRuntime::ContactEvent = contacts.events[index]
+                if WorldContactPolicy::eligible(contact.kind == PhysicsRuntime::ContactKind.Added,
+                    contact.trigger, contact.entity_a, contact.entity_b):
+                    a: Outcome = route(frame, session, world, bindings, contact.entity_a, listener, payload)
+                    b: Outcome = route(frame, session, world, bindings, contact.entity_b, listener, payload)
+                    account(&report, a)
+                    account(&report, b)
+                else:
+                    report.filtered_contacts <- report.filtered_contacts + 1
+            released: bool = catch WorldSchedule::release_access(frame, &token):
+                ok: true
+                error failure: false
+            raise WorldContactError.AccessConflict if not released
+            report

@@ -111,9 +111,25 @@ extern "C" int32_t elisa_physics_v1_character_move(uint64_t world_generation,
         backend_direction.z *= inverse_length;
     }
     try {
+        const bool grounded_jump = backend_jump_speed > 0.0f &&
+            wi::physics::GetCharacterGroundState(*rigidbody) == wi::physics::CharacterGroundStates::OnGround;
+        const float support_y = grounded_jump ? wi::physics::GetCharacterGroundVelocity(*rigidbody).y : 0.0f;
+        if (grounded_jump && (!std::isfinite(support_y) ||
+                !std::isfinite(support_y + backend_jump_speed))) return ELISA_PHYSICS_BACKEND_FAILURE;
         wi::physics::MoveCharacter(*rigidbody, backend_direction, backend_speed,
             backend_jump_speed, control_in_air != 0,
             body->character_step_height);
+        if (grounded_jump) {
+            XMFLOAT3 velocity = wi::physics::GetVelocity(*rigidbody);
+            if (!std::isfinite(velocity.x) || !std::isfinite(velocity.y) ||
+                !std::isfinite(velocity.z)) return ELISA_PHYSICS_BACKEND_FAILURE;
+            const float corrected_y = elisa_character::jump_vertical_velocity(
+                velocity.y, support_y, backend_jump_speed, true);
+            if (corrected_y != velocity.y) {
+                velocity.y = corrected_y;
+                wi::physics::SetLinearVelocity(*rigidbody, velocity);
+            }
+        }
     } catch (...) {
         return ELISA_PHYSICS_BACKEND_FAILURE;
     }

@@ -8,6 +8,7 @@
 #include "jolt_shape_cache_identity.h"
 #include "physics_cooked_geometry_validation.h"
 #include "physics_coordinate_bridge.h"
+#include "character_jump_policy.h"
 #include "physics_service_internal.h"
 
 #include <array>
