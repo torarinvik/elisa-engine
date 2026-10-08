@@ -62,13 +62,20 @@ A linked library, a policy enum, or one successful scene is not a public runtime
 Work on one bounded deliverable at a time. Rank by observed failures, shipping dependencies, reuse across clients and decisive acceptance.
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
-**Current baseline:** compiler `ddbc803d` passes [215 uncached runtime tests](docs/validation/compiler-ddbc803d-qualification.md); `8006b660` retains non-proof shared-stage evidence;
-its clean matching prover pair `f3ee9522` builds successfully and passes all 73 uncached reports;
-full prover matrix/shared/native qualification remains open. AudioAnimEvents passes 56/56 and SoundAssets 157/157 with zero replay gaps. The authored-rig, focus, resize,
-contact and audio-workload slices have local automated evidence. The historical
-relocated bundle predates the corrected guide outputs and needs refreshing.
-See [current compiler/gate evidence](docs/validation/compiler-8006b660-install.md)
-and [targeted task details](docs/plans/runtime-next-slices.md).
+**Current baseline:** frozen compiler `52d60fcf` and its matching runtime pass
+215 uncached runtime tests and the shared gate. Integrated prover `f593c886`
+passes all 73 engine reports. Isolated replay repair `14ae4a02` also passes
+73 uncached reports / 4,246 obligations, the adversarial source-binding harness,
+and scalar-copy/next-write controls; its immutable pair is
+`f43713c9ff9e4f559d46c4b1ed68331b`. It is not yet promoted into the production
+prover worktree while the older full regression matrix remains active.
+The pinned full native run failed at Character Course relaunch; its focused
+smoke/relaunch retry passes. Full matrix/shared/native compatibility on the
+repaired pair remains open. See [replay repair evidence](docs/validation/action-input-replay.md)
+and [compiler/native evidence](docs/validation/counted-fill-memory-growth.md).
+AudioAnimEvents 56/56 and SoundAssets 157/157 retain zero replay gaps. The
+historical relocated bundle still needs corrected guide outputs and a fresh
+package. See [targeted task details](docs/plans/runtime-next-slices.md).
 
 | Order | Highest-return deliverable | Acceptance / stop condition |
 |---|---|---|
