@@ -213,8 +213,9 @@ macOS packaging also refuses declared resources that would overwrite the generat
 executable, including case variants and descendants. Existing regular-file bundle
 destinations fail before assembly; backup cleanup cannot report failure after
 successful publication. Declared resource paths also refuse parent symlinks before copying, preventing
-external files from entering the bundle through a leaf-only check. All 38 package
-controls pass, with the previous bundle and author resource preserved
+external files from entering the bundle through a leaf-only check. Explicit cooked
+resource declarations now merge with automatic staging from the same source. All
+39 package controls pass, with the previous bundle and author resource preserved
 ([evidence](docs/validation/package-executable-resource-collision.md)).
 The full fresh public-API author/cook/package rehearsal remains open.
 

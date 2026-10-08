@@ -53,3 +53,17 @@ The package suite passes 38 tests in 1.894 seconds, retained in
 both external and internal symlink targets, verifies the previous bundle marker
 remains and no linked resource is published, and checks external source bytes are
 unchanged. Native/GPU and clean-machine acceptance remain open.
+
+## Explicit cooked resources
+
+Valid manifests listing `build/cooked` or `build/cooked/player.pkg` failed with
+`FileExistsError`: explicit staging created the destination that automatic cooked
+staging subsequently required to be absent. Automatic cooked staging now merges
+into its destination. Both copies use the same project-relative source; other
+resource-directory copies retain their existing collision behavior.
+
+The full package suite passes 39 tests in 2.660 seconds, retained in
+`build/validation/package-explicit-cooked-resources.log`. Controls cover directory
+and individual-file declarations, byte equality for both declared and additionally
+cooked files, unchanged packaged executable and exclusion of undeclared assets.
+The native optimized application/package gate remains open.

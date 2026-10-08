@@ -521,6 +521,19 @@ class PackageMacosAppTests(unittest.TestCase):
         log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
         self.assertIn("7", log.read_text(encoding="utf-8").splitlines())
 
+    def test_explicit_cooked_resources_merge_with_automatic_staging(self) -> None:
+        touch(self.project / "build/cooked/second.pkg", b"second package")
+        for entry in ("build/cooked", "build/cooked/player.pkg"):
+            with self.subTest(entry=entry):
+                manifest = self.write_manifest({"package": {"resources": [entry]}})
+                app = self.package(manifest)
+                resources = app / "Contents/Resources"
+                self.assertEqual((resources / "build/cooked/player.pkg").read_bytes(), b"x")
+                self.assertEqual((resources / "build/cooked/second.pkg").read_bytes(), b"second package")
+                self.assertEqual((resources / "Game.bin").read_bytes(),
+                    (self.project / "build/game").read_bytes())
+                self.assertFalse((resources / "assets").exists())
+
     def test_resource_cannot_replace_packaged_executable(self) -> None:
         app = self.package(self.write_manifest({}))
         original = (app / "Contents/Resources/Game.bin").read_bytes()

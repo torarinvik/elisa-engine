@@ -101,10 +101,11 @@ def safe_bundle_name(value: str) -> str:
     return cleaned
 
 
-def copy_directory(source: Path, destination: Path, ignore=ignore_litter) -> None:
+def copy_directory(source: Path, destination: Path, ignore=ignore_litter,
+    *, merge: bool = False) -> None:
     if not source.is_dir():
         raise PackageError(f"required project directory is missing: {source}")
-    shutil.copytree(source, destination, symlinks=False, ignore=ignore)
+    shutil.copytree(source, destination, symlinks=False, ignore=ignore, dirs_exist_ok=merge)
 
 
 def copy_compiled_shaders(source: Path, destination: Path) -> None:
@@ -451,7 +452,9 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
             stage_resource(project, resources, relative)
     cooked = project / "build" / "cooked"
     if cooked.exists():
-        copy_directory(cooked, resources / "build" / "cooked")
+        # Explicit resources may already stage this directory or individual cooked
+        # files. Both copies originate from the same project-relative source.
+        copy_directory(cooked, resources / "build" / "cooked", merge=True)
     shaders = shader_root if shader_root is not None else project / "shaders"
     if shaders.is_dir():
         if compiled_shaders_only:
