@@ -385,3 +385,12 @@ in 4.99 seconds, sampled peak RSS 580,448 KiB; the driver still reports a raw
 reference passed to sview at its source-loading boundary. Artifact:
 `build/validation/elisascript-ddbc803d-catch-values-build.log` and JSON.
 CLI report output and error routing remain runtime-unverified on this compiler.
+
+### CLI argument view string boundary
+
+The CLI bounded argument scanner retains its original cstr when constructing
+the successful view, rather than passing the raw-byte scan alias. The NUL scan,
+limit and too-large path are unchanged. No driver diagnostics remain in the
+bounded build; it exits 1 elsewhere in 5.44 seconds, sampled peak RSS 726,736
+KiB. Artifact: `build/validation/elisascript-ddbc803d-argv-view-build.log` and JSON.
+Argument collection remains runtime-unverified on the selected compiler.
