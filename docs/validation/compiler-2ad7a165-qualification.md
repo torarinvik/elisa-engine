@@ -116,3 +116,16 @@ investigation before interpreter return sites are changed. No interpreter or
 compiler source changes made in this investigation.
 Artifact: `build/validation/contract-error-marker/permanent_view.elisa`;
 compile log: `permanent-view-copy-direct.log` in the same directory.
+
+## Decoded text permanent backing
+
+Decoded text now returns through permanent_text_copy: string_view_copy provides
+permanent backing, and a locally audited counted-view construction preserves
+embedded NUL bytes. The earlier append control discrepancy resolves by retaining
+length before the by-value bytes_view call; implicit and explicit append calls
+both pass, as does the returned three-byte x/NUL/y control. The bounded launcher
+compile clears one lifetime error (11 to 10), exits 1 elsewhere in 3.02 seconds,
+peak sampled RSS 726,896 KiB. Artifact:
+`build/validation/elisascript-2ad7a165-permanent-copy-build.log` and JSON.
+This introduces an additional copy for longer strings; launcher behavior remains
+runtime-unverified, and no escape-check suppression is used.
