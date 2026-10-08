@@ -58,7 +58,7 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `84320c8a`
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `cb10dd72`
 on 2026-10-08; its latest guide change is `44b81b1a`. Section 6 marks owned
 value-threading and builtin container value forms as working in Stage1.
 The immutable 2ad7a165 product separately passes 215 uncached runtime tests
@@ -104,7 +104,8 @@ these additional checks within implementation slices:
   Implemented the two-pass collection in all five paths on 2026-10-08:
   the bounded Stage1 build removes all 25 argument-storage invalidation
   diagnostics. Other launcher compatibility diagnostics still prevent a
-  runnable native gate; this slice does not establish process behavior.
+  runnable native gate at that point. The subsequent guard-aware launcher
+  passes headless and build-gate replay; full native acceptance remains running.
 - Adopt strict lint as a diagnostic on touched code, then enable errors only
   for a clean directory. Preserve loop zero-iteration results and refuse forced
   rewrites where strict diagnostics explain why no valid rewrite exists.
@@ -121,6 +122,27 @@ these additional checks within implementation slices:
   about untouched outer scalars. The current input diagnostic isolates this
   boundary; qualify the prover repair against shadowing, rebinding, local escape
   and effectful calls before accepting it. Keep the production region in place.
+
+### Allocation lifetime: current consumer priority
+
+- Apply guide sections 3 and 9 to the demonstrated mocap skin-cache lifetime
+  failure and the separate current-toolchain GLB loading memory failure. Keep
+  returned mesh arrays and cached skin output alive across producer return,
+  redraw and allocation churn. Do not introduce a region around escaping data
+  merely to satisfy the scope lint; audit generated arena arguments and releases.
+- Current frozen `cb10dd72` runtime qualification is incomplete: both parallel
+  and serial sweeps reached their RSS limits. The isolated `viewport_mesh` test
+  reproduces growth while `GlbSkinMesh.load` reads the 53 MiB boxer GLB, before
+  parsing. Temporary instrumented copies reproduce it at O0 too: capacity
+  increases by exactly 64 KiB per read. Disabling only automatic reserve makes
+  the unchanged real-asset test pass in 0.72s at 301,792 KiB peak RSS. The counted
+  loop pre-reserve calls exact-size reserve on each chunk; repair its growth
+  policy to retain amortized geometric growth before rerunning qualification.
+  Preserve the real asset acceptance and existing watchdog limits. This memory
+  failure does not establish the cause of the client's older sealed crash.
+- Use the guide's owned value forms only after lifetime correctness is established.
+  Their documented equal machine code is no evidence of reduced allocations or
+  repaired arena routing. Reuse the existing client and engine acceptance paths.
 
 ### Owned updates: targeted adoption
 
