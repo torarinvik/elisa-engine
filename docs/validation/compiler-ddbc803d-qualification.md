@@ -441,3 +441,14 @@ become the selected fallback. This is an investigation finding, not a verified
 compiler fix. Next: minimize the marker-order case, authenticate family rows
 against the corresponding declaration's error-return metadata, and retain
 negative propagation controls and module disambiguation.
+
+### Census retry concurrency
+
+The live census comparison exposed a harness resource issue: newly unreadable
+inputs were retried with one worker per input, ignoring ELISA_PROOF_CENSUS_JOBS.
+The harness now caps retries by DEFAULT_WORKERS, retaining at least one worker
+for an empty source list. The existing census-diff suite passes on Python 3.14,
+including controls for zero, one and five retry inputs with a two-worker budget.
+This is a Python-only change; the live old-harness run is not restarted and no
+production prover source or binary changes. Its retry timings remain evidence
+from the prior concurrency policy.
