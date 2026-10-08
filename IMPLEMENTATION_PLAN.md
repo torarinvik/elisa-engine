@@ -155,7 +155,10 @@ another. Commit documentation and tests together with source changes.
   hidden self-test application builds and links with default enforcement on
   compiler source `dd8aea22` (Stage1 SHA256
   `a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`). The
-  complete consumer check still needs a sequential rerun: overlapping runs
+  ordinary `main.elisa` entry now also declares the grants required by
+  `CharacterCourse::run`; its clean optimized package is being rebuilt against
+  the same compiler before relocation acceptance. The complete consumer check
+  still needs a sequential rerun: overlapping runs
   raced in shared test/proof outputs, so their reports are not qualification
   evidence. Despite the
   file-picker timeout, Studio loaded the

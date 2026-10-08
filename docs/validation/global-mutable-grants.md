@@ -314,6 +314,11 @@ identity is `3fec82a0134d4444`. This is compile/link evidence only; the binary
 was not launched, and the complete consumer check and optimized shipping package
 remain open.
 
+The ordinary public entrypoint `examples/character_course/main.elisa` now
+declares the same grants when it calls `CharacterCourse::run`. A clean optimized
+build of this entrypoint against the compiler above is the next package check;
+the self-test build does not substitute for that shipping path.
+
 This integration also corrected `scripts/elisa_build_run.py`: the build runner
 invokes the selected compiler binary directly, so it now passes an empty
 `ELISA_RUNTIME_OBJ` to omit the bundled runtime. The `none` sentinel is translated
