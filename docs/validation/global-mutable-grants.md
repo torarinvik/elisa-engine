@@ -82,3 +82,21 @@ acceptance refusal, unrelated errors and missing executable handling
 registered in the portable native-facing test slot; the actual candidate gate is
 an explicit replacement-qualification command so the historical compiler baseline
 is not misrepresented as satisfying the new policy.
+
+## Compiler product drift guard
+
+The qualifier now hashes the compiler executable before and after all controls.
+For a launcher, supply `--product /absolute/underlying/binary`; pin the authorized
+product with `--expected-product-sha256 HASH`. A mismatched hash stops before
+compiler invocation, and product mutation invalidates otherwise passing controls.
+This endpoint check does not detect a temporary mutation reverted between reads;
+use immutable candidate inputs. A launcher's own hash is not its underlying product
+identity, so replacement qualification should always name the binary explicitly.
+
+Six qualifier controls pass, including wrong-product preflight and mid-run product
+replacement (`build/validation/global-grant-qualifier-product-controls.log`).
+The actual candidate path changed from the coordinator's authorized `1e408e...`
+to `cf34f1...` while retaining the same source revision in its new sidecar.
+The expected-hash gate rejects it without running any semantic control:
+`build/validation/global-grant-candidate-product-drift.json`.
+The coordinated paired prover build was not started; the frozen tuple was requested.

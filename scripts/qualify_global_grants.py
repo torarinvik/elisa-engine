@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -68,16 +69,40 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--compiler", required=True, help="Actual candidate compiler executable or launcher")
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--product", type=Path, help="Underlying compiler binary when --compiler is a launcher")
+    parser.add_argument("--expected-product-sha256", help="Require this exact compiler product hash")
     args = parser.parse_args(argv)
-    with tempfile.TemporaryDirectory(prefix="elisa-global-grant-qualification-") as temporary:
-        records = qualify(args.compiler, Path(temporary))
-    passed = all(row["passed"] for row in records)
+    located = shutil.which(args.compiler)
+    product = args.product or (Path(located) if located else Path(args.compiler))
+    records = []
+    before = after = None
+    input_error = ""
+    try:
+        before = hashlib.sha256(product.read_bytes()).hexdigest()
+        expected = args.expected_product_sha256
+        if expected is not None and (len(expected) != 64 or any(c not in "0123456789abcdef" for c in expected)):
+            input_error = "expected product hash must be 64 lowercase hexadecimal characters"
+        elif expected is not None and before != expected:
+            input_error = "compiler product does not match expected hash"
+        else:
+            with tempfile.TemporaryDirectory(prefix="elisa-global-grant-qualification-") as temporary:
+                records = qualify(args.compiler, Path(temporary))
+            after = hashlib.sha256(product.read_bytes()).hexdigest()
+            if after != before:
+                input_error = "compiler product changed during qualification"
+    except OSError as error:
+        input_error = f"could not read compiler product: {error}"
+    passed = bool(records) and not input_error and all(row["passed"] for row in records)
     report = {"schema": "elisa-global-grant-cli-qualification-v1", "compiler": args.compiler,
         "passed": passed, "scope": "source admission only; runtime/native promotion not established",
+        "product": str(product), "product_sha256_before": before, "product_sha256_after": after,
+        "expected_product_sha256": args.expected_product_sha256, "input_error": input_error,
         "cases": records}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    print(f"Global grant CLI qualification: {sum(row['passed'] for row in records)}/{len(records)} controls pass")
+    print(f"Global grant CLI qualification: {'PASS' if passed else 'FAIL'}; {sum(row['passed'] for row in records)}/{len(records)} controls pass")
+    if input_error:
+        print(input_error)
     return 0 if passed else 1
 
 

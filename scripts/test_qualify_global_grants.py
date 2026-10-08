@@ -1,6 +1,8 @@
 """Grant qualification fails closed on silent acceptance and unrelated errors."""
 from pathlib import Path
 import subprocess
+import hashlib
+import json
 import tempfile
 import unittest
 from unittest import mock
@@ -32,6 +34,39 @@ class GlobalGrantQualificationTests(unittest.TestCase):
                 f"mutable global requires {permission}" if denied else "")
 
         self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
+
+    def test_wrong_product_hash_stops_before_compiler(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            product, report = root / "compiler", root / "report.json"
+            product.write_bytes(b"candidate")
+            with mock.patch.object(gate, "qualify") as run:
+                status = gate.main(["--compiler", str(product), "--report", str(report),
+                    "--expected-product-sha256", "0" * 64])
+                run.assert_not_called()
+            self.assertEqual(status, 1)
+            data = json.loads(report.read_text())
+            self.assertFalse(data["passed"])
+            self.assertIn("expected hash", data["input_error"])
+
+    def test_product_change_invalidates_otherwise_passing_controls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            product, report = root / "compiler", root / "report.json"
+            product.write_bytes(b"candidate")
+            before = hashlib.sha256(product.read_bytes()).hexdigest()
+
+            def run(*args, **kwargs):
+                product.write_bytes(b"replacement")
+                return [{"passed": True}]
+
+            with mock.patch.object(gate, "qualify", side_effect=run):
+                status = gate.main(["--compiler", "launcher", "--product", str(product),
+                    "--report", str(report), "--expected-product-sha256", before])
+            self.assertEqual(status, 1)
+            data = json.loads(report.read_text())
+            self.assertFalse(data["passed"])
+            self.assertIn("changed", data["input_error"])
 
     def test_missing_compiler_fails(self):
         rows = self.run_controls(mock.Mock(side_effect=FileNotFoundError("missing candidate")))
