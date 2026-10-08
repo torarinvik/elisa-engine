@@ -374,3 +374,14 @@ comparable arm replaces it. The bounded native compile clears this diagnostic,
 exits 1 elsewhere in 7.73 seconds, and samples peak RSS 495,456 KiB. Artifact:
 `build/validation/elisascript-ddbc803d-infer-seed-build.log` and JSON.
 Match-arm diagnostic behavior remains runtime-unverified on this compiler.
+
+### Catch arm values and report success results
+
+CLI report readiness and output-write success now bind boolean catch results;
+other statement-position catches have explicit arm values. The transport
+preflight success arm also ends in a value, while failure rethrows remain.
+All six prior catch-arm diagnostics clear. The bounded compile exits 1 elsewhere
+in 4.99 seconds, sampled peak RSS 580,448 KiB; the driver still reports a raw
+reference passed to sview at its source-loading boundary. Artifact:
+`build/validation/elisascript-ddbc803d-catch-values-build.log` and JSON.
+CLI report output and error routing remain runtime-unverified on this compiler.
