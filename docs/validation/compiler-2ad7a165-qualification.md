@@ -425,3 +425,22 @@ lower_expression_expected. This is the next source-lowering prerequisite.
 A bounded LLDB launch timed out after 30 seconds without a stack; its log
 is `elisascript-f863dd10-native-gate-lldb.log`. No debugger wait remains active.
 No native gate execution or new report is established by these failed runs.
+
+### Nested reference array-loop receiver repair
+
+The faulting annotation-array load came from darray_address_of_expr forming
+a field GEP on a nested reference slot without loading its pointee. The helper
+now loads nested reference-field receivers before projecting their array
+header. Direct local references and reference-valued calls keep their existing
+address conventions. Compiler test/repro/nested_reference_array_loop.elisa
+executes a borrowed inner struct's two-element array and returns status 0 at
+O0 and O2; logs are `build/validation/nested-reference-array-loop-{fixed,o2}.log`.
+
+The launcher rebuild succeeds. The source-parent --check control exits 0,
+clearing the reproduced crash; artifact:
+`build/validation/elisascript-nested-reference-source-parent.log` and JSON.
+The quick gate now exits 1 with source VerificationFailed, rather than
+SIGSEGV. It still establishes no stage execution or new gate report.
+Artifact: `build/validation/elisascript-nested-reference-native-quick.log`
+and JSON. The source verifier failure is the next prerequisite; full
+compiler/engine qualification remains open.
