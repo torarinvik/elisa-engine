@@ -47,7 +47,7 @@ def declared_project_path(project: Path, value: object, label: str, *, must_exis
         raise BuildConfigurationError(f"asset cook {label} cannot be resolved: {error}") from error
     if not path.is_relative_to(project):
         raise BuildConfigurationError(f"asset cook {label} resolves outside the project")
-    if must_exist and not path.is_file():
+    if (must_exist or path.exists()) and not path.is_file():
         raise BuildConfigurationError(f"asset cook {label} is not a regular file: {path}")
     return path
 

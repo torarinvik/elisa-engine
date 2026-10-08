@@ -210,6 +210,35 @@ class AssetCookTests(unittest.TestCase):
                 self.assertEqual(len(run.call_args_list), 2,
                     "native cooker source edits must invalidate cooked assets")
 
+    def test_directory_cook_outputs_are_rejected_before_publication(self) -> None:
+        runner = __import__("elisa_build_run")
+        for blocked in ("mesh", "texture"):
+            with self.subTest(blocked=blocked), tempfile.TemporaryDirectory(prefix="Elisa cook destination ") as temporary:
+                project = Path(temporary)
+                source = project / "assets/model.glb"
+                source.parent.mkdir()
+                source.write_bytes(b"source")
+                mesh = project / "build/model.pkg"
+                texture = project / "build/model.png"
+                mesh.parent.mkdir()
+                directory = mesh if blocked == "mesh" else texture
+                other = texture if blocked == "mesh" else mesh
+                directory.mkdir()
+                (directory / "retained").write_bytes(b"directory contents")
+                other.write_bytes(b"last good output")
+                config = {"asset_cooks": [{"importer": "glb", "source": "assets/model.glb",
+                    "asset_path": "assets/model.glb", "output": "build/model.pkg",
+                    "texture_output": "build/model.png"}]}
+                with mocked_asset_cooker(runner) as run, \
+                        mock.patch.object(runner.asset_cooks, "_cook_fingerprint", return_value="control"):
+                    with self.assertRaises(runner.BuildConfigurationError):
+                        runner.cook_declared_assets(project, config)
+                    run.assert_not_called()
+                self.assertEqual(other.read_bytes(), b"last good output")
+                self.assertEqual((directory / "retained").read_bytes(), b"directory contents")
+                self.assertFalse((project / "build/.elisa-asset-cook-cache.json").exists())
+                self.assertEqual(set(mesh.parent.iterdir()), {mesh, texture})
+
     def test_failed_asset_cook_keeps_last_good_outputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa failed cook ") as temporary_directory:
             project = Path(temporary_directory) / "Project"
