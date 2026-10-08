@@ -47,7 +47,7 @@ module WorldSchedule:
         def Frame() -> Frame:
             Frame{access: WorldAccess::Frame(), events: WorldEvents::Queue(), active: false}
 
-        def begin_frame(frame: mutable Frame&) -> void error[Error]:
+        def begin_frame(frame: mutable Frame&) -> void error[Error] can[Global.Read, Global.Write]:
             raise Error.AlreadyActive if frame.active
             events_started: bool = catch WorldEvents::begin_frame(&frame.events):
                 ok: true

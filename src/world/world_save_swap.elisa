@@ -16,7 +16,7 @@ module World::SaveSwap:
             RestoreFailed
 
     private:
-        def saveswap_stage(bytes: u8&, length: usize) -> bool:
+        def saveswap_stage(bytes: u8&, length: usize) -> bool can[Global.Read, Global.Write]:
             staging: mutable World::World = catch World::World():
                 value: value
                 error failure: return false
@@ -69,7 +69,7 @@ module World::SaveSwap:
             2
 
     public:
-        def replace_world(world: mutable World::World&, bytes: u8&, length: usize) -> void error[SaveSwapError]:
+        def replace_world(world: mutable World::World&, bytes: u8&, length: usize) -> void error[SaveSwapError] can[Global.Read, Global.Write]:
             raise SaveSwapError.Rejected if not saveswap_stage(bytes, length)
             status: i32 = saveswap_rebuild(world, bytes, length)
             raise SaveSwapError.RestoreFailed if status == 3

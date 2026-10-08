@@ -253,3 +253,17 @@ runtime object.
 This closes only the identity-counter slice. It does not qualify every engine
 target or the consumer's full check; those default-grant integrations remain
 open.
+
+## World scheduling and save-swap callers — 2026-10-08
+
+`WorldSchedule::begin_frame` now propagates the access-frame identity grants.
+The save-swap staging and replacement APIs propagate the `World` constructor's
+identity grants. The world-command, event, phase-iteration, save, save-swap and
+save-rendering tests declare those caller effects explicitly; their behavior
+and error handling are unchanged.
+
+All six targets compile and run with exit 0 against the same default-enforcement
+Stage1 product. Per-test source/binary hashes and logs are recorded in
+`build/validation/global-grant-world-0b43/core-world-qualification.json` and
+adjacent files. This qualifies the core world scheduling and persistence slice;
+the broader engine grant inventory and native consumer remain open.

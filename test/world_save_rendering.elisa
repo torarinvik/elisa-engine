@@ -27,7 +27,7 @@ def extract_code(world: World::World&, bindings: mutable WorldRendering::Binding
         ok: 0
         error failure: 1
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     world: mutable World::World = catch World::World():
         value: value
         error failure: return 1

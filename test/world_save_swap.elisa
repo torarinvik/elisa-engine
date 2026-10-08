@@ -1,6 +1,6 @@
 include "../src/world/world_save_swap.elisa"
 
-def swap_code(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
+def swap_code(world: mutable World::World&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
     catch World::SaveSwap::replace_world(world, bytes, length):
         ok: 0
         SaveSwapError.Rejected: 1
@@ -11,7 +11,7 @@ def spawn(world: mutable World::World&, kind: World::Entity) -> World::EntityRef
         value: value
         error failure: World::EntityRef{world_epoch: 0, id: 0}
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     # The saved world: a player with a guard child.
     source: mutable World::World = catch World::World():
         value: value

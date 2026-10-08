@@ -352,6 +352,12 @@ declare `Global.Read` / `Global.Write`; their three caller tests compile and run
 on default-enforcement Stage1 `0b43cbdb` (artifacts and hashes are recorded in
 [grant qualification](docs/validation/global-mutable-grants.md)). This is a
 bounded source-adoption result, not full-engine grant qualification.
+Core world scheduling and save-swap APIs now propagate the same grants; six
+world command/event/iteration/save tests compile and run on that product. Their
+source and binary hashes are captured in the linked validation record. Continue
+grant adoption along shared engine APIs with their real callers; keep the broad
+native-wrapper audit out of bulk migration until each boundary's effect contract
+is understood.
 
 ### Next three outcomes
 
