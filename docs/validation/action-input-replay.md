@@ -629,3 +629,20 @@ serialized JSON filtering. Both regression suites are added to the full matrix.
 The final committed paired build is running (`prover-scalar-copy-final-build.log`)
 before repeating focused controls and the uncached engine sweep on that exact
 product; full compatibility remains open.
+
+Final pre-merge generation `67421177829c42bbb6143932145f7a21` authenticates clean
+prover `879d3726` and both binary hashes. It passes the nine-case copied-bound
+suite, seven-case immediate-copy suite and updated snapshot diagnostic through
+both JSON routes, all with zero gaps and preserved refusals. Its uncached engine
+sweep passes all 73 reports / 4,246 obligations, zero semantic diagnostics or gaps
+(`scalar-copy-final-engine-sweep.log`, 6.71s, 171,296 KiB peak RSS). Reports
+are retained in `scalar-copy-final-engine-reports/`.
+
+Prover main advanced meanwhile through `a98acb6c`. Merge `53b25437` in the
+isolated repair branch incorporates its frame/resource/loop/stale-rebind gains,
+keeps contiguous obligation-attempt inventory checks while accounting for proven
+frame rows, combines both typed-return and source-binding paths, and preserves
+current range-binder handling. Fixture theorem types now match the merged model.
+The merged clean paired build is running (`prover-scalar-copy-main-merge-build.log`)
+before repeating focused and engine qualification. The production engine prover
+branch is not yet advanced; full compatibility acceptance remains open.
