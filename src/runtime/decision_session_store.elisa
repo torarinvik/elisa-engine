@@ -55,7 +55,7 @@ module RuntimeDecisionSessionStore:
         # Moves past chunk `index`: a recorder is sealed to disk; a replay
         # loads chunk index + 1. A missing next chunk leaves the replay in
         # place, so its next draw reports the divergence.
-        def roll(index: i64, log: RuntimeDecisionLog::Log&) -> RuntimeDecisionLog::Log:
+        def roll(index: i64, log: RuntimeDecisionLog::Log&) -> RuntimeDecisionLog::Log can[Global.Read, Global.Write]:
             return seal(index, log) if log.mode == RuntimeDecisionLog::Mode.Recording
             next: RuntimeDecisionLogStore::Read = load_chunk(index + 1)
             return RuntimeDecisionLog::Log{mode: log.mode, state: log.state, seed: log.seed, entries: log.entries, count: log.count, cursor: log.cursor, overflow: log.overflow, diverged_at: log.diverged_at} if next.stored != RuntimeDecisionLogStore::Stored.Ok
@@ -79,7 +79,7 @@ module RuntimeDecisionSessionStore:
 
         # Replayer for chunk `index` of the saved session; anything but Ok
         # (including an index past the manifest) must stop the replay.
-        def load_chunk(index: i64) -> RuntimeDecisionLogStore::Read:
+        def load_chunk(index: i64) -> RuntimeDecisionLogStore::Read can[Global.Read, Global.Write]:
             m: Manifest = manifest()
             return RuntimeDecisionLogStore::failed(m.stored) if m.stored != RuntimeDecisionLogStore::Stored.Ok
             return RuntimeDecisionLogStore::failed(RuntimeDecisionLogStore::Stored.NotFound) if index < 0 or index >= m.chunks

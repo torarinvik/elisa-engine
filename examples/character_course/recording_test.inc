@@ -27,7 +27,7 @@
                 return lost
             recording_key(0, false)
 
-        def recording_test() -> i32:
+        def recording_test() -> i32 can[Global.Read, Global.Write]:
             keymap: CourseControls::Keymap = CourseControls::defaults()
             pads: CoursePad::Pad = CoursePad::defaults()
             live: mutable ActionInput::Input = ActionInput::Input()

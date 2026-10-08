@@ -29,7 +29,7 @@ module AudioEventsLogged:
             trigger: AudioEvents::Trigger
             matched: bool
 
-        def trigger(board: mutable AudioEvents::Board&, id: u32, tick: u64, log: mutable RuntimeDecisionLog::Log&) -> Logged error[AudioEvents::SoundEventError]:
+        def trigger(board: mutable AudioEvents::Board&, id: u32, tick: u64, log: mutable RuntimeDecisionLog::Log&) -> Logged error[AudioEvents::SoundEventError] can[Global.Read, Global.Write]:
             t: AudioEvents::Trigger = try AudioEvents::trigger(board, id, tick)
             started: bool = t.outcome == AudioEvents::Outcome.Play or t.outcome == AudioEvents::Outcome.Replace
             return Logged{trigger: t, matched: log.diverged_at < 0} if not started

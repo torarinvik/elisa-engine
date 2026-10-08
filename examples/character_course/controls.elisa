@@ -381,13 +381,13 @@ module CourseControls:
         def step(menu: Menu, result: MenuResult) -> MenuStep:
             MenuStep{menu: menu, result: result, delta: 0}
 
-        def moved(menu: Menu, selected: i64) -> MenuStep:
+        def moved(menu: Menu, selected: i64) -> MenuStep can[Global.Read, Global.Write]:
             step(Menu{keymap: menu.keymap, selected: selected}, MenuResult.Moved)
 
         # One pressed key in the rebind menu: arrows select a row, Tab or
         # Escape closes, Left/Right adjust a settings row, and any other key
         # is offered to the selected slot.
-        def menu_key(menu: Menu, code: i64) -> MenuStep:
+        def menu_key(menu: Menu, code: i64) -> MenuStep can[Global.Read, Global.Write]:
             setting: bool = menu.selected >= SLOT_COUNT
             if code == key(Application::KeyboardKeyCode.ArrowUp):
                 moved(menu, MENU_ROWS - 1 if menu.selected == 0 else menu.selected - 1)
@@ -412,7 +412,7 @@ module CourseControls:
 
         # Controllers navigate and adjust the same menu; they cannot assign
         # keyboard keys.
-        def menu_button(menu: Menu, code: i64) -> MenuStep:
+        def menu_button(menu: Menu, code: i64) -> MenuStep can[Global.Read, Global.Write]:
             if code == pad(Application::GamepadButtonCode.DpadUp):
                 menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
             elif code == pad(Application::GamepadButtonCode.DpadDown):
@@ -429,7 +429,7 @@ module CourseControls:
         # A pointer press on legend row `row` (-1 when it missed): a left
         # press selects a key slot, and a left or right press on a settings
         # row selects it and steps it forward or back.
-        def menu_pointer(menu: Menu, row: i64, button: i32) -> MenuStep:
+        def menu_pointer(menu: Menu, row: i64, button: i32) -> MenuStep can[Global.Read, Global.Write]:
             left: bool = button == Application::PointerButtons::LEFT
             right: bool = button == Application::PointerButtons::RIGHT
             if row < 0 or row >= MENU_ROWS:
@@ -443,7 +443,7 @@ module CourseControls:
                 step(menu, MenuResult.Ignored)
 
         # Wheel up selects the row above, like the Up arrow.
-        def menu_wheel(menu: Menu, delta_y: f32) -> MenuStep:
+        def menu_wheel(menu: Menu, delta_y: f32) -> MenuStep can[Global.Read, Global.Write]:
             if delta_y > 0.0:
                 menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
             elif delta_y < 0.0:
@@ -460,7 +460,7 @@ module CourseControls:
                 dropped <- dropped + 1
             dropped
 
-        def menu_event(menu: Menu, event: Application::InputEvent) -> MenuStep:
+        def menu_event(menu: Menu, event: Application::InputEvent) -> MenuStep can[Global.Read, Global.Write]:
             if not event.pressed or event.released:
                 step(menu, MenuResult.Ignored)
             elif event.kind == Application::InputEventKind.Key:
@@ -472,7 +472,7 @@ module CourseControls:
 
         # Drains the frame's events into the menu and stops at Closed or
         # Adjusted, so the caller applies each setting change before the next.
-        def drain_menu(menu: Menu) -> MenuStep:
+        def drain_menu(menu: Menu) -> MenuStep can[Global.Read, Global.Write]:
             current: mutable MenuStep = step(menu, MenuResult.Ignored)
             open: mutable bool = true
             event: mutable Application::InputEvent = zeroed
@@ -489,7 +489,7 @@ module CourseControls:
         # saved on quit. The live input is updated even
         # when the log is full; the log then reports itself untrusted.
         def drain_gameplay_recorded(input: mutable ActionInput::Input&,
-            log: mutable ActionInputReplay::Log&, tick: i64) -> bool:
+            log: mutable ActionInputReplay::Log&, tick: i64) -> bool can[Global.Read, Global.Write]:
             ActionInput::begin_frame(input)
             focus_lost: mutable bool = false
             event: mutable Application::InputEvent = zeroed

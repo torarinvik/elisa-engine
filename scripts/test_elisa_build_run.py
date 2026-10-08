@@ -73,7 +73,7 @@ class BuildRunCliTests(unittest.TestCase):
                 arguments = run.call_args.args[0]
                 self.assertEqual("-O2" in arguments, optimize)
                 self.assertEqual(arguments[-5:], ["-emit", "c-archive", "-o", "entry.a", "entry.elisa"])
-                self.assertEqual(run.call_args.kwargs["env"]["ELISA_RUNTIME_OBJ"], "none")
+                self.assertEqual(run.call_args.kwargs["env"]["ELISA_RUNTIME_OBJ"], "")
 
     def test_macos_default_native_compiler_matches_wicked_build(self) -> None:
         runner = __import__("elisa_build_run")

@@ -306,11 +306,11 @@ def write_entry_wrapper(destination: Path, main_source: Path,
 
 def compile_archive(compiler: str, wrapper: Path, archive: Path, *, optimize: bool = False) -> int:
     # The engine linker adds the compiler's runtime object as a separate input.
-    # Prevent `-emit c-archive` from bundling that same object into the app archive;
-    # current compiler builds include global source metadata there, so linking both
-    # copies produces duplicate symbols.
+    # The build runner invokes the selected compiler binary directly, rather than
+    # through elisac_stage1.sh. Pass an empty runtime path so c-archive emits only
+    # the module object; the linker adds the compiler runtime separately.
     archive_env = dict(os.environ)
-    archive_env["ELISA_RUNTIME_OBJ"] = "none"
+    archive_env["ELISA_RUNTIME_OBJ"] = ""
     command = [compiler, *(["-O2"] if optimize else []),
         "-emit", "c-archive", "-o", str(archive), str(wrapper)]
     return run_command(command, env=archive_env)

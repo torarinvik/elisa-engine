@@ -54,7 +54,7 @@ def quality_profiles_match(left: Quality::Profile, right: Quality::Profile) -> b
     return false if left.fog != right.fog or left.depth_effects != right.depth_effects or left.shadow_quality != right.shadow_quality
     ElisaMath::fabsf(left.sun_shadow_receiver_bias - right.sun_shadow_receiver_bias) <= QualityPersistenceTest::FLOAT_TOLERANCE
 
-def exercise_user_data() -> i32:
+def exercise_user_data() -> i32 can[Global.Read, Global.Write]:
     values: i64[16] = [7, 9, 11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     blob: mutable Save::Blob = catch Save::save_write(values, 3):
         value: value

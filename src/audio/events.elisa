@@ -85,7 +85,7 @@ module AudioEvents:
 
         # A tick at or before the event's last firing is a duplicate, so a
         # replayed or re-run tick cannot fire the same sound twice.
-        def trigger(board: mutable Board&, id: u32, tick: u64) -> Trigger error[SoundEventError]:
+        def trigger(board: mutable Board&, id: u32, tick: u64) -> Trigger error[SoundEventError] can[Global.Read, Global.Write]:
             index: usize = event_index(board, id)
             raise SoundEventError.UnknownEvent if index >= board.definition_count
             definition: Definition = board.definitions[index]
@@ -192,7 +192,7 @@ module AudioEvents:
             twice: u64 = once * MULTIPLIER % MODULUS
             twice * MULTIPLIER % MODULUS
 
-        def pick(board: Board&, index: usize, tick: u64) -> u32:
+        def pick(board: Board&, index: usize, tick: u64) -> u32 can[Global.Read, Global.Write]:
             base: usize = index * MAX_VARIANTS.usize()
             total: u64 = (board.weights[base] + board.weights[base + 1] + board.weights[base + 2] + board.weights[base + 3]).u64()
             target: u64 = roll(board.seed, board.definitions[index].id, tick) % total

@@ -315,7 +315,7 @@ module CourseBeacons:
 
         # Publishes one lamp's AudioCue through a Simulation-phase queue. A
         # reference from a retired World raises InvalidEntity.
-        def announce(world: World::World&, lamp: World::EntityRef, index: usize) -> usize error[WorldEvents::EventError]:
+        def announce(world: World::World&, lamp: World::EntityRef, index: usize) -> usize error[WorldEvents::EventError] can[Global.Read, Global.Write]:
             queue: mutable WorldEvents::Queue = WorldEvents::Queue()
             try WorldEvents::subscribe(&queue, Layout::LISTENER, WorldEvents::Phase.Simulation)
             try WorldEvents::begin_frame(&queue)
@@ -332,7 +332,7 @@ module CourseBeacons:
         # Builds the beacons without spawning them; `start` spawns. They are
         # two calls so the large `create` frame is gone before `start`
         # spawns the scene, since callers are already deep in the stack.
-        def create() -> Beacons error[World::WorldError]:
+        def create() -> Beacons error[World::WorldError] can[Global.Read, Global.Write]:
             world: World::World = try World::World()
             beacons: mutable Beacons = Beacons{scene: build_scene(), shelf: stock_shelf(), world: world, instance: PrefabScene::Instance(),
                 renders: [RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(),

@@ -37,14 +37,14 @@ module CourseProps:
             Geometry::Transform{position: transform.position, rotation: transform.rotation,
                 scale: Geometry::Vec3{x: PropTune::HALF, y: PropTune::HALF, z: PropTune::HALF}}
 
-        def props_spawn_world() -> World::World error[World::WorldError]:
+        def props_spawn_world() -> World::World error[World::WorldError] can[Global.Read, Global.Write]:
             world: mutable World::World = try World::World()
             for index in 0..<COUNT |world|:
                 crate: World::EntityRef = try World::world_spawn(&world, World::StaticObject.Structure)
                 try World::world_set_transform(&world, crate, Geometry::transform_translate(Geometry::transform_identity(), props_spawn_point(index)))
             return move world
 
-        def props_load_code(session: RuntimeServices::Session&, props: mutable Props&, bytes: u8&, length: usize) -> i32:
+        def props_load_code(session: RuntimeServices::Session&, props: mutable Props&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
             catch WorldSaveLoad::load(session, &props.world, &props.render, &props.physics, presentation(), bytes, length):
                 ok: 0
                 WorldSaveLoad::WorldSaveLoadError.Rejected: LOAD_REJECTED
@@ -71,7 +71,7 @@ module CourseProps:
 
         # Recreates one box per render row; the rows are the only source of
         # what is drawn, so a load shows exactly what it rebound.
-        def props_create_draws(props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
+        def props_create_draws(props: mutable Props&) -> void error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             view: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
             raise RenderScene::RenderSceneError.InvalidValue if not props_extract(props, &view)
             color: RenderScene::Color = RenderScene::Color{red: 0.72, green: 0.46, blue: 0.2, alpha: 1.0}
@@ -106,7 +106,7 @@ module CourseProps:
 
         # Spawns the authored crates and binds them through the same rebuild
         # passes a load uses.
-        def create(session: RuntimeServices::Session&) -> Props error[World::WorldError, RenderScene::RenderSceneError, WorldRendering::WorldRenderingError, WorldSavePhysics::WorldSavePhysicsError]:
+        def create(session: RuntimeServices::Session&) -> Props error[World::WorldError, RenderScene::RenderSceneError, WorldRendering::WorldRenderingError, WorldSavePhysics::WorldSavePhysicsError] can[Global.Read, Global.Write]:
             world: World::World = try props_spawn_world()
             props: mutable Props = Props{world: world, render: WorldRendering::Bindings(),
                 physics: WorldPhysics::Bindings(), draws: RenderScene::InstanceBatch()}
@@ -154,7 +154,7 @@ module CourseProps:
 
         # Returns 0 when the saved World replaced the live one, else a LOAD_*
         # code with the live World, rows, bodies and boxes unchanged.
-        def load(session: RuntimeServices::Session&, props: mutable Props&) -> i32 error[RenderScene::RenderSceneError]:
+        def load(session: RuntimeServices::Session&, props: mutable Props&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             bytes: mutable u8[CAPACITY] = zeroed
             length: mutable usize = 0
             status: i32 = props_read_code(&bytes[0], &length)

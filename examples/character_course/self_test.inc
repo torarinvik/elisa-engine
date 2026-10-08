@@ -171,7 +171,7 @@
         # Save, restart and load through UserData; malformed, wrong-shape and
         # missing records must leave the restored character untouched.
         def progress_test(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Save::SaveError, UserData::UserDataError]:
+            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
             state: mutable CourseState::State = CourseState::State()
             return ProgressOutcome{status: Tune::PROGRESS_SAVE_CODE, character: character} if not CourseState::restore(&state, CourseState::PHASE_PAUSED, Tune::SELF_TEST_ATTEMPTS)
             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
@@ -272,7 +272,7 @@
         # Rebinding rules, the saved record, the menu state machine and the
         # rebuilt input map. Gamepad checks are mapping-only: synthetic events,
         # no physical controller.
-        def controls_test() -> i32 error[Save::SaveError, UserData::UserDataError]:
+        def controls_test() -> i32 error[Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
             defaults: CourseControls::Keymap = CourseControls::defaults()
             return ControlsCodes::DEFAULTS if not CourseControls::valid(&defaults)
             escape: CourseControls::AssignOutcome = CourseControls::assign(defaults,
@@ -400,7 +400,7 @@
         # effects while music streams through ordinary frame pumping without
         # underruns; a scene reset silences events and forgets history; stop
         # releases every clip, voice and stream so a second start reuses them.
-        def sound_test(session: mutable RuntimeServices::Session&) -> i32:
+        def sound_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return SoundCodes::START if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED

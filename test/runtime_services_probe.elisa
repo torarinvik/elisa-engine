@@ -208,7 +208,7 @@ module RuntimeServicesProbe:
             return count_code if WorldPhysics::binding_count(context.bodies) != expected_count
             0
 
-        def hierarchy_physics_probe(session: mutable RuntimeServices::Session&) -> i32:
+        def hierarchy_physics_probe(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 98
@@ -445,7 +445,7 @@ module RuntimeServicesProbe:
             0
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             requirements: BackendRequirements::BackendStartupRequirements = startup_requirements()
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
             rollback: i32 = activation_rollback(&session, &requirements)

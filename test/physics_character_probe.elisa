@@ -374,7 +374,7 @@ module PhysicsCharacterProbe:
             0
 
     public:
-        def run(session: mutable RuntimeServices::Session&) -> i32:
+        def run(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             floor: PhysicsRuntime::BodyHandle = catch RuntimeServices::physics_body_create(
                 session, floor_description(Fixture::DEFAULT_COLLISION_LAYER,
                     Fixture::FLOOR_HALF_WIDTH)):

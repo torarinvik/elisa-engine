@@ -6,7 +6,7 @@
             instruction: RenderScene::OverlayTextHandle,
             guide: mutable Guide, mode: i32, cells: mutable CourseCells::Cells&,
             cell_runtime: mutable CellWorld::Runtime&, cell_world: mutable World::World&,
-            beacons: mutable CourseBeacons::Beacons&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            beacons: mutable CourseBeacons::Beacons&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             running: mutable bool = true
             crouched: mutable bool = false
             state: mutable CourseState::State = CourseState::State()

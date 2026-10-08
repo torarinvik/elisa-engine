@@ -10,7 +10,7 @@
             defaults: CoursePad::Pad = CoursePad::defaults()
             result.status == CoursePad::LoadStatus.Rejected and result.pad.jump == defaults.jump
 
-        def pad_test() -> i32 error[Save::SaveError, UserData::UserDataError]:
+        def pad_test() -> i32 error[Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
             defaults: CoursePad::Pad = CoursePad::defaults()
             return 202 if not CoursePad::valid(&defaults)
             north: i64 = pad_button(Application::GamepadButtonCode.North)

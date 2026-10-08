@@ -10,7 +10,7 @@ module WorldContactEventsProbe:
 
     public:
         def run(session: RuntimeServices::Session&, world: World::World&,
-            bindings: WorldPhysics::Bindings&, key: u64, entity: World::EntityRef) -> i32 error[WorldSchedule::Error]:
+            bindings: WorldPhysics::Bindings&, key: u64, entity: World::EntityRef) -> i32 error[WorldSchedule::Error] can[Global.Read, Global.Write]:
             frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
             try WorldSchedule::begin_frame(&frame)
             try WorldSchedule::subscribe(&frame, 5, WorldEvents::Phase.Audio)

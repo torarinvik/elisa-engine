@@ -24,7 +24,7 @@ module CourseText:
         def Captions() -> Captions:
             Captions{lines: zeroed, loaded: false, status: UiLocaleData::Status.Ok}
 
-        def load(path: cstr) -> Captions:
+        def load(path: cstr) -> Captions can[Global.Read, Global.Write]:
             captions: mutable Captions = Captions()
             source: mutable UiLocaleData::Source = UiLocaleData::Source()
             length: usize = catch AudioRuntime::read_asset(path, &source.bytes[0], UiLocaleData::MAX_BYTES):

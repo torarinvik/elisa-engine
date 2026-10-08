@@ -150,9 +150,14 @@ another. Commit documentation and tests together with source changes.
   identity. The 2026-10-08 consumer preflight now passes against current source,
   frontend, compiler and runtime. Strict grant checks found missing
   `Global.Read` / `Global.Write` declarations in legacy native test entrypoints
-  and the CLI call graph. Repair those source contracts, then rerun the complete
-  consumer check sequentially: overlapping runs raced in shared test/proof
-  outputs, so their reports are not qualification evidence. Despite the
+  and the CLI call graph. Source contracts are now repaired across the shared
+  audio/input/decision/UI helpers and the Character Course call graph; its
+  hidden self-test application builds and links with default enforcement on
+  compiler source `dd8aea22` (Stage1 SHA256
+  `a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`). The
+  complete consumer check still needs a sequential rerun: overlapping runs
+  raced in shared test/proof outputs, so their reports are not qualification
+  evidence. Despite the
   file-picker timeout, Studio loaded the
   FBX as a 337-frame take. The skinned surface is available and `M` switches
   between Character and Skeleton. Playback is the remaining blocker: the GLB has
@@ -161,8 +166,11 @@ another. Commit documentation and tests together with source changes.
   The five engine source files in this checkout now declare explicit native
   effect contracts; the maze C-ABI example and viewport-gizmo test also declare
   their `Global.Read` / `Global.Write` grants and pass the current Stage1
-  target checks ([evidence](docs/validation/global-mutable-grants.md)). Keep
-  these contracts with their functional source slice. Preserve exact
+  target checks ([evidence](docs/validation/global-mutable-grants.md)). The
+  build runner now passes an empty runtime-object path to direct compiler
+  invocations, matching the wrapper's `none` translation and preventing a
+  bogus `none` archive member. Keep these contracts with their functional
+  source slice. Preserve exact
   callee, callback, default-argument, shadowing, and profiler/host-callback
   checks.
   **FBX isolation:** current native staging/conversion passes for source SHA
@@ -202,7 +210,7 @@ and hosted clean-checkout CI reproduce the qualified tuple.
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
 | 1 | **Complete Studio consumer acceptance — Q01/Q03.** The sealed bundle records project base `bca72d19`, engine `4b0a9af7`, UI `261363eb` and compiler `2a3dce66`; project/UI worktrees are marked dirty. The target FBX stages/converts, loads as a 337-frame take, exposes its skinned surface, and switches with `M`. Playback fails because two-key animation channels are mixed with 337-frame channels. | Resample animated channels onto a common import grid, prove the pose advances in the actual app, and retain constant-channel behavior. Then cover malformed input and observer reveal with the exact sealed snapshot. |
-| 2 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. First repair the newly exposed global-grant omissions in legacy test entrypoints and the CLI call graph; then rerun the check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
+| 2 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. The diagnosed grant omissions now have source contracts, and the Character Course hidden self-test application builds and links under default enforcement. Rerun the complete consumer check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
 | 3 | **Finish actual redraw/reveal and observer integration.** Consume the qualified mesh repair and read-only observer in the real Studio path. This closes a public consumer contract and confirms the native guards through the app. | Studio redraws valid geometry unchanged; malformed inverse-bind, influence, joint and triangle shapes fail before output changes. Observer registration/reveal passes for original, quarantined, conflicting and uncertain locations without gaining restore/delete authority. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and heap/GPU/VM diagnostics to identify the retaining owner and measured memory domain. | A source fix has a reproducer or decisive resource-accounting regression, then passes the original full lifecycle/native gate with warmup, cycles and the 8 MiB allowance unchanged. A retry alone is not a diagnosis. |
 | 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with refreshed, generator-checked content and package the public-API client. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |

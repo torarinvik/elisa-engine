@@ -41,7 +41,7 @@ module ActionInputRuntime:
 
         # Poll once per application frame. Clearing edges before draining keeps
         # every queued transition visible to simulation code for that frame.
-        def begin_frame(input: mutable ActionInput::Input&) -> usize:
+        def begin_frame(input: mutable ActionInput::Input&) -> usize can[Global.Read, Global.Write]:
             ActionInput::begin_frame(input)
             drain_application_events(input)
 

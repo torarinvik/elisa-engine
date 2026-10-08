@@ -140,7 +140,7 @@
 
         # Speaks the focused row to a screen reader. Device rows carry their
         # listing in the legend text, not in row_key, so only the name is read.
-        def announce_row(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64) -> ApplicationAccessibility::Announce:
+        def announce_row(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&, row: i64) -> ApplicationAccessibility::Announce can[Global.Read, Global.Write]:
             return ApplicationAccessibility::Announce.Invalid if row < 0 or row >= CourseControls::MENU_ROWS
             control: UiSemantics::Control = catch row_semantics(keymap, pads, settings, row, row):
                 value: value
@@ -168,7 +168,7 @@
 
         # Presses hit-test the legend and the wheel moves the selection.
         def menu_pointer_event(menu: CourseControls::Menu, settings: CourseAccess::Settings&,
-            event: Application::PointerEvent) -> CourseControls::MenuStep:
+            event: Application::PointerEvent) -> CourseControls::MenuStep can[Global.Read, Global.Write]:
             if event.kind == Application::PointerEventKind.Button and event.pressed:
                 CourseControls::menu_pointer(menu, legend_hit(settings, event.x, event.y), event.button)
             elif event.kind == Application::PointerEventKind.Wheel:
@@ -177,7 +177,7 @@
                 CourseControls::step(menu, CourseControls::MenuResult.Ignored)
 
         # Like `drain_menu`: stops at Adjusted so each change is applied first.
-        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&, height: i32) -> CourseControls::MenuStep:
+        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&, height: i32) -> CourseControls::MenuStep can[Global.Read, Global.Write]:
             current: mutable CourseControls::MenuStep = CourseControls::step(menu, CourseControls::MenuResult.Ignored)
             open: mutable bool = true
             scale: CourseAccess::Settings = settings
@@ -197,7 +197,7 @@
         # The panel is created first so the text draws over it. Handles are
         # gathered in locals; element writes into a struct field inside a
         # captured loop were lost.
-        def create_legend(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&) -> Legend error[RenderScene::RenderSceneError]:
+        def create_legend(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&) -> Legend error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             panel: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(Tune::LEGEND_X, Tune::LEGEND_Y, 1.0, 1.0, CourseAccess::panel_color(settings))
             header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
                 Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,

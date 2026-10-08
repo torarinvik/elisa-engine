@@ -92,7 +92,7 @@ def exercise_silent_audio() -> i32 error[AudioRuntime::AudioError]:
     try AudioRuntime::release_clip(reused_clip)
     0
 
-def check_startup_requirements(config: Application::Config) -> i32:
+def check_startup_requirements(config: Application::Config) -> i32 can[Global.Read, Global.Write]:
     required: BackendFeature[Capabilities::MAX_BACKEND_FEATURE_REQUIREMENTS] = [
         BackendFeature.Input, BackendFeature.Rendering, BackendFeature.NativeWindow,
         BackendFeature.Input, BackendFeature.Input, BackendFeature.Input,
@@ -366,7 +366,7 @@ def check_startup_requirements(config: Application::Config) -> i32:
     return 38 if invalid_profile != 0
     0
 
-def exercise_application() -> i32:
+def exercise_application() -> i32 can[Global.Read, Global.Write]:
     return 190 if Application::set_relative_mouse(true) != Application::RelativeMouse.NotRunning or Application::relative_mouse()
     clipboard_idle: i32 = ApplicationClipboardProbe::before_start()
     return clipboard_idle if clipboard_idle != 0
@@ -459,7 +459,7 @@ def exercise_application() -> i32:
 # The outer entry owns cleanup for every assertion path in the smoke body.
 # This mirrors the host contract: returning early from game code still closes
 # runtime services before the native process exits.
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     return 180 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_missing_shader_root() != 1
     return 181 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_invalid_shader_manifest() != 1
     return 182 if NativeApplicationTestProbe::elisa_application_v1_test_shader_manifest_verifies_contents() != 1

@@ -158,7 +158,7 @@ module CharacterCourse:
             })
 
         def create_box_render(center: Geometry::Vec3, half_extents: Geometry::Vec3,
-            rotation: Geometry::Quat, color: RenderScene::Color) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError]:
+            rotation: Geometry::Quat, color: RenderScene::Color) -> RenderScene::InstanceHandle error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             try RenderScene::create(RenderScene::Primitive.Box,
                 Geometry::Transform{position: center, rotation: rotation,
                     scale: half_extents}, color)
@@ -166,12 +166,12 @@ module CharacterCourse:
         # A static course box: physics body, render box and navmesh geometry.
         def add_static_box(session: RuntimeServices::Session&,
             center: Geometry::Vec3, half_extents: Geometry::Vec3,
-            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             _ = try create_static_body(session, center, half_extents, rotation)
             _ = try create_box_render(center, half_extents, rotation, color)
             try NavMesh::add_oriented_box(center, half_extents, rotation)
 
-        def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+        def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             _ = try add_static_box(session,
                 Geometry::Vec3{x: 0.0, y: -Tune::FLOOR_HALF_HEIGHT, z: 0.0},
                 Geometry::Vec3{x: Tune::FLOOR_HALF_WIDTH,
@@ -338,7 +338,7 @@ module CharacterCourse:
         # from a second process.
         def run_after_open(session: mutable RuntimeServices::Session&,
             mode: i32, cells: mutable CourseCells::Cells&, cell_runtime: mutable CellWorld::Runtime&,
-            cell_world: mutable World::World&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError]:
+            cell_world: mutable World::World&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
             height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
@@ -456,22 +456,22 @@ module CharacterCourse:
                 played
 
     public:
-        def run(self_test: bool) -> i32:
+        def run(self_test: bool) -> i32 can[Global.Read, Global.Write]:
             run_mode(1 if self_test else 0)
 
-        def run_relaunch() -> i32:
+        def run_relaunch() -> i32 can[Global.Read, Global.Write]:
             run_mode(2)
 
         # Plays the real game loop hidden while CourseCells pilots the player
         # across streamed floor cells with pushed key events.
-        def run_cells_test() -> i32:
+        def run_cells_test() -> i32 can[Global.Read, Global.Write]:
             run_mode(3)
 
         # Plays to the summit using pushed keys and the ordinary game loop.
-        def run_live_input_test() -> i32:
+        def run_live_input_test() -> i32 can[Global.Read, Global.Write]:
             run_mode(4)
 
-        def run_mode(mode: i32) -> i32:
+        def run_mode(mode: i32) -> i32 can[Global.Read, Global.Write]:
             catch run_mode_cells(mode):
                 value: value
                 error failure: 5
@@ -479,7 +479,7 @@ module CharacterCourse:
         # Streamed floor cells (cells.elisa). Their World and cell runtime
         # are large by-value state, so they live here once and the play
         # loop borrows them instead of holding copies in its own frame.
-        def run_mode_cells(mode: i32) -> i32 error[World::WorldError]:
+        def run_mode_cells(mode: i32) -> i32 error[World::WorldError] can[Global.Read, Global.Write]:
             cell_world: mutable World::World = try World::World()
             cell_runtime: mutable CellWorld::Runtime = CourseCells::cells_make_runtime()
             cells: mutable CourseCells::Cells = CourseCells::Cells()

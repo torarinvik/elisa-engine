@@ -30,14 +30,14 @@ def visual(mesh: u64) -> Assets::VisualAsset:
 
 def load_code(session: RuntimeServices::Session&, world: mutable World::World&,
     render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
-    presentation: WorldSaveLoad::Presentation, bytes: u8&, length: usize) -> i32:
+    presentation: WorldSaveLoad::Presentation, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
     catch WorldSaveLoad::load(session, world, render, physics, presentation, bytes, length):
         ok: 0
         WorldSaveLoad::WorldSaveLoadError.Rejected: 1
         error failure: 2
 
 # A running game with its own bound crate loads the save end to end.
-def load_probe(session: RuntimeServices::Session&, bytes: mutable u8&, length: usize) -> i32:
+def load_probe(session: RuntimeServices::Session&, bytes: mutable u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
     live: mutable World::World = catch World::World():
         value: value
         error failure: return 30
@@ -98,7 +98,7 @@ def load_probe(session: RuntimeServices::Session&, bytes: mutable u8&, length: u
     return 39 if not near(pose.position.z, -2.0)
     0
 
-def probe(session: RuntimeServices::Session&) -> i32:
+def probe(session: RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
     world: mutable World::World = catch World::World():
         value: value
         error failure: return 10
@@ -154,7 +154,7 @@ def probe(session: RuntimeServices::Session&) -> i32:
     return 19 if stale == 0
     load_probe(session, &bytes[0], length)
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     config: Application::Config = Application::Config{
         title: "Elisa World Save Physics Smoke",
         width: 320,

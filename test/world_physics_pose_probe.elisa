@@ -75,7 +75,7 @@ module WorldPhysicsPoseProbe:
         def run(session: mutable RuntimeServices::Session&,
             config: Application::Config,
             requirements: BackendRequirements::BackendStartupRequirements&,
-            report: mutable BackendRequirements::BackendRequirementsReport&) -> i32:
+            report: mutable BackendRequirements::BackendRequirementsReport&) -> i32 can[Global.Read, Global.Write]:
             before_pause: RuntimeServices::SimulationFrame = catch RuntimeServices::advance_simulation(
                 session, 0):
                 value: value

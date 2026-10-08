@@ -34,7 +34,7 @@
             moved_row: bool = legend_hit(&large, Tune::LEGEND_X + 4.0, row_middle(&plain, CourseControls::MENU_ROWS - 1)) != CourseControls::MENU_ROWS - 1
             hits_at(&plain) and hits_at(&medium) and hits_at(&large) and moved_row
 
-        def press_test() -> bool:
+        def press_test() -> bool can[Global.Read, Global.Write]:
             menu: CourseControls::Menu = CourseControls::Menu(CourseControls::defaults())
             left: i32 = Application::PointerButtons::LEFT
             right: i32 = Application::PointerButtons::RIGHT
@@ -51,7 +51,7 @@
         # Whole events at 125%: a click on Text size steps it to 150%; a
         # release, a motion and a click outside change nothing; the wheel
         # moves the selection both ways.
-        def event_test() -> bool:
+        def event_test() -> bool can[Global.Read, Global.Write]:
             settings: CourseAccess::Settings = CourseAccess::adjust(CourseAccess::defaults(), CourseAccess::ROW_TEXT_SIZE, 1)
             menu: CourseControls::Menu = CourseControls::Menu(CourseControls::defaults())
             left: i32 = Application::PointerButtons::LEFT
@@ -69,7 +69,7 @@
             wheel: bool = up.menu.selected == CourseControls::MENU_ROWS - 1 and down.menu.selected == CourseControls::SLOT_FORWARD + 1
             applied and quiet and wheel
 
-        def pointer_test() -> i32:
+        def pointer_test() -> i32 can[Global.Read, Global.Write]:
             return 162 if not hit_test()
             return 163 if not press_test()
             return 164 if not event_test()

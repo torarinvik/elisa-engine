@@ -27,10 +27,10 @@
                 ok: true
                 error failure: false
 
-        def access_refused(version: i64, scale: i64, contrast: i64, captions: i64, count: usize) -> bool:
+        def access_refused(version: i64, scale: i64, contrast: i64, captions: i64, count: usize) -> bool can[Global.Read, Global.Write]:
             locale_refused(version, scale, contrast, captions, UiLocale::EN, count)
 
-        def locale_refused(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool:
+        def locale_refused(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool can[Global.Read, Global.Write]:
             return false if not write_access_raw(version, scale, contrast, captions, locale, count)
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             defaults: CourseAccess::Settings = CourseAccess::defaults()
@@ -53,7 +53,7 @@
 
         # Up from the first slot wraps to the last settings row; Left/Right
         # adjust a settings row and a letter key there changes nothing.
-        def access_menu_test() -> bool:
+        def access_menu_test() -> bool can[Global.Read, Global.Write]:
             defaults: CourseControls::Keymap = CourseControls::defaults()
             menu: CourseControls::Menu = CourseControls::Menu(defaults)
             up: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp))
@@ -69,7 +69,7 @@
 
         # A version 1 save (no language) still loads, as English; a version 2
         # save (no motion flag) loads with full motion.
-        def version_one_loads() -> bool:
+        def version_one_loads() -> bool can[Global.Read, Global.Write]:
             return false if not write_access_raw(2, 150, 0, 1, UiLocale::NB, 5)
             two: CourseAccess::LoadResult = CourseAccess::load()
             return false if two.status != CourseAccess::LoadStatus.Loaded or two.settings.reduced_motion or two.settings.locale != UiLocale::NB
@@ -79,7 +79,7 @@
 
         # Captions come from the packaged text/course.loc: English matches the
         # built-in text, Russian is real UTF-8, and a missing file refuses.
-        def localized_captions_test() -> bool:
+        def localized_captions_test() -> bool can[Global.Read, Global.Write]:
             words: CourseText::Captions = CourseText::load(CourseText::PATH)
             jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::EN, CourseSounds::EVENT_JUMP)
             plain: bool = words.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
@@ -161,7 +161,7 @@
 
         # At 150% every caption in every language fits the caption line, and
         # Arabic hangs from the right edge while English starts at the left.
-        def captions_fit(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError]:
+        def captions_fit(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError] can[Global.Read, Global.Write]:
             captions: CourseText::Captions = CourseText::load(CourseText::PATH)
             large: CourseAccess::Settings = handoff_access()
             _ = try widest_caption(&captions, &large)
@@ -238,7 +238,7 @@
         # The menu speaks its focused row: "Text size, < 100% >, slider,
         # 7 of 16" (36 bytes), and a device row by name only: "Display,
         # slider, 15 of 16" (25 bytes).
-        def spoken_row(row: i64, count: usize, last_byte: u8) -> bool:
+        def spoken_row(row: i64, count: usize, last_byte: u8) -> bool can[Global.Read, Global.Write]:
             keymap: CourseControls::Keymap = CourseControls::defaults()
             pad_defaults: CoursePad::Pad = CoursePad::defaults()
             plain: CourseAccess::Settings = CourseAccess::defaults()
@@ -247,14 +247,14 @@
             return false if ApplicationAccessibility::last(&spoken) != ApplicationAccessibility::Announce.Ok
             spoken.count == count and spoken.data[count - 1] == last_byte
 
-        def announce_test() -> bool:
+        def announce_test() -> bool can[Global.Read, Global.Write]:
             keymap: CourseControls::Keymap = CourseControls::defaults()
             pad_defaults: CoursePad::Pad = CoursePad::defaults()
             plain: CourseAccess::Settings = CourseAccess::defaults()
             outside: bool = announce_row(&keymap, &pad_defaults, &plain, CourseControls::MENU_ROWS) == ApplicationAccessibility::Announce.Invalid
             outside and spoken_row(CourseControls::SLOT_COUNT, 36, 54) and spoken_row(CourseControls::DEVICE_FIRST, 25, 54)
 
-        def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError]:
+        def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
             return 153 if not adjust_test()
             large: CourseAccess::Settings = handoff_access()
             plain_settings: CourseAccess::Settings = CourseAccess::defaults()
@@ -290,7 +290,7 @@
             0
 
         # Relaunch: the saved settings come back and apply, then are removed.
-        def access_relaunch_test() -> i32 error[RenderScene::RenderSceneError, UserData::UserDataError]:
+        def access_relaunch_test() -> i32 error[RenderScene::RenderSceneError, UserData::UserDataError] can[Global.Read, Global.Write]:
             expected: CourseAccess::Settings = handoff_access()
             loaded: CourseAccess::LoadResult = CourseAccess::load()
             return 160 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &expected)

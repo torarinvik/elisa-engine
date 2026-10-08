@@ -1,7 +1,7 @@
 # Focused SDL3/Jolt gate for WorldPhysics orientation creation and sync.
 include "./world_physics_pose_probe.elisa"
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     config: Application::Config = Application::Config{
         title: "Elisa World Physics Pose Smoke",
         width: 320,

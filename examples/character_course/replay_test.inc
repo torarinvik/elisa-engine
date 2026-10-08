@@ -24,7 +24,7 @@
 
         # Walks a new character forward, sidestepping on `push_tick`, and
         # returns the recorded trace.
-        def replay_run(session: mutable RuntimeServices::Session&, push_tick: i64, walk_blend_ms: i64, sight_m: f32) -> ReplaySubsystems::Trace error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+        def replay_run(session: mutable RuntimeServices::Session&, push_tick: i64, walk_blend_ms: i64, sight_m: f32) -> ReplaySubsystems::Trace error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError] can[Global.Read, Global.Write]:
             # Away from the course's own character, which stands at the start.
             spawn: Geometry::Vec3 = Geometry::Vec3{x: LinksTune::WALKER_X, y: Tune::START_Y, z: LinksTune::WALKER_Z}
             character: PhysicsRuntime::CharacterHandle = try create_character_at(session, spawn, Tune::STANDING_HALF_HEIGHT)
@@ -85,7 +85,7 @@
         # 185: two same-input runs match in one build. 186: a sidestep on
         # tick 5 is named as an input divergence at tick 5, and a cross-build
         # comparison still sees it, because input digests are Exact.
-        def replay_digest_test(session: mutable RuntimeServices::Session&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
+        def replay_digest_test(session: mutable RuntimeServices::Session&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError] can[Global.Read, Global.Write]:
             first: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
             second: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
             return 185 if first.ticks != ReplayTune::TICKS or ReplaySubsystems::judge(&first, &second, true) != ReplaySubsystems::Verdict.Match

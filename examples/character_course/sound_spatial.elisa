@@ -6,7 +6,7 @@ extend CourseSounds:
     public:
         def fire_animation(sounds: mutable Sounds&, animation_event: u64,
             tick: u64, listener_position: Geometry::Vec3,
-            source_position: Geometry::Vec3) -> i32:
+            source_position: Geometry::Vec3) -> i32 can[Global.Read, Global.Write]:
             bound: AudioAnimEvents::Binding = AudioAnimEvents::get(&sounds.triggers.anims, animation_event)
             return FIRE_FAILED if not bound.defined
             fire_spatial_scaled(sounds, bound.sound_event, tick,
@@ -40,7 +40,7 @@ extend CourseSounds:
         def animation_state_events(sounds: mutable Sounds&,
             queue: mutable Anim::AnimState&, tick: u64,
             listener_position: Geometry::Vec3,
-            source_position: Geometry::Vec3) -> u32:
+            source_position: Geometry::Vec3) -> u32 can[Global.Read, Global.Write]:
             return 0 if not sounds.live
             batch: mutable AudioAnimEvents::DispatchBatch = AudioAnimEvents::consume_state(
                 queue, &sounds.triggers.anims)
@@ -58,7 +58,7 @@ extend CourseSounds:
             queue: mutable Anim::AnimState&, duration_ticks: i64,
             before_mc: u64, after_mc: u64, tick: u64,
             listener_position: Geometry::Vec3,
-            source_position: Geometry::Vec3) -> u32:
+            source_position: Geometry::Vec3) -> u32 can[Global.Read, Global.Write]:
             return 0 if not sounds.live or after_mc < before_mc or after_mc > 1000000000000
             return 0 if event_count > AnimationLimits::MAX_EVENTS_PER_CLIP or duration_ticks <= 0 or duration_ticks.u64() > AudioAnimEvents::MAX_CLIP_TICKS
             duration: mutable u64 = duration_ticks.u64()
@@ -78,14 +78,14 @@ extend CourseSounds:
 
         def fire_spatial_scaled(sounds: mutable Sounds&, event: u32, tick: u64,
             gain_permille: u64, listener_position: Geometry::Vec3,
-            source_position: Geometry::Vec3) -> i32:
+            source_position: Geometry::Vec3) -> i32 can[Global.Read, Global.Write]:
             fire_scaled_with_spatial(sounds, event, tick, gain_permille,
                 guide_sound_gain(listener_position, source_position), 1.0, true)
 
         # Spatial mix is applied before publishing the new voice in its slot.
         def fire_scaled_with_spatial(sounds: mutable Sounds&, event: u32,
             tick: u64, gain_permille: u64, spatial_gain: f32,
-            pitch_ratio: f32, apply_spatial: bool) -> i32:
+            pitch_ratio: f32, apply_spatial: bool) -> i32 can[Global.Read, Global.Write]:
             return SILENT if not sounds.live
             if RuntimeDecisionSessionStore::needs_roll(&sounds.decisions):
                 sounds.decisions <- RuntimeDecisionSessionStore::roll(sounds.sealed_chunks, &sounds.decisions)

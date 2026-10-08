@@ -40,7 +40,7 @@
         # Live audio: every mood reaches the buses, jump variants split 3:1,
         # a reset replays the same variant for the same tick, and stop
         # restores full gains.
-        def weighted_jump_test(session: mutable RuntimeServices::Session&) -> i32:
+        def weighted_jump_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return 168 if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             applied: bool = CourseSounds::mix(&sounds, CourseSounds::MOOD_MENU, 10) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PAUSED, 20) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PLAY, 30)
@@ -67,14 +67,14 @@
             0
 
         # Fires 300 jumps from tick `first`; returns a hash of the variants.
-        def jump_run(sounds: mutable CourseSounds::Sounds&, first: u64) -> u64:
+        def jump_run(sounds: mutable CourseSounds::Sounds&, first: u64) -> u64 can[Global.Read, Global.Write]:
             for tick in 0..<300 |hash: u64 = 17, sounds| -> hash:
                 _ = CourseSounds::fire(sounds, CourseSounds::EVENT_JUMP, first + tick.u64())
                 hash <- hash * 31u64 + CourseSounds::last_variant(sounds).u64()
 
         # A recorded 300-jump session, saved on stop, replays from disk with
         # the same variants and no divergence; a shifted replay diverges.
-        def replay_test(session: mutable RuntimeServices::Session&) -> i32:
+        def replay_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             recorded: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return 230 if CourseSounds::start(&recorded, session) != CourseSounds::STARTED
             original: u64 = jump_run(&recorded, 1)
@@ -140,7 +140,7 @@
         # surviving events, so a re-run tick still does not double-fire, and
         # stops the voice of an event the new asset removes. Polling is
         # throttled and reloads nothing while the file is unchanged.
-        def reload_live_test(session: mutable RuntimeServices::Session&) -> bool:
+        def reload_live_test(session: mutable RuntimeServices::Session&) -> bool can[Global.Read, Global.Write]:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             workload: mutable CourseAudioWorkload::Stats = CourseAudioWorkload::Stats()
@@ -170,7 +170,7 @@
         # Live audio: the guide's authored foot plants sound when its clip
         # passes them, once per tick, and a reload that drops the bindings
         # silences them.
-        def anim_marker_test(session: mutable RuntimeServices::Session&) -> bool:
+        def anim_marker_test(session: mutable RuntimeServices::Session&) -> bool can[Global.Read, Global.Write]:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             animation: mutable WalkerAnimation = walker_animation_or_empty()
@@ -186,7 +186,7 @@
             distance_mix: bool = CourseSounds::guide_sound_gain(listener, near_guide) > CourseSounds::guide_sound_gain(listener, far_guide) and CourseSounds::guide_sound_gain(listener, far_guide) == 0.0
             CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and distance_mix and audio_idle(session)
 
-        def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32:
+        def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             return 166 if not moods_test()
             return 167 if not ramp_test()
             return 196 if not crossfade_test()

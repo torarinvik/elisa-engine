@@ -43,7 +43,7 @@
 
         # Corrupt, wrong-version, unknown-asset, foreign-scene and absent-package saves are
         # all refused without touching the live beacons.
-        def rejected_loads_test(beacons: mutable CourseBeacons::Beacons&, baseline: usize) -> i32 error[RenderScene::RenderSceneError]:
+        def rejected_loads_test(beacons: mutable CourseBeacons::Beacons&, baseline: usize) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             live_lamp: World::EntityRef = CourseBeacons::lamp_reference(beacons, 0)
             good: PrefabScene::SceneSnapshot = CourseBeacons::capture(beacons)
             return 140 if not write_raw(1)
@@ -72,7 +72,7 @@
             return 189 if not renders_bounded(baseline) or AssetStream::stream_live() != 0
             0
 
-        def beacons_test() -> i32 error[RenderScene::RenderSceneError, Save::SaveError, UserData::UserDataError]:
+        def beacons_test() -> i32 error[RenderScene::RenderSceneError, Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
             baseline: usize = RenderScene::instance_count()
             beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
                 value: value
@@ -131,7 +131,7 @@
         # Second process: the saves written by `beacons_test` come back, a
         # restart clears the run, and the saves are removed.
         def relaunch_test(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             expected: CourseProgress::Checkpoint = handoff_checkpoint()
             loaded: CourseProgress::LoadResult = CourseProgress::load()
             return ProgressOutcome{status: 148, character: character} if loaded.status != CourseProgress::LoadStatus.Loaded or loaded.checkpoint.attempts != expected.attempts or loaded.checkpoint.phase != expected.phase or loaded.checkpoint.crouched

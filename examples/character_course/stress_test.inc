@@ -76,7 +76,7 @@
                 value: false
                 error failure: true
 
-        def sound_cycle(session: mutable RuntimeServices::Session&, iteration: usize) -> bool:
+        def sound_cycle(session: mutable RuntimeServices::Session&, iteration: usize) -> bool can[Global.Read, Global.Write]:
             sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
             return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
             fired: i32 = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, iteration.u64() + 1)
@@ -86,7 +86,7 @@
             fired == CourseSounds::PLAYED and paused and resumed and stopped and audio_idle(session)
 
         def stress_cycle(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle, iteration: usize) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            character: PhysicsRuntime::CharacterHandle, iteration: usize) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             restarted: PhysicsRuntime::CharacterHandle = try restart_character(session, character)
             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, restarted)
             start: Geometry::Vec3 = Geometry::Vec3{x: Tune::START_X, y: Tune::START_Y, z: Tune::START_Z}
@@ -122,7 +122,7 @@
             started == expected and stopped and audio_idle(session)
 
         def injected_test(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle, width: i32, height: i32) -> i32:
+            character: PhysicsRuntime::CharacterHandle, width: i32, height: i32) -> i32 can[Global.Read, Global.Write]:
             return 176 if not resize_rejected(0, height) or not resize_rejected(width, -1) or resize_rejected(width, height)
             return 177 if not injected_sound(session, CourseSounds::INJECT_CLIP, CourseSounds::CLIP_FAILED) or not injected_sound(session, CourseSounds::INJECT_EVENTS, CourseSounds::DEFINITION_FAILED)
             return 178 if not injected_sound(session, CourseSounds::INJECT_MUSIC, CourseSounds::MUSIC_FAILED) or not sound_cycle(session, 0)
@@ -133,7 +133,7 @@
             0
 
         def stress_test(session: mutable RuntimeServices::Session&,
-            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+            character: PhysicsRuntime::CharacterHandle) -> ProgressOutcome error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
             width: i32 = frame.pixel_width if frame.pixel_width > 0 else 1280
             height: i32 = frame.pixel_height if frame.pixel_height > 0 else 800

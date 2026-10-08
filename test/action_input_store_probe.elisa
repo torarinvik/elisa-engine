@@ -17,7 +17,7 @@ module ActionInputStoreProbe:
             axes
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             mutable input: ActionInput::Input = store_probe_input()
             return 110 if ActionInput::rebind_checked(&input, 0, 13, 0) != ActionInput::BindResult.Bound
             return 111 if ActionInputStore::save_profile("controls", &input) != ActionInputStore::Stored.Ok

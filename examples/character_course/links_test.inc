@@ -34,7 +34,7 @@
 
         # The guide walks into the pen once its door opens, and is shut in
         # when the door closes behind it on the way out.
-        def door_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+        def door_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
             try set_door(session, guide, true)
             inward: NavAgent::State = try plan_guide(session, guide, &agent, pen_center())
@@ -76,7 +76,7 @@
             try RuntimeServices::physics_character_destroy(session, character)
             0
 
-        def links_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+        def links_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             platform: i32 = try platform_test(session, guide)
             return platform if platform != 0
             door: i32 = try door_test(session, guide)

@@ -32,7 +32,7 @@ def slotted_gamepad_event(kind: Application::InputEventKind, code: i64,
         device_slot: slot,
     }
 
-def application_input_tests() -> i32:
+def application_input_tests() -> i32 can[Global.Read, Global.Write]:
     input: mutable ActionInput::Input = ActionInput::Input()
     key_a: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.A)
     left_shift: i64 = Application::keyboard_key_code(Application::KeyboardKeyCode.LeftShift)
@@ -392,7 +392,7 @@ def checked_binding_tests() -> i32:
     return 58 if ActionInput::bind_checked(&full_actions, test_binding(1, 232, 0.0)) != ActionInput::BindResult.Capacity
     0
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     checked: i32 = checked_binding_tests()
     return checked if checked != 0
     application_tests: i32 = application_input_tests()

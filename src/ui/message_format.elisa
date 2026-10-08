@@ -89,7 +89,7 @@ module UiMessageFormat:
             return category if (p.set >> category) & 1 == 1
             UiLocale::OTHER
 
-        def format_plural(p: Plural&, locale: i64, count: i64, out: mutable Text&) -> Result:
+        def format_plural(p: Plural&, locale: i64, count: i64, out: mutable Text&) -> Result can[Global.Read, Global.Write]:
             category: i64 = pick(p, locale, count)
             return Result.BadPlaceholder if (p.set >> category) & 1 == 0
             format(&p.forms[category.usize()], [count, 0, 0, 0], out)

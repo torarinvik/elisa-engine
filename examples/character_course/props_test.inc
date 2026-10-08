@@ -59,7 +59,7 @@
 
         # Corrupt and garbage payloads in a valid UserData envelope reach
         # WorldSaveLoad and are rejected with the live props untouched.
-        def props_rejected_test(session: RuntimeServices::Session&, props: mutable CourseProps::Props&, baseline: usize) -> i32 error[RenderScene::RenderSceneError]:
+        def props_rejected_test(session: RuntimeServices::Session&, props: mutable CourseProps::Props&, baseline: usize) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             bytes: mutable u8[CourseProps::CAPACITY] = zeroed
             length: mutable usize = 0
             return 221 if not props_read_raw(&bytes[0], &length) or length == 0
@@ -80,7 +80,7 @@
             return 223 if not props_rewrite(&bytes[0], length)
             0
 
-        def props_test(session: mutable RuntimeServices::Session&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError]:
+        def props_test(session: mutable RuntimeServices::Session&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             baseline: usize = RenderScene::instance_count()
             _ = catch UserData::remove_payload(CourseProps::KEY):
                 ok: true
@@ -125,7 +125,7 @@
 
         # Second process: the World saved by `props_test` comes back with
         # rows and bodies at the handoff poses, then the save is removed.
-        def props_relaunch_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError]:
+        def props_relaunch_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             baseline: usize = RenderScene::instance_count()
             props: mutable CourseProps::Props = catch CourseProps::create(session):
                 value: value

@@ -7,7 +7,7 @@
 
         const DEVICES_KEY: cstr = "course-devices"
 
-        def devices_start() -> DeviceSettings::Saved:
+        def devices_start() -> DeviceSettings::Saved can[Global.Read, Global.Write]:
             saved: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
             if saved.stored == DeviceSettings::Stored.Loaded:
                 _ = DeviceSettings::apply_display(&saved)
@@ -17,13 +17,13 @@
 
         # Keeps the output in the record, which the settings menu may have
         # changed since startup.
-        def devices_quit(saved: DeviceSettings::Saved&) -> bool:
+        def devices_quit(saved: DeviceSettings::Saved&) -> bool can[Global.Read, Global.Write]:
             current: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
             audio: AudioDevices::Device = current.audio if current.stored == DeviceSettings::Stored.Loaded else saved.audio
             DeviceSettings::save_window(DEVICES_KEY, &audio)
 
         # Menu picks for the window's display and the saved output.
-        def devices_picks(displays: ApplicationDisplays::Displays&) -> CourseDeviceMenu::Picks:
+        def devices_picks(displays: ApplicationDisplays::Displays&) -> CourseDeviceMenu::Picks can[Global.Read, Global.Write]:
             saved: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
             audio: AudioDevices::Device = saved.audio if saved.stored == DeviceSettings::Stored.Loaded else DeviceSettings::empty_audio()
             CourseDeviceMenu::current(displays, ApplicationDisplays::window_display(), &audio)
@@ -55,7 +55,7 @@
 
         # Relaunch: the record written by the previous process reapplies the
         # display and reopens the mixer on the saved output, then is removed.
-        def devices_relaunch_test() -> i32:
+        def devices_relaunch_test() -> i32 can[Global.Read, Global.Write]:
             saved: DeviceSettings::Saved = DeviceSettings::load(DEVICES_KEY)
             return 262 if saved.stored != DeviceSettings::Stored.Loaded or not saved.has_display
             applied: DeviceSettings::Applied = DeviceSettings::apply_display(&saved)

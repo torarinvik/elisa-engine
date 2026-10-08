@@ -21,7 +21,7 @@ module WorldSaveLoad:
             render_id_base: i64
 
     private:
-        def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32:
+        def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
             catch World::SaveSwap::replace_world(world, bytes, length):
                 ok: 0
                 SaveSwapError.Rejected: 1
@@ -48,7 +48,7 @@ module WorldSaveLoad:
     public:
         def load(session: RuntimeServices::Session&, world: mutable World::World&,
             render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
-            presentation: Presentation, bytes: u8&, length: usize) -> void error[WorldSaveLoadError]:
+            presentation: Presentation, bytes: u8&, length: usize) -> void error[WorldSaveLoadError] can[Global.Read, Global.Write]:
             swapped: i32 = saveload_swap(world, bytes, length)
             raise WorldSaveLoadError.Rejected if swapped == 1
             raise WorldSaveLoadError.SwapFailed if swapped != 0

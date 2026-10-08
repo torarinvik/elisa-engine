@@ -65,7 +65,7 @@ module ActionInputRecording:
 
         # Recording counterpart of ActionInputRuntime::begin_frame.
         def begin_frame_recorded(log: mutable ActionInputReplay::Log&,
-            input: mutable ActionInput::Input&, tick: i64) -> usize:
+            input: mutable ActionInput::Input&, tick: i64) -> usize can[Global.Read, Global.Write]:
             ActionInput::begin_frame(input)
             count: mutable usize = 0
             event: mutable Application::InputEvent = zeroed

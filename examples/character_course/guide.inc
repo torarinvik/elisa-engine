@@ -59,7 +59,7 @@
                 z: GuideTune::QUERY_EXTENT}
 
         def add_obstacle(session: RuntimeServices::Session&, x: f32, z: f32,
-            half_x: f32, half_z: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            half_x: f32, half_z: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             try add_static_box(session,
                 Geometry::Vec3{x: x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: z},
                 Geometry::Vec3{x: half_x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: half_z},
@@ -68,7 +68,7 @@
         # The wall the guide walks around, a pen entered only through its
         # door, and the summit's drop link. The walls are shorter than the
         # capsule, so Recast keeps them solid.
-        def create_guide_yard(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+        def create_guide_yard(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             thickness: f32 = GuideTune::OBSTACLE_HALF_THICKNESS
             try add_obstacle(session, GuideTune::WALL_X, GuideTune::WALL_Z,
                 thickness, GuideTune::WALL_HALF_DEPTH)
@@ -110,7 +110,7 @@
         # Open removes the door's body and box; close puts them back. Either
         # way the doorway area follows, and agents must plan again.
         def set_door(session: RuntimeServices::Session&, guide: mutable Guide&,
-            open: bool) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+            open: bool) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             if open and not guide.door_open:
                 try RuntimeServices::physics_body_destroy(session, guide.door_body)
                 try RenderScene::destroy(guide.door_box)
@@ -123,7 +123,7 @@
             try apply_door(guide.mesh, open)
 
         # Bake the staged course, close the pen door and put the guide at post A.
-        def create_guide(session: RuntimeServices::Session&) -> Guide error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError]:
+        def create_guide(session: RuntimeServices::Session&) -> Guide error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
             mesh: NavMesh::Handle = try NavMesh::bake(NavMesh::default_profile())
             try apply_door(mesh, false)
             door_body: PhysicsRuntime::BodyHandle = try create_static_body(session, door_center(),

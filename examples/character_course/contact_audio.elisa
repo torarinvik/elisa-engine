@@ -18,7 +18,7 @@ module CourseContactAudio:
                 native_dropped: 0, audio_attempts: 0}
 
         def step(session: RuntimeServices::Session&, props: mutable CourseProps::Props&,
-            sounds: mutable CourseSounds::Sounds&, tick: u64, stats: mutable Stats&) -> void error[WorldSchedule::Error, RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldContactEvents::WorldContactError]:
+            sounds: mutable CourseSounds::Sounds&, tick: u64, stats: mutable Stats&) -> void error[WorldSchedule::Error, RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldContactEvents::WorldContactError] can[Global.Read, Global.Write]:
             frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
             try WorldSchedule::begin_frame(&frame)
             try WorldSchedule::subscribe(&frame, 7302, WorldEvents::Phase.Audio)

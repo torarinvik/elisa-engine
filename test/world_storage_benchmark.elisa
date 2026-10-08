@@ -3,7 +3,7 @@ include "../src/world/storage.elisa"
 # A deterministic workload for the catalogue benchmark. Each round exercises
 # registration, dense dynamic insertion, middle-row destruction, compaction,
 # and replacement IDs for unrelated schemas.
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     for round in 0..<64:
         catalog: mutable WorldStorage::Catalog = WorldStorage::Catalog()
         return 1 if not WorldStorage::catalog_register_type_with_schema(

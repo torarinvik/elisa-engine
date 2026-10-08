@@ -283,6 +283,43 @@ This closes only the identity-counter slice. It does not qualify every engine
 target or the consumer's full check; those default-grant integrations remain
 open.
 
+## Shared runtime and Character Course source adoption — 2026-10-08
+
+The stricter compiler exposed grant requirements across stateful audio events,
+decision-session storage, action-input recording/runtime, plural formatting,
+world save/load, and their callers. The shared functions now declare
+`Global.Read` and `Global.Write`; Character Course propagates those effects
+through its gameplay helpers and included self-test functions. Legacy native
+test entrypoints touched by the same compiler census also declare their caller
+effects. These declarations preserve behavior and make the global authority
+requirement visible in function signatures.
+
+The Character Course hidden self-test application builds and links with default
+grant enforcement using compiler source `dd8aea2281dd2c2755331d4037c17e5d5db92671`
+and Stage1 SHA256
+`a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`:
+
+```sh
+ELISA_COMPILER_BIN="$PWD/../Elisa-compiler/bin/elisac-stage1" \
+python3 scripts/elisa_build_run.py build \
+  --project examples/character_course \
+  --main self_test_main.elisa \
+  --output build/validation/global-grants-character-course-self-test
+```
+
+The build completed archive generation in 87.63 seconds and native linking in
+15.27 seconds. The binary SHA256 is
+`5d0dc493d4fb394fb7a1b275aeda1ed7017bf3c408ad21e628df71fcee6c6a92`; its build
+identity is `3fec82a0134d4444`. This is compile/link evidence only; the binary
+was not launched, and the complete consumer check and optimized shipping package
+remain open.
+
+This integration also corrected `scripts/elisa_build_run.py`: the build runner
+invokes the selected compiler binary directly, so it now passes an empty
+`ELISA_RUNTIME_OBJ` to omit the bundled runtime. The `none` sentinel is translated
+to an empty path only by the Stage1 shell wrapper; passing it directly made the
+compiler request an archive member literally named `none`.
+
 ## World scheduling and save-swap callers — 2026-10-08
 
 `WorldSchedule::begin_frame` now propagates the access-frame identity grants.
