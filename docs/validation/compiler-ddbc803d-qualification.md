@@ -364,3 +364,13 @@ operations; all four diagnostics clear in the bounded native build, which exits
 1 elsewhere in 4.49 seconds with sampled peak RSS 726,960 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-temp-concat-build.log` and JSON.
 Temporary-file creation remains runtime-unverified on this compiler.
+
+### Valid match comparison type seed
+
+The vendored match-arm type checker seeds its comparison type with the existing
+primitive_type(Unknown) constructor instead of zeroed. Its carried name is now
+a valid empty view; ref_group still prevents reading the seed before the first
+comparable arm replaces it. The bounded native compile clears this diagnostic,
+exits 1 elsewhere in 7.73 seconds, and samples peak RSS 495,456 KiB. Artifact:
+`build/validation/elisascript-ddbc803d-infer-seed-build.log` and JSON.
+Match-arm diagnostic behavior remains runtime-unverified on this compiler.
