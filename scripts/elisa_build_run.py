@@ -437,13 +437,22 @@ def build_console(args: argparse.Namespace, main_source: Path,
     command = [compiler]
     if args.optimize or os.environ.get("ELISA_NATIVE_OPTIMIZE") == "1":
         command.append("-O2")
-    command.extend(["-emit", "exe", "-o", str(output), str(main_source)])
-    status = run_command(command)
-    if status != 0:
-        return status, None, None
-    if not output.is_file():
-        print("Elisa compiler succeeded without creating the output executable.", file=sys.stderr)
-        return 1, None, None
+    # Publish only a successfully produced executable. Failed compiler/linker
+    # attempts may truncate their output, so build beside the destination on the
+    # same filesystem and replace it after checking the terminal result.
+    try:
+        with tempfile.TemporaryDirectory(prefix="Elisa console build ", dir=output.parent) as temporary:
+            staged_output = Path(temporary) / output.name
+            command.extend(["-emit", "exe", "-o", str(staged_output), str(main_source)])
+            status = run_command(command)
+            if status != 0:
+                return status, None, None
+            if not staged_output.is_file():
+                print("Elisa compiler succeeded without creating the output executable.", file=sys.stderr)
+                return 1, None, None
+            staged_output.replace(output)
+    except OSError as error:
+        raise BuildConfigurationError(f"Could not publish console executable {output}: {error}") from error
     return 0, output, None
 
 

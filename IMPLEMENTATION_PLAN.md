@@ -102,7 +102,8 @@ another. Commit documentation and tests together with source changes.
   the failed full-gate evidence ([native evidence](docs/validation/counted-fill-memory-growth.md)).
 - **Compiler policy:** reads and writes of `global mutable` require
   `Global.Read` / `Global.Write` by default; `-permissive` bypasses those checks.
-  Engine identity helpers have explicit local grants. Default rejection, transitive
+  Compiler source `d05f35d4` implements this policy; a qualified replacement
+  macOS product remains pending. Engine identity helpers have explicit local grants. Default rejection, transitive
   callers and the permissive bypass still need qualification on the owning
   compiler's completed product ([engine preparation](docs/validation/global-mutable-grants.md)).
 - **Shipping client:** the guide rig refresh is committed at `a30d3af9`.
@@ -116,8 +117,8 @@ another. Commit documentation and tests together with source changes.
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
 | 1 | **Finish compiler grant qualification — Q01/Q03.** This user-requested default policy affects engine and mocap callers. Qualify the owning compiler's source/runtime pair; repair missing grants in the engine's real call chains. Use newly published compiler performance changes only after semantic qualification. | Actual default CLI reads/writes without grants fail; exact grants and transitive caller grants pass; `-permissive` bypasses these checks. Preserve method, callback, default-argument and local-shadowing controls. Record source/runtime/product hashes and complete runtime results. Keep compiler defects in the compiler repository. |
-| 2 | **Integrate consumer mesh bounds and failure atomicity.** Hand off the qualified skin/draw source guards requested by mocap-cleaner. This protects a real public API from malformed mutable arrays and has a bounded acceptance workload. | Local source/proof/runtime acceptance passes; consume the clean tuple in the actual Studio redraw path. Retain all original engine proof obligations. O0/O2 controls reject truncated/extra inverse binds, influence shape mismatches, positive-weight joints out of range, incomplete triangles and invalid indices before changing output. Valid geometry remains identical. Add sanitizer evidence where practical, then hand off a clean source tuple to the consumer. |
-| 3 | **Qualify the repaired prover — Q01.** The clean `5c40d273` pair and original strict-order/return-branch controls pass. Complete snapshot-backed census/matrix checks with retention and provenance guards, explicit workers and verified Python 3.14. Classify remaining failures and fix the first shared source/replay defect. | Original compatibility checks pass under unchanged budgets, including all inputs and refusal cases. Retain the original 73-report / 4,246-obligation inventory plus new implementation obligations. Nine diagnostic census timeouts remain open until classified. Rerun shared/native qualification before production promotion; focused success is insufficient. |
+| 2 | **Close actual Studio consumer acceptance.** The mesh repair is already integrated at `b8dd8add`; consume that tuple and register the qualified read-only observer. This protects a real public API from malformed mutable arrays and has a bounded acceptance workload. | Local source/proof/runtime acceptance passes; consume the clean tuple in the actual Studio redraw path. Retain all original engine proof obligations. O0/O2 controls reject truncated/extra inverse binds, influence shape mismatches, positive-weight joints out of range, incomplete triangles and invalid indices before changing output. Valid geometry remains identical. Add sanitizer evidence where practical, record actual redraw and reveal outcomes against the integrated source/header tuple. |
+| 3 | **Qualify the repaired prover — Q01.** The clean `5c40d273` pair and original strict-order/return-branch controls pass. Complete snapshot-backed census/matrix checks with retention and provenance guards, explicit workers and verified Python 3.14. Dispatcher repair `8341f0fc` passes original positive/over-budget negative, summary/cast regressions and source-binding forgery controls under unchanged caps. After the coordinated heavy-build hold is released, build its clean pair, run original CLI acceptance and retain the engine inventory before full compatibility checks. | Original compatibility checks pass under unchanged budgets, including all inputs and refusal cases. Retain the original 73-report / 4,246-obligation inventory plus new implementation obligations. Nine diagnostic census timeouts remain open until classified. Rerun shared/native qualification before production promotion; focused success is insufficient. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and existing heap/GPU/VM diagnostics to identify retained resources or the measured memory domain responsible for the jump. This is the remaining observed native release failure. | A source repair has a reproducer or a decisive resource-accounting regression, then passes the original full renderer lifecycle and native gate. Keep warmup, cycles and the 8 MiB allowance unchanged. A passing retry is supporting evidence, not a diagnosis. |
 | 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with the already refreshed and generator-checked cooked content; package the actual public-API client. | Generated outputs match; resource hashes and notices are complete; relocated offline startup, restart and teardown pass with source and Homebrew denied. Keep signing, legal and separate-machine acceptance explicitly open. |
 | 6 | **Qualify hosted clean-checkout CI — Q03.** Once the compatible compiler/core/prover/ElisaScript tuple is established, update full-SHA pins and exercise fail-closed provisioning. | An actual hosted headless run retains provisioning, build, proof and package artifacts. A workflow file or local preflight does not satisfy this gate. GPU qualification remains separate. |
@@ -127,8 +128,12 @@ another. Commit documentation and tests together with source changes.
 ### Ordinary-project preparation
 
 Executable output now refuses entry-source and project-manifest collisions,
-including filesystem aliases, before invoking tools. All 30 build-runner controls
+including filesystem aliases, before invoking tools. All 31 build-runner controls
 pass; author files remain unchanged ([evidence](docs/validation/project-output-collisions.md)).
+Console builds now preserve the previous executable after compiler failure or
+success without output; successful builds publish by replacement. A fresh real
+O2 compiler build and failed rebuild retain identical runnable bytes
+([evidence](docs/validation/console-build-publication.md)).
 The full fresh public-API author/cook/package rehearsal remains open.
 
 ### Bounded consumer work while release gates run
@@ -153,14 +158,18 @@ location outcomes. See the [coordinated M track](docs/plans/mocap-engine-track.m
    imports, methods and callbacks, plus the explicit permissive bypass. Consume
    the clean compiler/runtime tuple, then migrate only demonstrated engine caller
    chains. A partial compiler test run does not authorize installing that product.
-2. **Engine owner → mocap consumer:** hand off qualified mesh shape/index rejection
-   and registered controls, then exercise the actual Studio redraw path. Local
-   source acceptance passes; consumer integration remains open.
-3. **Prover owner:** the clean subtraction/literal-width pair and original
-   arithmetic refusals pass. Retention is implemented; use immutable proof and
-   compiler snapshots for the next full census, with original inputs and 8 GiB
-   budget. Diagnose the nine remaining timeouts and retained matrix failures.
-   Preserve genuine replay-gap controls when replacing obsolete expectations.
+2. **Engine owner → mocap consumer:** use integrated dependency `b8dd8add` for
+   actual Studio redraw and observer registration/reveal acceptance. Local mesh
+   source acceptance passes; avoid another handoff-only slice or dependency move
+   while the consumer compiler repair is in progress.
+3. **Prover owner:** dispatcher source repair `8341f0fc` has focused acceptance:
+   distinct targets, executable statements and replaced call-summary premises now
+   fit the unchanged caps. Original positive/negative, summary/cast and source-binding
+   forgery controls pass. Qualify its clean pair and original CLI/engine inventory
+   after the coordinated hold is released. Reconcile historical expectations only
+   with genuine mutation/refusal controls and accompanying source changes.
+   Then use immutable proof/compiler snapshots and diagnose
+   the nine census timeouts and retained matrix failures under the original 8 GiB cap.
 4. **Native runtime owner:** capture the failing lifecycle memory domain and
    identify the owner retaining it. Change the release/lifetime path, then exercise
    the original full sequence. Stop unchanged retries that add no diagnostic fact.
@@ -172,12 +181,21 @@ Hold heavy census/native runs while the coordinated Studio compiler repair build
 is live. Its concrete local-reference/global-slot shadowing defect blocks actual
 consumer acceptance. The interrupted snapshot census is incomplete evidence.
 
-Choose the next ready slice by release impact and decisive acceptance. Compiler
-qualification and its consumer migration lead; when waiting on another owner,
-advance one bounded item above. Finish and record it before opening another. The next ready local source slice is
-compatibility qualification; compiler grant
-qualification remains first when the
-owning compiler provides a completed product.
+### Start next: one ready task, one decisive result
+
+| Readiness | Task | Why it leads / next action |
+|---|---|---|
+| Source accepted; paired qualification waiting | Qualify dispatcher repair `8341f0fc` | Original dispatcher, summary/cast and source-binding forgery controls pass under unchanged caps. After the heavy-build hold, build a clean source/runtime pair and run original CLI acceptance plus engine inventory before census. |
+| Waiting for qualified compiler product | Default grants and Studio compiler repair | Unblocks both clients and the user-requested policy. Qualify the actual source/runtime pair, migrate demonstrated grant omissions, then run actual Studio acceptance. Do not install from source revision alone. |
+| Ready after coordinated heavy-build slot is released | Renderer region diagnostics | Use existing instrumentation in the original failing full sequence to identify the retained memory owner; make the resulting lifetime repair. Avoid unchanged retries. |
+| Ready after compatible tuple and native gate | Fresh package and ordinary author workflow | Reuse one clean optimized build for relocation and a fresh public-API project rehearsal; repair demonstrated shipping gaps. Preserve separate acceptance outcomes. |
+
+Keep compiler qualification first when its completed product is available. While
+that dependency is pending, advance bounded source regressions; the dispatcher
+repair has focused acceptance and awaits clean paired qualification. Obtain the
+coordinated heavy-build slot before census, paired builds or full native runs;
+the interrupted census does not establish compatibility. Do not start a new
+feature, style sweep or documentation-only evidence cycle between these steps.
 
 ### Selection rules
 

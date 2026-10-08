@@ -415,6 +415,35 @@ class BuildRunCliTests(unittest.TestCase):
                 "asset conversion should not run after Elisa compilation fails")
             self.assertFalse((project / "build/.elisa-asset-cook-cache.json").exists())
 
+    def test_console_build_preserves_previous_executable_on_failure(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Elisa console publication ") as temporary:
+            project = Path(temporary)
+            source = project / "main.elisa"
+            source.write_text("def main() -> i32:\n    0\n")
+            output = project / "build/tool"
+            output.parent.mkdir()
+            previous = b"previous executable"
+            output.write_bytes(previous)
+            output.chmod(0o755)
+            (project / "elisa.project.json").write_text(json.dumps({
+                "host": "console", "main": "main.elisa", "output": "build/tool"}))
+            compiler = project / "compiler"
+            compiler.write_text(f"#!{sys.executable}\nimport os, pathlib, sys\n"
+                "output = pathlib.Path(sys.argv[sys.argv.index('-o') + 1])\n"
+                "mode = os.environ['CONSOLE_CONTROL']\n"
+                "if mode != 'missing': output.write_bytes(b'new executable')\n"
+                "if mode == 'failed': raise SystemExit(42)\n"
+                "if mode != 'missing': output.chmod(0o755)\n")
+            compiler.chmod(0o755)
+            for mode, expected in (("failed", 42), ("missing", 1), ("success", 0)):
+                with self.subTest(mode=mode), mock.patch.dict(os.environ, {"CONSOLE_CONTROL": mode}):
+                    status = runner.main(["build", "--project", str(project), "--compiler", str(compiler)])
+                    self.assertEqual(status, expected)
+                    self.assertEqual(output.read_bytes(), b"new executable" if mode == "success" else previous)
+                    self.assertEqual(output.stat().st_mode & 0o777, 0o755)
+                    self.assertEqual(list(output.parent.iterdir()), [output])
+
     def test_console_host_compiles_executable_without_native_host(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa console ") as temporary_directory:
             root = Path(temporary_directory)

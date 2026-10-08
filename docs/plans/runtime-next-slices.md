@@ -11,12 +11,16 @@ is the single scheduling authority. Execute these bounded slices in that order:
 
 1. Qualify default global-mutable grants and the `-permissive` bypass on the owning
    compiler product; migrate real engine caller chains exposed by that policy.
-2. Integrate the qualified mocap mesh bounds repair in the real consumer. Local
+2. Exercise the actual Studio consumer on integrated dependency `b8dd8add`,
+   including redraw and observer registration/reveal. Local
    source acceptance passes O0/O2, focused AddressSanitizer, loader controls and
-   all 73 engine reports / 4,277 obligations. Hand off the clean tuple and exercise
-   Studio redraw; the historical crash cause remains unestablished. See
+   all 73 engine reports / 4,277 obligations. Use the already handed-off clean tuple; the historical crash cause remains unestablished. See
    [mesh evidence](../validation/mesh-overlay-shapes.md).
-3. Complete compatibility on the qualified clean prover `5c40d273` pair. Exact
+3. Qualify dispatcher repair `8341f0fc` after the coordinated heavy-build hold.
+   Original positive/over-budget negative, summary/cast and source-binding forgery
+   controls pass under unchanged caps. Build a clean pair and run original CLI
+   acceptance plus engine inventory, then complete compatibility from the
+   previously qualified prover `5c40d273` baseline. Exact
    unsigned-subtraction controls pass, the original return branch replays 23/23,
    and the strict negative is disproved; original strict-order and signed-boundary
    CLI regressions pass. Report retention and provenance guards
@@ -35,6 +39,7 @@ is the single scheduling authority. Execute these bounded slices in that order:
 8. Complete the existing gameplay route and physical hardware acceptance when
    available, keeping external prerequisites visible.
 
+Follow the main plan's readiness table and coordinated heavy-build hold.
 While waiting on release prerequisites, finish the named mocap consumer's provider
 registration and actual Studio reveal acceptance. The read-only trash location
 observer and focused native identity, readonly-operation, bounded-output and
