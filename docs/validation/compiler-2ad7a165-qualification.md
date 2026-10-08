@@ -168,3 +168,17 @@ backend decline, leaving seven catch/error declines. It exits 2 normally in
 3.85 seconds with peak sampled RSS 808,192 KiB; no object or executable is
 produced. Artifact: `build/validation/elisascript-2ad7a165-waitpid-build.log`
 and JSON. Wait/timeout behavior and the full native gate remain unverified.
+
+## Value-catch arm prefix reproducer
+
+`../Elisa-compiler/test/repro/catch_value_arm_prefix.elisa` isolates a valid
+return-position catch with a discard statement before each scalar yield.
+The qualified compiler exits 2 and declines only select_value at the Catch
+expression; no object is written. Artifact:
+`build/validation/catch-value-arm-prefix-2ad7a165.log` and JSON.
+The direct-call catch emitter uses arm_value_expression, which accepts exactly
+one expression statement. This explains the prefixed success arm in
+returned_exec_status and the prefixed error arm in report_test_setup_failure_machine.
+The repair should reuse emit_arm_body_into_slot for statement prefixes and
+terminating paths, retaining arm-local scope and the error status/payload ABI.
+Generic merged-error binding/rethrow declines require separate coverage.
