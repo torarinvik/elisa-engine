@@ -405,3 +405,15 @@ the affine branch-merge storage lifetime error remains. The bounded build exits
 `build/validation/elisascript-ddbc803d-semantic-boundaries-build.log` and JSON.
 Semantic diagnostic rendering and constant folding remain runtime-unverified
 on the selected compiler.
+
+### Affine recovery branch merge
+
+The affine GetElse merge retains the original consumed list and appends shared
+branch additions, using the existing Expr.If merge pattern. Both branch lists
+are seeded from consumed; the walkers preserve those entries. Membership checks
+retain the intersection and avoid duplicates, without copying a temporary
+retained array into borrowed storage. The lifetime diagnostic clears; no
+vendored compiler-source diagnostics remain in this bounded build. It exits 1
+elsewhere in 4.88 seconds, sampled peak RSS 725,696 KiB. Artifact:
+`build/validation/elisascript-ddbc803d-affine-merge-build.log` and JSON.
+Affine acceptance/rejection behavior remains runtime-unverified on this compiler.
