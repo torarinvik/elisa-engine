@@ -361,3 +361,24 @@ the intended bool slot. Verification refuses emission. Artifact:
 The repair must resolve supplied names to declared parameter positions before
 emission and fill defaults at unsupplied positions, preserving rejection of
 missing required arguments. Appending only trailing defaults is insufficient.
+
+### Named catch placement and executable build
+
+Statement and value catches now resolve supplied argument names against
+declared parameter slots, filling defaults at omitted positions before
+hidden arenas. The error_catch_named_arguments_smoke passes O0/O2 execution
+for a skipped i64 default and reordered named parameters; an unknown name
+is rejected. The positional default/rejection smoke still passes. Logs:
+`build/validation/error-catch-named-arguments-smoke.log` and
+`named-catch-positional-default-regression.log`.
+Other named try and generic error-call paths are not covered by this slice.
+
+The complete native launcher now builds with status 0 in 7.06 seconds, peak
+RSS 1,033,856 KiB, within the 1.5 GiB guard. Binary:
+`build/validation/elisascript-named-catch`. Artifact:
+`build/validation/elisascript-named-catch-build.log` and JSON.
+A bounded --help launch exits 0 and prints the CLI usage; artifact:
+`build/validation/elisascript-named-catch-help.log` and JSON.
+This establishes build and CLI startup only. Custom timeout/process behavior,
+engine workflow execution, full compiler/prover qualification and the native
+gate remain open. The installed historical launcher was not replaced.
