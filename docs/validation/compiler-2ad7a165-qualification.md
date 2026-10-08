@@ -19,3 +19,13 @@ selecting r clears all three, with no runner diagnostics in the final bounded
 compile. It exits 1 elsewhere in 6.51 seconds, peak sampled RSS 726,832 KiB.
 Artifact: `build/validation/elisascript-2ad7a165-runner-region-owned-build.log`
 and JSON. Runner storage survival remains runtime-unverified on this compiler.
+
+## Symlink host string boundaries
+
+Symlink probing, readlink input and symlink creation now bind cstr after path
+validation, terminated-buffer construction and null checks. Owners stay in the
+enclosing function through the host call; readlink's output remains bounded
+raw bytes. Three prior pointer-conversion diagnostic rows clear in the bounded
+compile, which exits 1 elsewhere in 9.05 seconds, peak sampled RSS 726,768 KiB.
+Artifact: `build/validation/elisascript-2ad7a165-symlink-cstr-build.log` and JSON.
+Symlink behavior and escaping readlink-result lifetime remain runtime-unverified.
