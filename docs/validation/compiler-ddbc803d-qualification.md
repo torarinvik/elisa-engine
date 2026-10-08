@@ -278,3 +278,12 @@ fragment diagnostics remain in the bounded compile. The build still exits 1
 on other launcher errors in 8.33 seconds, sampled peak RSS 539,312 KiB.
 Engine artifact: `build/validation/elisascript-ddbc803d-vendor-hash-build.log`
 and watchdog JSON. Parsed effect/symbol identity behavior remains unexecuted.
+
+Nine bare mutations of legacy lmut SymbolTable values now visibly reassign
+the returned table: six recursive duplicate-pattern checks and three private
+visibility metadata index calls. No checks or diagnostics were removed.
+The bounded compile clears all nine errors in the two semantic fragments;
+other launcher errors remain. It exits 1 normally in 7.96 seconds, sampled
+peak RSS 687,296 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-semantic-thread-build.log` and JSON.
+Duplicate-pattern rejection and visibility behavior remain runtime-unverified.
