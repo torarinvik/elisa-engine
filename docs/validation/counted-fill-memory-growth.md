@@ -106,3 +106,20 @@ by borrow exclusivity. The matching-pin build completed but classified the renam
 raw product as Stage0 in its manifest. Neither generation establishes paired
 Stage1 provenance. A fresh build through the official Stage1 wrapper, with exact
 product/runtime and frontend overrides, is running before engine proof replay.
+
+The official Stage1 build now publishes immutable prover generation
+`4a7b62080f134f079518055746cf2a2a`. Both manifests record Stage1, clean compiler
+source `0baaa951`, exact product hash above and runtime SHA-256
+`ca40ba1db8a74110936ad5cdaf808707020c5c74ebb6e491bda2198696d13b8a`.
+The generation passes all 73 engine proofs uncached in 1.47s, peak 173,088 KiB.
+`prover-0baaa951-engine-sweep.log` and watchdog JSON retain commands/status;
+`prover-0baaa951-engine-reports/` preserves all 73 reports. Full compatibility
+matrix, shared gate and replacement-product native qualification remain open.
+
+The matrix's hardcoded compatibility paths now publish official paired generation
+`623fb874581a4603acb75e4cc357f417`, with the same verified Stage1 compiler/runtime
+identities. The full `scripts/test.sh` is running with `KEEP_GOING=1`, two report
+workers and `ELISA_PROOF_SKIP_BUILD=1`. It retains all steps; no baseline or fixture
+was removed. Terminal compatibility remains open. The retained 73 engine reports
+contain 4,246 obligations, zero unproven/failed obligations and zero replay gaps;
+source-inventory limits remain explicit in `prover-0baaa951-engine-inventory.json`.
