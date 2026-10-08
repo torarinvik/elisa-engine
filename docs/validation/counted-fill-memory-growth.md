@@ -203,3 +203,17 @@ at its unchanged 8 GiB watchdog limit (8,423,712 KiB peak, 629.10s, status 125);
 that is an incomplete matrix with retained failures, not compatibility acceptance.
 Its serial log is `proof-0baaa951-serial-full-matrix.log`. Full prover compatibility
 and replacement native qualification remain open.
+
+The replacement shared gate completed with status 0: 34.72s, 2,178,192 KiB
+peak RSS under its existing 8 GiB cap. It runs all 215 runtime tests uncached,
+the shared native/backend probes, and all 73 cached proof reports from the
+preceding uncached sweep; the final strict validation report passes. Retained
+report: `compiler-cfd0203a-shared-report.json`; log:
+`compiler-cfd0203a-shared.log`. This uses compiler `cfd0203a`, paired prover
+generation `c2939edb604d45778f8d7f7352bf174c` and Script `62928532` launcher
+compiled by `0baaa951`; it does not qualify a replacement full native gate.
+
+Consumer review additionally requests conservative refusal when a source
+declaration or alias reuses primitive `f32`/`f64` spelling. A follow-up semantic
+policy regression is being qualified separately; the passing product tuple
+above remains immutable.
