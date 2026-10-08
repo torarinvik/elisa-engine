@@ -206,3 +206,24 @@ discard; report_test_setup_failure_machine advances past its bool initializer
 to a later merged-error binder. Other merged-error binding/rethrow declines
 remain. No executable is produced; full qualification is still open.
 Artifact: `build/validation/elisascript-catch-arm-repair-build.log` and JSON.
+
+### Void success correction
+
+classify_returned_exec returns void on success; its legacy catch no longer
+reads the absent success value in `_ = returned`. This clears that function,
+leaving six output/error-binding declines. The bounded build exits 2 in
+4.03 seconds, peak RSS 831,488 KiB; no executable is produced. Artifact:
+`build/validation/elisascript-d67efe6e-void-success-build.log` and JSON.
+The compiler product SHA is
+`edbfa76ef2be47c466a3064119195b574fe6a4cb582af6788bacfeb100f6783e`.
+After the compiler commit, provenance was refreshed using its existing
+manifest: product SHA, source-tree and build-recipe hashes were checked
+unchanged before recording source revision d67efe6e. No rebuild or source
+change was hidden by that refresh. Full qualification remains open.
+
+Remaining statement catch binders route through bind_scalar_catch_error,
+which asks annotation_ident_value_type to resolve the declared family.
+The failing header routines catch composite fieldless families such as
+OutputContractError + OutputHumanError. A repair must preserve composite
+variant offsets when comparing a bound error with a source-family variant;
+declaring an arbitrary i32 binder alone is insufficient correctness evidence.
