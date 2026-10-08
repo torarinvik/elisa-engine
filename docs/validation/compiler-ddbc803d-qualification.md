@@ -480,3 +480,15 @@ The three diagnostics clear in the bounded build, which exits 1 elsewhere in
 5.80 seconds with peak sampled RSS 726,928 KiB. Artifact:
 `build/validation/elisascript-2ad7a165-runtime-boundaries-build.log` and JSON.
 POSIX output, file reading and signal-handler behavior remain runtime-unverified.
+
+### Completed census comparison
+
+The 6a113579 harness census comparison on production prover 95db5c6b and
+compiler ddbc803d exits 1: 286 regression rows, 30 gain rows and 28 coverage
+changes. These are diagnostic rows, not distinct input counts. The run includes
+four newly unreadable inputs and timing retries under the old unbounded worker
+policy; later 3e1a6c50 bounds future retries. This is a failing gate, despite
+gains. Log and structured summary:
+`build/validation/proof-6a113579-ddbc803d-census-diff.log` and
+`build/validation/proof-6a113579-ddbc803d-census-diff-summary.json`.
+New compiler qualification continues in [2ad7a165 evidence](compiler-2ad7a165-qualification.md).
