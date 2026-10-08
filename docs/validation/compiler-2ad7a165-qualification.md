@@ -302,3 +302,26 @@ as the ordinary enum's largest-variant word array. Ordinary enum constructors
 and match arms use zero-based tags, whereas native error status uses one-based
 tags; conversion and comparisons must agree at this boundary. Existing
 composite equality controls alone do not cover matching a bound error value.
+
+### Native statement-catch payload conversion
+
+Native statement catches now bind payload errors by copying only the active
+variant's fields into ordinary enum storage. Typed single-field stores and
+multi-field tuple stores preserve alignment and field widths. The stored tag
+is the zero-based ordinal; composite fieldless comparison constants and
+rethrow conversion now use the same representation boundary.
+The caught_payload_value_roundtrip_smoke executes the exact single-i64 and
+mixed-i32/i64 values at O0 and O2. Composite fieldless comparison and rethrow
+smokes also pass, including their incompatible-family rejection control.
+Logs: `build/validation/caught-payload-value-roundtrip-smoke.log` and
+`payload-binder-composite_fieldless_{catch_binder,rethrow}_smoke.log`.
+Generic value-catch payload binding and payload-bearing rethrow are separate
+paths and are not established by these controls.
+
+Launcher building reports no backend declines and reaches LLVM verification.
+Verification rejects calls with incorrect argument counts, including
+advance_output_transport and execute_elisascript_file_tests. Build exits 2 in
+5.97 seconds, peak RSS 834,016 KiB; no executable is produced. Artifact:
+`build/validation/elisascript-payload-binder-build.log` and JSON.
+These call-lowering failures are the next native prerequisite; the native
+gate and full toolchain qualification remain open.
