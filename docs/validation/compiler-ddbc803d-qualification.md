@@ -306,3 +306,13 @@ All three collections diagnostics clear in the bounded compile; other launcher
 errors remain. It exits 1 normally in 7.68 seconds, sampled peak RSS 727,056 KiB.
 Engine artifact: `build/validation/elisascript-ddbc803d-inactive-slots-build.log`
 and JSON. Collection behavior/refusal controls remain runtime-unverified.
+
+Serializer source now uses explicit conditional blocks for four fallible
+comma/padding appends, an explicit negated XML whitespace membership predicate,
+a mutable document record array and a mutable human-footer writer. Output
+order, conditions, limits and propagation calls are preserved. All eleven
+related serializer diagnostics clear in the bounded compile; output transport
+and other launcher errors remain. It exits 1 normally in 13.69 seconds, sampled
+peak RSS 716,016 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-output-syntax-build.log` and JSON.
+Serialized output/refusal behavior remains runtime-unverified.
