@@ -12,28 +12,31 @@ focused controls described below, including explicit `-permissive` bypasses.
 That tuple also produces a sealed Studio app; actual launch and FBX/redraw/reveal
 acceptance remain open.
 
-## Audited UserData native boundary
+## Audited application, input and UserData native boundaries
 
-`src/runtime/user_data.elisa` now gives each `elisa_user_data_*` declaration an
-explicit `can[Unsafe.RawExtern]` contract. The reviewed implementation in
-`native/user_data_abi.cpp` owns its filesystem and service state, receives data
-through explicit arguments, and has no Elisa callbacks. It therefore has no
-effect on Elisa `global mutable` bindings. The wrapper encloses each raw call in
-a narrow `trusted Unsafe.RawExtern` block, preserving the safe public UserData
-API and passing strict-unsafe checking.
+`src/runtime/application.elisa`, `src/runtime/application_input.elisa` and
+`src/runtime/user_data.elisa` now give their native declarations explicit
+`can[Unsafe.RawExtern]` contracts. The reviewed C++ shims own process/runtime
+state and exchange values through explicit arguments and buffers; the audited
+entrypoints do not access Elisa `global mutable` bindings. Each Elisa call site
+uses a narrow `trusted Unsafe.RawExtern` block, keeping that implementation
+detail inside the engine wrappers rather than making the public APIs unsafe.
+The pointer-replay API also lost its inherited uncertainty through its
+`ApplicationInput` dependency.
 
 On Stage1
 `/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`
 (SHA256 `5198034700383a76aa25ca7db2e2e31bdd4fa98753f721b53c80233e24257916`):
 
 - `-emit check src/runtime/user_data.elisa` succeeds.
-- A `# strict` / `# unsafe` fixture including the module compiles to an object.
-- `test/user_data_probe.elisa` no longer reports missing global grants in
-  `src/runtime/user_data.elisa`; remaining diagnostics are in the unrelated
-  application, input and pointer-replay runtime APIs.
+- `test/user_data_probe.elisa` compiles with no global-grant diagnostics; this
+  consumer probe previously reported 106 such diagnostics.
+- A `# strict` / `# unsafe` fixture including
+  `src/runtime/action_pointer_replay.elisa` compiles to an object, covering the
+  application and input native call sites as well as their transitive caller.
 
 This is a source-boundary qualification, not a full engine grant audit or a
-native UserData runtime test.
+native application/UserData runtime test.
 
 ## Engine source preparation
 

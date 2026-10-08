@@ -171,30 +171,30 @@ extend Application:
             KEY_MENU: i64 = 2103
 
         @callconv(c)
-        extern elisa_application_v1_next_input_event_token() -> i64
+        extern elisa_application_v1_next_input_event_token() -> i64 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_set_relative_mouse(enabled: i32) -> i32
+        extern elisa_application_v1_set_relative_mouse(enabled: i32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_relative_mouse() -> i32
+        extern elisa_application_v1_relative_mouse() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_application_v1_next_pointer_event(kind: mutable i32&,
             button: mutable i32&, x: mutable f32&, y: mutable f32&,
             delta_x: mutable f32&, delta_y: mutable f32&,
-            buttons: mutable u32&, pressed: mutable i32&) -> i32
+            buttons: mutable u32&, pressed: mutable i32&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_application_v1_rumble_gamepad(device_slot: i32,
-            low_frequency: f32, high_frequency: f32, duration_ms: i32) -> i32
+            low_frequency: f32, high_frequency: f32, duration_ms: i32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_application_v1_gamepad_button_label(device_slot: i32,
-            portable_button_code: i32, label: mutable i32&) -> i32
+            portable_button_code: i32, label: mutable i32&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_gamepad_connected(device_slot: i32) -> i32
+        extern elisa_application_v1_gamepad_connected(device_slot: i32) -> i32 can[Unsafe.RawExtern]
 
     public:
         const module PointerButtons:
@@ -456,7 +456,9 @@ extend Application:
         # Keyboard, mouse-button, and gamepad transitions retain SDL arrival
         # order; normalized gamepad axes stay within [0, 1].
         def next_input_event(event: mutable InputEvent&) -> bool:
-            encoded: i64 = elisa_application_v1_next_input_event_token()
+            encoded: mutable i64 = 0
+            trusted Unsafe.RawExtern:
+                encoded <- elisa_application_v1_next_input_event_token()
             return false if encoded <= 0
             kind: i32 = (encoded & InputTokenLayout::KIND_MASK).i32()
             event.kind <- InputEventKind.Key if kind == Application::InputTokenKind::KEY
@@ -489,8 +491,10 @@ extend Application:
         # without rumble support returns Unavailable or Unsupported.
         def rumble_gamepad(device_slot: i32, low_frequency: f32,
             high_frequency: f32, duration_ms: i32) -> GamepadRumbleStatus:
-            status: i32 = elisa_application_v1_rumble_gamepad(device_slot,
-                low_frequency, high_frequency, duration_ms)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_rumble_gamepad(device_slot,
+                    low_frequency, high_frequency, duration_ms)
             return GamepadRumbleStatus.Started if status == 1
             return GamepadRumbleStatus.Unavailable if status == 0
             return GamepadRumbleStatus.InvalidArgument if status == -1
@@ -504,8 +508,10 @@ extend Application:
             button: GamepadButtonCode,
             label: mutable GamepadButtonLabel&) -> GamepadButtonLabelStatus:
             raw_label: mutable i32 = 0
-            status: i32 = elisa_application_v1_gamepad_button_label(device_slot,
-                gamepad_button_code(button).i32(), &raw_label)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_gamepad_button_label(device_slot,
+                    gamepad_button_code(button).i32(), &raw_label)
             label <- GamepadButtonLabel.Unknown
             if status == 1:
                 label <- GamepadButtonLabel.A if raw_label == 1
@@ -526,7 +532,9 @@ extend Application:
         # Query a stable connection slot when choosing local player ownership.
         # The status distinguishes an empty slot from an invalid query.
         def query_gamepad_connection(device_slot: i32) -> GamepadConnectionStatus:
-            status: i32 = elisa_application_v1_gamepad_connected(device_slot)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_gamepad_connected(device_slot)
             return GamepadConnectionStatus.Connected if status == 1
             return GamepadConnectionStatus.Disconnected if status == 0
             return GamepadConnectionStatus.InvalidArgument if status == -1
@@ -542,13 +550,18 @@ extend Application:
         # Mouse-look mode: hides and confines the cursor so motion deltas keep
         # arriving at the window edge. A platform refusal leaves the mode off.
         def set_relative_mouse(enabled: bool) -> RelativeMouse:
-            status: i32 = elisa_application_v1_set_relative_mouse(1 if enabled else 0)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_set_relative_mouse(1 if enabled else 0)
             return RelativeMouse.NotRunning if status == NativeStatus::INVALID_STATE or status == NativeStatus::WRONG_THREAD
             return RelativeMouse.Unsupported if status != NativeStatus::OK
             RelativeMouse.Enabled if enabled else RelativeMouse.Disabled
 
         def relative_mouse() -> bool:
-            elisa_application_v1_relative_mouse() == 1
+            enabled: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                enabled <- elisa_application_v1_relative_mouse()
+            enabled == 1
 
         # Pointer coordinates and deltas stay in logical window units. Editor
         # viewports apply the camera's display scale before ray construction.
@@ -561,8 +574,10 @@ extend Application:
             delta_y: mutable f32 = 0.0
             buttons: mutable u32 = 0
             pressed: mutable i32 = 0
-            status: i32 = elisa_application_v1_next_pointer_event(&kind,
-                &button, &x, &y, &delta_x, &delta_y, &buttons, &pressed)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_next_pointer_event(&kind,
+                    &button, &x, &y, &delta_x, &delta_y, &buttons, &pressed)
             return false if status <= 0
             event.kind <- PointerEventKind.Motion if kind == PointerEventCode::MOTION
             event.kind <- PointerEventKind.Button if kind == PointerEventCode::BUTTON

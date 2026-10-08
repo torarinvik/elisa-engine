@@ -37,55 +37,55 @@ module Application:
             WINDOW_CLOSE_REQUESTED: u32 = 16
 
         @callconv(c)
-        extern elisa_application_abi_version() -> u32
+        extern elisa_application_abi_version() -> u32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_project_title() -> cstr
+        extern elisa_application_v1_project_title() -> cstr can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_project_width() -> i32
+        extern elisa_application_v1_project_width() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_project_height() -> i32
+        extern elisa_application_v1_project_height() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_project_hidden() -> i32
+        extern elisa_application_v1_project_hidden() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_show_error(title: cstr, message: cstr) -> i32
+        extern elisa_application_v1_show_error(title: cstr, message: cstr) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32
+        extern elisa_application_v1_initialize(title: cstr, width: i32, height: i32, hidden: i32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_application_v1_backend_profile(capabilities: mutable i64&, optional: mutable i64&,
             max_viewports: mutable i64&, max_workers: mutable i64&, memory_budget: mutable i64&,
             memory_usage: mutable i64&, formats: mutable i64&, graphics_workers: mutable i64&,
-            streaming_workers: mutable i64&, service_version: mutable i64&) -> i32
+            streaming_workers: mutable i64&, service_version: mutable i64&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_fallback_provider_available(provider: i32) -> i32
+        extern elisa_application_v1_fallback_provider_available(provider: i32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_pump() -> i32
+        extern elisa_application_v1_pump() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_frame_info(frame_count: mutable u64&, elapsed_nanos: mutable u64&, resize_serial: mutable u64&, logical_width: mutable i32&, logical_height: mutable i32&, pixel_width: mutable i32&, pixel_height: mutable i32&, display_scale: mutable f32&, event_flags: mutable u32&, window_flags: mutable u32&) -> i32
+        extern elisa_application_v1_frame_info(frame_count: mutable u64&, elapsed_nanos: mutable u64&, resize_serial: mutable u64&, logical_width: mutable i32&, logical_height: mutable i32&, pixel_width: mutable i32&, pixel_height: mutable i32&, display_scale: mutable f32&, event_flags: mutable u32&, window_flags: mutable u32&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_request_exit() -> i32
+        extern elisa_application_v1_request_exit() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_shutdown() -> i32
+        extern elisa_application_v1_shutdown() -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_frame_count() -> u64
+        extern elisa_application_v1_frame_count() -> u64 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_uptime_nanos() -> u64
+        extern elisa_application_v1_uptime_nanos() -> u64 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_application_v1_random_seed() -> u64
+        extern elisa_application_v1_random_seed() -> u64 can[Unsafe.RawExtern]
 
     public:
         struct Config:
@@ -136,17 +136,23 @@ module Application:
             Invalid
 
         def default_config() -> Config:
-            Config{
-                title: elisa_application_v1_project_title(),
-                width: elisa_application_v1_project_width(),
-                height: elisa_application_v1_project_height(),
-                hidden: elisa_application_v1_project_hidden() != 0,
-            }
+            trusted Unsafe.RawExtern:
+                return Config{
+                    title: elisa_application_v1_project_title(),
+                    width: elisa_application_v1_project_width(),
+                    height: elisa_application_v1_project_height(),
+                    hidden: elisa_application_v1_project_hidden() != 0,
+                }
 
         def initialize(config: Config) -> InitializeStatus:
-            return InitializeStatus.UnsupportedAbi if elisa_application_abi_version() != 1
+            abi_version: mutable u32 = 0
+            trusted Unsafe.RawExtern:
+                abi_version <- elisa_application_abi_version()
+            return InitializeStatus.UnsupportedAbi if abi_version != 1
             hidden: i32 = 1 if config.hidden else 0
-            result: i32 = elisa_application_v1_initialize(config.title, config.width, config.height, hidden)
+            result: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                result <- elisa_application_v1_initialize(config.title, config.width, config.height, hidden)
             return InitializeStatus.Ready if result == NativeStatus::OK
             return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
             return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
@@ -180,28 +186,32 @@ module Application:
                     match decision.fallback_provider:
                         Capabilities::BackendFallbackProvider.JoltPhysics:
                             if not jolt_checked:
-                                jolt_available <- elisa_application_v1_fallback_provider_available(
-                                    FallbackProviderCode::JOLT_PHYSICS) == 1
+                                trusted Unsafe.RawExtern:
+                                    jolt_available <- elisa_application_v1_fallback_provider_available(
+                                        FallbackProviderCode::JOLT_PHYSICS) == 1
                                 jolt_checked <- true
                             availability.jolt_physics <- jolt_available
                         Capabilities::BackendFallbackProvider.MiniaudioSilent:
                             if not silent_checked:
-                                silent_available <- elisa_application_v1_fallback_provider_available(
-                                    FallbackProviderCode::MINIAUDIO_SILENT) == 1
+                                trusted Unsafe.RawExtern:
+                                    silent_available <- elisa_application_v1_fallback_provider_available(
+                                        FallbackProviderCode::MINIAUDIO_SILENT) == 1
                                 silent_checked <- true
                             availability.miniaudio_silent <- silent_available
                         Capabilities::BackendFallbackProvider.MiniaudioDefault:
                             if not default_checked:
-                                default_available <- elisa_application_v1_fallback_provider_available(
-                                    FallbackProviderCode::MINIAUDIO_DEFAULT) == 1
+                                trusted Unsafe.RawExtern:
+                                    default_available <- elisa_application_v1_fallback_provider_available(
+                                        FallbackProviderCode::MINIAUDIO_DEFAULT) == 1
                                 default_checked <- true
                             availability.miniaudio_default <- default_available
                             # Probe the silent route so a missing device can
                             # degrade to it instead of rejecting the start.
                             if not default_available:
                                 if not silent_checked:
-                                    silent_available <- elisa_application_v1_fallback_provider_available(
-                                        FallbackProviderCode::MINIAUDIO_SILENT) == 1
+                                    trusted Unsafe.RawExtern:
+                                        silent_available <- elisa_application_v1_fallback_provider_available(
+                                            FallbackProviderCode::MINIAUDIO_SILENT) == 1
                                     silent_checked <- true
                                 availability.miniaudio_silent <- silent_available
                         Capabilities::BackendFallbackProvider.SynchronousUpload:
@@ -283,9 +293,11 @@ module Application:
             graphics_workers: i64 = NativeStatus::EMPTY_PROFILE_VALUE
             streaming_workers: i64 = NativeStatus::EMPTY_PROFILE_VALUE
             service_version: i64 = NativeStatus::EMPTY_PROFILE_VALUE
-            status: i32 = elisa_application_v1_backend_profile(&capabilities, &optional,
-                &max_viewports, &max_workers, &memory_budget, &memory_usage, &formats,
-                &graphics_workers, &streaming_workers, &service_version)
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_backend_profile(&capabilities, &optional,
+                    &max_viewports, &max_workers, &memory_budget, &memory_usage, &formats,
+                    &graphics_workers, &streaming_workers, &service_version)
             raise BackendProfileError.NotInitialized if status == NativeStatus::INVALID_STATE
             raise BackendProfileError.WrongThread if status == NativeStatus::WRONG_THREAD
             raise BackendProfileError.Unavailable if status == NativeStatus::PROFILE_UNAVAILABLE
@@ -297,7 +309,9 @@ module Application:
             profile
 
         def pump() -> PumpStatus:
-            result: i32 = elisa_application_v1_pump()
+            result: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                result <- elisa_application_v1_pump()
             return PumpStatus.Running if result == NativeStatus::RUNNING
             return PumpStatus.Suspended if result == NativeStatus::SUSPENDED
             return PumpStatus.ExitRequested if result == NativeStatus::EXIT_REQUESTED
@@ -307,7 +321,13 @@ module Application:
 
         # Pending event bits are coalesced until this snapshot is read.
         def frame_info(info: mutable FrameInfo&) -> bool:
-            elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos, &info.resize_serial, &info.logical_width, &info.logical_height, &info.pixel_width, &info.pixel_height, &info.display_scale, &info.event_flags, &info.window_flags) == NativeStatus::OK
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos,
+                    &info.resize_serial, &info.logical_width, &info.logical_height,
+                    &info.pixel_width, &info.pixel_height, &info.display_scale,
+                    &info.event_flags, &info.window_flags)
+            status == NativeStatus::OK
 
         def elapsed_seconds(info: FrameInfo&) -> f32:
             info.elapsed_nanos.f32() / 1000000000.0
@@ -346,25 +366,37 @@ module Application:
             (info.window_flags & NativeWindowFlags::WINDOW_CLOSE_REQUESTED) != 0
 
         def request_exit() -> bool:
-            elisa_application_v1_request_exit() == NativeStatus::OK
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_request_exit()
+            status == NativeStatus::OK
 
         def shutdown() -> bool:
-            elisa_application_v1_shutdown() == NativeStatus::OK
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_shutdown()
+            status == NativeStatus::OK
 
         def frame_count() -> u64:
-            elisa_application_v1_frame_count()
+            trusted Unsafe.RawExtern:
+                return elisa_application_v1_frame_count()
 
         # Monotonic host uptime is useful for bounded startup/load telemetry;
         # it is zero before initialization and after shutdown.
         # A fresh host seed; record it to replay procedural content.
         def random_seed() -> u64:
-            elisa_application_v1_random_seed()
+            trusted Unsafe.RawExtern:
+                return elisa_application_v1_random_seed()
 
         def uptime_nanos() -> u64:
-            elisa_application_v1_uptime_nanos()
+            trusted Unsafe.RawExtern:
+                return elisa_application_v1_uptime_nanos()
 
         # A bounded native error dialog, with stderr-only delivery for hidden
         # applications. Call on the application owner thread, even on startup
         # failure before initialization. Messages are limited to 4096 bytes.
         def show_error(title: cstr, message: cstr) -> bool:
-            elisa_application_v1_show_error(title, message) == NativeStatus::OK
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_application_v1_show_error(title, message)
+            status == NativeStatus::OK
