@@ -404,3 +404,24 @@ bounded invocation exits 1; no gate stages or new gate report are established.
 Artifact: `build/validation/elisascript-f863dd10-native-gate-quick.log` and JSON.
 Source lowering/builtin registration is the next prerequisite. The launcher
 has not been installed, and full native qualification remains open.
+
+### Canonical gate stdio and source-path crash
+
+ElisaScript intentionally rejects the removed println/eprint aliases
+(test/semantic/elisascript_semantic_test.elisa covers both). The engine's
+native_gate, wicked_probe and check scripts now use print for stdout and
+a report_error_line helper calling canonical write_stderr with explicit LF.
+A bounded stdio control prints both lines correctly and exits 0. Artifact:
+`build/validation/elisascript-f863dd10-canonical-stdio-control.log` and JSON.
+
+The quick gate advances past the alias diagnostic but crashes during source
+lowering; --check also crashes, before any gate stage executes. A minimal
+Script::source_path().parent().parent() script reproduces SIGSEGV. Artifacts:
+`build/validation/elisascript-f863dd10-native-gate-canonical-stdio.log`,
+`elisascript-f863dd10-native-gate-check.log`, `elisascript-f863dd10-source-parent.log`
+and JSON reports. The macOS crash report's triggered stack starts at
+EsIr.scripting_script_intrinsic_available, then lower_path_method and
+lower_expression_expected. This is the next source-lowering prerequisite.
+A bounded LLDB launch timed out after 30 seconds without a stack; its log
+is `elisascript-f863dd10-native-gate-lldb.log`. No debugger wait remains active.
+No native gate execution or new report is established by these failed runs.

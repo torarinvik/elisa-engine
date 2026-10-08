@@ -1,3 +1,8 @@
+# Keep gate diagnostics line-oriented on the canonical stderr API.
+def report_error_line(message: sview) -> void:
+    _ = try write_stderr(message) else 0
+    _ = try write_stderr("\n") else 0
+
 # Native-first validation composition.
 # Modes: quick (policy checks), headless (quick + sanitizer boundary), native
 # (headless + the SDL3/Wicked gate), smoke (selected application smokes).
@@ -11,15 +16,15 @@ def run_visible(stage: sview, program: sview, arguments: darray[sview], timeout_
     exit_status: i64 = try run_process(executable(program), arguments, timeout_micros) else 1
     # Name the failing sub-stage so a nonzero gate never ends in silence.
     if exit_status != 0:
-        eprint("native gate: stage failed:")
-        eprint(stage)
+        report_error_line("native gate: stage failed:")
+        report_error_line(stage)
     exit_status
 
 def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> i64:
     exit_status: i64 = try run_process(executable(program), arguments) else 1
     if exit_status != 0:
-        eprint("native gate: stage failed:")
-        eprint(stage)
+        report_error_line("native gate: stage failed:")
+        report_error_line(stage)
     exit_status
 
 def run_application_smoke(selection: sview) -> i64:
@@ -42,7 +47,7 @@ def run_application_smoke(selection: sview) -> i64:
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 2:
-        eprint("usage: elisascript scripts/native_gate.elisascript [quick|headless|native] or smoke <names>")
+        report_error_line("usage: elisascript scripts/native_gate.elisascript [quick|headless|native] or smoke <names>")
         return 2
     mode: sview = "quick" if arguments.count == 0 else arguments[0]
     valid_mode: bool = mode == "quick" or mode == "headless" or mode == "native" or mode == "smoke"

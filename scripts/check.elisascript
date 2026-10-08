@@ -1,3 +1,8 @@
+# Keep gate diagnostics line-oriented on the canonical stderr API.
+def report_error_line(message: sview) -> void:
+    _ = try write_stderr(message) else 0
+    _ = try write_stderr("\n") else 0
+
 def tool_path(variable: sview, name: sview) -> sview:
     _ =
         configured: sview = get_environment_or(variable, "")
@@ -24,8 +29,8 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
             _ = write_stdout(result.stdout)
             _ = write_stderr(result.stderr)
             return result.exit_status
-    eprint("check: could not start:")
-    eprint(program)
+    report_error_line("check: could not start:")
+    report_error_line(program)
     126
 def rejects_owner_violation(compiler: sview, source: sview, output: sview, privacy: bool = false) -> bool:
     # Retry only empty compiler crashes; preserve changed diagnostics as real failures.
@@ -34,7 +39,7 @@ def rejects_owner_violation(compiler: sview, source: sview, output: sview, priva
             empty_input: sview = ""
             capture_process_result(executable(compiler), ["-emit", "obj", "-o", output, source], empty_input)
         if rejection.exit_status == 0:
-            eprint("An invalid owner operation was accepted.")
+            report_error_line("An invalid owner operation was accepted.")
             return false
         return "is private to module" in rejection.stderr if privacy
         return true if "linear value" in rejection.stderr
@@ -42,24 +47,24 @@ def rejects_owner_violation(compiler: sview, source: sview, output: sview, priva
         if rejection.stderr != "":
             _ = write_stderr(rejection.stderr)
             break
-    eprint("The negative owner fixture failed for another reason.")
+    report_error_line("The negative owner fixture failed for another reason.")
     false
 def main(arguments: darray[sview]) -> i64:
     if arguments.count != 0:
-        eprint("usage: elisascript scripts/check.elisascript")
+        report_error_line("usage: elisascript scripts/check.elisascript")
         return 2
     root: Path = Script::source_path().parent().parent()
     compiler: sview =
         candidate: sview = tool_path("ELISA_COMPILER_BIN", "elisac-stage1")
         if candidate == "" or not is_file(path(candidate)) or not is_executable(path(candidate)):
-            eprint("Put elisac-stage1 on PATH or set ELISA_COMPILER_BIN to its executable path.")
+            report_error_line("Put elisac-stage1 on PATH or set ELISA_COMPILER_BIN to its executable path.")
             return 2
         candidate
     prover: sview =
         configured_prover: sview = get_environment_or("ELISA_PROOF_BIN", "")
         str(root.joinpath("../elisa-engine-proof/build/elisa-proof")) if configured_prover == "" else configured_prover
     if not is_file(path(prover)) or not is_executable(path(prover)):
-        eprint("Build ../elisa-engine-proof or set ELISA_PROOF_BIN to its executable path.")
+        report_error_line("Build ../elisa-engine-proof or set ELISA_PROOF_BIN to its executable path.")
         return 2
     _ = create_directories(root.joinpath("build"))
     proofs: darray[sview] = # Every implementation-linked proof in proof/ gates the check.
@@ -89,10 +94,10 @@ def main(arguments: darray[sview]) -> i64:
         if status != 0:
             return status
         status
-    println("SDL3 platform probe passed.")
+    print("SDL3 platform probe passed.")
     godot_binary: sview = tool_path("GODOT_BIN", "godot")
     if godot_binary == "" or not is_file(path(godot_binary)) or not is_executable(path(godot_binary)):
-        eprint("Install Godot or set GODOT_BIN to its executable path.")
+        report_error_line("Install Godot or set GODOT_BIN to its executable path.")
         return 2
     godot_project: sview = str(root.joinpath("backends/godot"))
     godot_probe: sview = str(root.joinpath("backends/godot/probe.gd"))

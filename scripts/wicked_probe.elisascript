@@ -1,3 +1,8 @@
+# Keep gate diagnostics line-oriented on the canonical stderr API.
+def report_error_line(message: sview) -> void:
+    _ = try write_stderr(message) else 0
+    _ = try write_stderr("\n") else 0
+
 # Build and run the optional WickedEngine scene bridge probe.
 # The WickedEngine checkout and build stay outside this repository.
 
@@ -14,7 +19,7 @@ def run_visible(program: sview, arguments: darray[sview]) -> i64:
 
 def main(arguments: darray[sview]) -> i64:
     if arguments.count > 1:
-        eprint("usage: elisascript scripts/wicked_probe.elisascript [build|build-gate|texture|frame|rerun|verify]")
+        report_error_line("usage: elisascript scripts/wicked_probe.elisascript [build|build-gate|texture|frame|rerun|verify]")
         return 2
     phase: sview = "all" if arguments.count == 0 else arguments[0]
     return 2 if phase != "all" and phase != "build" and phase != "build-gate" and phase != "texture" and phase != "frame" and phase != "rerun" and phase != "verify"
@@ -41,29 +46,29 @@ def main(arguments: darray[sview]) -> i64:
     output: Path = root.joinpath("build/wicked-native-probe")
     embed_archive: sview = str(root.joinpath("build/libmaze.a"))
     if phase == "texture" and not is_file(path(embed_archive)):
-        eprint("Missing build/libmaze.a; run the wicked probe build first.")
+        report_error_line("Missing build/libmaze.a; run the wicked probe build first.")
         return 2
 
     if not is_file(path(str(source))):
-        eprint("Missing Wicked probe source")
+        report_error_line("Missing Wicked probe source")
         return 2
     if not is_file(path(str(manifest))):
-        eprint("Missing shared scene manifest")
+        report_error_line("Missing shared scene manifest")
         return 2
     if not is_file(path(str(helper))):
-        eprint("Missing Wicked Apple helper")
+        report_error_line("Missing Wicked Apple helper")
         return 2
     if not is_file(path(str(input_helper))):
-        eprint("Missing Wicked Apple input helper")
+        report_error_line("Missing Wicked Apple input helper")
         return 2
     if not is_file(path(str(wicked_source.joinpath("libdxcompiler.dylib")))):
-        eprint("Missing Wicked shader compiler")
+        report_error_line("Missing Wicked shader compiler")
         return 2
     if not is_file(path(str(library_root.joinpath("libWickedEngine.a")))):
-        eprint("Missing WickedEngine library")
+        report_error_line("Missing WickedEngine library")
         return 2
     if not is_file(path(str(library_root.joinpath("libJolt.a")))):
-        eprint("Missing Jolt library")
+        report_error_line("Missing Jolt library")
         return 2
 
     # Cook authored assets before the host runs, so the host loads a package
@@ -121,23 +126,23 @@ def main(arguments: darray[sview]) -> i64:
     faudio_lib: Path = library_root.joinpath("Utility/FAudio/libFAudio.a")
     lua_lib: Path = library_root.joinpath("LUA/libLUA.a")
     if not is_file(path(str(utility_lib))):
-        eprint("Missing Utility library")
+        report_error_line("Missing Utility library")
         return 2
     if not is_file(path(str(faudio_lib))):
-        eprint("Missing FAudio library")
+        report_error_line("Missing FAudio library")
         return 2
     if not is_file(path(str(lua_lib))):
-        eprint("Missing Lua library")
+        report_error_line("Missing Lua library")
         return 2
 
     dependencies: Path = root.joinpath("dependencies/cgltf")
     if not is_file(path(str(dependencies.joinpath("cgltf.h")))):
-        eprint("Missing cgltf; run python3 scripts/fetch_dependencies.py first.")
+        report_error_line("Missing cgltf; run python3 scripts/fetch_dependencies.py first.")
         return 2
     ozz: Path = root.joinpath("dependencies/ozz")
     ozz_library_root: Path = ozz.joinpath("build/src")
     if not is_file(path(str(ozz.joinpath("include/ozz/animation/runtime/animation.h")))):
-        eprint("Missing ozz; run python3 scripts/fetch_ozz.py first.")
+        report_error_line("Missing ozz; run python3 scripts/fetch_ozz.py first.")
         return 2
     ozz_libs: darray[sview] = [
         str(ozz_library_root.joinpath("animation/offline/libozz_animation_offline_r.a")),
@@ -146,31 +151,31 @@ def main(arguments: darray[sview]) -> i64:
     ]
     for ozz_lib in ozz_libs:
         if not is_file(path(ozz_lib)):
-            eprint("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
+            report_error_line("Missing ozz library; run python3 scripts/fetch_ozz.py first.")
             return 2
     freetype_include: sview = str(path(brew_include).joinpath("freetype2"))
     harfbuzz_include: sview = str(path(brew_include).joinpath("harfbuzz"))
     tracy: Path = root.joinpath("dependencies/tracy")
     if not is_file(path(str(tracy.joinpath("public/TracyClient.cpp")))):
-        eprint("Missing Tracy; run python3 scripts/fetch_tracy.py first.")
+        report_error_line("Missing Tracy; run python3 scripts/fetch_tracy.py first.")
         return 2
     miniaudio: Path = root.joinpath("dependencies/miniaudio")
     if not is_file(path(str(miniaudio.joinpath("miniaudio.h")))):
-        eprint("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
+        report_error_line("Missing miniaudio; run python3 scripts/fetch_dependencies.py first.")
         return 2
     basis: Path = root.joinpath("dependencies/basisu")
     if not is_file(path(str(basis.joinpath("transcoder/basisu_transcoder.h")))):
-        eprint("Missing Basis transcoder; run python3 scripts/fetch_basisu.py first.")
+        report_error_line("Missing Basis transcoder; run python3 scripts/fetch_basisu.py first.")
         return 2
     basis_material: Path = basis.joinpath("webgl/gltf/assets/AgiHqSmall.gltf")
     if not is_file(path(str(basis_material))):
-        eprint("Missing Basis glTF material fixture; run python3 scripts/fetch_basisu.py first.")
+        report_error_line("Missing Basis glTF material fixture; run python3 scripts/fetch_basisu.py first.")
         return 2
     recast: Path = root.joinpath("dependencies/recast")
     recast_include: Path = recast.joinpath("Recast/Include")
     detour_include: Path = recast.joinpath("Detour/Include")
     if not is_file(path(str(recast_include.joinpath("Recast.h")))) or not is_file(path(str(detour_include.joinpath("DetourNavMesh.h")))):
-        eprint("Missing Recast/Detour; run python3 scripts/fetch_recast.py first.")
+        report_error_line("Missing Recast/Detour; run python3 scripts/fetch_recast.py first.")
         return 2
     recast_libs: darray[sview] = [
         str(recast.joinpath("build/Recast/libRecast.a")),
@@ -178,7 +183,7 @@ def main(arguments: darray[sview]) -> i64:
     ]
     for recast_lib in recast_libs:
         if not is_file(path(recast_lib)):
-            eprint("Missing Recast/Detour library; run python3 scripts/fetch_recast.py first.")
+            report_error_line("Missing Recast/Detour library; run python3 scripts/fetch_recast.py first.")
             return 2
     meshopt: Path = root.joinpath("dependencies/meshoptimizer")
     meshoptimizer_files: darray[sview] = [
@@ -187,7 +192,7 @@ def main(arguments: darray[sview]) -> i64:
     ]
     for dependency_file in meshoptimizer_files:
         if not is_file(path(str(meshopt.joinpath(dependency_file)))):
-            eprint("Missing meshoptimizer; run python3 scripts/fetch_dependencies.py first.")
+            report_error_line("Missing meshoptimizer; run python3 scripts/fetch_dependencies.py first.")
             return 2
     compile_arguments: darray[sview] = [
         "-std=c++17", "-O0", "-include", "filesystem",
@@ -306,7 +311,7 @@ def main(arguments: darray[sview]) -> i64:
     if verify_status != 0:
         return verify_status
 
-    println("Native frame verified: dimensions, determinism, Elisa topology.")
+    print("Native frame verified: dimensions, determinism, Elisa topology.")
 
     coordinate_reference: sview = str(root.joinpath("backends/coordinate_reference.png"))
     coordinate_first: sview = str(root.joinpath("build/wicked-frame-coordinates.png"))
@@ -319,7 +324,7 @@ def main(arguments: darray[sview]) -> i64:
     if coordinate_repeat_status != 0:
         return coordinate_repeat_status
 
-    println("Coordinate reference matches the asymmetric signed-scale render.")
+    print("Coordinate reference matches the asymmetric signed-scale render.")
 
     # Measured frame time against the fixture budget: median and p95, not a
     # "zero overhead" claim.
@@ -329,7 +334,7 @@ def main(arguments: darray[sview]) -> i64:
     if perf_status != 0:
         return perf_status
 
-    println("Native frame time within budget.")
+    print("Native frame time within budget.")
 
     # Live-input frame: the host drove the embedded game and rendered from the
     # queried cell, so a blank frame there means live input never reached the
@@ -339,5 +344,5 @@ def main(arguments: darray[sview]) -> i64:
     if live_status != 0:
         return live_status
 
-    println("Native live-input frame rendered from the embedded game.")
+    print("Native live-input frame rendered from the embedded game.")
     0
