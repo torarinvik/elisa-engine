@@ -26,7 +26,7 @@
       "kind": "git",
       "path_environment": "WICKED_ROOT",
       "path_default": "../elisa-boxing-wickedengine",
-      "revision": "fd790f55b3237a9d266335ec742faeacc3cc9228",
+      "revision": "2601ae28beaf8b5e46ebc87507dfd2c1d6f91a82",
       "artifacts": [
         "build-elisa-sdl3/WickedEngine/libWickedEngine.a",
         "build-elisa-sdl3/WickedEngine/libJolt.a"

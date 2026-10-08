@@ -9,6 +9,8 @@ module ApplicationCaptureResizeTest:
     extern elisa_application_v1_test_fail_capture_device() -> i32
     @callconv(c)
     extern elisa_application_v1_test_capture_resource_count() -> i32
+    @callconv(c)
+    extern elisa_application_v1_test_capture_timestamp_pair(ticket: u64, begin: u64, end: u64) -> i32
 
     # Requests one capture of the presented frame, then resizes the window to
     # the next size and presents it, so successive tickets hold different
@@ -51,11 +53,30 @@ module ApplicationCaptureResizeTest:
         return 34 if first.frame_count >= second.frame_count or second.frame_count >= third.frame_count
         return 35 if Application::pump() != Application::PumpStatus.Running
         return 36 if not matches(b, second)
+        return 42 if Application::screenshot_gpu_nanoseconds(b) <= 0
         return 37 if not matches(a, first)
+        return 43 if Application::screenshot_gpu_nanoseconds(a) <= 0
         return 38 if not matches(c, third)
         return 39 if Application::screenshot_gpu_nanoseconds(c) <= 0
         return 40 if Application::screenshot_gpu_nanoseconds(a) != i64(ApplicationCapture::SCREENSHOT_TICKET_NOT_FOUND)
         return 41 if elisa_application_v1_test_capture_resource_count() != 0
+        0
+
+    # Corrupt only after GPU completion; the ordinary polling path must refuse
+    # zero, equal and reversed sample pairs instead of reporting clock uptime.
+    def invalid_sample(path: cstr, begin: u64, end: u64) -> i32:
+        frame: mutable Application::FrameInfo = zeroed
+        ticket: u64 = request_then_resize(path, &frame, 440, 280)
+        return 65 if ticket == 0
+        status: mutable i32 = elisa_application_v1_test_capture_timestamp_pair(ticket, begin, end)
+        for attempt in 0..<8:
+            if status == ApplicationCapture::SCREENSHOT_PENDING:
+                return 66 if Application::pump() != Application::PumpStatus.Running
+                status <- elisa_application_v1_test_capture_timestamp_pair(ticket, begin, end)
+        return 67 if status != 0
+        return 68 if not matches(ticket, frame)
+        return 69 if Application::screenshot_gpu_nanoseconds(ticket) != i64(ApplicationCapture::SCREENSHOT_TIMING_UNSUPPORTED)
+        return 70 if elisa_application_v1_test_capture_resource_count() != 0
         0
 
     # An injected device failure fails one submitted and one unsubmitted
@@ -83,6 +104,7 @@ module ApplicationCaptureResizeTest:
         return 61 if ticket == 0
         return 62 if not matches(ticket, recovered)
         return 63 if elisa_application_v1_test_capture_resource_count() != 0
+        return 64 if Application::screenshot_gpu_nanoseconds(ticket) <= 0
         0
 
 def run_capture_smoke() -> i32:
@@ -126,12 +148,22 @@ def run_capture_smoke() -> i32:
     status: i32 = Application::poll_screenshot(second_ticket, &frame_count, &width, &height)
     return 16 if status != ApplicationCapture::SCREENSHOT_COMPLETE
     return 17 if frame_count != original.frame_count or width != original.pixel_width.u32() or height != original.pixel_height.u32()
+    return 21 if Application::screenshot_gpu_nanoseconds(second_ticket) <= 0
     return 18 if not Application::cancel_screenshot(third_ticket)
     return 19 if not Application::cancel_screenshot(fourth_ticket)
     return 20 if Application::pump() != Application::PumpStatus.Running
-    resized_status: i32 = ApplicationCaptureResizeTest::repeated_resize(path)
-    return resized_status if resized_status != 0
-    ApplicationCaptureResizeTest::device_failure(path)
+    # Keep the original ticket, dimension and timing assertions on each cycle.
+    # A single resize sequence can miss intermittent timestamp ordering faults.
+    for cycle in 0..<16:
+        resized_status: i32 = ApplicationCaptureResizeTest::repeated_resize(path)
+        return resized_status if resized_status != 0
+    device_status: i32 = ApplicationCaptureResizeTest::device_failure(path)
+    return device_status if device_status != 0
+    zero_status: i32 = ApplicationCaptureResizeTest::invalid_sample(path, 0, 123)
+    return zero_status if zero_status != 0
+    equal_status: i32 = ApplicationCaptureResizeTest::invalid_sample(path, 123, 123)
+    return equal_status if equal_status != 0
+    ApplicationCaptureResizeTest::invalid_sample(path, 124, 123)
 
 def main() -> i32:
     result: i32 = run_capture_smoke()

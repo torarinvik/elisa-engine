@@ -355,5 +355,118 @@ timing now logs raw timestamps and frequency only when unavailable or invalid.
 The focused original smoke passes in 44.19s at 839,424 KiB RSS; those
 diagnostics did not fire. Its artifacts are retained in
 `build/validation/async-capture-timestamp-diagnostic-terminal/`. The full-run
-timing failure remains unexplained, and the focused pass does not qualify
-the full native gate. The integrated `ee9c67a9` prover matrix is still running.
+timing failure was not reproduced by that single focused retry; the pass
+does not qualify the full native gate. The integrated `ee9c67a9` prover matrix
+is still running.
+
+
+### Resize stress reproduces reversed GPU samples
+
+The same async smoke now repeats its original three-ticket resize sequence
+16 times in one process. The original ticket, dimensions, completion, positive
+GPU-duration and resource-release assertions remain. On Wicked `fd790f55`,
+the stress fails with status 39 in 85.06s at 708,304 KiB RSS under the original
+3 GiB cap. Failure-only diagnostics show five reversed sample pairs at
+24,000,000 ticks/second, including ticket 28: begin `2778097959261`, end
+`2778097959226`. Exact log: `build/validation/async-capture-resize-stress-diagnostic.log`;
+retained reports: `build/validation/async-capture-resize-stress-terminal/`.
+This is an ordering failure in the GPU samples, not evidence of a frequency
+conversion overflow or a missing capture fence.
+
+The Metal 4 SDK documents that both command-buffer and compute timestamps
+wait for preceding work but permit subsequent work to start. The old query
+path samples the beginning outside an encoder and the end inside the copy
+encoder. The first owning-backend experiment records both samples in the compute
+encoder with an intrapass barrier. Its archive rebuild and ABI check pass,
+but the strengthened regression exits 42 in 258.78s at 650,816 KiB RSS:
+tickets 2 and 6 have equal begin/end samples. It does not repair the positive
+duration contract. Its source fingerprint and five archive hashes are retained
+in `build/validation/metal-timestamp-encoder-products.json`; the log and reports
+are `async-capture-encoder-barrier-stress.log` and
+`async-capture-encoder-barrier-stress-terminal/`.
+
+The second experiment ends the sample's compute pass with a producer barrier,
+so work in later passes waits for the sample and the two samples cannot share
+a pass boundary. It also orders pending compute writes before counter resolve's
+blit stage, as required by [Apple's counter resolve contract](https://developer.apple.com/documentation/metal/mtl4commandbuffer/resolvecounterheap(_:range:buffer:fencetowait:fencetoupdate:)).
+The strengthened regression checks all three ticket durations on every cycle.
+The second experiment exits 0 in 267.68s at 593,728 KiB RSS, but is **not
+accepted**: all 50 completed timings log an unwritten zero begin sample. The
+native admission path previously logged this condition but still returned the
+end timestamp as elapsed ticks, producing a false positive based on GPU uptime.
+Exact log and retained reports: `async-capture-pass-barrier-stress.log` and
+`async-capture-pass-barrier-stress-terminal/`; source/archive fingerprints are
+in `metal-timestamp-pass-products.json`.
+
+Native admission now refuses zero begin, equal/reversed pairs and zero frequency
+before subtracting or storing a span. Eleven sample cases and three removed-guard
+controls pass (`capture-timestamp-pair-controls.log`). The real GPU smoke now
+injects zero, equal and reversed pairs only into completed readbacks and demands
+TIMING_UNSUPPORTED through the ordinary polling path. The next backend experiment
+retains a command-buffer begin sample, makes the following compute pass wait
+for preceding queue stages, and orders heap writes before the resolve blit.
+The first consumer-barrier compile refuses the test's access to the private
+Application.NativeStatus enum; correcting the private test call to compare the
+hook's status with zero preserves module privacy. Its actual native retry exits
+21 in 44.49s at 852,016 KiB RSS: the initial untampered capture still has a
+reversed pair (`2836215221576`, `2836215221458`). The stricter admission now
+refuses it. Retained reports: `async-capture-consumer-barrier-stress-terminal/`;
+log: `async-capture-consumer-barrier-stress-retry.log`. An independent CPU
+resolve of the same completed counter heap confirms the same reversed pair
+in both paths: ticket 7 reads begin `2846366445041`, end `2846366444989`.
+The diagnostic run exits 39 in 48.96s at 857,808 KiB RSS. This rules out a
+GPU-to-buffer resolve difference for that failure and targets sampling order.
+Its log is `async-capture-cpu-counter-diagnostic.log`, with reports retained
+in `async-capture-cpu-counter-diagnostic-terminal/`. The diagnostic is temporary.
+The next experiment samples both non-render boundaries at command-buffer
+level after ending active compute work, preserving explicit write/resolve ordering.
+
+The frozen ee9c67a9 prover matrix is terminal failed: 52 failed steps, 2,534.98s,
+7,397,232 KiB RSS under the original 8 GiB / one-hour cap. The complete log is
+`prover-ee9c67a9-python314-full-matrix.log`, with all 52 failure events retained
+in `prover-ee9c67a9-terminal-failure-inventory.json`. The independent 73-report
+engine sweep remains narrower evidence and does not qualify the full matrix.
+
+Native qualification is pending. The unchanged implementation-linked pure conversion proof is
+`proof/application_capture_timing.elisa` (11/11 certificates independently
+replayed in the retained ee9c67a9 engine sweep); that proof does not establish
+Metal ordering.
+
+
+The command-buffer experiment passes in 36.40s at 851,280 KiB RSS under the
+original 3 GiB cap: 50 untampered completed captures report positive intervals,
+all three injected invalid pairs report TIMING_UNSUPPORTED, queue release and
+device-failure recovery assertions pass, and the 880×560 PNG matches the empty
+RGBA reference. Only the three deliberately corrupted pairs log invalid timing.
+Log and reports: `async-capture-command-buffer-stress.log` and
+`async-capture-command-buffer-stress-terminal/`. The temporary CPU resolver is
+removed from both repositories. The final source needs a clean repeat before
+promotion; full native and prover compatibility remain open, and R17 remains
+reopened pending the replacement full gate. No frame-time performance gain is
+claimed; timestamp barriers and pass boundaries can affect profiling overhead.
+
+
+Final source without the diagnostic passes the same 50 positive durations and
+three corrupted-pair controls in 35.28s at 851,904 KiB RSS. The final log has
+exactly the three deliberate invalid pairs and no missing/invalid real samples.
+Engine and Wicked source fingerprints match the pre-run record in
+`metal-timestamp-final-products.json`. Retained reports:
+`async-capture-final-stress-terminal/`; log: `async-capture-final-stress.log`.
+Wicked source repair is committed as `2601ae28beaf8b5e46ebc87507dfd2c1d6f91a82`; the engine manifest
+pins that source. The change ends active compute work before sampling its
+non-render boundary through the same command-buffer API as the begin sample.
+The native admission repair and its tests are bundled with these evidence notes.
+This qualifies the focused capture slice, not the replacement full native gate
+or full prover matrix. R17 remains reopened until the full gate is established.
+
+
+The final native-facing unit slot also passes (5.88s, 188,400 KiB RSS),
+including the 11 timestamp cases and all three removed-guard controls.
+`capture-final-native-unit-tests.log` retains that result. The uncached engine
+sweep on verified clean paired generation `17449b782d2f4653aeb28948efa29ab9`
+passes in 1.67s at 163,744 KiB RSS: 73 reports / 4,246 original obligations,
+all proved and independently replayed, no errors, diagnostics, replay gaps or
+trusted assumptions. Exact reports and inventory are retained in
+`capture-final-engine-reports/` and `capture-final-engine-inventory.json`.
+Its pure timestamp-conversion report retains 11/11 certificates. Full source
+inventory remains partial; the 52-step full prover failure is unchanged.

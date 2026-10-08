@@ -78,7 +78,7 @@ extend Application:
 
         # GPU nanoseconds of the copy behind the most recently completed
         # ticket, read back through the capture's own fence; a negative
-        # status instead (SCREENSHOT_TIMING_UNSUPPORTED without timestamps).
+        # status instead (SCREENSHOT_TIMING_UNSUPPORTED for missing or invalid samples).
         def screenshot_gpu_nanoseconds(ticket: u64) -> i64:
             ticks: mutable u64 = 0
             frequency: mutable u64 = 0

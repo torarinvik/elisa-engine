@@ -227,6 +227,8 @@ int32_t elisa_application_v1_request_screenshot(const char* path, uint64_t* tick
 int32_t elisa_application_v1_poll_screenshot(
     uint64_t ticket, uint64_t* frame_count, uint32_t* width, uint32_t* height);
 int32_t elisa_application_v1_cancel_screenshot(uint64_t ticket);
+// Most recently completed ticket's positive GPU span. UNSUPPORTED for missing,
+// unwritten, non-increasing or unknown-frequency samples; outputs stay unchanged.
 int32_t elisa_application_v1_screenshot_gpu_ticks(uint64_t ticket, uint64_t* ticks, uint64_t* frequency);
 int32_t elisa_application_v1_activate_render_path(void* render_path);
 int32_t elisa_application_v1_register_shutdown_hook(

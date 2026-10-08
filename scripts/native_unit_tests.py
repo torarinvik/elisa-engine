@@ -55,10 +55,38 @@ def main() -> int:
     jump_status = run_character_jump_policy_test(compiler)
     if jump_status != 0:
         return jump_status
+    timing_status = run_capture_timestamp_pair_test(compiler)
+    if timing_status != 0:
+        return timing_status
     probe_status = run_application_test_probe_fallback_test(compiler)
     if probe_status != 0:
         return probe_status
     return run_ozz_service_test(compiler)
+
+
+def run_capture_timestamp_pair_test(compiler: list[str]) -> int:
+    """Refuse unwritten/nonpositive samples; each removed guard must fail."""
+    header = (ROOT / "native/capture_gpu_timing.h").read_text(encoding="utf-8")
+    source = (ROOT / "test/capture_gpu_timing.cpp").read_text(encoding="utf-8")
+    with tempfile.TemporaryDirectory(prefix="elisa-capture-timing-") as temporary:
+        root = Path(temporary)
+        (root / "native").mkdir()
+        (root / "test").mkdir()
+        test_source = root / "test/capture_gpu_timing.cpp"
+        test_source.write_text(source, encoding="utf-8")
+        for index, removed in enumerate((None, "begin != 0", "end > begin", "frequency != 0")):
+            candidate = header if removed is None else header.replace(removed, "true", 1)
+            (root / "native/capture_gpu_timing.h").write_text(candidate, encoding="utf-8")
+            executable = root / f"timing-{index}"
+            built = subprocess.run([*compiler, "-std=c++17", "-O2", str(test_source),
+                "-o", str(executable)], check=False)
+            if built.returncode != 0:
+                return built.returncode
+            tested = subprocess.run([str(executable)], check=False)
+            if tested.returncode != (0 if removed is None else 1):
+                print(f"GPU timestamp admission control failed: {removed!r}", file=sys.stderr)
+                return 2
+    return 0
 
 
 def run_character_jump_policy_test(compiler: list[str]) -> int:

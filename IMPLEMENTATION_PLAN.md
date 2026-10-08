@@ -106,7 +106,12 @@ The earlier pinned native run failed at Character Course relaunch; its focused
 retry passes. The newer explicit-audio repeat passes relaunch but fails async
 capture GPU timing and the documentation length policy. Linked-document
 splitting restores the length check; the focused capture retry passes with
-failure-only timestamp diagnostics, without reproducing the original cause. Full matrix/shared/native compatibility on the
+failure-only timestamp diagnostics. A 16-cycle resize stress subsequently reproduces
+reversed GPU samples. The final Metal repair `2601ae2` and native sample
+admission now pass 50 real durations and three corrupted-pair controls; run
+the replacement full native gate on this pinned source. The frozen ee9c67a9 full prover matrix is terminal
+failed with 52 failed steps; retain its failure inventory while repairing the
+remaining source/replay and harness cases. Full matrix/shared/native compatibility on the
 repaired pair remains open. See [replay repair evidence](docs/validation/action-input-replay.md)
 and [compiler/native evidence](docs/validation/counted-fill-memory-growth.md).
 AudioAnimEvents 56/56 and SoundAssets 157/157 retain zero replay gaps. The

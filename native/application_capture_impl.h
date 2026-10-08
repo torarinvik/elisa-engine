@@ -1,5 +1,7 @@
 #pragma once
 
+#include "capture_gpu_timing.h"
+
 static bool valid_environment_name(const char* name) {
     if (name == nullptr || name[0] == '\0') return false;
     for (size_t index = 0; index < 128; ++index) {
@@ -193,13 +195,13 @@ void keep_capture_timing(ApplicationService& service, const CaptureRequest& capt
     std::memcpy(stamps, capture.timestamp_readback.mapped_data, sizeof(stamps));
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
     const uint64_t frequency = device == nullptr ? 0 : device->GetTimestampFrequency();
-    if (device == nullptr || stamps[0] == 0 || stamps[1] <= stamps[0] || frequency == 0) {
+    if (device == nullptr || !elisa::capture::valid_gpu_timestamp_pair(stamps[0], stamps[1], frequency)) {
         std::fprintf(stderr, "capture timing invalid: ticket=%llu begin=%llu end=%llu frequency=%llu frame=%llu\n",
             static_cast<unsigned long long>(capture.ticket), static_cast<unsigned long long>(stamps[0]),
             static_cast<unsigned long long>(stamps[1]), static_cast<unsigned long long>(frequency),
             static_cast<unsigned long long>(capture.gpu_frame));
+        return;
     }
-    if (device == nullptr || stamps[1] < stamps[0]) return;
     service.last_capture_timing.ticks = stamps[1] - stamps[0];
     service.last_capture_timing.frequency = frequency;
 }
@@ -381,7 +383,7 @@ extern "C" int32_t elisa_application_v1_cancel_screenshot(uint64_t ticket) {
 }
 
 // GPU timestamp ticks spent on the copy of the most recently completed ticket.
-// UNSUPPORTED when the backend recorded no timestamps for it.
+// UNSUPPORTED when the backend recorded no valid positive timestamp span.
 extern "C" int32_t elisa_application_v1_screenshot_gpu_ticks(uint64_t ticket, uint64_t* ticks, uint64_t* frequency) {
     if (ticket == 0 || ticks == nullptr || frequency == nullptr) return ELISA_APPLICATION_INVALID_ARGUMENT;
     ApplicationService& service = application_service();
@@ -396,6 +398,29 @@ extern "C" int32_t elisa_application_v1_screenshot_gpu_ticks(uint64_t ticket, ui
 }
 
 #if defined(ELISA_RENDER_SCENE_TEST_PROBE) || defined(ELISA_APPLICATION_TEST_PROBE)
+// Corrupt a completed readback for admission tests, never an in-flight buffer.
+extern "C" int32_t elisa_application_v1_test_capture_timestamp_pair(
+    uint64_t ticket, uint64_t begin, uint64_t end) {
+    if (ticket == 0) return ELISA_APPLICATION_INVALID_ARGUMENT;
+    ApplicationService& service = application_service();
+    std::lock_guard<std::mutex> guard(service.mutex);
+    if (!service.initialized) return ELISA_APPLICATION_INVALID_STATE;
+    if (!on_owner_thread(service)) return ELISA_APPLICATION_WRONG_THREAD;
+    for (CaptureRequest& capture : service.captures) {
+        if (capture.state != CaptureRequestState::Pending || capture.ticket != ticket) continue;
+        if (!capture.submitted) return ELISA_APPLICATION_CAPTURE_PENDING;
+        wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+        if (device == nullptr || device != capture.device) return ELISA_APPLICATION_FRAME_FAILED;
+        if (!device->IsFrameComplete(capture.gpu_frame)) return ELISA_APPLICATION_CAPTURE_PENDING;
+        if (!capture.timestamps_recorded || capture.timestamp_readback.mapped_data == nullptr)
+            return ELISA_APPLICATION_UNSUPPORTED;
+        const uint64_t stamps[] = {begin, end};
+        std::memcpy(capture.timestamp_readback.mapped_data, stamps, sizeof(stamps));
+        return ELISA_APPLICATION_OK;
+    }
+    return ELISA_APPLICATION_TICKET_NOT_FOUND;
+}
+
 // Injects a capture-device failure; returns how many pending tickets failed.
 extern "C" int32_t elisa_application_v1_test_fail_capture_device(void) {
     ApplicationService& service = application_service();
