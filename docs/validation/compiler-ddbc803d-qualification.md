@@ -353,3 +353,14 @@ clears all four process-model diagnostics, exits 1 elsewhere in 4.88 seconds,
 and samples peak RSS 701,808 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-pipeline-fields-build.log` and JSON.
 Pipeline execution remains runtime-unverified on the selected compiler.
+
+### Temporary-path string construction
+
+Temporary-path construction converts validated byte views to NUL-terminated
+runtime strings and concatenates through concat2, returning a bounded view of
+permanent storage. Parent/prefix validation, the 4096-byte path bound and exact
+slash/leaf/placeholder spelling remain. This replaces unsupported sview `+`
+operations; all four diagnostics clear in the bounded native build, which exits
+1 elsewhere in 4.49 seconds with sampled peak RSS 726,960 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-temp-concat-build.log` and JSON.
+Temporary-file creation remains runtime-unverified on this compiler.
