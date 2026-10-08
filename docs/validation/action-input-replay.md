@@ -655,3 +655,19 @@ removing the redundant implementation. The clean merged paired build retries
 in `prover-scalar-copy-main-merge-fixed-build.log`. The nine-case copied-bound,
 seven-case immediate-copy and updated diagnostic suites all passed against
 the final pre-merge product; merged-product acceptance is still pending.
+
+Merged clean generation `0984596f9efb4ad0bb6c48d27258f3ad` authenticates `cf280488`
+and checked hashes for both products. It passes the nine-case copied-bound suite,
+seven immediate-copy cases, range-binder resource refusals and compiled source
+forgery harness. Its uncached engine sweep remains 73/73 / 4,246 obligations,
+zero diagnostics or replay gaps (5.43s, 165,264 KiB peak RSS). Reports are retained
+in `scalar-copy-merged-engine-reports/`. All four compiled report-accounting
+fixtures pass after removing a duplicate test-only theorem type in `f593c886`;
+that fixture fix leaves production `src/` byte-identical to the tested revision.
+
+The complete repair branch is now fast-forwarded into `../elisa-engine-proof`
+(`elisa-engine-proof`) at `f593c886`, including committed main through `a98acb6c`.
+A matching official pair publication is running there before the full compatibility
+matrix and shared qualification. The old frozen pair remains attached to the
+separate ongoing native gate. The guarded-field snapshot task is repaired;
+full matrix acceptance and unknown source-control/type contexts remain open.
