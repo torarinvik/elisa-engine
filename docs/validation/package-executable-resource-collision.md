@@ -37,3 +37,19 @@ before assembly and preservation of the regular author file, plus successful
 publication with a retained previous-bundle marker when backup cleanup is skipped.
 Existing replacement-failure rollback controls also pass. Native/GPU and crash
 acceptance remain open as described above.
+
+## Declared-resource parent symlinks
+
+A declared `linked/payload` resource bypassed the existing leaf-symlink check:
+`linked` pointed outside the project, and packaging silently copied external bytes.
+Resource staging now checks each declared path component before copying. It refuses
+parent symlinks to both external and internal directories, preserving the existing
+contract that declared resources must not use symlinks. The error names the link
+and requested resource. This is a pre-copy path check, not a concurrent filesystem
+race guarantee.
+
+The package suite passes 38 tests in 1.894 seconds, retained in
+`build/validation/package-resource-parent-symlink.log`. The new control exercises
+both external and internal symlink targets, verifies the previous bundle marker
+remains and no linked resource is published, and checks external source bytes are
+unchanged. Native/GPU and clean-machine acceptance remain open.

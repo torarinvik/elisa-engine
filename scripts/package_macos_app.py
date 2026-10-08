@@ -187,8 +187,13 @@ def manifest_notices(manifest: dict[str, object], project: Path) -> list[Path]:
 def stage_resource(project: Path, resources: Path, relative: Path) -> None:
     source = project / relative
     destination = resources / relative
-    if source.is_symlink():
-        raise PackageError(f"manifest resource must not be a symbolic link: {relative}")
+    # Checking only the leaf misses a symlink in a parent directory and can
+    # silently copy files from outside the project into a supposedly closed bundle.
+    component = project
+    for part in relative.parts:
+        component = component / part
+        if component.is_symlink():
+            raise PackageError(f"manifest resource must not be a symbolic link: {component.relative_to(project)} (resource {relative})")
     if source.is_dir():
         for child in source.rglob("*"):
             if child.is_symlink():

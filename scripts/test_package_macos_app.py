@@ -550,6 +550,26 @@ class PackageMacosAppTests(unittest.TestCase):
         with self.assertRaises(packager.PackageError):
             self.package(self.write_manifest({"package": {"resources": ["assets/link"]}}))
 
+    def test_resource_parent_symlink_is_refused_and_preserves_bundle(self) -> None:
+        app = self.package(self.write_manifest({}))
+        marker = app / "previous-version"
+        marker.write_bytes(b"previous")
+        external = Path(self.tempdir.name) / "outside"
+        touch(external / "payload", b"outside project")
+        for target in (external, self.project / "assets"):
+            with self.subTest(target=target):
+                link = self.project / "linked"
+                link.symlink_to(target, target_is_directory=True)
+                leaf = "payload" if target == external else "audio/step.wav"
+                manifest = self.write_manifest({"package": {"resources": [f"linked/{leaf}"]}})
+                with self.assertRaisesRegex(packager.PackageError,
+                        "manifest resource must not be a symbolic link: linked"):
+                    self.package(manifest)
+                self.assertEqual(marker.read_bytes(), b"previous")
+                self.assertFalse((app / "Contents/Resources/linked").exists())
+                self.assertEqual((external / "payload").read_bytes(), b"outside project")
+                link.unlink()
+
     def test_resource_directory_with_nested_symlink_is_rejected_with_path(self) -> None:
         external = Path(self.tempdir.name) / "shared.wav"
         touch(external, b"audio")
