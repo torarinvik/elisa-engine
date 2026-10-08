@@ -217,3 +217,14 @@ Consumer review additionally requests conservative refusal when a source
 declaration or alias reuses primitive `f32`/`f64` spelling. A follow-up semantic
 policy regression is being qualified separately; the passing product tuple
 above remains immutable.
+
+The follow-up shadowing policy now passes the full focused semantic/runtime
+regression at O0, including primitive guards, alias `f32 = i64`, user struct
+`f64`, ordinary warnings and IEEE runtime controls. Any positive-source-line
+symbol named `f32`/`f64` conservatively disables the exemption, including across
+modules; unknown resolution retains diagnostics. Retained build/run logs:
+`nan-guard-shadow-policy-build-linked.log` and `nan-guard-shadow-policy-run.log`.
+This compiles changed semantic source with frozen `cfd0203a`; rebuilding and
+qualifying the follow-up compiler product remains required. Earlier failed
+invocations reflect the default watchdog cap, a corrected extra reference,
+and a missing runtime object from the engine working directory, respectively.
