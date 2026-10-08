@@ -26,8 +26,11 @@ def main() -> int:
         (ROOT / "scripts/test_application_native_smoke.py",),
         (ROOT / "scripts/test_elisa_build_run.py",),
         (ROOT / "scripts/test_build_provenance.py",),
+        (ROOT / "scripts/test_cook_publication.py",),
         (ROOT / "scripts/test_effect_memory_region_report.py",),
     )
+    if sys.platform == "darwin":
+        tests += ((ROOT / "scripts/test_package_macos_app.py",),)
     for command in tests:
         result = subprocess.run([sys.executable, *(str(part) for part in command)], check=False)
         if result.returncode != 0:

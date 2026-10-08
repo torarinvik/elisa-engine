@@ -60,3 +60,11 @@ respectively. Logs: `build/validation/registered-build-publication-controls.log`
 This closes manual-only coverage for these source repairs. The full native-unit
 stage, hosted CI and actual renderer acceptance were not run by this registration
 change; the stage's later C++/GPU-related prerequisites retain their own gates.
+
+The same stage now also registers `test_cook_publication.py` on every host and
+`test_package_macos_app.py` on macOS. Their most recent focused acceptance is
+retained in `build/validation/cook-cleanup-after.log` (four cook controls included
+in the 50-test combined run) and `package-directory-symlinks.log` (41 package
+controls). Registration retains fail-fast dispatch and does not relabel focused
+controls as full native-stage or hosted execution. macOS package behavior still
+requires its own native and clean-machine acceptance.
