@@ -91,8 +91,26 @@ uses `ViewportDraw`/Metal and `GlbDocument`/`GlbSkinMesh`, rather than Wicked
    36,000 corners at four poses reaches at most 1.265 µm; the loader's O0/O2
    normalization/refusal regression passes and its policy proves 180 obligations.
    See [engine qualification](../validation/fbx-eight-influences.md).
-   Packaged Studio asynchronous admission still fails under client investigation;
-   actual import, edited playback and surface/skeleton toggle remain open.
+   The client now reports that the original high block_Unreal5.6.fbx imports
+   to 337 frames, then sealed Studio crashes during a cached surface redraw.
+   Crash UUID `c26e7b10-61d0-31cc-86e8-ba3c472e78a7` identifies an unmapped
+   skinned-array base in MeshOverlay.draw, despite passing index/count checks.
+   **Next acceptance: returned skin output survives publication and redraw.**
+   Audit pose_mesh → error-returning MeshOverlay.skin → returned array → optional
+   global cache → allocating draw calls. Retain the exact sealed object and
+   input manifest; IR from a different compiler product is comparison evidence.
+   The client owns whole-app reproduction and its compiler agent's arena audit.
+   Engine main owns any demonstrated reusable ownership/region propagation fix.
+   Require a real FBX-derived mesh, repeated cache-hit redraws, scratch allocation
+   churn, O0/O2 and ASan, plus a rejected lifetime control where applicable.
+   Passing synthetic skin/cache/draw controls do not repair the sealed app.
+   Source audit finds owned output appends in skin and a source-byte copy in
+   GlbDocument.from_bytes; generated allocation lifetimes remain unqualified.
+   Preserve Character rendering while finding the ownership defect. Larger
+   surface/multiple-mesh selection, animation-stack selection and material
+   fidelity follow this crash. Edited playback and surface/skeleton toggle
+   acceptance remain open. Client artifacts are under
+   `../mocap-cleaner/build/studio-runtime-e24-20261008/`.
 2. **Failed-build recovery ownership.** Review the client's retained-lock
    `OwnedIncomplete` admission with revision-3 failure-event/tree/lease evidence.
    Require active-builder refusal, interruption-safe original/quarantine trees,
