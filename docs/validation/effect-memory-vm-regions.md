@@ -42,3 +42,19 @@ A source-qualified renderer build must exercise the original full sequence with
 this opt-in diagnostic and compare tag totals at the actual failing sample.
 No full native gate, leak repair, lifecycle acceptance or tolerance change is
 claimed. Hold heavy runs while the coordinated Studio compiler repair builds.
+
+## Report preparation
+
+`scripts/effect_memory_region_report.py LOG` produces JSON for one complete
+baseline/six-cycle run. It selects the original peak footprint sample, reports
+growth against the unchanged 8,192 KiB allowance and ranks signed VM tag deltas
+by resident growth. Missing/duplicate samples, partial VM walks, invalid tag
+buckets and region-count mismatches are refused. A completed tag delta is
+allocation-domain evidence, not a footprint attribution or leak claim.
+
+Three focused Python controls pass, including peak selection, positive/negative
+VM deltas, missing/partial/duplicate/truncated inventories and the exact allowance
+boundary. Retained output: `build/validation/effect-memory-region-report-controls.log`.
+These parser controls do not satisfy the native diagnostic run or lifecycle gate.
+The upcoming source-qualified full sequence must supply the real log. This Python
+reporting operation has no implementation-linked Elisa proof obligation count.
