@@ -58,8 +58,8 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `cfd0203a`
-on 2026-10-08; its latest guide change is `44b81b1a`. Section 6 marks owned
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `b26659e2`
+on 2026-10-08; its latest guide change is `e3087e23` (following `aabad52f`). Section 6 marks owned
 value-threading and builtin container value forms as working in Stage1.
 The immutable 2ad7a165 product separately passes 215 uncached runtime tests
 and 73/73 engine proofs; full prover matrix/shared/native qualification
@@ -67,8 +67,7 @@ remains open ([evidence](../validation/compiler-2ad7a165-qualification.md)).
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
 
-- The guide itself still ends at `44b81b1a`; the newer compiler repairs do
-  not introduce another style migration. Keep the native launcher repair first:
+- Preserve the existing launcher acceptance when adopting the newer guide:
   recovered errors must leave the escaping error row, while fallback errors
   remain checked. Retain explicit Console.Write effects for diagnostic calls.
   Preserve guard boundaries and allocation lifetimes when scoping this work.
@@ -95,7 +94,9 @@ these additional checks within implementation slices:
   blocks and loop results; preserve shadowing and mutation refusals in replay.
 - Scope side-effect temporaries only after checking allocation escape and live
   views. Use block initializers or helpers when values need to escape; use a
-  helper when intervening loop jumps prevent nesting.
+  helper when a loop jump would leave a block with a `|capture|` header.
+  Stage1 permits jumps out of ordinary block initializers; preserve that path
+  without publishing an uninitialized result.
 - Prioritize the native launcher's argument ownership: finish growing
   `owned_arguments` before collecting its element pointers into `argv`, then
   retain both owners through the process call. Inspect all five process paths
@@ -125,6 +126,32 @@ these additional checks within implementation slices:
   about untouched outer scalars. The current input diagnostic isolates this
   boundary; qualify the prover repair against shadowing, rebinding, local escape
   and effectful calls before accepting it. Keep the production region in place.
+
+### New guide features: targeted adoption after product qualification
+
+- Prefer comprehensions for touched array builders that only push one result per
+  selected element and read the collection after completion. Start with asset
+  inventory and package metadata builders encountered in queue items 3–5.
+  Preserve iteration/filter order, effects, output ordering and allocation lifetime.
+  Unfiltered range/darray comprehensions can reserve the result once; measure
+  actual memory or time before claiming an engine improvement. Retain the real
+  GLB chunk-loading growth regression when changing allocation strategy.
+- Nested comprehension clauses are Stage1 only and nest left to right; later
+  binders may read earlier ones. Tuple elements destructure by position, but
+  explicit tuple types need named fields. Dict/set forms need the matching
+  Stage1 runtime. Bracket-free generators are unsupported.
+- Use labelled loops and labelled break values for touched nested searches when
+  they remove an escape flag while preserving the existing search contract.
+  Qualify proof source mapping and replay for the exact new syntax before
+  accepting a rewrite in implementation-linked engine proofs.
+- Triage the new `push loop` and `value-thread` lint findings alongside existing
+  accumulator findings. Gentle mode offers rewrites; strict mode also explains
+  borrowed-owner, arena, global and effect-only candidates. Apply supported
+  rewrites in files already needed by the active queue. Strict error enforcement
+  requires reviewing unresolved candidates, even when gentle mode is clean.
+- These additions describe current source support. The frozen `52d60fcf`
+  qualification does not establish support for later guide changes; record and
+  qualify the compiler/runtime/prover pair before adopting those features.
 
 ### Allocation lifetime: current consumer priority
 

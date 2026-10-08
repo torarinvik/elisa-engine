@@ -315,3 +315,18 @@ source. Freshness checks remain enabled. Native qualification retries against
 this fixed source root (`compiler-52d60fcf-pinned-full-native.log`). The isolated
 snapshot-transfer prover experiment retries against the same root
 (`prover-scalar-snapshot-transfer-pinned-build.log`). Both are running.
+
+### Pinned 52d60fcf native terminal result (2026-10-08)
+
+The isolated-source run completed with status 8 after 2,124.95 seconds,
+peak RSS 952,640 KiB under the unchanged 3 GiB cap. It failed the
+Character Course relaunch stage; subsequent native stages were skipped.
+Terminal artifacts are preserved in
+`build/validation/compiler-52d60fcf-native-terminal/`; the complete log is
+`build/validation/compiler-52d60fcf-pinned-full-native.log`.
+The relaunch report records no assertion text. Its device-reopen assertion
+returns 264, which becomes process exit 8 on POSIX; this is a candidate cause,
+not a confirmed diagnosis. Preserve the real audio acceptance and investigate
+with explicit failure diagnostics before another full gate. This run does not
+establish full native qualification. The f593c886 prover matrix remains live
+and has exposed branch-join and symbolic-quantifier replay gaps.
