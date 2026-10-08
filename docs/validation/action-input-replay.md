@@ -770,6 +770,34 @@ frozen f593c886 matrix remains active and none of these isolated changes
 constitutes full compatibility qualification.
 # Focused timeout classification qualification (2026-10-08)
 
+## Indexed-copy quantified bound repair
+
+Producer follow-up `3b2647c6` transfers receiver-free indexed-copy consequences
+after registering the local's scalar/operator witnesses, using the quantifier,
+copy equation and receiver-free index bounds. The local keeps its own symbol
+when a consequence is established. The original copied-element case now
+proves/replays 6/6; all six focused wrong-range, wrong-receiver, pre-copy write,
+rebound-copy and stale-cell-equality cases remain refused with zero gaps.
+Clean paired generation `ebab2184e65b4b6b99f2dd3cb556fec4` builds in 78.65s at
+2,116,160 KiB RSS; both manifest/source identities and actual binary hashes
+were checked. Its uncached engine sweep retains 73 reports / 4,246 obligations,
+zero diagnostics or gaps, independent replay and no trusted assumptions.
+Reports: `build/validation/index-copy-bound-engine-reports/`. The accepted
+symbolic corpus now has two replay gaps; rejected symbolic and branch-join
+cases retain two and one respectively. Full compatibility is still failed.
+
+Replay follow-up `eb69c836` independently decodes the source range, including
+its binder type and empty capture list. It authenticates only the bound from
+the unique immutable declaration at the exact copy line, a matching primitive
+array element/bound type and a source-exact lower-endpoint range with its strict
+upper bound. It rejects primitive aliases, shadowed binders, effectful prefixes,
+later copy/scalar writes, trace metadata changes and equality to changed cells.
+The compiled gate accepts the authentic bound/range and refuses twelve forged
+trace/source/range controls in 20.85s at 1,250,656 KiB RSS under 3 GiB
+(`build/validation/index-copy-bound-final-source-controls.log`). Its final
+paired product build is pending, so the preceding engine result does not yet
+qualify that exact follow-up product.
+
 ## Unused entry-state ghost repair
 
 Producer repair `73e2c25a` seeds entry-count ghosts only when the mentioning
