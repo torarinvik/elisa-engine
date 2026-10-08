@@ -563,6 +563,30 @@ class PackageMacosAppTests(unittest.TestCase):
         with self.assertRaises(packager.PackageError):
             self.package(self.write_manifest({"package": {"resources": ["assets/link"]}}))
 
+    def test_fallback_assets_refuse_symlinks_and_preserve_previous_bundle(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        marker = app / "previous-version"
+        marker.write_bytes(b"previous")
+        outside = Path(self.tempdir.name) / "outside"
+        touch(outside / "payload", b"external")
+        for target in (outside, outside / "payload"):
+            with self.subTest(target=target):
+                link = self.project / "assets/linked"
+                link.symlink_to(target)
+                with self.assertRaisesRegex(packager.PackageError,
+                        "package directory contains a symbolic link"):
+                    self.package(manifest)
+                self.assertEqual(marker.read_bytes(), b"previous")
+                self.assertFalse((app / "Contents/Resources/assets/linked").exists())
+                link.unlink()
+
+    def test_ignored_symlink_litter_is_not_followed(self) -> None:
+        shutil.rmtree(self.project / "assets/.git")
+        (self.project / "assets/.git").symlink_to(Path(self.tempdir.name) / "missing")
+        app = self.package(self.write_manifest({}))
+        self.assertFalse((app / "Contents/Resources/assets/.git").exists())
+
     def test_resource_parent_symlink_is_refused_and_preserves_bundle(self) -> None:
         app = self.package(self.write_manifest({}))
         marker = app / "previous-version"

@@ -67,3 +67,18 @@ The full package suite passes 39 tests in 2.660 seconds, retained in
 and individual-file declarations, byte equality for both declared and additionally
 cooked files, unchanged packaged executable and exclusion of undeclared assets.
 The native optimized application/package gate remains open.
+
+## Fallback directory staging
+
+Fallback `assets` staging also followed directory/file symlinks and silently
+included external bytes. The shared directory-copy helper now rejects a symlinked
+source and non-ignored symlink entries before traversal. It applies to fallback
+assets, automatic cooked directories and default shader copying. Ignored repository
+and editor litter remains excluded without following links. Concurrent replacement
+of paths is still outside this pre-copy check's guarantees.
+
+The full package suite passes 41 tests in 2.928 seconds; output is
+`build/validation/package-directory-symlinks.log`. Added controls reject external
+directory and file targets, preserve the previously published bundle marker and
+exclude symlinked `.git` litter without accessing its target. Actual native package
+acceptance remains open.

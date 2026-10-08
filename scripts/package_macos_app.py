@@ -105,7 +105,16 @@ def copy_directory(source: Path, destination: Path, ignore=ignore_litter,
     *, merge: bool = False) -> None:
     if not source.is_dir():
         raise PackageError(f"required project directory is missing: {source}")
-    shutil.copytree(source, destination, symlinks=False, ignore=ignore, dirs_exist_ok=merge)
+    if source.is_symlink():
+        raise PackageError(f"package directory must not be a symbolic link: {source}")
+    def checked_ignore(directory: str, names: list[str]) -> set[str]:
+        ignored = set(ignore(directory, names))
+        for name in names:
+            entry = Path(directory) / name
+            if name not in ignored and entry.is_symlink():
+                raise PackageError(f"package directory contains a symbolic link: {entry}")
+        return ignored
+    shutil.copytree(source, destination, symlinks=False, ignore=checked_ignore, dirs_exist_ok=merge)
 
 
 def copy_compiled_shaders(source: Path, destination: Path) -> None:
