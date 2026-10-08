@@ -153,3 +153,21 @@ The two-worker matrix terminated at its aggregate RSS watchdog: 488.03s,
 retained in `proof-0baaa951-partial-matrix-summary.json`, explicitly incomplete.
 A serial full matrix is running under the same cap; this reduces simultaneous
 report workloads while retaining every original check. Neither matrix is a pass.
+
+## NaN diagnostic repair in progress
+
+The compiler now prepares a narrow shared IEEE predicate policy: only direct
+f32/f64 parameters in simple guard bodies without declarations, rebinding,
+loops or complex scopes qualify. It recognizes same-parameter equality and
+inequality as intentional NaN predicates, including their negation. Unknown
+contexts retain the original diagnostics; ordinary float equality, integer
+self-comparison and unrelated negation are not exempt. Strict float `<`/`>`
+self-comparisons remain constant and retain their warning.
+
+The real semantic-API regression passes at O0 (`nan-guard-policy-expanded-run.log`),
+including f32/f64 guards, ordinary diagnostic controls, a scoped integer binding,
+and runtime NaN/finite/infinity/signed-zero behavior. This executes the changed
+semantic source compiled by frozen `0baaa951`; it does not yet qualify a rebuilt
+compiler/prover product. The compiler bootstrap is running before focused
+proof-report and shared-gate replay. Engine NaN guards and report policy remain
+unchanged.
