@@ -58,7 +58,7 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `cb10dd72`
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `cfd0203a`
 on 2026-10-08; its latest guide change is `44b81b1a`. Section 6 marks owned
 value-threading and builtin container value forms as working in Stage1.
 The immutable 2ad7a165 product separately passes 215 uncached runtime tests
@@ -145,7 +145,9 @@ these additional checks within implementation slices:
   25.54s at 1,303,936 KiB peak RSS under the original 3 GiB cap. Hardened
   follow-up `0baaa951` safely declines malformed helper metadata, passes the
   same 215 uncached runtime tests in 21.79s, and is integrated in compiler main.
-  Its official paired prover build is running. Installation
+  Its official paired prover build and 73-report engine sweep pass. The newer
+  `cfd0203a` diagnostic repair also passes 215 runtime tests and all 73 engine
+  reports with zero diagnostics; its shared gate is running. Installation
   and full prover/shared/native compatibility remain open
   ([evidence](../validation/counted-fill-memory-growth.md)).
   Preserve the real asset acceptance and existing watchdog limits. This memory
@@ -188,6 +190,33 @@ these additional checks within implementation slices:
   refusal coverage in the owning compiler. Promote the pattern only after the
   selected engine/prover path accepts it. A parser accepting the syntax alone
   is insufficient evidence for a public API migration.
+
+### Next touched-code review
+
+Apply these checks during the next defect fix or consumer-requested change:
+
+1. Establish whether the update owns its receiver. An owned local or owned
+   field can use the value form; a field reached through `State&` retains the
+   reference form. Keep views and their backing buffers alive together.
+2. Audit every return and caller before changing a helper signature. Every
+   return must hand the owner back; expression-position and function-value
+   calls retain by-value semantics. For tuple builtin updates, the first target
+   must be the original container. Use ordinary scalar input/result functions
+   for scalar updates.
+3. Give temporary chains a block initializer and loop-produced values an
+   explicit yield. Preserve initial values on empty loops and every early-break
+   result. Use a helper when a loop jump prevents safe nesting.
+4. Use a named region only when all allocations made inside may end there.
+   Inspect escaped arrays, views, cached mesh data and foreign pointers before
+   introducing it. Container syntax alone does not repair an allocation lifetime.
+5. Read strict lint findings on the touched code and follow valid rewrites;
+   enable strict errors only for a clean directory. Qualify the slice through
+   its existing acceptance path on the selected Stage1 product. Stage0 cannot
+   compile writable owned-in/owned-out parameters.
+
+The guide remains at `44b81b1a` on compiler `cfd0203a`; no additional feature
+migration is prescribed by that newer checkout. Keep compiler qualification
+and measured engine performance evidence attached to their exact products.
 
 ## Current evidence
 

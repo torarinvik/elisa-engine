@@ -181,3 +181,25 @@ A paired prover build runs in a separate checkout of unchanged prover `3e1a6c50`
 so the live serial `0baaa951` matrix keeps its prior frontend snapshot and products.
 Fresh uncached runtime qualification is also running; focused action-input report
 validation and the shared gate remain open for this replacement product.
+
+### Replacement compiler engine sweep
+
+The official Stage1 paired build completed successfully on unchanged prover
+`3e1a6c50`, generation `c2939edb604d45778f8d7f7352bf174c`. Both manifests
+authenticate the clean `cfd0203a` compiler product above and the matching runtime;
+both immutable binary hashes were checked against their manifests. The uncached
+engine sweep passes all 73 reports: 4,246 obligations proved and replayed, zero
+unproven/failed obligations, replay gaps, semantic errors or semantic diagnostics.
+The action-input context and deadzone reports now satisfy the zero-diagnostic
+policy with their production NaN guards unchanged. Source-inventory limitations
+remain separate from these obligation results. Retained evidence:
+`prover-cfd0203a-engine-sweep.log` and
+`prover-cfd0203a-engine-inventory.json`, plus copied reports.
+
+The `cfd0203a` uncached runtime sweep also completed: 215 tests passed in 56.76s
+at 1,217,888 KiB peak RSS under the original 3 GiB cap. The replacement shared
+gate is running. The prior `0baaa951` serial full compatibility matrix stopped
+at its unchanged 8 GiB watchdog limit (8,423,712 KiB peak, 629.10s, status 125);
+that is an incomplete matrix with retained failures, not compatibility acceptance.
+Its serial log is `proof-0baaa951-serial-full-matrix.log`. Full prover compatibility
+and replacement native qualification remain open.
