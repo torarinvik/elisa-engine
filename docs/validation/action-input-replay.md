@@ -770,6 +770,27 @@ frozen f593c886 matrix remains active and none of these isolated changes
 constitutes full compatibility qualification.
 # Focused timeout classification qualification (2026-10-08)
 
+## Unused entry-state ghost repair
+
+Producer repair `73e2c25a` seeds entry-count ghosts only when the mentioning
+postcondition also uses `old`. Replay's readonly, uniqueness and mutation checks
+are unchanged. The pre-repair compiled trace audit exits 101, identifying a
+refused local-binding trace. Clean paired generation
+`dd326a16639a4f86bd650042a9e0a2dc` builds in 62.04s at 2,247,328 KiB RSS;
+both manifests and actual binary hashes match the clean source identity.
+
+The isolated narrowed-write case now proves/replays 4/4. Original collection
+push and pop cases pass 20/20 and 16/16; rejected push, stale-count and pop
+cases remain failed with zero replay gaps. The corpus's accepted symbolic case
+returns to three gaps; the two rejected-symbolic and one branch-join gaps remain
+open. The uncached engine sweep passes 73 reports / 4,246 obligations with zero
+diagnostics, failures or gaps, independent replay and no trusted assumptions.
+Reports are preserved in `build/validation/unused-entry-ghost-engine-reports/`;
+build and sweep logs share the `unused-entry-ghost` / `prover-unused-entry-ghost`
+prefixes. The owning symbolic suite now includes the isolated regression;
+its broader run and the compiled seven-case entry-count controls are still
+running and are not claimed as passing here.
+
 ## Terminal compatibility result and corpus follow-up
 
 The frozen `f593c886` full matrix completed with status 1 and 54 failed steps:
