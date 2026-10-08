@@ -324,3 +324,12 @@ checks. The bounded compile still exits 1 on other launcher errors in
 6.89 seconds, sampled peak RSS 725,792 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-format-consumers-build.log` and JSON.
 Interpreter formatting remains runtime-unverified on the selected compiler.
+
+Seven file metadata/access/touch helpers now bind cstr once after validated
+NUL-terminated path construction and the null check, with a local pointer
+conversion grant. Their eight foreign-call conversion diagnostics clear;
+buffers retain their existing enclosing lifetime, and file validation/failure
+paths remain. The bounded compile still exits 1 elsewhere in 5.19 seconds,
+sampled peak RSS 726,960 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-path-cstr-build.log` and JSON.
+File operation behavior remains runtime-unverified on the selected compiler.
