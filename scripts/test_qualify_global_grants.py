@@ -35,6 +35,18 @@ class GlobalGrantQualificationTests(unittest.TestCase):
 
         self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
 
+    def test_transitive_refusal_wording_preserves_bypass_requirement(self):
+        permissions = {name: permission for name, _, permission in gate.CASES}
+
+        def respond(command, **kwargs):
+            permission = permissions[Path(command[-1]).stem]
+            denied = permission and "-permissive" not in command
+            return subprocess.CompletedProcess(command, 1 if denied else 0, "",
+                f'function "caller" accesses a global mutable binding without {permission}'
+                if denied else "")
+
+        self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
+
     def test_wrong_product_hash_stops_before_compiler(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

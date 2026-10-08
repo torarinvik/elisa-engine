@@ -301,6 +301,17 @@ explicit handoff and terminal result in the validation record, since slot owners
 changes during execution. Defer census, broad native retries and package rebuilds
 until their prerequisite can produce a meaningful acceptance result.
 
+### Latest compiler admission result
+
+Integrated `ce85bad4` passes full Stage0 semantic, official seed and provenance
+checks, 52 direct grant controls and eight protocol object controls. The actual
+engine CLI gate passes 17/22: default refusals pass, but five `-permissive` bypass
+cases still fail. The user-requested bypass remains required for compiler
+promotion. The gate now recognizes the compiler's precise transitive refusal
+wording; seven gate controls pass. Strict current-prover acceptance and Studio
+failure diagnosis may proceed with the authenticated tuple while that independent
+compiler feature is repaired; permissive mode does not qualify Studio acceptance.
+
 ### Next three outcomes
 
 1. **Qualify one integrated compiler/runtime tuple.** Finish the runtime grant
