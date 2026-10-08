@@ -333,3 +333,13 @@ paths remain. The bounded compile still exits 1 elsewhere in 5.19 seconds,
 sampled peak RSS 726,960 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-path-cstr-build.log` and JSON.
 File operation behavior remains runtime-unverified on the selected compiler.
+
+Record-store allocation wrappers retain mutable state pointers, and variant
+row appends retain the mutable row-table reference. Address recovery from
+stored handles/chunks has explicit local pointer conversion grants; existing
+slot and side-word checks remain. The first attempt left two conversion sites;
+the final bounded compile reports no store-fragment diagnostics, clearing all
+eight original errors. It exits 1 elsewhere in 4.89 seconds, sampled peak RSS
+726,992 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-store-refs-final-build.log` and JSON.
+Record layout, address validity and store behavior remain runtime-unverified.
