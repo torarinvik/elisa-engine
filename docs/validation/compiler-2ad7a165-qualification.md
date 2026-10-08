@@ -343,3 +343,21 @@ does not implement named argument placement; that path remains open.
 The bounded build exits 2 in 4.62 seconds, peak RSS 828,208 KiB, with no
 executable. Artifact: `build/validation/elisascript-error-call-defaults-build.log`
 and JSON. Full qualification remains open.
+
+### Conflicting kill ABI and named-default reproducer
+
+ElisaScript 4513f297 aligns the vendored crash reporter's getpid/kill
+declarations with upstream i32 C scalars and converts its signal argument at
+the call. The kill LLVM mismatch is cleared. The bounded launcher build now
+reports only the selected_names argument in RuntimeResourcePolicy's slot;
+it exits 2 in 3.76 seconds, peak RSS 826,384 KiB, with no executable.
+Artifact: `build/validation/elisascript-1e64bb73-kill-abi-build.log` and JSON.
+
+Compiler 445bbe3a adds test/repro/error_call_named_defaults.elisa. A boolean
+named argument skips an i64 default, reproducing the placement problem in
+one function: LLVM receives i1 true in the i64 slot and a default false in
+the intended bool slot. Verification refuses emission. Artifact:
+`build/validation/error-call-named-defaults-baseline.log`.
+The repair must resolve supplied names to declared parameter positions before
+emission and fill defaults at unsupplied positions, preserving rejection of
+missing required arguments. Appending only trailing defaults is insufficient.
