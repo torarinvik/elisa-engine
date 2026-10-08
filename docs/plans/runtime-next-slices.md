@@ -16,9 +16,10 @@ is the single scheduling authority. Execute these bounded slices in that order:
    all 73 engine reports / 4,277 obligations. Hand off the clean tuple and exercise
    Studio redraw; the historical crash cause remains unestablished. See
    [mesh evidence](../validation/mesh-overlay-shapes.md).
-3. Qualify isolated prover `5077910c` on a clean paired build. Its focused exact
+3. Complete compatibility on the qualified clean prover `5c40d273` pair. Exact
    unsigned-subtraction controls pass, the original return branch replays 23/23,
-   and the strict negative is disproved. Report retention and provenance guards
+   and the strict negative is disproved; original strict-order and signed-boundary
+   CLI regressions pass. Report retention and provenance guards
    are implemented at `4d9f3a8d`; the diagnostic census finishes 1,174 inputs in
    1,301.46s at 8,184,352 KiB, with nine timeouts. Complete original compatibility
    checks against immutable snapshots under unchanged budgets before promotion.

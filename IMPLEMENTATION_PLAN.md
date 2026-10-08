@@ -70,13 +70,11 @@ another. Commit documentation and tests together with source changes.
 - **Qualified baseline:** compiler `52d60fcf` and matching runtime pass 215
   uncached runtime tests and the shared gate. Production prover `f593c886`
   retains all 73 engine reports / 4,246 obligations; its full matrix failed.
-- **Latest isolated proof repair:** `452ab663`, clean paired generation
-  `cf8be5a1dc95437b8365038b580ad967`, retains all 73 uncached engine reports /
-  4,246 obligations with independent replay and no diagnostics, gaps or trusted
-  assumptions. Literal-array bounds replay 18/18; the original return-branch
-  fixture now replays 23/23, with its negative controls still refused. Its original
-  regression script still fails on a preexisting strict-negative `timeout` status;
-  full compatibility remains open. No production promotion is justified.
+- **Latest isolated proof repair:** clean prover `5c40d273`, paired generation
+  `65851d44058c49fca2e0d06974214022`, retains all 73 uncached engine reports /
+  4,277 obligations with independent replay and zero diagnostics, gaps or trusted
+  assumptions. Original strict-order, signed-constant and return-branch CLI
+  regressions pass. Full compatibility remains open; production is unchanged.
 - **Compatibility throughput:** report-retention and input-provenance repairs are
   committed in isolated prover `4d9f3a8d`. The two-worker diagnostic census now
   finishes all 1,174 inputs in 1,301.46 seconds at 8,184,352 KiB peak RSS, below
@@ -88,7 +86,8 @@ another. Commit documentation and tests together with source changes.
   non-wrapping unsigned subtraction at widths 8/16/32 for diagnostic
   counterexamples. Focused controls pass, including overloaded-operator refusal;
   the original return-branch fixture replays 23/23 and its strict negative is
-  disproved. A clean paired build and original compatibility checks remain open.
+  disproved. Clean paired build and original return-branch CLI acceptance pass; full
+  compatibility remains open.
 - **Consumer mesh bounds:** skin/draw source guards are implemented and pass
   O0/O2 malformed-input controls, focused AddressSanitizer and the existing GLB
   loader regression. All 73 engine reports now independently replay 4,277
@@ -97,7 +96,9 @@ another. Commit documentation and tests together with source changes.
 - **Native release blocker:** capture and Character Course relaunch have focused
   repairs, but effect lifecycle memory remains intermittently above the original
   8 MiB allowance after the full renderer sequence. Heap/GPU and VM-domain
-  diagnostics are present; no root cause or leak repair is established. Preserve
+  diagnostics are present; opt-in region-tag observation now has focused mapping
+  and overflow controls ([region evidence](docs/validation/effect-memory-vm-regions.md)).
+  No root cause or leak repair is established. Preserve
   the failed full-gate evidence ([native evidence](docs/validation/counted-fill-memory-growth.md)).
 - **Compiler policy:** reads and writes of `global mutable` require
   `Global.Read` / `Global.Write` by default; `-permissive` bypasses those checks.
@@ -116,7 +117,7 @@ another. Commit documentation and tests together with source changes.
 |---|---|---|
 | 1 | **Finish compiler grant qualification — Q01/Q03.** This user-requested default policy affects engine and mocap callers. Qualify the owning compiler's source/runtime pair; repair missing grants in the engine's real call chains. Use newly published compiler performance changes only after semantic qualification. | Actual default CLI reads/writes without grants fail; exact grants and transitive caller grants pass; `-permissive` bypasses these checks. Preserve method, callback, default-argument and local-shadowing controls. Record source/runtime/product hashes and complete runtime results. Keep compiler defects in the compiler repository. |
 | 2 | **Integrate consumer mesh bounds and failure atomicity.** Hand off the qualified skin/draw source guards requested by mocap-cleaner. This protects a real public API from malformed mutable arrays and has a bounded acceptance workload. | Local source/proof/runtime acceptance passes; consume the clean tuple in the actual Studio redraw path. Retain all original engine proof obligations. O0/O2 controls reject truncated/extra inverse binds, influence shape mismatches, positive-weight joints out of range, incomplete triangles and invalid indices before changing output. Valid geometry remains identical. Add sanitizer evidence where practical, then hand off a clean source tuple to the consumer. |
-| 3 | **Qualify the repaired prover — Q01.** Build a clean `5077910c` pair, authenticate hashes, and run original strict-negative and arithmetic refusal controls. Then run snapshot-backed census/matrix checks with retention and provenance guards, explicit workers and verified Python 3.14. Classify remaining failures and fix the first shared source/replay defect. | Original compatibility checks pass under unchanged budgets, including all inputs and refusal cases. Retain the original 73-report / 4,246-obligation inventory plus new implementation obligations. Nine diagnostic census timeouts remain open until classified. Rerun shared/native qualification before production promotion; focused success is insufficient. |
+| 3 | **Qualify the repaired prover — Q01.** The clean `5c40d273` pair and original strict-order/return-branch controls pass. Complete snapshot-backed census/matrix checks with retention and provenance guards, explicit workers and verified Python 3.14. Classify remaining failures and fix the first shared source/replay defect. | Original compatibility checks pass under unchanged budgets, including all inputs and refusal cases. Retain the original 73-report / 4,246-obligation inventory plus new implementation obligations. Nine diagnostic census timeouts remain open until classified. Rerun shared/native qualification before production promotion; focused success is insufficient. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and existing heap/GPU/VM diagnostics to identify retained resources or the measured memory domain responsible for the jump. This is the remaining observed native release failure. | A source repair has a reproducer or a decisive resource-accounting regression, then passes the original full renderer lifecycle and native gate. Keep warmup, cycles and the 8 MiB allowance unchanged. A passing retry is supporting evidence, not a diagnosis. |
 | 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with the already refreshed and generator-checked cooked content; package the actual public-API client. | Generated outputs match; resource hashes and notices are complete; relocated offline startup, restart and teardown pass with source and Homebrew denied. Keep signing, legal and separate-machine acceptance explicitly open. |
 | 6 | **Qualify hosted clean-checkout CI — Q03.** Once the compatible compiler/core/prover/ElisaScript tuple is established, update full-SHA pins and exercise fail-closed provisioning. | An actual hosted headless run retains provisioning, build, proof and package artifacts. A workflow file or local preflight does not satisfy this gate. GPU qualification remains separate. |
@@ -148,8 +149,8 @@ location outcomes. See the [coordinated M track](docs/plans/mocap-engine-track.m
 2. **Engine owner → mocap consumer:** hand off qualified mesh shape/index rejection
    and registered controls, then exercise the actual Studio redraw path. Local
    source acceptance passes; consumer integration remains open.
-3. **Prover owner:** qualify the clean subtraction-repair pair and original
-   arithmetic refusal controls. Retention is implemented; use immutable proof and
+3. **Prover owner:** the clean subtraction/literal-width pair and original
+   arithmetic refusals pass. Retention is implemented; use immutable proof and
    compiler snapshots for the next full census, with original inputs and 8 GiB
    budget. Diagnose the nine remaining timeouts and retained matrix failures.
    Preserve genuine replay-gap controls when replacing obsolete expectations.
@@ -160,10 +161,14 @@ location outcomes. See the [coordinated M track](docs/plans/mocap-engine-track.m
    clean source/header tuple, then exercise actual Studio reveal acceptance.
    Read-only observation must not become restore or deletion authority.
 
+Hold heavy census/native runs while the coordinated Studio compiler repair build
+is live. Its concrete local-reference/global-slot shadowing defect blocks actual
+consumer acceptance. The interrupted snapshot census is incomplete evidence.
+
 Choose the next ready slice by release impact and decisive acceptance. Compiler
 qualification and its consumer migration lead; when waiting on another owner,
 advance one bounded item above. Finish and record it before opening another. The next ready local source slice is
-the clean paired prover build and compatibility qualification; compiler grant
+compatibility qualification; compiler grant
 qualification remains first when the
 owning compiler provides a completed product.
 

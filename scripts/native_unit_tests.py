@@ -61,7 +61,23 @@ def main() -> int:
     probe_status = run_application_test_probe_fallback_test(compiler)
     if probe_status != 0:
         return probe_status
+    vm_status = run_process_vm_regions_test(compiler)
+    if vm_status != 0:
+        return vm_status
     return run_ozz_service_test(compiler)
+
+
+def run_process_vm_regions_test(compiler: list[str]) -> int:
+    """Observe a real tagged mapping; reject overflow and exhausted walk budgets."""
+    if sys.platform != "darwin":
+        return 0
+    with tempfile.TemporaryDirectory(prefix="elisa-vm-regions-") as temporary:
+        executable = Path(temporary) / "vm-regions"
+        built = subprocess.run([*compiler, "-std=c++17", "-O2", "-Wall", "-Wextra",
+            "-Werror", str(ROOT / "test/process_vm_regions.cpp"), "-o", str(executable)], check=False)
+        if built.returncode != 0:
+            return built.returncode
+        return subprocess.run([str(executable)], check=False, timeout=30).returncode
 
 
 def run_capture_timestamp_pair_test(compiler: list[str]) -> int:

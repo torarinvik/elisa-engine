@@ -251,6 +251,8 @@ extern "C" int32_t elisa_render_scene_v1_test_effect_component_count(int32_t kin
 // memory smoke compares it across scene restarts; -1 means unavailable.
 #if defined(__APPLE__)
 #include <mach/mach.h>
+#include "process_vm_regions.h"
+#include <cstdlib>
 #endif
 extern "C" int64_t elisa_render_scene_v1_test_footprint_kib(int32_t cycle) {
 #if defined(__APPLE__)
@@ -287,6 +289,21 @@ extern "C" int64_t elisa_render_scene_v1_test_footprint_kib(int32_t cycle) {
             static_cast<long long>(info.ledger_tag_graphics_footprint_compressed),
             static_cast<long long>(info.ledger_tag_media_footprint),
             static_cast<long long>(info.ledger_purgeable_nonvolatile));
+    }
+    if (const char* enabled = std::getenv("ELISA_EFFECT_MEMORY_VM_REGIONS"); enabled != nullptr && enabled[0] == '1' && enabled[1] == '\0') {
+        // Optional map observation only; no queue drain or frame progress.
+        const auto regions = elisa::diagnostics::process_vm_regions();
+        std::fprintf(stderr, "effect memory VM regions cycle %d: complete %d status %d regions %u\n",
+            cycle, regions.complete ? 1 : 0, regions.status, regions.visited);
+        for (unsigned tag = 0; tag < elisa::diagnostics::VM_REGION_TAG_BUCKETS; ++tag) {
+            const auto& totals = regions.tags[tag];
+            if (totals.regions == 0) continue;
+            std::fprintf(stderr, "effect memory VM tag cycle %d: tag %u virtual %llu resident %llu dirtied %llu regions %llu\n",
+                cycle, tag, static_cast<unsigned long long>(totals.virtual_bytes),
+                static_cast<unsigned long long>(totals.resident_bytes),
+                static_cast<unsigned long long>(totals.dirtied_bytes),
+                static_cast<unsigned long long>(totals.regions));
+        }
     }
     return kib;
 #else
