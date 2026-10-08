@@ -128,7 +128,7 @@ another. Commit documentation and tests together with source changes.
 ### Ordinary-project preparation
 
 Executable output now refuses entry-source and project-manifest collisions,
-including filesystem aliases, before invoking tools. All 32 build-runner controls
+including filesystem aliases, before invoking tools. All 36 build-runner controls
 pass; author files remain unchanged ([evidence](docs/validation/project-output-collisions.md)).
 Console builds now preserve the previous executable after compiler failure or
 success without output; successful builds publish by replacement. A fresh real
@@ -137,6 +137,10 @@ O2 compiler build and failed rebuild retain identical runnable bytes
 Cook declarations also reject existing non-file outputs before any cooker or
 publication, preserving companion outputs and cache state
 ([evidence](docs/validation/cook-output-file-types.md)).
+A failed later cook-output replacement now restores earlier outputs and preserves
+cache records; failed rollback retains recovery backups. The actual optimized
+image-cook/cache rehearsal passes on this source
+([rollback evidence](docs/validation/cook-publication-rollback.md)).
 The full fresh public-API author/cook/package rehearsal remains open.
 
 ### Bounded consumer work while release gates run

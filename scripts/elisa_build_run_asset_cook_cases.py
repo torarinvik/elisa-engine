@@ -6,6 +6,7 @@ Collected by test_elisa_build_run.py, which imports AssetCookTests.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -238,6 +239,37 @@ class AssetCookTests(unittest.TestCase):
                 self.assertEqual((directory / "retained").read_bytes(), b"directory contents")
                 self.assertFalse((project / "build/.elisa-asset-cook-cache.json").exists())
                 self.assertEqual(set(mesh.parent.iterdir()), {mesh, texture})
+
+    def test_second_publication_failure_restores_outputs_and_cache(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Elisa cook rollback ") as temporary:
+            project = Path(temporary)
+            (project / "model.glb").write_bytes(b"source")
+            config = {"asset_cooks": [{"importer": "glb", "source": "model.glb",
+                "asset_path": "model.glb", "output": "build/model.pkg",
+                "texture_output": "build/model.png"}]}
+            with mocked_asset_cooker(runner), \
+                    mock.patch.object(runner.asset_cooks, "_cook_fingerprint", return_value="control"):
+                self.assertEqual(runner.cook_declared_assets(project, config), 0)
+                mesh, texture = project / "build/model.pkg", project / "build/model.png"
+                mesh.write_bytes(b"old mesh")
+                texture.write_bytes(b"old texture")
+                cache = project / "build/.elisa-asset-cook-cache.json"
+                old_cache = cache.read_bytes()
+                real_replace = os.replace
+
+                def replace(source, destination):
+                    if Path(destination).resolve() == texture.resolve() and ".elisa-cook-" in Path(source).name:
+                        raise PermissionError("injected second publication failure")
+                    return real_replace(source, destination)
+
+                with mock.patch("cook_publication.os.replace", side_effect=replace):
+                    with self.assertRaisesRegex(runner.BuildConfigurationError, "previous outputs restored"):
+                        runner.cook_declared_assets(project, config, force=True)
+                self.assertEqual(mesh.read_bytes(), b"old mesh")
+                self.assertEqual(texture.read_bytes(), b"old texture")
+                self.assertEqual(cache.read_bytes(), old_cache)
+                self.assertEqual(set(mesh.parent.iterdir()), {mesh, texture, cache})
 
     def test_failed_asset_cook_keeps_last_good_outputs(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa failed cook ") as temporary_directory:

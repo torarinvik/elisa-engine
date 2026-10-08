@@ -22,6 +22,8 @@ import uuid
 from typing import Callable
 from urllib.parse import unquote, urlsplit
 
+from cook_publication import CookPublicationError, publish_cooked_outputs
+
 from cook_cache import (atomic_write_json, compiler_identity, content_fingerprint,
     local_source_closure, sha256_file)
 
@@ -581,10 +583,11 @@ def cook_declared_assets(project: Path, config: dict[str, object], run: Callable
                     path.unlink(missing_ok=True)
                 raise BuildConfigurationError(f"asset cooker did not produce a valid output: {final}")
         try:
-            for final, temporary in staged.items():
-                os.replace(temporary, final)
-                output_records.append({"path": final.relative_to(project).as_posix(),
-                    "sha256": sha256_file(final)})
+            output_records = [{"path": final.relative_to(project).as_posix(),
+                "sha256": sha256_file(temporary)} for final, temporary in staged.items()]
+            publish_cooked_outputs(staged)
+        except CookPublicationError as error:
+            raise BuildConfigurationError(str(error)) from error
         finally:
             for temporary in staged.values():
                 temporary.unlink(missing_ok=True)

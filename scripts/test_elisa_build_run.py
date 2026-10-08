@@ -18,6 +18,7 @@ from elisa_build_run_test_support import (  # noqa: F401 - shared fixtures
     mocked_asset_cooker, touch, write_fake_tools,
 )
 from elisa_build_run_asset_cook_cases import AssetCookTests  # noqa: F401 - collected here
+from test_cook_publication import CookPublicationTests  # noqa: F401 - collected here
 
 
 class BuildRunCliTests(unittest.TestCase):
