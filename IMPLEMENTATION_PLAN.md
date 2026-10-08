@@ -68,7 +68,15 @@ passes all 73 engine reports. Isolated replay repair `14ae4a02` also passes
 73 uncached reports / 4,246 obligations, the adversarial source-binding harness,
 and scalar-copy/next-write controls; its immutable pair is
 `f43713c9ff9e4f559d46c4b1ed68331b`. It is not yet promoted into the production
-prover worktree while the older full regression matrix remains active.
+prover worktree. The older `f593c886` full matrix is now terminal with 54
+failed steps. New isolated producer repair `73e2c25a`, paired generation
+`dd326a16639a4f86bd650042a9e0a2dc`, also passes 73 uncached reports / 4,246
+obligations and restores the narrowed-write case to 4/4 replayed. Its seven
+compiled entry-count source controls pass. The broader symbolic suite remains
+failed: prioritize copy-time quantified bounds for immutable array-element
+snapshots, then the bubble/branch-join and partition failures. Preserve all
+existing source, mutation and forged-symbol refusals; a passing engine sweep
+does not establish full prover compatibility.
 The pinned full native run failed at Character Course relaunch; its focused
 smoke/relaunch retry passes. Full matrix/shared/native compatibility on the
 repaired pair remains open. See [replay repair evidence](docs/validation/action-input-replay.md)

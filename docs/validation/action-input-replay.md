@@ -808,6 +808,18 @@ source element is overwritten. Source/report are preserved as
 `build/validation/alias-instance-carried-report.json`; this remains an open
 source-authentication repair, not evidence of accepted snapshot support.
 
+The compiled return-context trace audit builds successfully in 50.33s at
+2,981,328 KiB RSS under the original 3 GiB cap. Its bounded run exits 120,
+meaning first refused trace index 20: `local-binding`, line 8, the synthetic
+`a == xs[i]` equation introduced at the write rather than the line-7 copy.
+Logs: `build/validation/alias-instance-carried-return-trace-audit-build.log`
+and `build/validation/alias-instance-carried-return-trace-audit-run.log`.
+The repair must reconstruct the receiver-free `p <= a` consequence at the
+immutable declaration, authenticate the original quantifier and index bounds,
+and expire equality to the overwritten cell. Retain wrong-range, wrong-receiver,
+rebound-copy, shadowing, effectful-prefix and forged-trace refusals. Do not
+authorize the synthetic later equality merely by moving its source stamp.
+
 ## Terminal compatibility result and corpus follow-up
 
 The frozen `f593c886` full matrix completed with status 1 and 54 failed steps:
