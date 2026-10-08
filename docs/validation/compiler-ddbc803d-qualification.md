@@ -452,3 +452,21 @@ including controls for zero, one and five retry inputs with a two-worker budget.
 This is a Python-only change; the live old-harness run is not restarted and no
 production prover source or binary changes. Its retry timings remain evidence
 from the prior concurrency policy.
+
+### Compiler error-family marker fix qualified narrowly
+
+Compiler 2ad7a16563d0429f8f2963a78e88c7fbc5d9474c fixes the reproduced
+__has_contract propagation rejection. The indexed and scanning family lookups
+now recognize family rows paired with matching __error_return metadata.
+The new Stage1 smoke passes valid contracted propagation, rejects incompatible
+families with the real family name, accepts same-named module functions, and
+rejects an incompatible cross-module destination. Clean Stage0 6f0988a2 was
+built in an isolated checkout to seed this product; Stage0 does not parse the
+fixture's contract syntax, so this is not contract-syntax parity evidence.
+Product SHA-256: b275e9e0980c08f411935d169eed97153a4c143eef6fcd232a37aa029bbc2d60.
+The bounded launcher build reports no cannot-propagate diagnostics, but exits 1
+on other errors in 12.83 seconds, peak sampled RSS 726,720 KiB. Artifacts:
+`build/validation/contract-error-marker/after-smoke.log` and
+`build/validation/elisascript-error-family-fixed-build.log` plus JSON.
+Full runtime, proof, shared and native qualification of 2ad7a165 remains open;
+the earlier ddbc803d evidence does not qualify the new compiler product.
