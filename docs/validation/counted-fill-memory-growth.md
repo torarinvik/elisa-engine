@@ -295,3 +295,23 @@ Full native qualification is now running (`compiler-52d60fcf-full-native.log`)
 with frozen compiler/runtime, matching prover generation, rebuilt Script launcher
 and pinned Wicked `fd790f55b3237a9d266335ec742faeacc3cc9228` / SDL3 archives,
 under the unchanged 3 GiB native watchdog. No terminal native result is claimed.
+
+### Source checkout isolation for qualification
+
+The first matching native run stopped with status 2 after 173.49s, at the
+physics-material smoke. The shared compiler checkout advanced to `b26659e2`
+during the run; its wrapper correctly rejected frozen `52d60fcf` against newer
+source. The isolated snapshot-transfer prover build also refused this source
+drift. These are provenance refusals, not runtime assertions or native acceptance.
+Retained native failure report:
+`compiler-52d60fcf-native-physics-material-source-drift.json`.
+
+A clean detached compiler checkout, `../Elisa-compiler-52d60fcf-qualification`,
+now binds the frozen product to exact `52d60fcf` source. The official provenance
+check passes; the matching runtime is copied into its build directory. The
+verified product's timestamp was advanced after checkout, with product bytes and
+hash unchanged, so the wrapper's separate mtime guard also matches the verified
+source. Freshness checks remain enabled. Native qualification retries against
+this fixed source root (`compiler-52d60fcf-pinned-full-native.log`). The isolated
+snapshot-transfer prover experiment retries against the same root
+(`prover-scalar-snapshot-transfer-pinned-build.log`). Both are running.
