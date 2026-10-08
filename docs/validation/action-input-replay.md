@@ -788,8 +788,25 @@ diagnostics, failures or gaps, independent replay and no trusted assumptions.
 Reports are preserved in `build/validation/unused-entry-ghost-engine-reports/`;
 build and sweep logs share the `unused-entry-ghost` / `prover-unused-entry-ghost`
 prefixes. The owning symbolic suite now includes the isolated regression;
-its broader run and the compiled seven-case entry-count controls are still
-running and are not claimed as passing here.
+its broader run completed with status 1 in 85.62s at 1,706,112 KiB RSS. The
+isolated regression passes, while original symbolic quantifier (three gaps),
+rejected symbolic quantifier (two), bubble sort (six), rejected bubble sort
+(18) and rejected partition (two) replay failures remain; partition retains
+four failed obligations. Exact output is
+`build/validation/unused-ghost-symbolic-suite.log`.
+
+The compiled seven-case entry-count controls pass in 55.33s at 2,108,064 KiB
+RSS under the unchanged 3 GiB limit: readonly capture accepted; duplicate,
+forged, push/pop, indexed-write and borrowed-alias definitions refused
+(`build/validation/unused-ghost-entry-count-source-controls.log`).
+
+The carried-alias gap is reproduced independently by extracting the original
+`alias_instance_carried` function: six certificates, five replayed, one gap
+at its return. Its copied scalar must retain the quantified bound after the
+source element is overwritten. Source/report are preserved as
+`build/validation/alias-instance-carried-replay.elisa` and
+`build/validation/alias-instance-carried-report.json`; this remains an open
+source-authentication repair, not evidence of accepted snapshot support.
 
 ## Terminal compatibility result and corpus follow-up
 
