@@ -20,3 +20,20 @@ a directory. Existing packaging, relocation-launcher and rollback controls pass.
 These controls use shell fixture executables; actual optimized native package and
 GPU acceptance remain open. The Elisa prover does not model this Python filesystem
 operation; no implementation-linked Elisa obligation count is claimed.
+
+## Bundle destination and post-publication cleanup
+
+A second reproduction used a regular author file at the `.app` destination.
+Packaging replaced it with a new bundle, then raised `NotADirectoryError` while
+removing its backup. The destination is now required to be a directory when it
+exists, and this check runs before assembly. The author file remains unchanged.
+After successful bundle replacement, backup cleanup uses best-effort removal;
+cleanup failure leaves a recoverable previous bundle and does not report that the
+already committed publication failed.
+
+The full package suite now passes 37 tests in 1.802 seconds; output is
+`build/validation/package-publication-controls.log`. New controls assert refusal
+before assembly and preservation of the regular author file, plus successful
+publication with a retained previous-bundle marker when backup cleanup is skipped.
+Existing replacement-failure rollback controls also pass. Native/GPU and crash
+acceptance remain open as described above.

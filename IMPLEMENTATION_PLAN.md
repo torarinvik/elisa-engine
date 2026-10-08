@@ -210,8 +210,10 @@ Provenance now joins that rollback transaction: staged bytes supply the hash and
 size, the final output supplies the identity, and manifest preparation failure
 preserves the previous publication. All 48 build/provenance controls pass.
 macOS packaging also refuses declared resources that would overwrite the generated
-executable, including case variants and descendants; all 35 package controls pass,
-with the previous bundle and author resource preserved
+executable, including case variants and descendants. Existing regular-file bundle
+destinations fail before assembly; backup cleanup cannot report failure after
+successful publication. All 37 package controls pass, with the previous bundle
+and author resource preserved
 ([evidence](docs/validation/package-executable-resource-collision.md)).
 The full fresh public-API author/cook/package rehearsal remains open.
 

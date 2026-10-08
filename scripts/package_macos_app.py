@@ -347,6 +347,8 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
         if (app == source or app in source.parents or
                 source in app.parents):
             raise PackageError(f"bundle output overlaps a required packaging input: {source}")
+    if app.exists() and not app.is_dir():
+        raise PackageError(f"bundle destination is not a directory: {app}")
     app.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".elisa-app-stage-", dir=app.parent) as folder:
         staged = _assemble_app(project, executable, Path(folder) / app.name, name,
@@ -367,7 +369,9 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
                     raise PackageError(f"app publication and rollback failed; previous bundle retained at {backup}") from error
             raise
         if previous:
-            shutil.rmtree(backup)
+            # Publication has committed. Cleanup cannot report a failed build
+            # after replacing the previous bundle; leftover backups are recoverable.
+            shutil.rmtree(backup, ignore_errors=True)
     return app
 
 

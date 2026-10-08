@@ -396,6 +396,35 @@ class PackageMacosAppTests(unittest.TestCase):
         self.assertEqual(marker.read_bytes(), b"previous")
         self.assertEqual(list(app.parent.glob(".elisa-app-backup-*")), [])
 
+    def test_regular_file_destination_is_refused_before_staging(self) -> None:
+        self.output.parent.mkdir(parents=True)
+        self.output.write_bytes(b"author file")
+        with mock.patch.object(packager, "_assemble_app") as assemble:
+            with self.assertRaisesRegex(packager.PackageError, "bundle destination is not a directory"):
+                self.package(self.write_manifest({}))
+        assemble.assert_not_called()
+        self.assertEqual(self.output.read_bytes(), b"author file")
+        self.assertEqual(list(self.output.parent.glob(".elisa-app-*")), [])
+
+    def test_backup_cleanup_failure_does_not_fail_published_bundle(self) -> None:
+        manifest = self.write_manifest({})
+        app = self.package(manifest)
+        (app / "previous-version").write_bytes(b"previous")
+        rmtree = shutil.rmtree
+        def leave_backup(path, *args, **kwargs):
+            if Path(path).name.startswith(".elisa-app-backup-"):
+                self.assertTrue(kwargs.get("ignore_errors"))
+                return None  # Filesystem cleanup failure under ignore_errors.
+            return rmtree(path, *args, **kwargs)
+        with mock.patch.object(packager.shutil, "rmtree", side_effect=leave_backup):
+            result = self.package(manifest)
+        self.assertEqual(result, app)
+        self.assertFalse((app / "previous-version").exists())
+        self.assertEqual((app / "Contents/Resources/Game.bin").read_bytes(),
+            (self.project / "build/game").read_bytes())
+        backup, = app.parent.glob(".elisa-app-backup-*")
+        self.assertEqual((backup / "previous-version").read_bytes(), b"previous")
+
     def test_bundle_cannot_be_created_inside_resource_source(self) -> None:
         with self.assertRaises(packager.PackageError):
             packager.package_app(self.project, self.project / "build/game",
