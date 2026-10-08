@@ -248,3 +248,24 @@ no executable is produced. Artifact:
 `build/validation/elisascript-composite-binder-build.log` and JSON.
 The source was modified relative to d67efe6e during this qualification;
 full compiler/engine qualification remains open.
+
+### Fieldless rethrow mapping
+
+Raising a bound fieldless error now identifies its scalar enum or composite
+descriptor family and uses remap_error_status for the destination family.
+Enum table identity is checked before resolving a name, so an ambiguous
+same-name lookup does not silently select another family's representation.
+Deferred actions and region unwinding remain on the terminating path.
+The focused composite_fieldless_rethrow_smoke passes O0/O2 execution for
+reversed composite family order and scalar-to-composite widening; an
+incompatible destination is rejected. The composite binder smoke still
+passes. Logs: `build/validation/composite-fieldless-rethrow-smoke.log` and
+`fieldless-rethrow-binder-regression.log`.
+
+Launcher rebuilding now declines two functions: write_output_transport_fd
+advances past its fieldless rethrow to a payload-error binder at line 129;
+report_test_setup_failure_machine still declines at its payload-error binder.
+The preflight rethrow emits. Build exits 2 in 3.77 seconds, peak RSS
+814,880 KiB; no executable is produced. Artifact:
+`build/validation/elisascript-fieldless-rethrow-build.log` and JSON.
+Payload binding/rethrow preservation and full qualification remain open.
