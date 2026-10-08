@@ -58,7 +58,7 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `2ad7a165`
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `84320c8a`
 on 2026-10-08; its latest guide change is `44b81b1a`. Section 6 marks owned
 value-threading and builtin container value forms as working in Stage1.
 The immutable 2ad7a165 product separately passes 215 uncached runtime tests
@@ -66,6 +66,18 @@ and 73/73 engine proofs; full prover matrix/shared/native qualification
 remains open ([evidence](../validation/compiler-2ad7a165-qualification.md)).
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
+
+- The guide itself still ends at `44b81b1a`; the newer compiler repairs do
+  not introduce another style migration. Keep the native launcher repair first:
+  recovered errors must leave the escaping error row, while fallback errors
+  remain checked. Retain explicit Console.Write effects for diagnostic calls.
+  Preserve guard boundaries and allocation lifetimes when scoping this work.
+  The guard-aware launcher now executes quick and headless gates. Compiler
+  `cb10dd72` repairs the narrow-pop numeric conversion exposed by cross-block
+  verification; Script `62928532` passes the seven focused guard controls.
+  This pair passes the pinned headless replay; full native qualification remains
+  open. Compilation alone does
+  not qualify the native gate ([evidence](../validation/launcher-error-guard-flow.md)).
 
 - At mutable-reference call sites, check aliases through reference locals,
   returned and conditional references, containers and function values. Use
