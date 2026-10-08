@@ -325,3 +325,21 @@ advance_output_transport and execute_elisascript_file_tests. Build exits 2 in
 `build/validation/elisascript-payload-binder-build.log` and JSON.
 These call-lowering failures are the next native prerequisite; the native
 gate and full toolchain qualification remain open.
+
+### Positional error-call defaults
+
+Named error callees now fill omitted trailing defaults before hidden arena
+arguments in statement/value try, error-union calls and statement/value catch.
+The focused error_call_default_arguments_smoke passes O0/O2 execution through
+try and catch, with result 12; a missing required argument is rejected.
+Baseline compiler 2ad7a165 instead produces invalid LLVM argument counts for
+the same fixture. Logs: `build/validation/error-call-default-arguments-baseline.log`
+and `error-call-default-arguments-smoke.log`.
+
+Launcher LLVM argument-count failures are cleared. Two type mismatches remain:
+the foreign kill signature, and a named selected_names argument lowered in
+the RuntimeResourcePolicy positional slot. Filling a trailing default alone
+does not implement named argument placement; that path remains open.
+The bounded build exits 2 in 4.62 seconds, peak RSS 828,208 KiB, with no
+executable. Artifact: `build/validation/elisascript-error-call-defaults-build.log`
+and JSON. Full qualification remains open.
