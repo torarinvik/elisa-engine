@@ -795,8 +795,26 @@ later copy/scalar writes, trace metadata changes and equality to changed cells.
 The compiled gate accepts the authentic bound/range and refuses twelve forged
 trace/source/range controls in 20.85s at 1,250,656 KiB RSS under 3 GiB
 (`build/validation/index-copy-bound-final-source-controls.log`). Its final
-paired product build is pending, so the preceding engine result does not yet
-qualify that exact follow-up product.
+paired product generation `d090da974e63494c91df259890744473` now builds in
+73.59s at 2,881,952 KiB RSS. Both manifests identify clean `eb69c836` source;
+actual binary hashes match. Its seven focused controls pass, and its uncached
+engine sweep retains all 73 reports / 4,246 obligations with zero failures,
+diagnostics or gaps, independent replay and no trusted assumptions. Exact
+reports are in `build/validation/index-copy-independent-engine-reports/`.
+
+The broader symbolic suite is terminal failed (113.55s, 1,393,696 KiB RSS):
+the accepted symbolic case now replays 77/79 certificates, while bubble,
+sort and partition failures persist. See
+`build/validation/index-copy-independent-symbolic-suite.log`. Fresh old/new
+partition comparisons confirm identical unique goal inventories: the changed
+raw counts remove duplicate bounds checks produced by substituting already
+copied elements into later writes. Original declaration reads remain checked
+and replayed. The accepted comparison removes two duplicate rows and the
+rejected comparison six; retained comparison artifacts are
+`build/validation/partition-index-copy-inventory-comparison.json` and
+`build/validation/rejected_partition-index-copy-inventory-comparison.json`.
+This is not full matrix qualification; preserve the terminal suite counts and
+investigate any further inventory change individually.
 
 ## Unused entry-state ghost repair
 
