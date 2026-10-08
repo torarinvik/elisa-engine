@@ -382,3 +382,25 @@ A bounded --help launch exits 0 and prints the CLI usage; artifact:
 This establishes build and CLI startup only. Custom timeout/process behavior,
 engine workflow execution, full compiler/prover qualification and the native
 gate remain open. The installed historical launcher was not replaced.
+
+### Bounded process and timeout qualification
+
+The rebuilt launcher executes the existing engine process-probe script with
+status 0. A three-argument run_process call to /usr/bin/true exits 0. A timed
+Python child writes its PID/start marker, sleeps for three seconds and would
+write a completion marker afterward. With a 500000-microsecond deadline,
+the launcher takes the script's error branch (status 23) in 0.59 seconds;
+the start marker exists, the child PID is no longer alive, and no completion
+marker exists. This establishes an actual launched child being stopped,
+rather than treating an early launch refusal as timeout success.
+Artifacts: `build/validation/elisascript-f863dd10-process-probe.log`,
+`elisascript-f863dd10-custom-timeout-fast.log`,
+`elisascript-f863dd10-custom-timeout-child.log`, and adjacent JSON reports;
+control sources are under `build/validation/launcher-controls/`.
+
+The engine native_gate.elisascript quick mode still fails before execution:
+the launcher reports undefined identifier eprint at source line 14. Its
+bounded invocation exits 1; no gate stages or new gate report are established.
+Artifact: `build/validation/elisascript-f863dd10-native-gate-quick.log` and JSON.
+Source lowering/builtin registration is the next prerequisite. The launcher
+has not been installed, and full native qualification remains open.
