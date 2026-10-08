@@ -227,3 +227,24 @@ The failing header routines catch composite fieldless families such as
 OutputContractError + OutputHumanError. A repair must preserve composite
 variant offsets when comparing a bound error with a source-family variant;
 declaring an arbitrary i32 binder alone is insufficient correctness evidence.
+
+### Composite fieldless binder repair (194ba1d6)
+
+Statement catches now bind fieldless composite families as their enum
+descriptor. Equality maps source variant constants to that family's status
+tag. The first binder-only attempt compiled but failed its runtime control:
+both source variants had ordinal zero. Adding composite offset resolution
+makes the collision control execute with status 0 at O0 and O2. Existing
+catch-prefix acceptance/rejection and unknown-variant smoke checks pass.
+Logs: `build/validation/composite-fieldless-catch-binder-smoke.log`,
+`composite-binder-prefix-smoke.log`, `composite-binder-unknown-variant-smoke.log`.
+Payload-bearing binders and generic rethrows are not covered by this repair.
+
+The bounded launcher build now has three declines (previously six):
+output_transport_planned_preflight, write_output_transport_fd, and
+report_test_setup_failure_machine. Header/footer error mapping and
+run_test_mode emit. Build exits 2 in 3.62 seconds, peak RSS 819,904 KiB;
+no executable is produced. Artifact:
+`build/validation/elisascript-composite-binder-build.log` and JSON.
+The source was modified relative to d67efe6e during this qualification;
+full compiler/engine qualification remains open.
