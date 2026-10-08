@@ -29,6 +29,9 @@ On Stage1
 (SHA256 `5198034700383a76aa25ca7db2e2e31bdd4fa98753f721b53c80233e24257916`):
 
 - `-emit check src/runtime/user_data.elisa` succeeds.
+- `-Wnever-leak=strict -emit check src/runtime/user_data.elisa` succeeds with
+  zero findings; temporary effect/status locals are scoped with `region` blocks
+  and the staged payload read yields its two outputs from a tuple block.
 - `test/user_data_probe.elisa` compiles with no global-grant diagnostics; this
   consumer probe previously reported 106 such diagnostics.
 - A `# strict` / `# unsafe` fixture including

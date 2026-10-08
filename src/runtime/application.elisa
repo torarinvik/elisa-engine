@@ -145,20 +145,22 @@ module Application:
                 }
 
         def initialize(config: Config) -> InitializeStatus:
-            abi_version: mutable u32 = 0
-            trusted Unsafe.RawExtern:
-                abi_version <- elisa_application_abi_version()
-            return InitializeStatus.UnsupportedAbi if abi_version != 1
-            hidden: i32 = 1 if config.hidden else 0
-            result: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                result <- elisa_application_v1_initialize(config.title, config.width, config.height, hidden)
-            return InitializeStatus.Ready if result == NativeStatus::OK
-            return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
-            return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
-            return InitializeStatus.ShaderPathInvalid if result == NativeStatus::SHADER_PATH_INVALID
-            return InitializeStatus.ShaderManifestInvalid if result == NativeStatus::SHADER_MANIFEST_INVALID
-            InitializeStatus.BackendUnavailable
+            region abi_version_scope:
+                abi_version: mutable u32 = 0
+                trusted Unsafe.RawExtern:
+                    abi_version <- elisa_application_abi_version()
+                return InitializeStatus.UnsupportedAbi if abi_version != 1
+            region initialize_status_scope:
+                hidden: i32 = 1 if config.hidden else 0
+                result: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    result <- elisa_application_v1_initialize(config.title, config.width, config.height, hidden)
+                return InitializeStatus.Ready if result == NativeStatus::OK
+                return InitializeStatus.InvalidArgument if result == NativeStatus::INVALID_ARGUMENT
+                return InitializeStatus.AlreadyRunning if result == NativeStatus::INVALID_STATE
+                return InitializeStatus.ShaderPathInvalid if result == NativeStatus::SHADER_PATH_INVALID
+                return InitializeStatus.ShaderManifestInvalid if result == NativeStatus::SHADER_MANIFEST_INVALID
+                return InitializeStatus.BackendUnavailable
 
         def shutdown_after_rejection(status: InitializeStatus) -> InitializeStatus:
             return status if shutdown()
@@ -321,13 +323,14 @@ module Application:
 
         # Pending event bits are coalesced until this snapshot is read.
         def frame_info(info: mutable FrameInfo&) -> bool:
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos,
-                    &info.resize_serial, &info.logical_width, &info.logical_height,
-                    &info.pixel_width, &info.pixel_height, &info.display_scale,
-                    &info.event_flags, &info.window_flags)
-            status == NativeStatus::OK
+            region frame_info_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_application_v1_frame_info(&info.frame_count, &info.elapsed_nanos,
+                        &info.resize_serial, &info.logical_width, &info.logical_height,
+                        &info.pixel_width, &info.pixel_height, &info.display_scale,
+                        &info.event_flags, &info.window_flags)
+                return status == NativeStatus::OK
 
         def elapsed_seconds(info: FrameInfo&) -> f32:
             info.elapsed_nanos.f32() / 1000000000.0
@@ -366,16 +369,18 @@ module Application:
             (info.window_flags & NativeWindowFlags::WINDOW_CLOSE_REQUESTED) != 0
 
         def request_exit() -> bool:
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_application_v1_request_exit()
-            status == NativeStatus::OK
+            region request_exit_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_application_v1_request_exit()
+                return status == NativeStatus::OK
 
         def shutdown() -> bool:
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_application_v1_shutdown()
-            status == NativeStatus::OK
+            region shutdown_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_application_v1_shutdown()
+                return status == NativeStatus::OK
 
         def frame_count() -> u64:
             trusted Unsafe.RawExtern:
@@ -396,7 +401,8 @@ module Application:
         # applications. Call on the application owner thread, even on startup
         # failure before initialization. Messages are limited to 4096 bytes.
         def show_error(title: cstr, message: cstr) -> bool:
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_application_v1_show_error(title, message)
-            status == NativeStatus::OK
+            region show_error_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_application_v1_show_error(title, message)
+                return status == NativeStatus::OK

@@ -81,14 +81,16 @@ module UserData:
         # Uses ELISA_USER_DATA_DIR when set (useful for sandboxed apps and
         # tests); otherwise the native layer selects the platform user-data path.
         def initialize(application_id: cstr) -> void error[UserDataError]:
-            abi_version: mutable u32 = 0
-            trusted Unsafe.RawExtern:
-                abi_version <- elisa_user_data_abi_version()
-            raise UserDataError.ApiMismatch if abi_version != Status::ABI_VERSION
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_user_data_v1_initialize(application_id)
-            try check_status(status)
+            region abi_version_scope:
+                abi_version: mutable u32 = 0
+                trusted Unsafe.RawExtern:
+                    abi_version <- elisa_user_data_abi_version()
+                raise UserDataError.ApiMismatch if abi_version != Status::ABI_VERSION
+            region initialize_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_user_data_v1_initialize(application_id)
+                try check_status(status)
 
         # The returned path remains owned by the runtime and is valid until the
         # next initialize call. Call initialize before requesting it.
@@ -112,11 +114,12 @@ module UserData:
             version: mutable i64 = 0
             count: mutable u32 = 0
             staged: mutable Save::Blob = Save::Blob(0)
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_user_data_v1_read_blob(key, &version,
-                    &staged.fields[0], MAX_FIELDS.u32(), &count)
-            try check_status(status)
+            region read_status_scope:
+                status: mutable i32 = 0
+                trusted Unsafe.RawExtern:
+                    status <- elisa_user_data_v1_read_blob(key, &version,
+                        &staged.fields[0], MAX_FIELDS.u32(), &count)
+                try check_status(status)
             staged.version <- version
             staged.count <- count.usize()
             raise UserDataError.InvalidPayload if not Save::blob_valid(&staged)
@@ -142,13 +145,16 @@ module UserData:
         def read_payload(key: cstr, version: mutable i64&, payload: mutable u8&,
                 capacity: usize, length: mutable usize&) -> void error[UserDataError]:
             raise UserDataError.InvalidPayload if capacity == 0 or capacity > MAX_PAYLOAD_BYTES
-            staged_version: mutable i64 = 0
-            staged_length: mutable u32 = 0
-            status: mutable i32 = 0
-            trusted Unsafe.RawExtern:
-                status <- elisa_user_data_v1_read_payload(key, &staged_version,
-                    payload, capacity.u32(), &staged_length)
-            try check_status(status)
+            staged_version, staged_length =
+                staged_version: mutable i64 = 0
+                staged_length: mutable u32 = 0
+                region read_status_scope:
+                    status: mutable i32 = 0
+                    trusted Unsafe.RawExtern:
+                        status <- elisa_user_data_v1_read_payload(key, &staged_version,
+                            payload, capacity.u32(), &staged_length)
+                    try check_status(status)
+                (staged_version, staged_length)
             version <- staged_version
             length <- staged_length.usize()
 

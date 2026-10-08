@@ -362,8 +362,11 @@ been audited individually: explicit `Unsafe.RawExtern` contracts and narrow
 trusted call sites remove the false Elisa-global effects without making the
 public APIs unsafe. The full UserData consumer probe now type-checks with no
 grant diagnostics, and the application/input path passes strict-unsafe object
-compilation. Record this as a high-yield, bounded source-adoption win; continue
-with newly demonstrated roots alongside their real callers. Evidence and limits are in
+compilation. The UserData wrapper also passes the new compiler's strict
+never-leak scope lint after temporary FFI state was localized and the staged
+payload result was expressed as a tuple block. Record this as a high-yield,
+bounded source-adoption win; continue with newly demonstrated roots alongside
+their real callers. Evidence and limits are in
 [global grant validation](docs/validation/global-mutable-grants.md).
 
 ### Next three outcomes
