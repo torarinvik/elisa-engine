@@ -56,3 +56,24 @@ rows clear; bounded build exits 1 elsewhere in 5.13 seconds, peak sampled RSS
 726,800 KiB. Artifact:
 `build/validation/elisascript-2ad7a165-copytree-realpath-build.log` and JSON.
 Recursive copy and canonical-path behavior remain runtime-unverified.
+
+## Process argv string boundaries
+
+All five process-launch paths bind executable and argument C strings once after
+text validation, NUL-terminated buffer construction and null checks. The owner
+array finishes growing before argv publishes pointers; the final NULL slot and
+host-call scope remain. Pointer-conversion diagnostics drop from 35 to 15,
+clearing 20 rows. Bounded build exits 1 elsewhere in 3.46 seconds, peak sampled
+RSS 726,688 KiB. Artifact:
+`build/validation/elisascript-2ad7a165-process-argv-cstr-build.log` and JSON.
+Process launch/replace/capture behavior remains runtime-unverified.
+
+## Paired prover and engine proof sweep
+
+The paired build passes after the verified provenance refresh, producing
+generation e9438588a1394963bfc4ecc3223c0466. The uncached engine proof sweep
+passes 73/73, status 0, on compiler 2ad7a165 and prover 3e1a6c50 (production
+source remains 95db5c6b). Logs:
+`build/validation/proof-3e1a6c50-2ad7a165-build-final.log` and
+`build/validation/proof-3e1a6c50-2ad7a165-engine-proofs.log`.
+Full regression matrix, shared and native gates remain open.
