@@ -88,3 +88,17 @@ with only 11 interpreter return-lifetime diagnostics in 4.93 seconds, peak
 sampled RSS 727,504 KiB. Artifact:
 `build/validation/elisascript-2ad7a165-env-directory-cstr-build.log` and JSON.
 Environment/directory behavior remains runtime-unverified on this compiler.
+
+## Permanent runtime view lifetime investigation
+
+The 11 remaining interpreter errors include views of ctx_fstr_alloc payloads
+(allocated by alloc_perm) and Fs helpers explicitly passed perm_arena. Tried
+an in perm scope on one decoded-text return: all 11 diagnostics remain. Adding
+@perm likewise does not clear the launcher error; a minimized standalone case
+also rejects perm as an unknown region qualifier. Reverted the unsuccessful
+interpreter changes. Reproducer/log:
+`build/validation/contract-error-marker/permanent_view.elisa` and
+`build/validation/contract-error-marker/permanent-view.log`.
+The permanent payload semantics need an accurate compiler/runtime lifetime
+boundary; no alias or escape suppression has been added. This finding does not
+qualify the launcher or show the lifetime errors are all false positives.
