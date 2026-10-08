@@ -171,3 +171,13 @@ semantic source compiled by frozen `0baaa951`; it does not yet qualify a rebuilt
 compiler/prover product. The compiler bootstrap is running before focused
 proof-report and shared-gate replay. Engine NaN guards and report policy remain
 unchanged.
+
+Compiler commit `cfd0203aaea1960f62c8ebdcf6c27677fc6b05dd` lands the narrow
+diagnostic repair and the regression. Rebuilt product SHA-256
+`9c51a733b8f15603323f02084eaa222d70eb250506af52e513b8dd571e74df3b` passes
+`nan-guard-new-product-o2-run.log` status 0. Its clean source fingerprint and
+matching runtime are frozen as `stage1-code-cfd0203a` and `runtime-cfd0203a.o`.
+A paired prover build runs in a separate checkout of unchanged prover `3e1a6c50`,
+so the live serial `0baaa951` matrix keeps its prior frontend snapshot and products.
+Fresh uncached runtime qualification is also running; focused action-input report
+validation and the shared gate remain open for this replacement product.
