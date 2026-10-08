@@ -343,3 +343,13 @@ eight original errors. It exits 1 elsewhere in 4.89 seconds, sampled peak RSS
 726,992 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-store-refs-final-build.log` and JSON.
 Record layout, address validity and store behavior remain runtime-unverified.
+
+### Process pipeline array mutability
+
+Process pipeline stage-state and receipt arrays now declare their existing
+mutability explicitly. Start and planned cancellation append to these arrays;
+the borrowed pipeline API retains its in-place operations. The bounded build
+clears all four process-model diagnostics, exits 1 elsewhere in 4.88 seconds,
+and samples peak RSS 701,808 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-pipeline-fields-build.log` and JSON.
+Pipeline execution remains runtime-unverified on the selected compiler.
