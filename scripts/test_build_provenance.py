@@ -87,6 +87,35 @@ class BuildProvenanceTests(unittest.TestCase):
                 native_artifacts=[linked], options={"native_optimize": False})
             self.assertNotEqual(expected_identity, changed_identity)
 
+    def test_staged_binary_records_final_identity_without_publishing(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            project = root / "project"
+            project.mkdir()
+            main = project / "main.elisa"
+            main.write_text("def main() -> i32: 0\n")
+            binary = root / "game"
+            binary.write_bytes(b"previous executable")
+            sidecar = root / "game.provenance.json"
+            sidecar.write_bytes(b"previous manifest")
+            staged = root / "candidate"
+            staged.write_bytes(b"new executable")
+            tool = root / "tool"
+            tool.write_bytes(b"tool")
+            destination = root / "candidate.json"
+            result = write_build_provenance(output=binary, project=project,
+                main_source=main, engine_root=project, wicked_root=project,
+                compiler=str(tool), cxx=str(tool), runtime_object=tool,
+                native_artifacts=[], options={}, binary_source=staged,
+                destination=destination, build_identity=123)
+            record = json.loads(result.read_text())
+            self.assertEqual(result, destination)
+            self.assertEqual(record["binary"], {"path": str(binary.resolve()),
+                "sha256": hashlib.sha256(b"new executable").hexdigest(),
+                "size_bytes": len(b"new executable")})
+            self.assertEqual(binary.read_bytes(), b"previous executable")
+            self.assertEqual(sidecar.read_bytes(), b"previous manifest")
+
     def test_untracked_file_content_changes_repository_identity(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
             repo = Path(folder) / "repo"

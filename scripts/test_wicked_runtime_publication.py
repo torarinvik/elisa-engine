@@ -87,6 +87,69 @@ class RuntimePublicationTests(unittest.TestCase):
             self.assertEqual(os.readlink(recovery / "previous-0"), "previous/" + runtime.RUNTIME_LIBRARIES[0])
             self.assertTrue((recovery / "recovery.json").is_file())
 
+    def test_provenance_transaction_failures(self):
+        for failure in ("sidecar", "executable"):
+            for previous in ("file", "symlink", "absent"):
+                with self.subTest(failure=failure, previous=previous), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    output, candidate, source = self.setup_paths(root)
+                    sidecar = root / "game.provenance.json"
+                    if previous == "file":
+                        sidecar.write_bytes(b"old manifest")
+                    elif previous == "symlink":
+                        sidecar.symlink_to("previous/manifest.json")
+                    staged = root / "candidate.json"
+                    staged.write_bytes(b"new manifest")
+                    replace = os.replace
+                    def fail(src, dst):
+                        if Path(src) == (staged if failure == "sidecar" else candidate):
+                            raise OSError("publication refused")
+                        return replace(src, dst)
+                    with mock.patch.object(runtime.os, "replace", side_effect=fail):
+                        with self.assertRaisesRegex(runtime.WickedRuntimeError, "publication refused"):
+                            runtime.stage_wicked_runtime_libraries(output, source,
+                                staged_executable=candidate, staged_provenance=staged)
+                    self.assert_old(root, output, candidate)
+                    if previous == "file":
+                        self.assertEqual(sidecar.read_bytes(), b"old manifest")
+                    elif previous == "symlink":
+                        self.assertEqual(os.readlink(sidecar), "previous/manifest.json")
+                    else:
+                        self.assertFalse(sidecar.exists())
+                    self.assertEqual(list(root.glob(".wicked-runtime-*")), [])
+
+    def test_invalid_provenance_is_refused_before_publication(self):
+        for invalid in ("missing", "destination-directory"):
+            with self.subTest(invalid=invalid), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                output, candidate, source = self.setup_paths(root)
+                staged = root / "candidate.json"
+                if invalid == "destination-directory":
+                    staged.write_bytes(b"new manifest")
+                    (root / "game.provenance.json").mkdir()
+                with self.assertRaises(runtime.WickedRuntimeError):
+                    runtime.stage_wicked_runtime_libraries(output, source,
+                        staged_executable=candidate, staged_provenance=staged)
+                self.assert_old(root, output, candidate)
+
+    def test_provenance_is_published_before_executable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            output, candidate, source = self.setup_paths(root)
+            staged = root / "candidate.json"
+            staged.write_bytes(b"new manifest")
+            replace = os.replace
+            def observe(src, dst):
+                if Path(src) == candidate:
+                    self.assertEqual((root / "game.provenance.json").read_bytes(), b"new manifest")
+                    for name in runtime.RUNTIME_LIBRARIES:
+                        self.assertEqual((root / name).resolve(), (source / name).resolve())
+                return replace(src, dst)
+            with mock.patch.object(runtime.os, "replace", side_effect=observe):
+                runtime.stage_wicked_runtime_libraries(output, source,
+                    staged_executable=candidate, staged_provenance=staged)
+            self.assertEqual(output.read_bytes(), b"new executable")
+
     def test_success_publishes_executable_after_links(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

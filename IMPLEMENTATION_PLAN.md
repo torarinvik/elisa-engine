@@ -93,8 +93,8 @@ another. Commit documentation and tests together with source changes.
   `proof_kernel_replay_expr_equal`'s 32-byte-pair worklist: its 256-element
   literal allocates 8 KiB directly in the static arena. The method-only repair
   `220ae3f9` passes native O0/O2 controls but leaves the original memory result
-  unchanged. The next causal slice is lexical receiver typing for builtin
-  `darray.pop`/`push`, preserving conservative treatment of custom, generic,
+  unchanged. Lexical receiver typing for builtin `darray.pop`/`push` was the
+  causal follow-up, preserving conservative treatment of custom, generic,
   ambiguous and unknown calls plus genuine global publication. Typed builtin
   repair `d69f219b` and custom-pop dispatch correction `e791ec50` now pass semantic
   preflight and official seed provenance. Three native ownership controls pass at
@@ -140,9 +140,13 @@ another. Commit documentation and tests together with source changes.
   Newer default-enforcement source `f4f0cda8` passes semantic preflight but its
   official seed fails during runtime-object compilation: 312 Global diagnostics,
   unchanged source, 84.64 seconds and 7,051,056 KiB under 8 GiB. No qualified
-  runtime/provenance tuple exists. Target-specific lock resolution must be checked
-  against existing trusted cache blocks; actual profiler and host-callback effects
-  remain required. Backend repairs are integrated with this source at `7ff4b840`,
+  runtime/provenance tuple exists. The next compiler source task is conservative
+  candidate resolution for
+  target-specific lock helpers: multiple static-if variants currently produce
+  false read/write requirements despite existing trusted cache blocks. Preserve
+  possible variadic, generic and integer-alias targets and fail closed on missing
+  summaries; actual profiler and host-callback effects remain required. Backend
+  repairs are integrated with this source at `7ff4b840`,
   currently source-only. Resolve this gate before Studio, latest prover pair or
   package qualification; avoid building the superseded `10ae0267` prover as current.
 - **Shipping client:** the guide rig refresh is committed at `a30d3af9`.
@@ -173,7 +177,7 @@ project reproduce that result.
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
 | 1 | **Finish compiler grant qualification — Q01/Q03.** This user-requested default policy affects engine and mocap callers. Repair the demonstrated default-driver, exact-callee and callback defects in the owning compiler; qualify its source/runtime pair, then repair demonstrated missing engine caller grants. Use newly published compiler performance changes only after semantic qualification. | Run `scripts/qualify_global_grants.py` on the actual candidate CLI (no opt-in headers); default reads/writes without grants fail; exact grants and transitive caller grants pass; `-permissive` bypasses these checks. Preserve method, callback, default-argument and local-shadowing controls. Record source/runtime/product hashes and complete runtime results. Keep compiler defects in the compiler repository. |
-| 2 | **Repair current prover memory regression, then qualify — Q01.** The clean current pair builds and five original CLI controls pass, but the first engine input breaches 3 GiB. The completed controlled comparison isolates emitted-code behavior; repair the identified builtin-worklist static-arena fallback in the owning compiler, with lexical scope and global-publication controls. This shares the toolchain adoption gate with item 1 and prevents wasting the census on a known early failure. | A causal source repair passes the original first input under the unchanged cap, all five original CLI regressions, and all 73 engine reports retaining the original 4,246 obligations plus new obligations. Then run immutable snapshot census/matrix checks with explicit concurrency and Python 3.14; classify all nine historical timeouts. Full shared/native qualification precedes promotion. |
+| 2 | **Qualify the repaired prover memory path — Q01.** The previous current pair passes five CLI controls but breaches 3 GiB on the first engine input. The controlled comparison isolates emitted-code behavior. Carry the completed builtin-worklist and custom-pop repairs into the qualified compiler tuple; proceed to original-input acceptance with lexical scope and global-publication controls retained. This shares the toolchain adoption gate with item 1 and prevents wasting the census on a known early failure. | A causal source repair passes the original first input under the unchanged cap, all five original CLI regressions, and all 73 engine reports retaining the original 4,246 obligations plus new obligations. Then run immutable snapshot census/matrix checks with explicit concurrency and Python 3.14; classify all nine historical timeouts. Full shared/native qualification precedes promotion. |
 | 3 | **Close actual Studio consumer acceptance.** The mesh repair and build/cook safeguards are integrated at `dc180e49`; consume that tuple and register the qualified read-only observer. This protects a real public API from malformed mutable arrays and has a bounded acceptance workload. | Local source/proof/runtime acceptance passes; consume the clean tuple in the actual Studio redraw path. Retain all original engine proof obligations. O0/O2 controls reject truncated/extra inverse binds, influence shape mismatches, positive-weight joints out of range, incomplete triangles and invalid indices before changing output. Valid geometry remains identical. Add sanitizer evidence where practical, record actual redraw and reveal outcomes against the integrated source/header tuple. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and existing heap/GPU/VM diagnostics to identify retained resources or the measured memory domain responsible for the jump. This is the remaining observed native release failure. | A source repair has a reproducer or a decisive resource-accounting regression, then passes the original full renderer lifecycle and native gate. Keep warmup, cycles and the 8 MiB allowance unchanged. A passing retry is supporting evidence, not a diagnosis. |
 | 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with the already refreshed and generator-checked cooked content; package the actual public-API client. | Generated outputs match; resource hashes and notices are complete; relocated offline startup, restart and teardown pass with source and Homebrew denied. Keep signing, legal and separate-machine acceptance explicitly open. |
@@ -202,6 +206,9 @@ publication, publish the executable last and roll back changed links on failure.
 Five new fault controls join the 41-control build suite, including retained
 recovery backups when rollback fails
 ([native publication evidence](docs/validation/native-build-publication.md)).
+Provenance now joins that rollback transaction: staged bytes supply the hash and
+size, the final output supplies the identity, and manifest preparation failure
+preserves the previous publication. All 48 build/provenance controls pass.
 The full fresh public-API author/cook/package rehearsal remains open.
 
 ### Bounded consumer work while release gates run
@@ -230,19 +237,17 @@ location outcomes. See the [coordinated M track](docs/plans/mocap-engine-track.m
    actual Studio redraw and observer registration/reveal acceptance. Local mesh
    source acceptance passes; avoid another handoff-only slice or dependency move
    while the consumer compiler repair is in progress.
-3. **Compiler/prover owners:** use the completed self-contained reproducer and
-   fixed-source/frontend/runtime emitter comparison to repair the allocation cause.
-   Keep `proof/action_input_context.elisa` as the original acceptance case; reduced
-   inputs only locate the cause. The borrowed-array hypothesis and recent prover
-   source changes are ruled out; do not repeat those comparisons. The dominant
-   sampled caller is now identified. Finish typed builtin receiver/scope handling,
-   pass semantic preflight, freeze the source commit, then qualify one seed and
-   focused native controls through separate explicit handoffs. Reject the repair
-   if the fixed 25-obligation harness remains near 757 MiB; preserve global
-   publication and custom-method refusal controls. Then repeat
-   first-input, five original CLI and full engine inventory acceptance, followed
-   by immutable census/matrix qualification. Preserve pending regression changes
-   and genuine mutation/refusal controls with accompanying source changes.
+3. **Compiler/prover owners:** retain the completed `e791ec50` allocation and
+   custom-pop repair and its passing semantic, seed and O0/O2 ownership controls.
+   Integrate the qualified default-grant repair and build the latest clean prover
+   source (`6c5f4e5b` or its authenticated successor). The next decisive result is
+   `proof/action_input_context.elisa` under its original 3 GiB / 120-second budget,
+   with all 265 obligations proved and independently replayed. Then run the five
+   original CLI regressions and all 73 engine reports, retaining the original
+   4,246 obligations. Run the immutable census/matrix only after these pass.
+   The 25-obligation memory improvement is diagnostic evidence; do not repeat
+   ruled-out borrowed-array or prover-source hypotheses, or claim full acceptance
+   from it. Preserve separate explicit compile-slot handoffs.
 4. **Native runtime owner:** capture the failing lifecycle memory domain and
    identify the owner retaining it. Change the release/lifetime path, then exercise
    the original full sequence. Stop unchanged retries that add no diagnostic fact.
@@ -260,18 +265,33 @@ interrupted snapshot census is incomplete evidence.
 
 | Readiness | Task | Why it leads / next action |
 |---|---|---|
-| Causal harness repair passes; current pair build needs handoff | Qualify repaired prover memory on original engine input | Integrate the qualified default-grant compiler repair with backend e791ec50 and consume the latest clean prover source (including signed-minimum and source-annotation repairs), then build an authenticated pair and repeat the unchanged original input under 3 GiB. Follow with five CLI regressions and all 73 engine reports; diagnostic harness success does not close those gates. |
+| Backend repair complete; qualified integrated compiler required | Qualify repaired prover memory on original engine input | Integrate the qualified default-grant compiler repair with backend e791ec50 and consume the latest clean prover source (including signed-minimum and source-annotation repairs), then build an authenticated pair and repeat the unchanged original input under 3 GiB. Follow with five CLI regressions and all 73 engine reports; diagnostic harness success does not close those gates. |
 | Owning compiler repair in progress | Default grants and Studio compiler repair | Highest cross-client return. Require 22/22 actual CLI controls, exact-callee/callback regressions and authenticated source/runtime/product identity before client acceptance or installation. |
 | Consumer integration ready; execution depends on compiler | Actual Studio redraw and observer reveal | Use `dc180e49` and the retained observer header identity. Validate the existing public API in its real consumer; avoid further handoff-only work. |
+| Ready without a heavy compile slot | Finish native executable/provenance publication — Q07/Q02 | Prepare the manifest from the staged binary using the final output identity; publish it with runtime links before the executable. On preparation or replacement failure, retain the previous executable, links and sidecar; retain recovery data if rollback fails. Use focused Python fault controls. Focused preparation, replacement, rollback and identity controls pass; actual optimized package acceptance remains open. |
 | Ready after coordinated heavy slot | Renderer lifecycle diagnosis and repair | Observe the failing full sequence, identify the retained owner/domain, then repair its lifetime. Keep original cycles, warmup and 8 MiB allowance. |
 | Ready after compatible tuple and native gate | Fresh package and ordinary author workflow | Reuse one clean optimized build for Character Course relocation and a fresh public-API application. Console image cooking and native package reading are preparation; the packaged application remains open. |
 
 When the completed compiler product arrives, qualification takes precedence.
-While waiting, advance the bounded prover investigation or a demonstrated source
-failure. Reserve each heavy slot through the existing coordination; record its
+While waiting, integrate the completed native provenance transaction and
+select a demonstrated source failure with an independent acceptance path.
+Reserve each heavy slot through the existing coordination; record its
 explicit handoff and terminal result in the validation record, since slot ownership
 changes during execution. Defer census, broad native retries and package rebuilds
 until their prerequisite can produce a meaningful acceptance result.
+
+### Next three outcomes
+
+1. **Integrate the completed publication transaction.** Native builds now prepare
+   provenance before publication and roll back sidecar/link changes on failure;
+   48 build/provenance controls pass. Carry this source into the fresh optimized
+   package rehearsal once the toolchain gate closes.
+2. **Obtain one qualified integrated compiler/runtime tuple.** Resolve the lock
+   candidate defect, pass default grant/refusal and permissive controls, and retain
+   the backend ownership repairs. Install only the authenticated passing product.
+3. **Spend that tuple on real acceptance.** Run the original prover input first;
+   use separately reserved slots for actual Studio redraw/reveal and the failing
+   renderer lifecycle sequence. Their results select the next source repair.
 
 ### ROI and exit rules
 
@@ -308,6 +328,9 @@ the second ordinary application.
 - Prefer a task that closes a demonstrated release gate or unblocks multiple
   consumers, has a bounded source change and produces decisive acceptance evidence.
   Treat compiler-owner waits as a dependency; advance the next ready slice.
+- Treat integration and qualification as deliverables with the original acceptance
+  criteria. Once a causal repair passes its focused controls, move to the original
+  workload instead of creating another reduced example or evidence-only slice.
 - Keep one source slice in progress per owner. Diagnostic documentation, compiler
   style sweeps and additional proof examples do not outrank an unresolved gate.
 

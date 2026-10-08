@@ -184,9 +184,11 @@ def compute_build_identity(*, project: Path, main_source: Path, engine_root: Pat
 def write_build_provenance(*, output: Path, project: Path, main_source: Path,
     engine_root: Path, wicked_root: Path, compiler: str, cxx: str,
     runtime_object: Path, native_artifacts: Iterable[Path], options: dict[str, object],
-    build_identity: int | None = None) -> Path:
-    """Write an atomic provenance sidecar next to a successfully linked binary."""
+    build_identity: int | None = None, binary_source: Path | None = None,
+    destination: Path | None = None) -> Path:
+    """Record final output identity, optionally from a staged binary and sidecar."""
     project = project.resolve()
+    binary_source = binary_source if binary_source is not None else output
     native_artifacts = tuple(native_artifacts)
     repositories: dict[str, dict[str, object] | None] = {}
     roots = [("game", project), ("engine", engine_root), ("wicked", wicked_root),
@@ -229,10 +231,10 @@ def write_build_provenance(*, output: Path, project: Path, main_source: Path,
         },
         "native_link_artifacts": artifact_identities(native_artifacts),
         "options": options,
-        "binary": {"path": str(output.resolve()), "sha256": sha256_file(output),
-            "size_bytes": output.stat().st_size},
+        "binary": {"path": str(output.resolve()), "sha256": sha256_file(binary_source),
+            "size_bytes": binary_source.stat().st_size},
     }
-    destination = output.with_name(output.name + ".provenance.json")
+    destination = destination if destination is not None else output.with_name(output.name + ".provenance.json")
     destination.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary_name = tempfile.mkstemp(prefix=f".{destination.name}.",
         suffix=".tmp", dir=destination.parent)

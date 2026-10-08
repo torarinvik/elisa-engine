@@ -538,17 +538,19 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             print("Native linker succeeded without creating the output executable.", file=sys.stderr)
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            staged_provenance = write_build_provenance(output=output, project=project,
+                main_source=main_source, engine_root=ENGINE_ROOT,
+                wicked_root=paths["wicked_root"], compiler=compiler, cxx=cxx,
+                runtime_object=runtime_object, native_artifacts=native_artifacts,
+                options=build_options, build_identity=build_identity,
+                binary_source=staged_output,
+                destination=build_dir / "application.provenance.json")
+        except (OSError, ValueError) as error:
+            raise BuildConfigurationError(f"Could not prepare build provenance: {error}") from error
         stage_wicked_runtime_libraries(output, paths["wicked_source"],
-            staged_executable=staged_output)
-    try:
-        provenance = write_build_provenance(output=output, project=project,
-            main_source=main_source, engine_root=ENGINE_ROOT,
-            wicked_root=paths["wicked_root"], compiler=compiler, cxx=cxx,
-            runtime_object=runtime_object, native_artifacts=native_artifacts,
-            options=build_options, build_identity=build_identity)
-        print(f"Build provenance: {provenance}", flush=True)
-    except (OSError, ValueError) as error:
-        print(f"Could not write build provenance: {error}", file=sys.stderr, flush=True)
+            staged_executable=staged_output, staged_provenance=staged_provenance)
+    print(f"Build provenance: {output.with_name(output.name + '.provenance.json')}", flush=True)
     print(f"Application build complete: {output}", flush=True)
     return 0, output, paths["wicked_source"] / "shaders"
 

@@ -370,6 +370,40 @@ class BuildRunCliTests(unittest.TestCase):
             self.assertFalse((log_dir / "linker.json").exists())
             self.assertFalse(output.exists())
 
+    def test_provenance_preparation_failure_preserves_previous_publication(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "project"
+            project.mkdir()
+            (project / "main.elisa").write_text("using Application\ndef main() -> i32:\n    0\n")
+            output = project / "game"
+            output.write_bytes(b"old executable")
+            sidecar = project / "game.provenance.json"
+            sidecar.write_bytes(b"old manifest")
+            library = project / "libdxcompiler.dylib"
+            library.symlink_to("previous/library")
+            wicked_root, wicked_build, sdl_root, brew_root = fake_native_paths(root)
+            compiler, linker, log_dir = write_fake_tools(root)
+            runtime_object = root / "runtime.o"
+            touch(runtime_object)
+            environment = {"WICKED_ROOT": str(wicked_root), "WICKED_BUILD": str(wicked_build),
+                "WICKED_SDL3_ROOT": str(sdl_root), "WICKED_BREW_PREFIX": str(brew_root),
+                "ELISA_COMPILER_BIN": str(compiler), "ELISA_RUNTIME_OBJ": str(runtime_object),
+                "CXX": str(linker), "FAKE_LOG_DIR": str(log_dir)}
+            runner = __import__("elisa_build_run")
+            with mock.patch.dict(os.environ, environment, clear=True), \
+                    mock.patch.object(sys, "platform", "darwin"), \
+                    mock.patch.object(runner, "validate_wicked_archive_abi", return_value=0), \
+                    mock.patch.object(runner, "write_build_provenance", side_effect=OSError("manifest refused")):
+                status = runner.main(["run", "--project", str(project), "--main", "main.elisa",
+                    "--output", str(output)])
+            self.assertEqual(status, 2)
+            self.assertTrue((log_dir / "linker.json").exists())
+            self.assertFalse((log_dir / "ran.json").exists())
+            self.assertEqual(output.read_bytes(), b"old executable")
+            self.assertEqual(sidecar.read_bytes(), b"old manifest")
+            self.assertEqual(os.readlink(library), "previous/library")
+
     def test_failed_compile_does_not_run_stale_output(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa CLI failure ") as temporary_directory:
             root = Path(temporary_directory)

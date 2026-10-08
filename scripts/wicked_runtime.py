@@ -21,7 +21,7 @@ class WickedRuntimeError(ValueError):
 
 
 def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path,
-    *, staged_executable: Path | None = None) -> list[Path]:
+    *, staged_executable: Path | None = None, staged_provenance: Path | None = None) -> list[Path]:
     """Prepare all runtime links, publish them, then publish the executable.
 
     On failure restore the exact previous link targets. Failed rollback keeps
@@ -65,6 +65,13 @@ def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path,
                 f"refusing to replace an existing file beside the executable: {destination}")
         changes.append((destination, source))
 
+    provenance_destination = executable.with_name(executable.name + ".provenance.json")
+    if staged_provenance is not None:
+        if staged_executable is None or not staged_provenance.is_file():
+            raise WickedRuntimeError("staged provenance requires a staged executable and a regular sidecar")
+        if (provenance_destination.exists() and not provenance_destination.is_file()
+                and not provenance_destination.is_symlink()):
+            raise WickedRuntimeError(f"provenance destination is not a file: {provenance_destination}")
     if not changes and staged_executable is None:
         return []
     try:
@@ -83,6 +90,15 @@ def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path,
             if replacement is not None:
                 replacement.symlink_to(source)
             prepared.append((destination, replacement, backup))
+        if staged_provenance is not None:
+            backup = None
+            if provenance_destination.is_symlink():
+                backup = recovery / "previous-provenance"
+                backup.symlink_to(os.readlink(provenance_destination))
+            elif provenance_destination.exists():
+                backup = recovery / "previous-provenance"
+                shutil.copy2(provenance_destination, backup)
+            prepared.append((provenance_destination, staged_provenance, backup))
         (recovery / "recovery.json").write_text(json.dumps([
             {"destination": str(destination), "backup": str(backup) if backup is not None else None}
             for destination, _, backup in prepared], indent=2) + "\n", encoding="utf-8")
