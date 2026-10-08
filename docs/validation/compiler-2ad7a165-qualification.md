@@ -287,3 +287,18 @@ for its largest variant. Reinterpreting the status aggregate as the value or
 zeroing its payload would lose active fields. Preserve the active variant's
 fields when binding; qualify payload round trips and rethrows before accepting
 that compiler repair. No payload preservation claim is made here.
+
+### Payload value round-trip reproducer
+
+Compiler test/repro/caught_payload_value_roundtrip.elisa isolates a generic
+error binder followed by matching its single-i64 and mixed-i32/i64 variants.
+The current product declines only inspect at Ident(failure), before matching
+or payload extraction, and writes no object. Artifact:
+`build/validation/caught-payload-value-roundtrip-baseline.log`.
+The intended execution checks exact values 123456 and 17 + 9001.
+Reuse ordinary enum field tuple storage for the active native status variant;
+retain signedness and alignment, rather than treating its concatenated fields
+as the ordinary enum's largest-variant word array. Ordinary enum constructors
+and match arms use zero-based tags, whereas native error status uses one-based
+tags; conversion and comparisons must agree at this boundary. Existing
+composite equality controls alone do not cover matching a bound error value.
