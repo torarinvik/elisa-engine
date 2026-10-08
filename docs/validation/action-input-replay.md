@@ -671,3 +671,23 @@ A matching official pair publication is running there before the full compatibil
 matrix and shared qualification. The old frozen pair remains attached to the
 separate ongoing native gate. The guarded-field snapshot task is repaired;
 full matrix acceptance and unknown source-control/type contexts remain open.
+
+Integrated clean paired generation `44b744c7ab0b4a50ba2aeca2632099f5` now
+authenticates prover `f593c886`, exact Stage1 compiler `52d60fcf` and checked
+binary hashes. Its uncached engine sweep passes 73 reports / 4,246 obligations,
+zero errors, diagnostics and gaps (3.57s, 164,160 KiB peak RSS); retained reports:
+`scalar-copy-integrated-engine-reports/`. The integrated full matrix is running
+serially with the original 8 GiB cap and all checks retained.
+
+The initial matrix invocation was deliberately stopped after confirming child
+`python3` still resolved to Xcode Python 3.9.6: the Homebrew libexec directory
+provides `python` but no `python3` link. It is incomplete, not a compatibility
+result (`prover-f593c886-full-matrix.log`; explicit interruption reason:
+`prover-f593c886-matrix-python-selection.json`). A task-local `python3` symlink
+to the existing Python 3.14 executable is version-checked as 3.14.8, and the
+serial retry uses that directory first on PATH
+(`prover-f593c886-python314-full-matrix.log`). The earlier scalar-witness
+annotation failure is gone: the actual R-019 indexed-vs-linear oracle now passes
+with collision, marker, width, duplicate and shadowing controls. The retry and
+the independent full native gate are still live; no terminal matrix/native
+acceptance is claimed.
