@@ -444,3 +444,17 @@ SIGSEGV. It still establishes no stage execution or new gate report.
 Artifact: `build/validation/elisascript-nested-reference-native-quick.log`
 and JSON. The source verifier failure is the next prerequisite; full
 compiler/engine qualification remains open.
+
+### Actionable source verifier diagnostics
+
+The loader retains the first verifier message and function through its
+existing bounded diagnostic-copy adapter; the CLI renders them for source
+VerificationFailed. The rebuilt launcher identifies missing Console.Write
+coverage in run_visible. Explicit Console.Write on run_visible and
+run_native_stage advances the gate to a callee-error-row finding in run_visible.
+Both invocations exit 1 before gate execution. The stderr helper catches
+write errors locally; its exported/inferred error row requires further
+lowerer investigation. No verifier check was relaxed.
+Artifacts: `build/validation/elisascript-verifier-diagnostic-build.log`,
+`elisascript-verifier-diagnostic-native-quick.log`, and
+`elisascript-verifier-diagnostic-native-console.log`, with JSON reports.

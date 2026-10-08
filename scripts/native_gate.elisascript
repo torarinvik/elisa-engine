@@ -12,7 +12,7 @@ const APP_PROCESS_TIMEOUT_MICROS: i64 = 300000000
 const COURSE_PAIR_TIMEOUT_MICROS: i64 = 600000000
 const COURSE_PAIR_SELECTION: sview = "character-course-smoke,character-course-relaunch-smoke"
 
-def run_visible(stage: sview, program: sview, arguments: darray[sview], timeout_micros: i64 = APP_PROCESS_TIMEOUT_MICROS) -> i64:
+def run_visible(stage: sview, program: sview, arguments: darray[sview], timeout_micros: i64 = APP_PROCESS_TIMEOUT_MICROS) -> i64 can[Console.Write]:
     exit_status: i64 = try run_process(executable(program), arguments, timeout_micros) else 1
     # Name the failing sub-stage so a nonzero gate never ends in silence.
     if exit_status != 0:
@@ -20,7 +20,7 @@ def run_visible(stage: sview, program: sview, arguments: darray[sview], timeout_
         report_error_line(stage)
     exit_status
 
-def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> i64:
+def run_native_stage(stage: sview, program: sview, arguments: darray[sview]) -> i64 can[Console.Write]:
     exit_status: i64 = try run_process(executable(program), arguments) else 1
     if exit_status != 0:
         report_error_line("native gate: stage failed:")
