@@ -273,9 +273,11 @@ Apply these checks during the next defect fix or consumer-requested change:
    its existing acceptance path on the selected Stage1 product. Stage0 cannot
    compile writable owned-in/owned-out parameters.
 
-The guide remains at `44b81b1a` on compiler `cfd0203a`; no additional feature
-migration is prescribed by that newer checkout. Keep compiler qualification
+The latest guide revision checked on 2026-10-08 is `e3087e23`, including
+nested comprehensions and reserve-once builders. Keep compiler qualification
 and measured engine performance evidence attached to their exact products.
+Bundle this guidance with the source change that adopts it; documentation
+updates alone do not warrant a commit.
 
 ## Current evidence
 

@@ -182,13 +182,26 @@ bool record_capture_timestamps(wi::graphics::GraphicsDevice* device, CaptureRequ
 void keep_capture_timing(ApplicationService& service, const CaptureRequest& capture) {
     service.last_capture_timing = CaptureGpuTiming{};
     service.last_capture_timing.ticket = capture.ticket;
-    if (!capture.timestamps_recorded || capture.timestamp_readback.mapped_data == nullptr) return;
+    if (!capture.timestamps_recorded || capture.timestamp_readback.mapped_data == nullptr) {
+        std::fprintf(stderr, "capture timing unavailable: ticket=%llu recorded=%d mapped=%d frame=%llu\n",
+            static_cast<unsigned long long>(capture.ticket), capture.timestamps_recorded,
+            capture.timestamp_readback.mapped_data != nullptr,
+            static_cast<unsigned long long>(capture.gpu_frame));
+        return;
+    }
     uint64_t stamps[2] = {};
     std::memcpy(stamps, capture.timestamp_readback.mapped_data, sizeof(stamps));
     wi::graphics::GraphicsDevice* device = wi::graphics::GetDevice();
+    const uint64_t frequency = device == nullptr ? 0 : device->GetTimestampFrequency();
+    if (device == nullptr || stamps[0] == 0 || stamps[1] <= stamps[0] || frequency == 0) {
+        std::fprintf(stderr, "capture timing invalid: ticket=%llu begin=%llu end=%llu frequency=%llu frame=%llu\n",
+            static_cast<unsigned long long>(capture.ticket), static_cast<unsigned long long>(stamps[0]),
+            static_cast<unsigned long long>(stamps[1]), static_cast<unsigned long long>(frequency),
+            static_cast<unsigned long long>(capture.gpu_frame));
+    }
     if (device == nullptr || stamps[1] < stamps[0]) return;
     service.last_capture_timing.ticks = stamps[1] - stamps[0];
-    service.last_capture_timing.frequency = device->GetTimestampFrequency();
+    service.last_capture_timing.frequency = frequency;
 }
 
 } // namespace

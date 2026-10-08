@@ -337,3 +337,23 @@ audio diagnostics passes on the pinned compiler/runtime pair (537.79 seconds,
 terminal reports are copied to `build/validation/course-relaunch-diagnostic-terminal/`.
 The diagnostic did not fire. This establishes a passing focused retry, not
 a reproduced cause or a full native gate pass. Preserve the earlier failed run.
+
+### Explicit-audio native repeat and capture diagnostics (2026-10-08)
+
+The frozen `52d60fcf` full native repeat is terminal failed: 2,341.57s at
+984,368 KiB RSS under the original 3 GiB / one-hour watchdog. Character
+Course relaunch passes. The async capture smoke exits 39 at its original
+positive GPU-duration assertion for the third resized capture. Dependency,
+module hygiene and headless stages pass; source length and application fail,
+and the final native stage is explicitly skipped. Exact reports are retained
+in `build/validation/compiler-52d60fcf-audio-explicit-terminal/`.
+
+The source-length failures were the implementation plan and replay evidence
+document. Their content now lives in linked files under the same 600-line
+policy; no backlog requirements or evidence records were dropped. Capture
+timing now logs raw timestamps and frequency only when unavailable or invalid.
+The focused original smoke passes in 44.19s at 839,424 KiB RSS; those
+diagnostics did not fire. Its artifacts are retained in
+`build/validation/async-capture-timestamp-diagnostic-terminal/`. The full-run
+timing failure remains unexplained, and the focused pass does not qualify
+the full native gate. The integrated `ee9c67a9` prover matrix is still running.
