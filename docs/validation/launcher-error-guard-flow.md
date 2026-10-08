@@ -91,3 +91,22 @@ and runs the 29 project-runner tests. Those runner tests include fake compiler
 and linker fixtures; they establish CLI behavior, not gameplay qualification.
 The build-gate mode skips the application and render-scene smoke suites.
 The full native gate is the next required acceptance step.
+
+## Full native terminal result — 2026-10-08
+
+The exact qualified launcher SHA-256
+`8edba764b397aac70a2a39b943edce4faee9be6ee3c8143f7f4341ca3fbc2128`
+passes the full native gate with compiler `cb10dd72` and pinned Wicked checkout
+`fd790f55b3237a9d266335ec742faeacc3cc9228`. Watchdog terminal status 0,
+2,027.77s elapsed, peak 1,371,856 KiB under the 3,145,728 KiB cap.
+`build/validation/guard-flow-qualified-native-report.json` preserves the terminal
+schema-2 report and exact launcher identity; all six reported stages pass.
+The complete log and watchdog JSON are `guard-flow-full-native.log` and
+`guard-flow-full-native.log.json`. Application, dependency, headless, module
+hygiene, native and source-length stages pass. Native frame determinism/topology,
+coordinate reference, frame budget, live-input rendering and orderly shutdown
+also pass. This local SDL3/Metal result does not establish physical controller,
+listening/device-change, other-platform or separate-machine acceptance.
+
+The later counted-fill compiler fix is qualified separately for engine runtime
+behavior; this native run does not qualify that replacement product.

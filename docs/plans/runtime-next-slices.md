@@ -75,9 +75,10 @@ these additional checks within implementation slices:
   The guard-aware launcher now executes quick and headless gates. Compiler
   `cb10dd72` repairs the narrow-pop numeric conversion exposed by cross-block
   verification; Script `62928532` passes the seven focused guard controls.
-  This pair passes the pinned headless replay; full native qualification remains
-  open. Compilation alone does
-  not qualify the native gate ([evidence](../validation/launcher-error-guard-flow.md)).
+  This pair passes pinned headless and full native replay: the native run
+  completes in 2,027.77s with all six reported stages and 30 application smokes
+  passing. Later compiler replacement products still need their own native
+  qualification ([evidence](../validation/launcher-error-guard-flow.md)).
 
 - At mutable-reference call sites, check aliases through reference locals,
   returned and conditional references, containers and function values. Use
@@ -105,7 +106,7 @@ these additional checks within implementation slices:
   the bounded Stage1 build removes all 25 argument-storage invalidation
   diagnostics. Other launcher compatibility diagnostics still prevent a
   runnable native gate at that point. The subsequent guard-aware launcher
-  passes headless and build-gate replay; full native acceptance remains running.
+  passes headless, build-gate and full native replay.
 - Adopt strict lint as a diagnostic on touched code, then enable errors only
   for a clean directory. Preserve loop zero-iteration results and refuse forced
   rewrites where strict diagnostics explain why no valid rewrite exists.
