@@ -123,3 +123,33 @@ workers and `ELISA_PROOF_SKIP_BUILD=1`. It retains all steps; no baseline or fix
 was removed. Terminal compatibility remains open. The retained 73 engine reports
 contain 4,246 obligations, zero unproven/failed obligations and zero replay gaps;
 source-inventory limits remain explicit in `prover-0baaa951-engine-inventory.json`.
+
+## Shared gate terminal failure — intentional NaN diagnostics
+
+`compiler-0baaa951-shared.log` finishes status 1 in 41.68s, peak 2,600,960 KiB.
+The runtime suite (215 uncached), SDL3/Godot/native probes, owner rejection
+controls and cached 73-report proof sweep pass before final report validation
+rejects `action-input-context-proof.json`. Both action-input proof reports have
+all obligations proved/replayed and zero semantic errors, but four diagnostics
+on the intentional `deadzone != deadzone` guard and its postcondition: constant
+self-comparison, two float-equality hints and a negated-comparison warning.
+The constant-self-comparison message is incorrect for IEEE NaN.
+
+`compiler-0baaa951-shared-diagnostic-gap.json` retains exact diagnostic records
+and terminal watchdog metadata. A dependency-free source string analyzed by the
+real compiler semantic API reproduces count 4 (`nan-guard-diagnostics-before.log`).
+A compiler regression with ordinary integer/float/negated-comparison controls
+is prepared in `test/repro/nan_guard_diagnostics.elisa`; its fix remains open.
+Preserve the NaN rejection and the shared gate's zero-diagnostic requirement.
+Do not suppress report diagnostics or count this run as a shared pass.
+
+A launcher rebuilt from unchanged Script `62928532` with compiler `0baaa951`
+passes recovered-helper execution and refuses unrecovered/fallback errors.
+`elisascript-0baaa951-build.log` records status 0, 9.32s, peak 1,071,936 KiB;
+its broader replacement-product native acceptance remains open.
+
+The two-worker matrix terminated at its aggregate RSS watchdog: 488.03s,
+8,599,808 KiB peak against an 8,388,608 KiB cap. Its recorded failure events are
+retained in `proof-0baaa951-partial-matrix-summary.json`, explicitly incomplete.
+A serial full matrix is running under the same cap; this reduces simultaneous
+report workloads while retaining every original check. Neither matrix is a pass.
