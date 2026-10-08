@@ -287,3 +287,11 @@ execution and unrecovered/fallback rejection. `elisascript-52d60fcf-qualificatio
 records hashes and statuses; the build takes 29.85s at 1,844,800 KiB peak RSS.
 The shared gate now runs with this matching compiler/prover/launcher tuple.
 Full prover compatibility and replacement full native qualification remain open.
+
+The matching `52d60fcf` shared gate completed with status 0 in 42.64s at
+1,743,168 KiB peak RSS under the existing 8 GiB cap. The strict final validation
+report passes and is retained as `compiler-52d60fcf-shared-report.json`.
+Full native qualification is now running (`compiler-52d60fcf-full-native.log`)
+with frozen compiler/runtime, matching prover generation, rebuilt Script launcher
+and pinned Wicked `fd790f55b3237a9d266335ec742faeacc3cc9228` / SDL3 archives,
+under the unchanged 3 GiB native watchdog. No terminal native result is claimed.

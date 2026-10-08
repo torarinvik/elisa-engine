@@ -146,8 +146,10 @@ these additional checks within implementation slices:
   follow-up `0baaa951` safely declines malformed helper metadata, passes the
   same 215 uncached runtime tests in 21.79s, and is integrated in compiler main.
   Its official paired prover build and 73-report engine sweep pass. The newer
-  `cfd0203a` diagnostic repair also passes 215 runtime tests and all 73 engine
-  reports with zero diagnostics; its shared gate passes. Installation
+  `cfd0203a` diagnostic repair and primitive-shadow follow-up `52d60fcf` pass
+  215 runtime tests, 73 engine reports with zero diagnostics and shared gates.
+  The matching `52d60fcf` launcher passes focused controls; its full native gate
+  is running. Installation
   and full prover/shared/native compatibility remain open
   ([evidence](../validation/counted-fill-memory-growth.md)).
   Preserve the real asset acceptance and existing watchdog limits. This memory
