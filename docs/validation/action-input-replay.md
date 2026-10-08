@@ -708,3 +708,35 @@ The branch gap is the line-32 `keep_or_replace` return certificate following
 `result <= 8`. Reports and unchanged outcome inventory are retained in
 `build/validation/luna-corpus-f593c886-reports/`. These source/replay defects
 require owning prover repairs; manifest controls alone do not qualify the corpus.
+
+### Rebind-site repair qualification (2026-10-08)
+
+Isolated prover `14ae4a02` rejects an appended alternate reserved symbol for
+the same source definition. Harness repair `464b6aab` exposes all selected
+private extensions only in temporary test copies; production visibility stays
+private. The original adversarial harness now executes all controls. Its
+invariant-edit test separately checks initializer source validity and refusal
+of an old certificate whose goal no longer matches the source invariant.
+A baseline-only diagnostic independently reproduced assertion 110 before
+this test correction (`source-binding-baseline-after116-relocated.log`);
+that scratch diagnostic bypassed assertion 116 solely to reach the later
+control and is not qualification evidence.
+
+The exact committed harness passes in 80.66 seconds, peak 1,233,056 KiB
+(`build/validation/source-binding-14ae4a02-exact-harness.log`). The official
+paired build completes in 233.91 seconds, peak 1,377,856 KiB. Immutable
+generation `f43713c9ff9e4f559d46c4b1ed68331b` records clean source `14ae4a02`
+for both products; binary hashes were checked against both manifests.
+Its uncached engine sweep passes 73/73 reports and 4,246/4,246 obligations
+in 6.10 seconds, peak 165,280 KiB, with zero semantic diagnostics, failures,
+trusted assumptions or replay gaps and independent replay enabled. Reports:
+`build/validation/rebind-site-engine-reports/`. Both scalar-copy and
+next-write control suites pass (`rebind-site-copy-controls.log`,
+`rebind-site-next-write.log`).
+
+Test-only follow-ups `00db3e8b` and `c7235dea` preserve the collection
+refusals while recording propagated `source-error` and updating the corpus
+source/expectation identity. All 13 manifest controls pass. They do not
+repair the remaining branch-join or symbolic-quantifier replay gaps.
+The full frozen f593c886 matrix remains active; these isolated commits are
+not yet integrated into its worktree. Full compatibility remains open.
