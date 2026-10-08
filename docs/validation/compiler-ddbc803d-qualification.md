@@ -394,3 +394,14 @@ limit and too-large path are unchanged. No driver diagnostics remain in the
 bounded build; it exits 1 elsewhere in 5.44 seconds, sampled peak RSS 726,736
 KiB. Artifact: `build/validation/elisascript-ddbc803d-argv-view-build.log` and JSON.
 Argument collection remains runtime-unverified on the selected compiler.
+
+### Semantic string and borrowed flag boundaries
+
+The vendored diagnostic literal helper accepts cstr, matching its strlen-based
+view construction and current upstream signature. Constant-fold negation reads
+its borrowed found flag explicitly before checking it. Both diagnostics clear;
+the affine branch-merge storage lifetime error remains. The bounded build exits
+1 elsewhere in 8.18 seconds, sampled peak RSS 696,368 KiB. Artifact:
+`build/validation/elisascript-ddbc803d-semantic-boundaries-build.log` and JSON.
+Semantic diagnostic rendering and constant folding remain runtime-unverified
+on the selected compiler.
