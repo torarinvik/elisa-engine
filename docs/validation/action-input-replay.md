@@ -768,3 +768,23 @@ selected goal's diagnostic; baseline inspection found seven `unknown` versus
 Its combined product build and regression checks remain pending. The full
 frozen f593c886 matrix remains active and none of these isolated changes
 constitutes full compatibility qualification.
+# Focused timeout classification qualification (2026-10-08)
+
+Clean prover source `d961eee0a231e9f1a8f168c721f18648d89db4bd` built paired
+generation `8948585eca3b47bbab0bd7ef83333809` with frozen compiler `52d60fcf`
+and its matching runtime. Both manifest identities and actual binary hashes
+were checked. The bounded build completed in 111.26s at 1,427,744 KiB RSS.
+
+The exact-goal regression passes all nine timeout/unknown/disproved cases
+(`build/validation/focused-timeout-goal-states.log`). The uncached engine sweep
+passes 73 reports and 4,246 obligations, with matching certificate/replay counts,
+zero failures, diagnostics or gaps, independent replay and no trusted assumptions
+(`build/validation/focused-timeout-engine-sweep.log`; preserved reports in
+`build/validation/focused-timeout-engine-reports/`). This repairs the CLI's
+selected timeout classification without changing certificate admission.
+
+Separately, test commit `5016891c` isolates synthetic Stage1 builds from inherited
+`ELISA_*` qualification overrides. All 11 provenance tests pass under the real
+qualification overrides, including a deliberately poisoned environment
+(`build/validation/mock-stage1-provenance-isolation.log`). Production provenance
+checks remain intact. Full compatibility and native release gates remain open.

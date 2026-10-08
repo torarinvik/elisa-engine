@@ -187,6 +187,34 @@ these additional checks within implementation slices:
   Their documented equal machine code is no evidence of reduced allocations or
   repaired arena routing. Reuse the existing client and engine acceptance paths.
 
+### Concrete asset-code candidates from the guide review
+
+Rechecked the guide at `b26659e2` on 2026-10-08; the latest guide revision
+remains `e3087e23`. Use these candidates when the owning consumer slice next
+touches the file, after qualification of the selected product:
+
+- `src/assets/gltf_cubic_sample.elisa`: the final four-element `normalized`
+  builder is a simple comprehension candidate. Preserve component order,
+  normalization arithmetic and returned allocation lifetime. The preceding
+  `out` loop also accumulates `length_squared`; review that dependency before
+  changing it. Measure sampling allocation/time with representative animation
+  data before promoting this as a performance task.
+- `src/assets/gltf_skeleton.elisa`: the initial `parent` and nested `track`
+  fills are candidates for range comprehensions, including left-to-right
+  nested clauses for the four track slots per node. Both arrays are mutated
+  later, so retain mutable bindings. Verify slot count/order, node limits and
+  subsequent indexed writes; building through a comprehension does not make
+  the completed skeleton tables immutable.
+- `src/assets/glb_document.elisa`: `find_node` and `find_animation` can use
+  loop-result captures while preserving the public `-1` sentinel and first
+  match. Introducing an early break also changes how many comparisons execute;
+  review that separately. `node_name` and `animation_name` fill caller-borrowed
+  output buffers, so retain those reference APIs and their capacity reuse.
+- Keep GLB chunk loading's existing growth regression and memory budget as
+  acceptance for any allocation rewrite. A comprehension's reserve-once claim
+  applies to unfiltered range/darray builders; do not extend it to filtered
+  or nested builders without measurement of the selected compiler product.
+
 ### Owned updates: targeted adoption
 
 - Prefer `xs <- xs.push(v)`, `xs <- xs.clear()`, `xs, last <- xs.pop()`,
