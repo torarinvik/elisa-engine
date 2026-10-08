@@ -1721,5 +1721,13 @@
   "binary": "build/action_input_capacity_bounds-test",
   "args": [],
   "message": null
+ },
+ {
+  "name": "mesh-overlay-shapes",
+  "source": "test/mesh_overlay_shapes.elisa",
+  "flags": [],
+  "binary": "build/mesh-overlay-shapes-test",
+  "args": [],
+  "message": "Mesh overlay malformed shape and failure atomicity tests passed."
  }
 ]

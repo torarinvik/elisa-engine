@@ -37,6 +37,14 @@ module MeshOverlay:
         def skin(mesh: GlbSkinMesh::Mesh&, joint_models: darray[Geometry::Transform]&, out: mutable darray[Geometry::Vec3]&) -> usize error[MeshError]:
             joints: usize = GlbSkinMesh::joint_count(mesh)
             raise MeshError.ShapeMismatch if joint_models.count != joints
+            raise MeshError.ShapeMismatch if not SkinMeshPolicy::packed_shape_ok(joints, 16, mesh.inverse_binds.count)
+            raise MeshError.ShapeMismatch if not SkinMeshPolicy::packed_shape_ok(mesh.positions.count, GlbSkinMesh::INFLUENCES, mesh.influence_weights.count)
+            raise MeshError.ShapeMismatch if mesh.influence_joints.count != mesh.influence_weights.count
+            # Public mesh arrays may have changed after loading. Validate the
+            # complete influence set before touching the caller's output.
+            for slot in 0..<mesh.influence_weights.count:
+                if mesh.influence_weights[slot] > 0.0:
+                    raise MeshError.ShapeMismatch if mesh.influence_joints[slot].usize() >= joints
             mutable matrices: darray[f32] = []
             for j in 0..<joints:
                 model: f32[16] = Geometry::transform_to_matrix(joint_models[j])
@@ -78,6 +86,10 @@ module MeshOverlay:
         # triangle count drawn.
         def draw(list: mutable ViewportDraw::List&, mesh: GlbSkinMesh::Mesh&, skinned: darray[Geometry::Vec3]&, light: Geometry::Vec3, style: Style) -> usize error[MeshError]:
             raise MeshError.ShapeMismatch if skinned.count != mesh.positions.count
+            raise MeshError.ShapeMismatch if mesh.indices.count % 3 != 0
+            # Refuse malformed topology before appending any triangle.
+            for index in mesh.indices:
+                raise MeshError.ShapeMismatch if index.usize() >= skinned.count
             ambient: i64 = SkinMeshPolicy::FULL_LIGHT if style.ambient > SkinMeshPolicy::FULL_LIGHT else (0 if style.ambient < 0 else style.ambient)
             unit_light: Geometry::Vec3 = Geometry::vec3_normalize(light)
             mutable drawn: usize = 0

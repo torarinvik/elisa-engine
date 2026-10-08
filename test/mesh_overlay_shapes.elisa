@@ -1,0 +1,74 @@
+include "../src/viewport/mesh_overlay.elisa"
+
+def fixture() -> GlbSkinMesh::Mesh:
+    mesh: mutable GlbSkinMesh::Mesh = GlbSkinMesh::empty()
+    mesh.positions.push(Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0})
+    mesh.positions.push(Geometry::Vec3{x: 1.0, y: 0.0, z: 0.0})
+    mesh.positions.push(Geometry::Vec3{x: 0.0, y: 1.0, z: 0.0})
+    mesh.joints.push(0)
+    matrix: f32[16] = Geometry::transform_to_matrix(Geometry::transform_identity())
+    for value in matrix |mesh|:
+        mesh.inverse_binds.push(value)
+    for slot in 0..<24 |mesh|:
+        mesh.influence_joints.push(0)
+        mesh.influence_weights.push(1.0 if slot % 8 == 0 else 0.0)
+    mesh.indices.push(0)
+    mesh.indices.push(1)
+    mesh.indices.push(2)
+    return move mesh
+
+def main() -> i32:
+    models: darray[Geometry::Transform] = [Geometry::transform_identity()]
+    for mode in 0..<9 |models|:
+        mesh: mutable GlbSkinMesh::Mesh = fixture()
+        if mode == 1:
+            mesh.inverse_binds.count <- 15
+        elif mode == 2:
+            mesh.influence_weights.count <- 23
+        elif mode == 3:
+            mesh.influence_joints.count <- 23
+        elif mode == 4:
+            mesh.influence_joints[0] <- 1
+        elif mode == 5:
+            mesh.inverse_binds.push(0.0)
+        elif mode == 6:
+            mesh.inverse_binds.count <- 0
+        elif mode == 7:
+            mesh.influence_weights.push(0.0)
+            mesh.influence_joints.push(0)
+        elif mode == 8:
+            mesh.influence_weights[23] <- 1.0
+            mesh.influence_joints[23] <- 65535
+        out: mutable darray[Geometry::Vec3] = []
+        out.push(Geometry::Vec3{x: 9.0, y: 8.0, z: 7.0})
+        refused: bool = catch MeshOverlay::skin(mesh, models, &out):
+            value: false
+            error MeshOverlay::MeshError.ShapeMismatch: true
+            error failure: return 1
+        if mode == 0:
+            return 2 if refused or out.count != 3 or out[1].x != 1.0 or out[2].y != 1.0
+        else:
+            return 3 if not refused or out.count != 1 or out[0].x != 9.0
+    for mode in 0..<4:
+        mesh: mutable GlbSkinMesh::Mesh = fixture()
+        if mode == 1:
+            mesh.indices.push(0)
+        elif mode == 2:
+            mesh.indices.push(0)
+            mesh.indices.push(1)
+            mesh.indices.push(3)
+        elif mode == 3:
+            mesh.indices[2] <- 4294967295
+        list: mutable ViewportDraw::List = ViewportDraw::create()
+        light: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 0.0, z: 1.0}
+        style: MeshOverlay::Style = MeshOverlay::default_style()
+        refused: bool = catch MeshOverlay::draw(&list, mesh, mesh.positions, light, style):
+            value: false
+            error MeshOverlay::MeshError.ShapeMismatch: true
+            error failure: return 4
+        if mode == 0:
+            return 5 if refused or ViewportDraw::vertex_count(list) != 3
+        else:
+            return 6 if not refused or ViewportDraw::vertex_count(list) != 0
+    return 7 if SkinMeshPolicy::packed_shape_ok(18446744073709551615, 8, 0)
+    0

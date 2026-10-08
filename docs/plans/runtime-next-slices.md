@@ -4,22 +4,46 @@ This refines the active queue in `IMPLEMENTATION_PLAN.md`. The full backlog
 remains open. Select a concrete defect or missing acceptance result in the
 Character Course before promoting a subsystem-wide feature.
 
-## Next executable slices — revised priority
+## Next executable slices — authoritative queue
 
-| Order | Concrete next action | Why now / acceptance |
-| --- | --- | --- |
-| 1 (proof sweep complete) | ActionInput resource summaries now replay; advance to full toolchain qualification. | Prover cb316eaa audits every payload of uniquely resolved ordinary enums, including enums nested in structs, while refusing reference payloads, recursion and hierarchy types. Actual context is 265/265 with zero gaps; the uncached engine sweep passes all 73 reports. Seven new cases pass both JSON routes, with existing alias/overlap, enum, scope and mutation controls retained. See [resource-summary evidence](../validation/reference-free-enum-summary.md). |
-| 2 (automated repair complete) | Authenticate immutable scalar snapshot bounds across record mutation. | Prover `f593c886` integrates the guarded-field copy repair and current main gains. The original later-use case now proves and replays 5/5, with stale-field, rebound-copy, wrong-entry, pre-copy mutation, different-field and fall-through controls refused. Both JSON routes and the compiled source-forgery harness pass; the merged uncached engine sweep remains 73/73. Admission reconstructs exact primitive field types and a dominating early-return guard; unknown scopes/types remain refused, and equality to the changed field expires. Full toolchain qualification remains the next release prerequisite. See [input evidence](../validation/action-input-replay.md) and [scope evidence](../validation/invariant-for-retention.md). |
-| 3 | Run the full prover compatibility matrix, shared check and full native gate on one qualified immutable compiler product. | The fresh full matrix on cb316eaa finished with 73 failed steps; source-length and relocated-include harness repairs now pass the compiled source-binding harness after correcting the obsolete indexed-read expectation and adding three mutation/rebinding/call refusals. The literal precondition replay gap is repaired in c867efd1 with source-exact callee/slot/range checks and compiled forgery controls; its dependency-row probe now replays 14/14 but retains five failed obligations ([literal evidence](../validation/literal-call-partial-requires.md)). Signed product growth now verifies the bounded multiplication callee with mirrored kernel/range checks and nine accepted/refused cases; its dependency-row caller now reaches a separate range_step summary replay gap (20 obligations, 18 certificates, 17 replayed). Source-authenticated same-module spelling repair 79155ac4 now passes the original dependency-row regression (18/18 certificates, zero gaps); the ddbc803d full matrix finished with 72 failed steps; qualified-call harness selection is corrected in 88b1f7d6, and signed call snapshot repair 9180dc2b restores the original conditional join to 22/22 with zero gaps, compiled forgery controls passing and the engine sweep still 73/73 ([join evidence](../validation/conditional-join-call-composition.md)); literal pop snapshot repair bf0b403e also restores the original pop suite to 8/8, retains five rejected claims and passes 13 compiled source controls plus the 73/73 engine sweep ([pop evidence](../validation/collection-pop-snapshot-replay.md)); unchanged entry-count repair 95db5c6b restores the push suite to 20/20 with stale/mutation controls and the engine sweep passing ([entry evidence](../validation/entry-count-source-replay.md)); rerun the matrix for the remaining count ([call replay evidence](../validation/same-module-call-replay.md)). Retain remaining focused-module and literal source-inventory limitations ([matrix evidence](../validation/prover-cb316eaa-matrix.md)). Clean paired generation 5333c304 now passes package JSON boundary/provenance checks; loop-state and captured-loop replay failures persist, alongside collection/loop-frame findings from the full run (see current input evidence). Repair those failures and rerun full qualification with exact product identities. Compiler ddbc803d now passes 215 uncached runtime tests on a preserved immutable snapshot ([evidence](../validation/compiler-ddbc803d-qualification.md)); its clean paired prover f3ee9522 now builds and passes all 73 engine reports plus compiled source-binding controls; full matrix/shared/native qualification remains open. Compiler 8006 retains non-proof shared-stage evidence. Native qualification first needs a rebuilt ElisaScript supporting explicit process timeouts and explicit selection of the existing pinned ../elisa-boxing-wickedengine checkout/archive ([evidence](../validation/compiler-8006b660-install.md)); sanitizer stages pass, application smokes remain skipped. Full prover compatibility is open. Capture terminal results, product/runtime hashes, all original counts and explicit skips. Fix actual failures without weakening acceptance. |
-| 4 | Rebuild and relocate optimized Character Course with current generated guide assets. | The earlier bundle has historical pre-refresh guide files. Verify generated-output equality, exact resource hashes, offline startup, restart and graceful teardown; retain old evidence as historical. |
-| 5 | Qualify compatible hosted pins and run clean-checkout headless CI. | Published compiler main now includes the formerly unavailable prerequisite. Verify compatible products before changing pins; retain actual provisioning/build/proof artifacts rather than claiming local preflight as CI. |
-| 6 | Rehearse the existing ordinary-project build/cook/package instructions in an isolated fresh project. | Finds reusable SDK and authoring defects with a real consumer. Fix only demonstrated missing steps/API/resource diagnostics; finish with a runnable packaged public-API client. |
-| 7 | Complete visible gameplay and physical input/audio acceptance when available; sample missing Jolt/GPU lifecycle counts. | Completes product evidence and exposes ownership defects. Use the existing route/reload harness, record live resource baselines and outcomes; hardware checks remain explicitly open until performed. |
+[The active queue](../../IMPLEMENTATION_PLAN.md#active-delivery-queue--highest-return-first)
+is the single scheduling authority. Execute these bounded slices in that order:
 
-Proceed through ready tasks in order. When an external acceptance item cannot run,
-record its exact prerequisite and continue the next independent ready item. Do not
-add another benchmark or subsystem wrapper without a failing workload or named
-consumer. Separate-machine packaging, signing and legal review remain open.
+1. Qualify default global-mutable grants and the `-permissive` bypass on the owning
+   compiler product; migrate real engine caller chains exposed by that policy.
+2. Integrate the qualified mocap mesh bounds repair in the real consumer. Local
+   source acceptance passes O0/O2, focused AddressSanitizer, loader controls and
+   all 73 engine reports / 4,277 obligations. Hand off the clean tuple and exercise
+   Studio redraw; the historical crash cause remains unestablished. See
+   [mesh evidence](../validation/mesh-overlay-shapes.md).
+3. Qualify isolated prover `5077910c` on a clean paired build. Its focused exact
+   unsigned-subtraction controls pass, the original return branch replays 23/23,
+   and the strict negative is disproved. Report retention and provenance guards
+   are implemented at `4d9f3a8d`; the diagnostic census finishes 1,174 inputs in
+   1,301.46s at 8,184,352 KiB, with nine timeouts. Complete original compatibility
+   checks against immutable snapshots under unchanged budgets before promotion.
+4. Diagnose and repair the intermittent effect lifecycle footprint using the full
+   renderer sequence and existing memory-domain instrumentation. Preserve the
+   original warmup, cycles and 8 MiB allowance.
+5. Rebuild and relocate optimized Character Course with current cooked content,
+   complete resource manifests and offline lifecycle acceptance. Guide assets are
+   already refreshed at `a30d3af9`; current generator checks pass.
+6. Qualify hosted full-SHA pins with an actual clean-checkout headless run.
+7. Rehearse an ordinary public-API project through cooking and packaging; repair a
+   demonstrated authoring or failure-diagnostic gap.
+8. Complete the existing gameplay route and physical hardware acceptance when
+   available, keeping external prerequisites visible.
+
+While waiting on release prerequisites, finish the named mocap consumer's provider
+registration and actual Studio reveal acceptance. The read-only trash location
+observer and focused native identity, readonly-operation, bounded-output and
+uncertainty controls are qualified at engine-mocap `3f60d5ed`; its clean source and
+header tuple has been handed off. Require full retained-binding matching and fresh
+observation before reveal. Keep restore/deletion authority outside this observer.
+
+Historical repair details remain in linked validation notes. They do not define a
+second queue or establish current compatibility. Keep the full subsystem backlog,
+separate-machine packaging, signing and legal acceptance open until qualified.
 
 ## Completed local automated slices — retained evidence
 
@@ -131,7 +155,7 @@ these additional checks within implementation slices:
 
 - Prefer comprehensions for touched array builders that only push one result per
   selected element and read the collection after completion. Start with asset
-  inventory and package metadata builders encountered in queue items 3–5.
+  inventory and package metadata builders encountered in queue items 5–7.
   Preserve iteration/filter order, effects, output ordering and allocation lifetime.
   Unfiltered range/darray comprehensions can reserve the result once; measure
   actual memory or time before claiming an engine improvement. Retain the real
@@ -178,7 +202,7 @@ these additional checks within implementation slices:
   `cfd0203a` diagnostic repair and primitive-shadow follow-up `52d60fcf` pass
   215 runtime tests, 73 engine reports with zero diagnostics and shared gates.
   The matching `52d60fcf` launcher passes focused controls; its full native gate
-  is running. Installation
+  exposed the intermittent lifecycle footprint failure. Installation
   and full prover/shared/native compatibility remain open
   ([evidence](../validation/counted-fill-memory-growth.md)).
   Preserve the real asset acceptance and existing watchdog limits. This memory

@@ -74,6 +74,16 @@ module SkinMeshPolicy:
             return -1 if total < element
             return total
 
+        # Validate a flattened buffer without multiplying caller-controlled counts.
+        def packed_shape_ok(rows: usize, stride: usize, slots: usize) -> bool:
+            requires stride > 0
+            ensure result == (slots % stride == 0 and slots / stride == rows)
+            ensure slots % stride == 0 or result == false
+            ensure slots / stride == rows or result == false
+            return false if slots % stride != 0
+            return false if slots / stride != rows
+            true
+
         # A triangle corner index is usable for `vertices` vertices.
         def index_ok(index: i64, vertices: i64) -> bool:
             ensure not result or index >= 0

@@ -108,3 +108,32 @@ module SkinMeshPolicyLaws:
             requires base <= 255
             ensure result == 0
             return SkinMeshPolicy::shade(base, 0)
+
+        def empty_influence_shape() -> bool:
+            ensure result
+            SkinMeshPolicy::packed_shape_ok(0, 8, 0)
+
+        def three_vertex_influence_shape() -> bool:
+            ensure result
+            SkinMeshPolicy::packed_shape_ok(3, 8, 24)
+
+        def truncated_influence_shape() -> bool:
+            ensure result == false
+            SkinMeshPolicy::packed_shape_ok(3, 8, 23)
+
+        def extra_bind_element_shape() -> bool:
+            ensure result == false
+            SkinMeshPolicy::packed_shape_ok(1, 16, 17)
+
+        def packed_shape_definition(rows: usize, slots: usize) -> bool:
+            ensure result == (slots % 8 == 0 and slots / 8 == rows)
+            SkinMeshPolicy::packed_shape_ok(rows, 8, slots)
+
+        def wrong_bind_row_count() -> bool:
+            ensure result == false
+            SkinMeshPolicy::packed_shape_ok(2, 16, 16)
+
+        def nonempty_rows_without_slots(rows: usize) -> bool:
+            requires rows > 0
+            ensure result == false
+            SkinMeshPolicy::packed_shape_ok(rows, 8, 0)
