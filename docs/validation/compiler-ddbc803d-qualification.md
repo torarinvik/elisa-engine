@@ -428,3 +428,16 @@ The bounded build exits 1 elsewhere in 12.78 seconds, sampled peak RSS 726,736
 KiB. Artifact: `build/validation/elisascript-ddbc803d-document-copy-build.log`
 and JSON. Document snapshot and transport behavior remain runtime-unverified
 on the selected compiler.
+
+### Contract markers misclassified as propagated errors
+
+Source inspection at compiler ddbc803d identifies a candidate shared cause for
+launcher errors naming __has_contract and __try_without_else:
+callable_error_indexed_family and callable_error_family in
+src/semantic/check_try_fallible.elisa accept all function-owned annotations
+except three named markers. Parser capture_signature_changes runs before the
+actual __error_return and family rows are emitted, so a contract marker may
+become the selected fallback. This is an investigation finding, not a verified
+compiler fix. Next: minimize the marker-order case, authenticate family rows
+against the corresponding declaration's error-return metadata, and retain
+negative propagation controls and module disambiguation.
