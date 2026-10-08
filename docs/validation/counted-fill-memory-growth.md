@@ -255,3 +255,20 @@ Rebuilding `52d60fcf` encountered a live seed already using the same checkout
 refused; it was not a compiler failure. Do not compete with that seed or edit its
 inputs. Authenticate its terminal product against the committed source and
 freshness manifest before reusing it for qualification.
+
+### Primitive-shadow follow-up product
+
+Compiler `52d60fcf` now has a freshly rebuilt, provenance-checked product, frozen
+as `stage1-code-52d60fcf` with matching `runtime-52d60fcf.o`. Product SHA-256:
+`8e94a7255bb56d5f0078db60e22c08eb675142d31c57722281bfd69911e551e0`.
+The seed retry completed with status 0. Its uncached 215-test runtime sweep
+is running under the existing 3 GiB cap (`compiler-52d60fcf-runtime.log`).
+A paired prover build with matching frontend revision is running in the separate
+qualification checkout (`prover-52d60fcf-pair-build.log`); preserve the older
+immutable generations. Neither run is yet terminal qualification evidence.
+
+The previous `cfd0203a` product reproduces all scalar field-copy diagnostic
+baselines through both JSON routes (`prover-cfd0203a-scalar-snapshot-diagnostic.log`):
+copy across mutation remains 4/5, local-guard and parameter controls pass 5/5,
+and stale-field, rebound-copy and wrong-entry cases remain refused. This script
+validates the diagnostic counts, not completion of the requested snapshot repair.
