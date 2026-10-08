@@ -270,3 +270,11 @@ lower_ast diagnostics. The bounded build still exits 1 on other errors in
 7.18 seconds, sampled peak RSS 463,616 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-lowering-owned-build.log` and JSON.
 Lowered-program behavior and metadata lifetimes remain runtime-unverified.
+
+Vendored parser and symbol hashing now bind the limb cross-product sum in one
+expression, matching the IR hash repair and preserving modulo multiplication.
+Both immutable-assignment diagnostics clear; no parser_tokens or symbols
+fragment diagnostics remain in the bounded compile. The build still exits 1
+on other launcher errors in 8.33 seconds, sampled peak RSS 539,312 KiB.
+Engine artifact: `build/validation/elisascript-ddbc803d-vendor-hash-build.log`
+and watchdog JSON. Parsed effect/symbol identity behavior remains unexecuted.
