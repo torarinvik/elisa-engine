@@ -538,8 +538,8 @@ def build_project(args: argparse.Namespace) -> tuple[int, Path | None, Path | No
             print("Native linker succeeded without creating the output executable.", file=sys.stderr)
             return 1, None, None
         output.parent.mkdir(parents=True, exist_ok=True)
-        os.replace(staged_output, output)
-    stage_wicked_runtime_libraries(output, paths["wicked_source"])
+        stage_wicked_runtime_libraries(output, paths["wicked_source"],
+            staged_executable=staged_output)
     try:
         provenance = write_build_provenance(output=output, project=project,
             main_source=main_source, engine_root=ENGINE_ROOT,

@@ -4,7 +4,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shutil
+import tempfile
 import sys
 from pathlib import Path
 
@@ -17,43 +20,41 @@ class WickedRuntimeError(ValueError):
     """A Wicked runtime library cannot be staged beside the executable."""
 
 
-def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path) -> list[Path]:
-    """Link Wicked runtime compiler libraries beside a development executable.
+def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path,
+    *, staged_executable: Path | None = None) -> list[Path]:
+    """Prepare all runtime links, publish them, then publish the executable.
 
-    Wicked loads DXC using an executable-relative path. Development executables
-    live outside the Wicked checkout, so an rpath alone cannot satisfy that
-    lookup. Symlinks keep one authoritative copy in the selected checkout.
+    On failure restore the exact previous link targets. Failed rollback keeps
+    its recovery directory so the previous links remain recoverable.
     """
     executable = executable.expanduser().absolute()
     wicked_source = wicked_source.expanduser().resolve()
-    if not executable.is_file():
-        raise WickedRuntimeError(f"native executable does not exist: {executable}")
+    candidate = staged_executable if staged_executable is not None else executable
+    if not candidate.is_file():
+        raise WickedRuntimeError(f"native executable does not exist: {candidate}")
+    if executable.name in RUNTIME_LIBRARIES:
+        raise WickedRuntimeError(f"executable name is reserved for a Wicked runtime library: {executable}")
     if not wicked_source.is_dir():
         raise WickedRuntimeError(f"Wicked source directory does not exist: {wicked_source}")
 
-    staged: list[Path] = []
+    changes: list[tuple[Path, Path | None]] = []
+    # Validate both destinations before changing either one.
     for name in RUNTIME_LIBRARIES:
         source = wicked_source / name
+        destination = executable.parent / name
         if not source.is_file():
             if name in REQUIRED_RUNTIME_LIBRARIES:
                 raise WickedRuntimeError(f"Wicked shader compiler is missing: {source}")
-            stale_destination = executable.parent / name
-            if stale_destination.is_symlink():
-                stale_destination.unlink()
-            elif stale_destination.exists():
+            if destination.is_symlink():
+                changes.append((destination, None))
+            elif destination.exists():
                 raise WickedRuntimeError(
                     f"{source.name} is absent from this Wicked checkout but a file remains beside "
-                    f"the executable: {stale_destination}"
-                )
+                    f"the executable: {destination}")
             continue
-
-        destination = executable.parent / name
         if destination.is_symlink():
             if destination.resolve() == source:
                 continue
-            # These exact names are reserved for Wicked's runtime libraries.
-            # Repoint an older development symlink when switching checkouts.
-            destination.unlink()
         elif destination.exists():
             try:
                 if os.path.samefile(destination, source):
@@ -61,15 +62,58 @@ def stage_wicked_runtime_libraries(executable: Path, wicked_source: Path) -> lis
             except OSError:
                 pass
             raise WickedRuntimeError(
-                f"refusing to replace an existing file beside the executable: {destination}"
-            )
+                f"refusing to replace an existing file beside the executable: {destination}")
+        changes.append((destination, source))
 
-        try:
-            destination.symlink_to(source)
-        except OSError as error:
-            raise WickedRuntimeError(f"could not stage {source} beside {executable}: {error}") from error
-        staged.append(destination)
-    return staged
+    if not changes and staged_executable is None:
+        return []
+    try:
+        recovery = Path(tempfile.mkdtemp(prefix=".wicked-runtime-", dir=executable.parent))
+    except OSError as error:
+        raise WickedRuntimeError(f"could not prepare Wicked runtime beside {executable}: {error}") from error
+    changed: list[tuple[Path, Path | None]] = []
+    keep_recovery = False
+    try:
+        prepared: list[tuple[Path, Path | None, Path | None]] = []
+        for index, (destination, source) in enumerate(changes):
+            backup = recovery / f"previous-{index}" if destination.is_symlink() else None
+            if backup is not None:
+                backup.symlink_to(os.readlink(destination))
+            replacement = recovery / f"next-{index}" if source is not None else None
+            if replacement is not None:
+                replacement.symlink_to(source)
+            prepared.append((destination, replacement, backup))
+        (recovery / "recovery.json").write_text(json.dumps([
+            {"destination": str(destination), "backup": str(backup) if backup is not None else None}
+            for destination, _, backup in prepared], indent=2) + "\n", encoding="utf-8")
+        for destination, replacement, backup in prepared:
+            if replacement is None:
+                destination.unlink()
+            else:
+                os.replace(replacement, destination)
+            changed.append((destination, backup))
+        if staged_executable is not None:
+            os.replace(staged_executable, executable)
+    except OSError as error:
+        rollback_errors: list[str] = []
+        for destination, backup in reversed(changed):
+            try:
+                if backup is None:
+                    destination.unlink()
+                else:
+                    os.replace(backup, destination)
+            except OSError as rollback_error:
+                rollback_errors.append(f"{destination}: {rollback_error}")
+        keep_recovery = bool(rollback_errors)
+        detail = (f"; rollback failed: {'; '.join(rollback_errors)}; recovery retained at {recovery}"
+            if rollback_errors else "")
+        raise WickedRuntimeError(f"could not publish Wicked runtime beside {executable}: {error}{detail}") from error
+    finally:
+        if not keep_recovery:
+            # Publication has committed; cleanup cannot turn success into a
+            # reported failure after replacing the executable.
+            shutil.rmtree(recovery, ignore_errors=True)
+    return [destination for destination, source in changes if source is not None]
 
 
 def main(argv: list[str] | None = None) -> int:
