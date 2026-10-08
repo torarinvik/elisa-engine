@@ -272,3 +272,18 @@ baselines through both JSON routes (`prover-cfd0203a-scalar-snapshot-diagnostic.
 copy across mutation remains 4/5, local-guard and parameter controls pass 5/5,
 and stale-field, rebound-copy and wrong-entry cases remain refused. This script
 validates the diagnostic counts, not completion of the requested snapshot repair.
+
+The `52d60fcf` runtime sweep completed successfully: all 215 tests uncached,
+33.64s, 1,265,152 KiB peak RSS under the unchanged 3 GiB cap. Matching paired
+prover generation `d567471a8481487f8f21d3833071c5d7` completed with authenticated
+clean Stage1 manifests and checked binary hashes. Its uncached engine sweep
+passes all 73 reports in 1.36s at 160,800 KiB peak RSS: 4,246 obligations proved
+and replayed, with zero gaps, semantic errors or diagnostics. Retained report
+copies and summary: `prover-52d60fcf-engine-reports/` and
+`prover-52d60fcf-engine-inventory.json`; full source inventory remains partial.
+
+Script `62928532` rebuilt with frozen `52d60fcf` also passes recovered-error
+execution and unrecovered/fallback rejection. `elisascript-52d60fcf-qualification.json`
+records hashes and statuses; the build takes 29.85s at 1,844,800 KiB peak RSS.
+The shared gate now runs with this matching compiler/prover/launcher tuple.
+Full prover compatibility and replacement full native qualification remain open.
