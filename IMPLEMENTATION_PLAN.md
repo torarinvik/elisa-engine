@@ -59,6 +59,13 @@ A linked library, a policy enum, or one successful scene is not a public runtime
 
 ## Active delivery queue — highest return first
 
+Compiler policy requirement: enforce `Global.Read` and `Global.Write` for reads
+and writes of `global mutable` by default; `-permissive` bypasses those grant
+checks. Engine identity helpers now carry explicit grants, qualified against
+the frozen compiler and all engine proofs. Qualify default rejection, caller
+propagation and permissive controls when the owning compiler product is available.
+See [grant preparation](docs/validation/global-mutable-grants.md).
+
 Work on one bounded deliverable at a time. Rank by observed failures, shipping dependencies, reuse across clients and decisive acceptance.
 The full subsystem backlog remains the completion scope; each slice retains implementation-linked proofs and adversarial checks (contract items 7–8).
 
@@ -108,8 +115,12 @@ capture GPU timing and the documentation length policy. Linked-document
 splitting restores the length check; the focused capture retry passes with
 failure-only timestamp diagnostics. A 16-cycle resize stress subsequently reproduces
 reversed GPU samples. The final Metal repair `2601ae2` and native sample
-admission now pass 50 real durations and three corrupted-pair controls; run
-the replacement full native gate on this pinned source. The frozen ee9c67a9 full prover matrix is terminal
+admission now pass 50 real durations and three corrupted-pair controls. The
+replacement full native gate passes capture and Character Course relaunch but
+fails renderer group 238 case 16: effect lifecycle footprint grows 13,776 KiB
+against its original 8 MiB allowance. Reproduce the full renderer sequence and
+trace resource retirement before changing acceptance; the isolated lifecycle
+passes with 80 KiB growth. Keep the failed gate as authoritative evidence. The frozen ee9c67a9 full prover matrix is terminal
 failed with 52 failed steps; retain its failure inventory while repairing the
 remaining source/replay and harness cases. Full matrix/shared/native compatibility on the
 repaired pair remains open. See [replay repair evidence](docs/validation/action-input-replay.md)

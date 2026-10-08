@@ -1,5 +1,6 @@
 #pragma once
 
+#include "capture_gpu_timing.h"
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -225,7 +226,7 @@ extern "C" int32_t elisa_render_scene_v1_test_lod_frame_times(
     for (const auto& range : render_path_gpu_timing.ranges) {
         const uint64_t start_tick = query_results[range.first];
         const uint64_t end_tick = query_results[range.second];
-        if (end_tick < start_tick) {
+        if (!elisa::capture::valid_gpu_timestamp_pair(start_tick, end_tick, timestamp_frequency)) {
             render_path_gpu_timing = RenderPathGpuTimingState{};
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }
@@ -337,7 +338,7 @@ extern "C" int32_t elisa_render_scene_v1_test_quality_profile_cost(
     for (const auto& range : render_path_gpu_timing.ranges) {
         const uint64_t start_tick = query_results[range.first];
         const uint64_t end_tick = query_results[range.second];
-        if (end_tick < start_tick) {
+        if (!elisa::capture::valid_gpu_timestamp_pair(start_tick, end_tick, timestamp_frequency)) {
             render_path_gpu_timing = RenderPathGpuTimingState{};
             return ELISA_RENDER_SCENE_BACKEND_FAILED;
         }

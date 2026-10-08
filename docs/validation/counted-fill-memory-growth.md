@@ -470,3 +470,60 @@ trusted assumptions. Exact reports and inventory are retained in
 `capture-final-engine-reports/` and `capture-final-engine-inventory.json`.
 Its pure timestamp-conversion report retains 11/11 certificates. Full source
 inventory remains partial; the 52-step full prover failure is unchanged.
+
+## Replacement full gate and effect lifecycle memory failure
+
+Clean engine `1a472e99` and Wicked `2601ae28` complete the replacement gate
+in 1,979.61 seconds / 1,370,272 KiB RSS under the original 3 GiB cap.
+Application, dependency, headless, module hygiene and source length stages pass.
+Native fails with status 238: renderer group 238 case 16 records 13,776 KiB
+of footprint growth against the original 8 MiB allowance. Character Course
+relaunch and async capture pass in this run. Full gate remains failed.
+Evidence: `compiler-52d60fcf-capture-repair-full-native.log`, watchdog JSON,
+and `capture-repair-full-native-terminal/` (including the original executable).
+
+An isolated main calling the unchanged effect lifecycle test passes in 25.24
+seconds / 663,856 KiB RSS, with 80 KiB growth. Six subsequent executions of
+the preserved full renderer binary also pass, with the original fixture setup
+and capture environment restored by the runner. One begins about 13 MiB
+higher than the other baselines; this suggests an allocation timing dependency
+but does not identify its cause. No tolerance or warm-up change is justified.
+The Metal backend defers resource destruction until frame progress; its GPU
+wait does not itself drain retirement queues. That source observation alone
+does not prove the failing allocation comes from deferred GPU resources.
+
+Evidence: `effect-memory-isolated-baseline.log`,
+`effect-memory-full-binary-replay.log`,
+`effect-memory-full-binary-repeat-summary.log`, and individual repeat logs.
+`effect-memory-reproduction-inventory.json` records all samples and the actual
+preserved binary hash. Keep R17 and full compatibility open while tracing this
+intermittent failure. Passing replays do not replace the failed full gate.
+
+The diagnostic source now records all-zone live/reserved heap bytes, device GPU
+allocated bytes, submission frame count and active renderer pipeline jobs alongside
+each original footprint sample. It observes without waiting or advancing frames.
+The instrumented native run passes in 91.46 seconds / 1,096,736 KiB; twelve
+restored-fixture binary repeats pass in 79.38 seconds / 479,328 KiB. Exact domain
+samples: `effect-memory-domains-inventory.json`; source/binary identities:
+`effect-memory-domains-source-identity.json`. Logs: `effect-memory-domains-full.log`,
+`effect-memory-domains-repeat-summary.log`, and individual repeat logs. GPU bytes
+remain stable after the first cycle and pipeline jobs are idle at the sampled
+points. Submission counts advance by four per cycle. These passing observations
+do not localize the original larger jump or qualify the failed full gate.
+
+A later source build reproduces group 238 case 16 in 64.18 seconds / 1,259,008
+KiB: peak growth is 8,208 KiB against the unchanged 8,192 KiB allowance. The
+peak falls back before the final sample, while live/reserved heap, GPU bytes
+and sampled pipeline jobs do not show corresponding growth. Preserve
+`lod-timestamp-admission-native.log` and `lod-timestamp-memory-failure-terminal/`.
+This narrows the investigation but does not identify or repair the cause.
+
+The sampler now also records task VM resident/internal/compressed/reusable/device
+bytes and available graphics/media/purgeable ledgers from the same footprint
+observation. A native renderer build passes in 60.13 seconds / 1,380,336 KiB;
+twelve restored-fixture repeats pass in 73.28 seconds / 484,096 KiB. Exact samples:
+`effect-memory-vm-domains-inventory.json`; logs: `effect-memory-vm-domains-native.log`,
+`effect-memory-vm-domains-repeat-summary.log`, and individual repeat logs.
+No changed tolerance, extra settling cycle, renderer leak repair or full gate
+qualification is claimed. The related LOD timing admission repair is recorded
+in [its focused note](lod-timestamp-admission.md).

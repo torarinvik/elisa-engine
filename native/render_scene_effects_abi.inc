@@ -261,6 +261,33 @@ extern "C" int64_t elisa_render_scene_v1_test_footprint_kib(int32_t cycle) {
     }
     const int64_t kib = static_cast<int64_t>(info.phys_footprint / 1024);
     std::fprintf(stderr, "effect memory cycle %d: phys_footprint %lld KiB\n", cycle, static_cast<long long>(kib));
+    // Observe each accounting domain without waiting, draining queues or
+    // advancing a frame: those actions would change the lifecycle under test.
+    malloc_statistics_t heap{};
+    malloc_zone_statistics(nullptr, &heap);
+    const auto* device = wi::graphics::GetDevice();
+    std::fprintf(stderr,
+        "effect memory domains cycle %d: heap_in_use %llu heap_reserved %llu gpu_allocated %llu frame %llu pipeline_jobs %llu\n",
+        cycle, static_cast<unsigned long long>(heap.size_in_use),
+        static_cast<unsigned long long>(heap.size_allocated),
+        static_cast<unsigned long long>(device == nullptr ? 0 : device->GetMemoryUsage().usage),
+        static_cast<unsigned long long>(device == nullptr ? 0 : device->GetFrameCount()),
+        static_cast<unsigned long long>(wi::renderer::IsPipelineCreationActive()));
+    std::fprintf(stderr,
+        "effect memory VM cycle %d: resident %llu internal %llu compressed %llu reusable %llu device %llu\n",
+        cycle, static_cast<unsigned long long>(info.resident_size),
+        static_cast<unsigned long long>(info.internal),
+        static_cast<unsigned long long>(info.compressed),
+        static_cast<unsigned long long>(info.reusable),
+        static_cast<unsigned long long>(info.device));
+    if (count >= TASK_VM_INFO_REV3_COUNT) {
+        std::fprintf(stderr,
+            "effect memory ledger cycle %d: graphics %lld graphics_compressed %lld media %lld purgeable %lld\n",
+            cycle, static_cast<long long>(info.ledger_tag_graphics_footprint),
+            static_cast<long long>(info.ledger_tag_graphics_footprint_compressed),
+            static_cast<long long>(info.ledger_tag_media_footprint),
+            static_cast<long long>(info.ledger_purgeable_nonvolatile));
+    }
     return kib;
 #else
     (void)cycle;
