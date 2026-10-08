@@ -583,3 +583,26 @@ the loop gives 3/3 with zero gaps (`read-capture-copy-no-loop.json`). All have
 zero semantic errors. Repair loop read/write classification and captured-result
 source replay alongside copy-time snapshot authentication; preserve mutation,
 alias and shadowing refusals. These are diagnostic results, not acceptance.
+
+### 2026-10-08: copied-bound producer isolated from replay
+
+An isolated worktree (`../elisa-engine-proof-snapshot-repair`, branch
+`codex/scalar-copy-snapshot`) adds existing numeric snapshot consequence transfer
+after unsigned field binding. Paired experimental generation
+`807ab43d535245b0a4b0f31afb8744ac` builds with frozen compiler `52d60fcf`
+and exact detached compiler source. Both JSON routes now produce five
+certificates for the original copy-across-mutation source, with no findings;
+only four replay, leaving one gap on the final index-upper obligation at line 9.
+The previously absent fact is `not (slot >= 4)`, derived at copy line 6 with
+13 pre-state premises. Replay correctly refuses that derivation without
+copy-time source authentication. This is not a completed repair or a passing gate.
+
+Local-guard and parameter controls retain 5/5 with zero gaps. Stale-field,
+rebound-copy and wrong-entry cases retain their original refusals and zero gaps,
+through both JSON routes. Reports and exact inventory are retained in
+`build/validation/scalar-snapshot-transfer-reports/`; log:
+`scalar-snapshot-transfer-controls.log`. The producer-only change remains
+experimental in that worktree; the production prover and native gate continue
+to use the unchanged qualified generation. Next authenticate the derived
+consequence at copy time without granting equality to the mutated current field,
+and retain independent source/forgery checks before integrating either side.
