@@ -12,6 +12,29 @@ focused controls described below, including explicit `-permissive` bypasses.
 That tuple also produces a sealed Studio app; actual launch and FBX/redraw/reveal
 acceptance remain open.
 
+## Audited UserData native boundary
+
+`src/runtime/user_data.elisa` now gives each `elisa_user_data_*` declaration an
+explicit `can[Unsafe.RawExtern]` contract. The reviewed implementation in
+`native/user_data_abi.cpp` owns its filesystem and service state, receives data
+through explicit arguments, and has no Elisa callbacks. It therefore has no
+effect on Elisa `global mutable` bindings. The wrapper encloses each raw call in
+a narrow `trusted Unsafe.RawExtern` block, preserving the safe public UserData
+API and passing strict-unsafe checking.
+
+On Stage1
+`/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`
+(SHA256 `5198034700383a76aa25ca7db2e2e31bdd4fa98753f721b53c80233e24257916`):
+
+- `-emit check src/runtime/user_data.elisa` succeeds.
+- A `# strict` / `# unsafe` fixture including the module compiles to an object.
+- `test/user_data_probe.elisa` no longer reports missing global grants in
+  `src/runtime/user_data.elisa`; remaining diagnostics are in the unrelated
+  application, input and pointer-replay runtime APIs.
+
+This is a source-boundary qualification, not a full engine grant audit or a
+native UserData runtime test.
+
 ## Engine source preparation
 
 The engine has three global mutable identity counters: world epochs, storage

@@ -357,7 +357,13 @@ world command/event/iteration/save tests compile and run on that product. Their
 source and binary hashes are captured in the linked validation record. Continue
 grant adoption along shared engine APIs with their real callers; keep the broad
 native-wrapper audit out of bulk migration until each boundary's effect contract
-is understood.
+is understood. The UserData native boundary has now been audited individually:
+its explicit `Unsafe.RawExtern` contracts remove the default compiler's false
+Elisa-global effects, and its narrow trusted call sites pass strict-unsafe
+compilation. Record this as a bounded source-adoption win; continue with the
+remaining application/input/pointer-replay grant roots only alongside their real
+callers. Evidence and limits are in
+[global grant validation](docs/validation/global-mutable-grants.md).
 
 ### Next three outcomes
 

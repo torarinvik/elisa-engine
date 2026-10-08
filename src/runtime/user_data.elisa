@@ -29,36 +29,39 @@ module UserData:
             IO_FAILURE: i32 = 8
             ABI_VERSION: u32 = 1
 
+        # The audited native shim owns its path and file state and does not call
+        # back into Elisa. Mark the FFI boundary explicitly so it does not imply
+        # access to Elisa `global mutable` variables.
         @callconv(c)
-        extern elisa_user_data_abi_version() -> u32
+        extern elisa_user_data_abi_version() -> u32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_user_data_v1_initialize(application_id: cstr) -> i32
+        extern elisa_user_data_v1_initialize(application_id: cstr) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_user_data_v1_directory() -> cstr
+        extern elisa_user_data_v1_directory() -> cstr can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_user_data_v1_write_blob(key: cstr, version: i64,
-            fields: mutable i64&, count: u32) -> i32
+            fields: mutable i64&, count: u32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_user_data_v1_read_blob(key: cstr, version: mutable i64&,
-            fields: mutable i64&, capacity: u32, count: mutable u32&) -> i32
+            fields: mutable i64&, capacity: u32, count: mutable u32&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_user_data_v1_remove_blob(key: cstr) -> i32
+        extern elisa_user_data_v1_remove_blob(key: cstr) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_user_data_v1_write_payload(key: cstr, version: i64,
-            payload: u8&, length: u32) -> i32
+            payload: u8&, length: u32) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
         extern elisa_user_data_v1_read_payload(key: cstr, version: mutable i64&,
-            payload: mutable u8&, capacity: u32, length: mutable u32&) -> i32
+            payload: mutable u8&, capacity: u32, length: mutable u32&) -> i32 can[Unsafe.RawExtern]
 
         @callconv(c)
-        extern elisa_user_data_v1_remove_payload(key: cstr) -> i32
+        extern elisa_user_data_v1_remove_payload(key: cstr) -> i32 can[Unsafe.RawExtern]
 
         def check_status(status: i32) -> void error[UserDataError]:
             raise UserDataError.NotInitialized if status == Status::NOT_INITIALIZED
@@ -78,20 +81,30 @@ module UserData:
         # Uses ELISA_USER_DATA_DIR when set (useful for sandboxed apps and
         # tests); otherwise the native layer selects the platform user-data path.
         def initialize(application_id: cstr) -> void error[UserDataError]:
-            raise UserDataError.ApiMismatch if elisa_user_data_abi_version() != Status::ABI_VERSION
-            try check_status(elisa_user_data_v1_initialize(application_id))
+            abi_version: mutable u32 = 0
+            trusted Unsafe.RawExtern:
+                abi_version <- elisa_user_data_abi_version()
+            raise UserDataError.ApiMismatch if abi_version != Status::ABI_VERSION
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_initialize(application_id)
+            try check_status(status)
 
         # The returned path remains owned by the runtime and is valid until the
         # next initialize call. Call initialize before requesting it.
         def directory_path() -> cstr:
-            elisa_user_data_v1_directory()
+            trusted Unsafe.RawExtern:
+                return elisa_user_data_v1_directory()
 
         # Writes a checked, versioned Save blob to a named application file.
         def write_blob(key: cstr, blob: Save::Blob&) -> void error[UserDataError]:
             raise UserDataError.InvalidPayload if blob.version <= 0 or blob.count == 0 or blob.count > MAX_FIELDS
             raise UserDataError.InvalidPayload if blob.fields[0] != Save::MAGIC
-            try check_status(elisa_user_data_v1_write_blob(key, blob.version,
-                &blob.fields[0], blob.count.u32()))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_write_blob(key, blob.version,
+                    &blob.fields[0], blob.count.u32())
+            try check_status(status)
 
         # Reads into temporary Elisa storage first, so an error leaves the
         # caller's existing blob untouched.
@@ -99,21 +112,30 @@ module UserData:
             version: mutable i64 = 0
             count: mutable u32 = 0
             staged: mutable Save::Blob = Save::Blob(0)
-            try check_status(elisa_user_data_v1_read_blob(key, &version,
-                &staged.fields[0], MAX_FIELDS.u32(), &count))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_read_blob(key, &version,
+                    &staged.fields[0], MAX_FIELDS.u32(), &count)
+            try check_status(status)
             staged.version <- version
             staged.count <- count.usize()
             raise UserDataError.InvalidPayload if not Save::blob_valid(&staged)
             blob <- staged
 
         def remove_blob(key: cstr) -> void error[UserDataError]:
-            try check_status(elisa_user_data_v1_remove_blob(key))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_remove_blob(key)
+            try check_status(status)
 
         # Stores bounded application-defined bytes under the same atomic file
         # replacement and checksum envelope as structured Save blobs.
         def write_payload(key: cstr, version: i64, payload: u8&, length: usize) -> void error[UserDataError]:
             raise UserDataError.InvalidPayload if version <= 0 or length == 0 or length > MAX_PAYLOAD_BYTES
-            try check_status(elisa_user_data_v1_write_payload(key, version, payload, length.u32()))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_write_payload(key, version, payload, length.u32())
+            try check_status(status)
 
         # Reads into caller-owned storage only after the native layer validates
         # the complete bounded file, version, size, and checksum.
@@ -122,10 +144,16 @@ module UserData:
             raise UserDataError.InvalidPayload if capacity == 0 or capacity > MAX_PAYLOAD_BYTES
             staged_version: mutable i64 = 0
             staged_length: mutable u32 = 0
-            try check_status(elisa_user_data_v1_read_payload(key, &staged_version,
-                payload, capacity.u32(), &staged_length))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_read_payload(key, &staged_version,
+                    payload, capacity.u32(), &staged_length)
+            try check_status(status)
             version <- staged_version
             length <- staged_length.usize()
 
         def remove_payload(key: cstr) -> void error[UserDataError]:
-            try check_status(elisa_user_data_v1_remove_payload(key))
+            status: mutable i32 = 0
+            trusted Unsafe.RawExtern:
+                status <- elisa_user_data_v1_remove_payload(key)
+            try check_status(status)
