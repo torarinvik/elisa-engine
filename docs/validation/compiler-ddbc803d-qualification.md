@@ -287,3 +287,12 @@ other launcher errors remain. It exits 1 normally in 7.96 seconds, sampled
 peak RSS 687,296 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-semantic-thread-build.log` and JSON.
 Duplicate-pattern rejection and visibility behavior remain runtime-unverified.
+
+Parser pattern/permission helpers now tuple-rebind the updated parser with
+three parsed values. Machine mutable-name and declared-thread-slot checks use
+saved-count index traversal when error_at updates parser diagnostics; checking
+order and conditions are preserved. All five parser-fragment diagnostics
+clear in the bounded compile. It still exits 1 on other launcher errors in
+6.97 seconds, sampled peak RSS 501,216 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-parser-thread-build.log` and JSON.
+Parsing and rejection behavior remain runtime-unverified on this compiler.
