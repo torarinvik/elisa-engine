@@ -296,3 +296,13 @@ clear in the bounded compile. It still exits 1 on other launcher errors in
 6.97 seconds, sampled peak RSS 501,216 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-parser-thread-build.log` and JSON.
 Parsing and rejection behavior remain runtime-unverified on this compiler.
+
+Three collection initialization boundaries now match upstream: inline-vector
+inactive slots are guarded by len=0, and dictionary/set buckets by state=0.
+Review confirmed reads require an active length/state and insertion writes
+key/value before publishing state=1. Scoped trusted initialization records
+that storage invariant, rather than making arbitrary reference zeroing valid.
+All three collections diagnostics clear in the bounded compile; other launcher
+errors remain. It exits 1 normally in 7.68 seconds, sampled peak RSS 727,056 KiB.
+Engine artifact: `build/validation/elisascript-ddbc803d-inactive-slots-build.log`
+and JSON. Collection behavior/refusal controls remain runtime-unverified.
