@@ -103,9 +103,10 @@ module WorldStorage:
                 MAX_CATALOG_BRAND: i64 = 9223372036854775807
 
             def allocate_catalog_brand() -> i64:
-                return Limits::INVALID_CATALOG_BRAND if next_catalog_brand >= Limits::MAX_CATALOG_BRAND
-                next_catalog_brand <- next_catalog_brand + 1
-                next_catalog_brand
+                can Global.Read, Global.Write:
+                    return Limits::INVALID_CATALOG_BRAND if next_catalog_brand >= Limits::MAX_CATALOG_BRAND
+                    next_catalog_brand <- next_catalog_brand + 1
+                    return next_catalog_brand
 
             def invalid_handle() -> Handle:
                 Handle{catalog_brand: Limits::INVALID_CATALOG_BRAND, id: Limits::INVALID_HANDLE_ID}

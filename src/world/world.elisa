@@ -90,13 +90,14 @@ module World:
             entity_storage_kind(kind) != StorageKind.None
 
         def next_epoch() -> i64 error[WorldError]:
-            if next_world_epoch >= Bounds::WORLD_MAX_EPOCH:
-                raise WorldError.EpochExhausted
-            if next_world_epoch == 0:
-                next_world_epoch <- Bounds::WORLD_FIRST_EPOCH
-            else:
-                next_world_epoch <- next_world_epoch + 1
-            next_world_epoch
+            can Global.Read, Global.Write:
+                if next_world_epoch >= Bounds::WORLD_MAX_EPOCH:
+                    raise WorldError.EpochExhausted
+                if next_world_epoch == 0:
+                    next_world_epoch <- Bounds::WORLD_FIRST_EPOCH
+                else:
+                    next_world_epoch <- next_world_epoch + 1
+                return next_world_epoch
 
         def registry_slot(world: World&, reference: EntityRef) -> usize:
             return Sentinel::WORLD_INVALID_SLOT if not WorldReference::epoch_matches(world.epoch, reference.world_epoch) or reference.id <= EntityId::ENTITY_ID_INVALID

@@ -41,9 +41,10 @@ module WorldAccess:
         global mutable next_frame_identity: i64 = 0
 
         def issue_frame_identity() -> i64 error[AccessError]:
-            raise AccessError.IdentityExhausted if next_frame_identity >= Limits::FRAME_IDENTITY_MAX
-            next_frame_identity <- next_frame_identity + 1
-            next_frame_identity
+            can Global.Read, Global.Write:
+                raise AccessError.IdentityExhausted if next_frame_identity >= Limits::FRAME_IDENTITY_MAX
+                next_frame_identity <- next_frame_identity + 1
+                return next_frame_identity
 
     public:
         affine struct Frame:
