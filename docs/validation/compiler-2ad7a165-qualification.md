@@ -146,3 +146,15 @@ elisascript_posix_waitpid, write_output_transport_fd, python_text_decode_next,
 decode_utf8, split_lines, trim_unicode_whitespace, returned_exec_status,
 report_test_setup_failure_machine and run_test_mode. This is a new backend
 failure family exposed after semantic repairs; it is not a successful launcher.
+
+## Backend string lengths and catch binders
+
+The backend trace identifies unsupported len(sview) calls in four Python text
+helpers. These now use sview_len. Output catches bind successful values directly
+(value/total/payload), replacing ok-prefixed binders. Four Python text functions
+and output_render_record_bytes now emit: declines fall from 13 to 8. Other
+output catches advance to failure-binding/expression-statement declines; their
+error mapping is unchanged. The bounded build exits 2 in 5.58 seconds, peak
+sampled RSS 821,360 KiB; no executable is produced. Artifact:
+`build/validation/elisascript-2ad7a165-backend-forms-build.log` and JSON.
+Python text and report behavior remain runtime-unverified.
