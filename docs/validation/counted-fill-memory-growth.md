@@ -228,3 +228,30 @@ This compiles changed semantic source with frozen `cfd0203a`; rebuilding and
 qualifying the follow-up compiler product remains required. Earlier failed
 invocations reflect the default watchdog cap, a corrected extra reference,
 and a missing runtime object from the engine working directory, respectively.
+
+### Compatibility follow-up triage
+
+The serial `0baaa951` matrix retains 72 failure events in
+`proof-0baaa951-serial-partial-matrix-summary.json`; no final matrix summary
+was produced before the RSS stop. One harness failure uses Python too old for
+`dict | None` annotations. Future full runs must place the existing Python 3.14
+libexec directory first on PATH, including shell-launched `python3` children.
+A focused 3.14 rerun reaches its compiler freshness check rather than that
+annotation error; it correctly refuses the old main product while the new seed
+is active. This is not a passing witness regression.
+
+The new immutable `cfd0203a` pair independently reproduces the conditional-bound
+control failure (`prover-cfd0203a-conditional-control.log`): six cases meet their
+expectations, but `rejected_conditional_mutable_input` proves 2/2 with zero replay
+gaps. Exact JSON is retained as `prover-cfd0203a-mutable-input-control.json`.
+That fixture only marks a parameter mutable; it does not mutate it. Determine
+whether the intended refusal is still an admission policy requirement before
+changing producer/kernel rules or the fixture. Its acceptance alone does not
+demonstrate a false mathematical claim. Preserve the existing matrix expectation
+until that review and actual mutation controls justify a change.
+
+Rebuilding `52d60fcf` encountered a live seed already using the same checkout
+(PID 42414, verified compiler child 42469). The conflicting invocation safely
+refused; it was not a compiler failure. Do not compete with that seed or edit its
+inputs. Authenticate its terminal product against the committed source and
+freshness manifest before reusing it for qualification.
