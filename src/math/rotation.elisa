@@ -4,9 +4,9 @@ include "./geometry.elisa"
 module Rotation:
     private:
         @callconv(c)
-        extern acosf(value: f32) -> f32
+        extern acosf(value: f32) -> f32 can[]
         @callconv(c)
-        extern sinf(value: f32) -> f32
+        extern sinf(value: f32) -> f32 can[]
 
         def valid(rotation: Geometry::Quat) -> bool:
             length: f32 = Geometry::quat_length(rotation)

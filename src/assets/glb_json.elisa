@@ -36,7 +36,7 @@ module GlbJson:
             DONE: u8 = 6
 
         @link_name("strtod")
-        extern c_strtod(nptr: u8&, endptr: u8&?) -> f64
+        extern c_strtod(nptr: u8&, endptr: u8&?) -> f64 can[]
 
         def is_digit(c: u8) -> bool:
             c >= 48 and c <= 57

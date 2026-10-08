@@ -44,13 +44,13 @@ module Viewport:
             rendered: mutable i64
             idle_ticks: mutable i64
 
-        def create(width: i64, height: i64) -> Viewport error[ViewportError]:
+        def create(width: i64, height: i64) -> Viewport error[ViewportError] can[Memory.Allocate]:
             raise ViewportError.BadSize if not ViewportPolicy::extent_fits(width) or not ViewportPolicy::extent_fits(height)
             handle: usize = c_create(width.i32(), height.i32())
             raise ViewportError.NoDevice if handle == 0
             Viewport{handle: handle, camera: ViewportCamera::create(width, height), dirty: ViewportPolicy::DIRTY_ALL, playing: false, frame: 0, published_frame: -1, published_slot: -1, acked: -1, generation: c_generation(handle), clear_color: ViewportDraw::rgba(38, 40, 46, 255), rendered: 0, idle_ticks: 0}
 
-        def destroy(vp: mutable Viewport&):
+        def destroy(vp: mutable Viewport&) can[Memory.Release]:
             c_destroy(vp.handle) if vp.handle != 0
             vp.handle <- 0
 
@@ -63,7 +63,7 @@ module Viewport:
 
         # Match the panel's pixel size. Reallocates the ring (new generation)
         # only when the size changed; a zero-size panel keeps one pixel.
-        def resize(vp: mutable Viewport&, width: i64, height: i64) -> bool error[ViewportError]:
+        def resize(vp: mutable Viewport&, width: i64, height: i64) -> bool error[ViewportError] can[Memory.Allocate, Memory.Release]:
             raise ViewportError.Destroyed if vp.handle == 0
             changed: bool = ViewportCamera::resize(&vp.camera, width, height)
             return false if not changed
@@ -75,7 +75,7 @@ module Viewport:
             true
 
         # Render if needed. Returns true when a new frame was published.
-        def tick(vp: mutable Viewport&, list: ViewportDraw::List&) -> bool error[ViewportError]:
+        def tick(vp: mutable Viewport&, list: ViewportDraw::List&) -> bool error[ViewportError] can[Blocking.IO, Memory.Allocate]:
             raise ViewportError.Destroyed if vp.handle == 0
             if not ViewportPolicy::should_render(vp.dirty, vp.playing):
                 vp.idle_ticks <- vp.idle_ticks + 1
@@ -111,32 +111,32 @@ module Viewport:
 
         # IOSurfaceRef of the newest published frame (0 when none is ready
         # for the current generation). Borrowed: CFRetain what you keep.
-        def published_surface(vp: Viewport&) -> usize:
+        def published_surface(vp: Viewport&) -> usize can[]:
             return 0 if vp.handle == 0 or vp.published_slot < 0
             c_surface(vp.handle, vp.published_slot.i32())
 
-        def published_surface_id(vp: Viewport&) -> u32:
+        def published_surface_id(vp: Viewport&) -> u32 can[]:
             return 0 if vp.handle == 0 or vp.published_slot < 0
             c_surface_id(vp.handle, vp.published_slot.i32())
 
         # Show `rgba` (width*height RGBA8, top row first) stretched behind
         # the draw list, e.g. the Wicked renderer's frame of the skinned
         # mesh; the pixels are copied. Marks the scene dirty.
-        def set_backdrop(vp: mutable Viewport&, rgba: darray[u8]&, width: i64, height: i64) -> bool:
+        def set_backdrop(vp: mutable Viewport&, rgba: darray[u8]&, width: i64, height: i64) -> bool can[Memory.Allocate, Memory.Release]:
             return false if vp.handle == 0 or width < 1 or height < 1
             return false if rgba.count.i64() != width * height * 4
             return false if c_set_backdrop(vp.handle, (&rgba[0]).cast[void&], width.i32(), height.i32()) == 0
             vp.dirty <- vp.dirty | ViewportPolicy::DIRTY_SCENE
             true
 
-        def clear_backdrop(vp: mutable Viewport&):
+        def clear_backdrop(vp: mutable Viewport&) can[Memory.Release]:
             return if vp.handle == 0
             c_clear_backdrop(vp.handle)
             vp.dirty <- vp.dirty | ViewportPolicy::DIRTY_SCENE
 
         # Read the newest published frame back as RGBA8 (for PNG output and
         # tests). Returns false when nothing is published.
-        def read_rgba(vp: Viewport&, out: mutable darray[u8]&) -> bool:
+        def read_rgba(vp: Viewport&, out: mutable darray[u8]&) -> bool can[Blocking.IO, Memory.Allocate]:
             return false if vp.handle == 0 or vp.published_slot < 0
             n: usize = (vp.camera.width * vp.camera.height * 4).usize()
             out.clear()
@@ -151,21 +151,21 @@ module Viewport:
         @link_name("elisa_viewport_metal_destroy")
         extern c_destroy(handle: usize) can[Memory.Release]
         @link_name("elisa_viewport_metal_resize")
-        extern c_resize(handle: usize, width: i32, height: i32) -> i32 can[Memory.Allocate]
+        extern c_resize(handle: usize, width: i32, height: i32) -> i32 can[Memory.Allocate, Memory.Release]
         @link_name("elisa_viewport_metal_generation")
-        extern c_generation(handle: usize) -> i64
+        extern c_generation(handle: usize) -> i64 can[]
         @link_name("elisa_viewport_metal_surface")
-        extern c_surface(handle: usize, slot: i32) -> usize
+        extern c_surface(handle: usize, slot: i32) -> usize can[]
         @link_name("elisa_viewport_metal_surface_id")
-        extern c_surface_id(handle: usize, slot: i32) -> u32
+        extern c_surface_id(handle: usize, slot: i32) -> u32 can[]
         @link_name("elisa_viewport_metal_render")
-        extern c_render(handle: usize, slot: i32, matrix: void&, positions: void&, colors: void&, depth_tris: i64, depth_lines: i64, top_tris: i64, top_lines: i64, clear: u32) -> i32 can[Memory.Allocate]
+        extern c_render(handle: usize, slot: i32, matrix: void&, positions: void&, colors: void&, depth_tris: i64, depth_lines: i64, top_tris: i64, top_lines: i64, clear: u32) -> i32 can[Blocking.IO, Memory.Allocate]
         @link_name("elisa_viewport_metal_set_backdrop")
-        extern c_set_backdrop(handle: usize, rgba: void&, width: i32, height: i32) -> i32 can[Memory.Allocate]
+        extern c_set_backdrop(handle: usize, rgba: void&, width: i32, height: i32) -> i32 can[Memory.Allocate, Memory.Release]
         @link_name("elisa_viewport_metal_clear_backdrop")
-        extern c_clear_backdrop(handle: usize) -> i32
+        extern c_clear_backdrop(handle: usize) -> i32 can[Memory.Release]
         @link_name("elisa_viewport_metal_read_rgba")
-        extern c_read(handle: usize, slot: i32, out: mutable void&, capacity: i64) -> i64
+        extern c_read(handle: usize, slot: i32, out: mutable void&, capacity: i64) -> i64 can[Blocking.IO]
 
         def append(positions: mutable darray[f32]&, colors: mutable darray[u32]&, batch: ViewportDraw::Batch&):
             for k in 0..<batch.positions.count:

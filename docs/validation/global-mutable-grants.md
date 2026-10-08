@@ -6,8 +6,11 @@ The compiler must enforce `Global.Read` for reads of `global mutable` values
 and `Global.Write` for writes by default. A read-modify-write needs both.
 `-permissive` bypasses these grant checks. Default enforcement, selective grants,
 qualified names, shadowing, indexed/member writes and transitive calls require
-compiler-owned positive and negative regressions. This engine preparation does
-not establish that compiler policy; the compiler chat is implementing it.
+compiler-owned positive and negative regressions. Compiler source
+`2a3dce665ff462096de961d340a50cc1ef83369d` and its fresh Stage1/runtime pass the
+focused controls described below, including explicit `-permissive` bypasses.
+That tuple also produces a sealed Studio app; actual launch and FBX/redraw/reveal
+acceptance remain open.
 
 ## Engine source preparation
 
@@ -35,13 +38,13 @@ Command: `python3.14 build/validation/check_world_grants_engine.py`.
 Exact reports and inventory: `build/validation/world-global-grants-engine-reports/`
 and `world-global-grants-engine-inventory.json`.
 
-The granting compiler's default rejection behavior is not present in this
-frozen product. Once its new product is available, requalify the callers' grants
-and the default/permissive accepted/rejected controls. Do not use `-permissive`
-for the engine's ordinary qualification gate. Full native compatibility also
-remains open because of the intermittent effect-memory failure.
+This frozen compiler predates default enforcement. The qualified candidate below
+has the required default/permissive behavior in focused compiler controls, but this
+does not qualify the integrated engine/Studio build or full native compatibility.
+Do not use `-permissive` for ordinary engine qualification. The intermittent
+effect-memory release failure remains open.
 
-## Candidate CLI boundary — not qualified
+## Historical rejected candidate — fb8e0927
 
 Clean compiler candidate `fb8e0927` Stage1 product
 `1e408e0d334997d7d2ea5e722e1bab2fca318c1bca70f0d3147bc8a0ac0acaca`
@@ -60,7 +63,8 @@ explicit ON/OFF success is narrower than actual default CLI enforcement.
 
 ## Repeatable actual-CLI admission gate
 
-Before replacement compiler promotion, run:
+The main-based integrated product must pass the full 22-control actual-CLI gate
+before promotion. For an exact candidate, run:
 
 ```sh
 python3.14 scripts/qualify_global_grants.py --compiler /absolute/candidate/compiler --report build/validation/global-grant-cli-qualification.json
@@ -83,6 +87,52 @@ registered in the portable native-facing test slot; the actual candidate gate is
 an explicit replacement-qualification command so the historical compiler baseline
 is not misrepresented as satisfying the new policy.
 
+## Qualified focused compiler candidate — ee028bbb
+
+Compiler source commit `ee028bbba92e5daff9f763c02d81a59c1c98217d`
+(`declare runtime wrapper global grants`) is on branch `codex/prover-method-rehome`.
+It gives `rt_puts` and `ctx_llvm_codegen_fatal` explicit `Global.Read` and
+`Global.Write` requirements, adds positive/negative wrapper controls, and updates
+the rehome fixtures to declare their global grants and caller-owned region.
+
+- Clean Stage0 source revision: `778c8281f97c81adbb3bc764b634f263c9f36f52`,
+  built at `/private/tmp/elisa-core-stage0-778c8281/compiler/bin/elisac`,
+  SHA256 `624fb245cc6b96c71a98d3bff446f877a7fd397e6416e07404e48c9daa909f84`
+  (`vcs.modified=false`).
+- Stage1 seed command:
+  `ELISACORE_BIN=/private/tmp/elisa-core-stage0-778c8281/compiler/bin/elisac ELISA_STAGE1_SEED_MAX_RSS_KB=8388608 PYTHON_BIN=python3.14 bash scripts/elisac_stage1.sh --seed`.
+  It completed successfully.
+- Stage1 product:
+  `/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`,
+  SHA256 `e3c3e3808571b1b676c4a4a78fc61e6ccc787cedb17e1465e908955650dbe94f`.
+- Provenance:
+  `/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1.provenance.json`,
+  SHA256 `2cef5b8af753b6f3e569c7ed01b77866b2e88035355af3d8549dba00ee3263a2`;
+  source tree SHA256 `18e3ee2348f07409d828242b02a88cc8605f67c785f9cc8224da6180420c04ce`;
+  build recipe SHA256 `a0a7f5b8753dc01e202828a80b16508facf840aa6ceea7ea2cec0fc597ba9ba5`.
+- Matching runtime object SHA256:
+  `17a5e88040dbe3f13c0ec70b31c7a0bfab57ad89b5e633760d654260f2dde414`.
+- `python3.14 test/parity/mutable_global_grants_smoke.py bin/elisac-stage1`: 52
+  grant/global cases and six explicit `-permissive` bypass cases pass.
+- `ELISA_STAGE1_BIN="$PWD/bin/elisac-stage1" bash test/parity/protocol_grouped_effects_smoke.sh`:
+  all 12 grouped-protocol controls pass, including qualified imported aliases.
+- `ELISACORE_BIN="$PWD/bin/elisac-stage1" bash test/parity/runtime_global_grants_smoke.sh`:
+  all eight controls pass, including positive exact grants and missing-read/write
+  refusals for both runtime wrappers.
+- `ELISA_STAGE1_BIN="$PWD/bin/elisac-stage1" bash test/parity/global_rehome_bounded_smoke.sh`:
+  the 1,000-overwrite RSS limit passes, and the nested callback/global pose-cache
+  reproducer passes at O0 and O2.
+- `bash scripts/assert_stage1_fresh.sh bin/elisac-stage1` passes.
+
+The Stage1 source already includes the guarded transitive arena rehome implementation,
+exact callee/owner resolution, typed builtin receiver checks and conservative fallback
+for unknown targets. This confirms the ownership repair on focused compiler controls,
+not in the actual Studio application. The focused suite is not the full compiler
+parity suite; the main-based integrated compiler/runtime tuple still needs the
+22-control actual-CLI gate, current engine/Studio semantic preflight and real Studio
+build. No full prover inventory, renderer lifecycle, packaging or native release gate
+is established by these controls.
+
 ## Compiler product drift guard
 
 The qualifier now hashes the compiler executable before and after all controls.
@@ -100,3 +150,56 @@ to `cf34f1...` while retaining the same source revision in its new sidecar.
 The expected-hash gate rejects it without running any semantic control:
 `build/validation/global-grant-candidate-product-drift.json`.
 The coordinated paired prover build was not started; the frozen tuple was requested.
+
+## Follow-up verifier repair and Studio preflight
+
+Compiler source `2a3dce665ff462096de961d340a50cc1ef83369d` adds a call-coercion
+guard: a by-value optional cannot be passed as a required reference. The prior
+path emitted a non-niche `{tag, payload}` aggregate where the callee ABI expected
+a pointer. It preserves both narrowed optional-reference forwarding and
+`T?&` container borrowing. `test/parity/optional_payload_ref_argument_smoke.sh`
+verifies that the unguarded aggregate form is rejected before writing LLVM, a
+guarded payload binding passes its address, a narrowed optional reference keeps
+its payload pointer, and a reference-to-optional call points to the global
+container. Accepted forms pass `opt -passes=verify`.
+
+The fresh Stage1 product for that source tree is
+`/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`, SHA256
+`bcdb4a4103662e77c9ac8c58d0e870584328761246585cdad24ce31b88f10119`. Its
+matching runtime object SHA256 is
+`17a5e88040dbe3f13c0ec70b31c7a0bfab57ad89b5e633760d654260f2dde414`; clean
+Stage0 SHA256 is
+`624fb245cc6b96c71a98d3bff446f877a7fd397e6416e07404e48c9daa909f84`; source
+tree SHA256 is `bfc703a4fe39a9e480a5e05851fcbaa1fbf92e269111935ef33e2a1e065be4dd`,
+and build-recipe SHA256 is
+`a0a7f5b8753dc01e202828a80b16508facf840aa6ceea7ea2cec0fc597ba9ba5`.
+Freshness assertion, 52 grant cases, six `-permissive` cases, eight runtime
+grant controls, 12 grouped-protocol controls, strict unsafe, export-effect alias,
+void wrapper, same-name export and optional/reference controls pass on this
+product.
+
+Linked engine source commit `4b0a9af7e4745ea0866813cd4ea2396b17de4396`
+declares the native effect contracts. The Studio caller now explicitly borrows
+the optional recovery ledger and refuses the operation when it is absent. A
+previous sealed attempt also needed the generation inventory to include
+`semantic.log` and `compiler.log`. The exact compiler/UI/engine tuple then built,
+verified, linked and sealed `build/MocapStudio.app`. The consumer owner committed
+the report-reference repair and plan update as `bca72d19`; that project base was
+opened for the authorized FBX workflow. Bundle metadata records engine
+`4b0a9af7`, UI `261363eb`, compiler `2a3dce66`, and marks the project and UI
+worktrees dirty; the seal verifies the recorded input snapshot and copied
+executable. The consumer navigated to the supplied FBX, but the file picker
+timed out during Open. A process sample showed the app responsive in its event
+loop, and an immediate follow-up check found no FBX file open. Later, the app
+displayed `high block_Unreal5.6.fbx` as a 337-frame take, confirming that the
+worker completed with this compiler product. Its skinned surface is available
+and `M` switches Character/Skeleton. Playback remains unqualified: the converted
+GLB has sparse two-key channels mixed with 337-frame channels, but the Studio
+timeline requires aligned sample times. The converter owner is fixing the import
+grid; verify visible pose advancement before recording acceptance.
+`mocap-cleaner/scripts/check.sh` also reports that its prover frontend/compiler
+manifest is stale relative to the current Stage1 and requires the pair to be
+rebuilt and qualified. FBX import, worker completion, surface availability and
+Character/Skeleton switching pass in the app. Timeline playback/posed redraw and
+observer reveal remain unqualified.
+Renderer lifecycle, prover, package and native release gates remain open.

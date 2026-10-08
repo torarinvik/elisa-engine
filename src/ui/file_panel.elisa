@@ -7,19 +7,19 @@
 module FilePanel:
     private:
         @link_name("elisa_file_panel_open")
-        extern c_open(extensions: cstr, title: cstr) -> cstr?
+        extern c_open(extensions: cstr, title: cstr) -> cstr? can[Blocking.IO, Memory.Allocate]
         @link_name("elisa_file_panel_save")
-        extern c_save(extensions: cstr, suggested: cstr, title: cstr) -> cstr?
+        extern c_save(extensions: cstr, suggested: cstr, title: cstr) -> cstr? can[Blocking.IO, Memory.Allocate]
         @link_name("elisa_file_panel_note_recent")
-        extern c_note_recent(path: cstr) -> void
+        extern c_note_recent(path: cstr) -> void can[Blocking.IO]
 
     public:
-        def open(extensions: cstr, title: cstr) -> cstr?:
+        def open(extensions: cstr, title: cstr) -> cstr? can[Blocking.IO, Memory.Allocate]:
             return c_open(extensions, title)
 
         # `suggested` is a file name or a path whose folder the panel starts in.
-        def save(extensions: cstr, suggested: cstr, title: cstr) -> cstr?:
+        def save(extensions: cstr, suggested: cstr, title: cstr) -> cstr? can[Blocking.IO, Memory.Allocate]:
             return c_save(extensions, suggested, title)
 
-        def note_recent(path: cstr) -> void:
+        def note_recent(path: cstr) -> void can[Blocking.IO]:
             c_note_recent(path)
