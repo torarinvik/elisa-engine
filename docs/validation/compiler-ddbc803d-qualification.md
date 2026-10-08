@@ -316,3 +316,11 @@ and other launcher errors remain. It exits 1 normally in 13.69 seconds, sampled
 peak RSS 716,016 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-output-syntax-build.log` and JSON.
 Serialized output/refusal behavior remains runtime-unverified.
+
+The two interpreter integer-format consumers now retain int_to_string's cstr
+result in their locals before bounded length checking and view construction.
+Both NUL-input type errors clear, without new casts or changed output/length
+checks. The bounded compile still exits 1 on other launcher errors in
+6.89 seconds, sampled peak RSS 725,792 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-format-consumers-build.log` and JSON.
+Interpreter formatting remains runtime-unverified on the selected compiler.
