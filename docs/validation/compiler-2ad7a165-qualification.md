@@ -269,3 +269,21 @@ The preflight rethrow emits. Build exits 2 in 3.77 seconds, peak RSS
 814,880 KiB; no executable is produced. Artifact:
 `build/validation/elisascript-fieldless-rethrow-build.log` and JSON.
 Payload binding/rethrow preservation and full qualification remain open.
+
+### Acknowledgement binder correction
+
+The previous writer diagnosis is corrected by the expression trace:
+write_output_transport_fd declined Ident(state) in an `ok state:` success arm,
+not a payload-error binder. Changing it to `state:` clears that function.
+The bounded build now declines only report_test_setup_failure_machine at
+Ident(failure), exiting 2 in 6.07 seconds, peak RSS 804,720 KiB. No executable
+is produced. Artifact:
+`build/validation/elisascript-ddd62fd5-ack-binding-build.log` and JSON.
+
+The remaining generic payload-error binder requires representation conversion:
+native error status stores a tag plus concatenated fields from all variants,
+whereas an ordinary payload-enum value stores a tag plus word storage sized
+for its largest variant. Reinterpreting the status aggregate as the value or
+zeroing its payload would lose active fields. Preserve the active variant's
+fields when binding; qualify payload round trips and rethrows before accepting
+that compiler repair. No payload preservation claim is made here.
