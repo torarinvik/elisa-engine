@@ -138,6 +138,12 @@ these additional checks within implementation slices:
   the unchanged real-asset test pass in 0.72s at 301,792 KiB peak RSS. The counted
   loop pre-reserve calls exact-size reserve on each chunk; repair its growth
   policy to retain amortized geometric growth before rerunning qualification.
+  Isolated compiler commit `04761c68` now passes O0/O2 growth and explicit-reserve
+  controls; the unchanged real-boxer test passes at 155,808 KiB peak RSS at O2.
+  Its frozen compiler/runtime pair passes all 215 uncached runtime tests in
+  25.54s at 1,303,936 KiB peak RSS under the original 3 GiB cap. Installation
+  and full prover/shared/native compatibility remain open
+  ([evidence](../validation/counted-fill-memory-growth.md)).
   Preserve the real asset acceptance and existing watchdog limits. This memory
   failure does not establish the cause of the client's older sealed crash.
 - Use the guide's owned value forms only after lifetime correctness is established.

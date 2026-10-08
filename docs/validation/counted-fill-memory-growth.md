@@ -41,11 +41,42 @@ at a time. `arena_realloc` retains moved backing storage because copied array
 headers can still refer to it. The interaction produces quadratic retained
 storage when blocks must relocate.
 
-The prepared `build/validation/counted-fill-geometric-growth.patch` routes only
+Compiler commit `04761c6862cdec8fb8c47d0d1f2f5f47d6f9b618` in isolated
+`../Elisa-compiler-counted-fill-fix` routes only
 compiler-inserted reserves through the existing geometric darray growth helper.
-Explicit user reserve keeps its current behavior. The patch passes `git apply
---check`; it has not been applied or qualified while the full native gate uses
-the current product. Qualification must cover the nested-fill reproducer at
-O0/O2, the unchanged real-boxer test, and the original uncached runtime sweep.
+Explicit user reserve keeps its current behavior. The isolated product
+build passes, while compiler main remains unchanged for the running native gate.
+Focused qualification passes the expanded nested-fill controls at O0/O2, explicit
+reserve/no-shrink and scalar-fill controls, and the existing loop-prereserve
+fixture. The original uncached runtime sweep is now running on a frozen product
+and matching rebuilt runtime; all 215 tests pass uncached in 25.54s,
+peak 1,303,936 KiB under the original 3,145,728 KiB aggregate cap.
 Retain existing memory limits and source assertions. Do not install a replacement
 product or claim full native/prover compatibility from the ablation result.
+
+## Fixed product evidence
+
+Product SHA-256
+`49c58a6128a48f44a85584a4fc3ca78b3fd0849f4ffab1f95f0262854a3b8688`.
+Frozen copies are `stage1-code-04761c68` and `runtime-04761c68.o`.
+
+The unchanged real-boxer test passes with the automatic reserve pass enabled:
+
+| Build | Elapsed | Peak RSS | Runtime cap |
+| --- | --- | --- | --- |
+| O2 | 0.53s | 155,808 KiB | 524,288 KiB |
+| O0 | 1.07s | 292,752 KiB | 524,288 KiB |
+
+Both retain 90,240 drawn faces, zero rest-pose drift and 24,602 inked pixels.
+`viewport-mesh-sizes-fixed-run.log` retains the exact post-fix count/capacity
+sequence: capacity grows geometrically to 67,108,864 for 55,871,924 input bytes.
+It completes parsing, skinning and rendering under the same 524,288 KiB cap.
+The pre-fix sequence is preserved in `viewport-mesh-sizes-run.log`.
+Focused runs use the original runtime to isolate the compiler change; the full
+runtime sweep uses the newly built matching runtime. No disable-reserve override
+is used in fixed-product qualification.
+
+`compiler-04761c68-runtime.log` and its watchdog JSON retain terminal status 0:
+215 total, zero cached compiles, zero remote compiles. This restores runtime
+qualification; full prover compatibility and native acceptance of this product
+remain open. The concurrent native gate uses the earlier cb10dd72 product.
