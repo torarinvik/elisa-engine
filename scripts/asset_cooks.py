@@ -533,6 +533,12 @@ def cook_declared_assets(project: Path, config: dict[str, object], run: Callable
             if value is not None:
                 source_inputs.add(declared_project_path(project, value,
                     f"asset_cooks[{index}].{field}", must_exist=True))
+        source_value = declaration.get("source")
+        if isinstance(source_value, str):
+            source = declared_project_path(project, source_value,
+                f"asset_cooks[{index}].source", must_exist=True)
+            source_inputs.update(_referenced_project_files(project, source,
+                str(declaration.get("importer", "fbx"))))
         textures = declaration.get("textures", {})
         if isinstance(textures, dict):
             for section, value in textures.items():

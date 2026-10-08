@@ -225,6 +225,10 @@ resource declarations now merge with automatic staging from the same source. All
 41 package controls pass, including fallback directory/file symlink refusal and
 ignored-litter exclusion, with the previous bundle and author resource preserved
 ([evidence](docs/validation/package-executable-resource-collision.md)).
+Cook output collision checks now include glTF/GLB external buffers and images,
+using the same local-resource discovery as cache fingerprints. A reproduced
+cross-cook overwrite of an authored glTF image is refused before any cooker runs;
+48 build/run controls pass (`build/validation/cook-referenced-source-controls.log`).
 The full fresh public-API author/cook/package rehearsal remains open.
 
 ### Bounded consumer work while release gates run

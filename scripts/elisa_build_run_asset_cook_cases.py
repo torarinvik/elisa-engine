@@ -211,6 +211,32 @@ class AssetCookTests(unittest.TestCase):
                 self.assertEqual(len(run.call_args_list), 2,
                     "native cooker source edits must invalidate cooked assets")
 
+    def test_cook_outputs_cannot_overwrite_gltf_referenced_images(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Elisa referenced source ") as temporary:
+            project = Path(temporary)
+            assets = project / "assets"
+            assets.mkdir()
+            image = assets / "wall.png"
+            image.write_bytes(b"authored wall")
+            (assets / "replacement.png").write_bytes(b"replacement image")
+            source = assets / "scene.gltf"
+            source.write_text(json.dumps({"asset": {"version": "2.0"},
+                "images": [{"uri": "wall.png"}]}), encoding="utf-8")
+            config = {"asset_cooks": [
+                {"importer": "image", "source": "assets/replacement.png",
+                 "output": "assets/wall.png", "max_size": 256},
+                {"importer": "gltf", "source": "assets/scene.gltf",
+                 "asset_path": "assets/scene.gltf", "output": "build/scene.pkg"},
+            ]}
+            with mocked_asset_cooker(runner) as run:
+                with self.assertRaisesRegex(runner.BuildConfigurationError,
+                                            "cannot overwrite"):
+                    runner.cook_declared_assets(project, config)
+                run.assert_not_called()
+            self.assertEqual(image.read_bytes(), b"authored wall")
+            self.assertFalse((project / "build/.elisa-asset-cook-cache.json").exists())
+
     def test_directory_cook_outputs_are_rejected_before_publication(self) -> None:
         runner = __import__("elisa_build_run")
         for blocked in ("mesh", "texture"):
