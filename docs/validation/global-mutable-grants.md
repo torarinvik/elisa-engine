@@ -232,3 +232,24 @@ Retained artifacts and hashes:
 This qualifies the two affected engine targets on the exact compiler/runtime
 pair; it does not establish the complete engine, native renderer or consumer
 release gates.
+
+## World identity-counter grants — 2026-10-08
+
+The world epoch, storage catalog-brand and access-frame identity issuance
+boundaries now declare `Global.Read` and `Global.Write`. Their existing caller
+tests declare the same requirements where they construct a `World`, construct a
+`Catalog`, or begin an access frame. Counter bounds, exhaustion errors and
+identity algorithms are unchanged.
+
+With default-enforcement Stage1 from source `0b43cbdb`,
+`test/world.elisa`, `test/world_storage.elisa` and
+`test/world_access_serials.elisa` each compile and run with exit 0. The compiler
+suite also passes 52 grant controls and six explicit `-permissive` bypasses.
+Qualification records, compiler/source/binary hashes and per-test logs are in
+`build/validation/global-grant-world-0b43/qualification.json` and adjacent
+files. Invoke the compiler from its own checkout so it finds the matching
+runtime object.
+
+This closes only the identity-counter slice. It does not qualify every engine
+target or the consumer's full check; those default-grant integrations remain
+open.

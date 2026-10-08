@@ -22,7 +22,7 @@ def hold_serial_reads(frame: mutable WorldAccess::Frame&, remaining: usize) -> i
     return 53 if not released
     0
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     frame: mutable WorldAccess::Frame = WorldAccess::Frame()
     _ = catch WorldAccess::begin_frame(&frame):
         ok: 0

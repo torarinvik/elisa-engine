@@ -347,6 +347,11 @@ pair. The app imports the source as a 337-frame take and `M` switches its
 skinned surface; playback is blocked by sparse key grids. The consumer owner is
 fixing converter sampling. Full prover, mesh redraw/reveal,
 renderer, package and native release gates remain separate acceptance items.
+The world epoch, catalog-brand and access-frame identity counters now also
+declare `Global.Read` / `Global.Write`; their three caller tests compile and run
+on default-enforcement Stage1 `0b43cbdb` (artifacts and hashes are recorded in
+[grant qualification](docs/validation/global-mutable-grants.md)). This is a
+bounded source-adoption result, not full-engine grant qualification.
 
 ### Next three outcomes
 

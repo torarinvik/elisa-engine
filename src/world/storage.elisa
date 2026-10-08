@@ -74,7 +74,7 @@ module WorldStorage:
                 dynamic_rows: mutable DynamicRecord[WorldStorage::MAX_DYNAMIC_ROWS]
                 dynamic_count: mutable usize
 
-        def Catalog() -> Catalog:
+        def Catalog() -> Catalog can[Global.Read, Global.Write]:
             Catalog{
                 catalog_brand: allocate_catalog_brand(),
                 next_id: Limits::FIRST_HANDLE_ID,

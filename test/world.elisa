@@ -94,7 +94,7 @@ module World::Tests:
         return 61 if folded_left != 6 or folded_right != 16
         0
 
-    def churn_test() -> i32:
+    def churn_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World = catch World():
             value: value
             error failure: invalid_world()
@@ -137,7 +137,7 @@ module World::Tests:
         return 27 if replacement.id != 65 or not world_is_live(&world, replacement)
         0
 
-    def corruption_test() -> i32:
+    def corruption_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World = catch World():
             value: value
             error failure: invalid_world()
@@ -153,7 +153,7 @@ module World::Tests:
         return 43 if world_is_valid(&world)
         0
 
-    def lifecycle_interleaving_test() -> i32:
+    def lifecycle_interleaving_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World =
             catch World():
                 value: value
@@ -199,7 +199,7 @@ module World::Tests:
                 return 66 if not world_is_live(&world, references[slot])
         0
 
-    def capacity_test() -> i32:
+    def capacity_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World = catch World():
             value: value
             error failure: invalid_world()
@@ -218,7 +218,7 @@ module World::Tests:
         return 36 if not world_is_valid(&world)
         0
 
-    def static_object_test() -> i32:
+    def static_object_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World = catch World():
             value: value
             error failure: invalid_world()
@@ -262,7 +262,7 @@ module World::Tests:
             RollbackError.WrongWorld: 2
             error failure: 3
 
-    def rollback_test() -> i32:
+    def rollback_test() -> i32 can[Global.Read, Global.Write]:
         world: mutable World = catch World():
             value: value
             error failure: invalid_world()
@@ -359,7 +359,7 @@ module World::Tests:
         return 19 if restored_actor.health != 100
         0
 
-    def run() -> i32:
+    def run() -> i32 can[Global.Read, Global.Write]:
         world: mutable World =
             catch World():
                 value: value
@@ -571,5 +571,5 @@ module World::Tests:
         return identity if identity != 0
         corruption_test()
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     World::Tests::run()

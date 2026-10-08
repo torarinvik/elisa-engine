@@ -306,7 +306,7 @@ module World:
                 static_object_count: mutable usize
                 hierarchy: mutable WorldHierarchy::Hierarchy
 
-        def World() -> World error[WorldError]:
+        def World() -> World error[WorldError] can[Global.Read, Global.Write]:
             epoch: i64 = try next_epoch()
             World{
                 allocator: EntityId::EntityIdAllocator(),
