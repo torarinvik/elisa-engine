@@ -20,6 +20,7 @@ def main() -> int:
         (ROOT / "scripts/save_journal.py", "--self-test"),
         (ROOT / "scripts/test_jolt_shape_cache.py",),
         (ROOT / "scripts/test_crash_report.py",),
+        (ROOT / "scripts/test_qualify_global_grants.py",),
         (ROOT / "scripts/test_input_codes.py",),
         (ROOT / "scripts/test_animation_contract.py",),
         (ROOT / "scripts/test_application_native_smoke.py",),

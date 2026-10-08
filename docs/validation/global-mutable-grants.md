@@ -40,3 +40,45 @@ frozen product. Once its new product is available, requalify the callers' grants
 and the default/permissive accepted/rejected controls. Do not use `-permissive`
 for the engine's ordinary qualification gate. Full native compatibility also
 remains open because of the intermittent effect-memory failure.
+
+## Candidate CLI boundary — not qualified
+
+Clean compiler candidate `fb8e0927` Stage1 product
+`1e408e0d334997d7d2ea5e722e1bab2fca318c1bca70f0d3147bc8a0ac0acaca`
+passes `-emit check` on the three engine identity-counter fixtures. However,
+actual default CLI checks also accept ungranted mutable-global reads and writes.
+Adding the supported `# globals` header makes the same fixtures reject with the
+expected read/write diagnostic. The driver still forwards the source-header probe
+as the permission-enforcement switch. This candidate therefore does not satisfy
+default enforcement and must not be installed as qualified on this evidence.
+
+Exact results: `build/validation/candidate-global-grants-cli-boundary.json`;
+engine source checks: `candidate-global-grants-engine-source-check.json`.
+The reproducer was sent to the coordinated compiler owner. No compiler source
+was edited and no replacement product installed. The helper regression suite's
+explicit ON/OFF success is narrower than actual default CLI enforcement.
+
+## Repeatable actual-CLI admission gate
+
+Before replacement compiler promotion, run:
+
+```sh
+python3.14 scripts/qualify_global_grants.py --compiler /absolute/candidate/compiler --report build/validation/global-grant-cli-qualification.json
+```
+
+The 22 controls use no opt-in headers. They cover missing read/write grants,
+read-modify-write with either/both grants, local grants, local shadowing,
+transitive callers and the explicit permissive bypass. Required refusals must
+exit 1 with the named permission diagnostic; unrelated errors and silent
+acceptance fail qualification. Positive cases and every permissive case must
+succeed. The report records source hashes, outcomes and diagnostics; it is source
+admission evidence, not product/runtime authentication or full promotion.
+
+Candidate `fb8e0927` passes 17/22 controls and fails all five required default
+refusals (`build/validation/candidate-global-grant-full-cli-controls.json`).
+Four qualifier unit controls pass, validating expected-policy success, silent
+acceptance refusal, unrelated errors and missing executable handling
+(`build/validation/global-grant-qualifier-controls.log`). Those unit controls are
+registered in the portable native-facing test slot; the actual candidate gate is
+an explicit replacement-qualification command so the historical compiler baseline
+is not misrepresented as satisfying the new policy.
