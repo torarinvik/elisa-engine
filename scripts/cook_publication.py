@@ -55,4 +55,9 @@ def publish_cooked_outputs(staged: Mapping[Path, Path]) -> None:
         if not retain_backups:
             for backup in backups.values():
                 if backup is not None:
-                    backup.unlink(missing_ok=True)
+                    try:
+                        backup.unlink(missing_ok=True)
+                    except OSError:
+                        # Retain the old bytes if cleanup is refused. Publication
+                        # or rollback has already finished; preserve its outcome.
+                        pass

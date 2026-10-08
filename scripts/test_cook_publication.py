@@ -51,6 +51,24 @@ class CookPublicationTests(unittest.TestCase):
             self.assertEqual(final.stat().st_mode & 0o777, 0o755)
             self.assertEqual(list(root.iterdir()), [final])
 
+    def test_cleanup_failure_does_not_fail_committed_publication(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            final, staged = root / "mesh", root / "new"
+            final.write_bytes(b"old")
+            staged.write_bytes(b"new")
+            unlink = Path.unlink
+            def refuse_backup(path, *args, **kwargs):
+                if ".elisa-backup-" in path.name:
+                    raise PermissionError("backup cleanup refused")
+                return unlink(path, *args, **kwargs)
+            with mock.patch.object(Path, "unlink", autospec=True, side_effect=refuse_backup):
+                publish_cooked_outputs({final: staged})
+            self.assertEqual(final.read_bytes(), b"new")
+            self.assertFalse(staged.exists())
+            backup, = root.glob(".*.elisa-backup-*")
+            self.assertEqual(backup.read_bytes(), b"old")
+
     def test_failed_rollback_keeps_recovery_backup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -198,7 +198,9 @@ Cook declarations also reject existing non-file outputs before any cooker or
 publication, preserving companion outputs and cache state
 ([evidence](docs/validation/cook-output-file-types.md)).
 A failed later cook-output replacement now restores earlier outputs and preserves
-cache records; failed rollback retains recovery backups. The actual optimized
+cache records; failed rollback retains recovery backups. Backup cleanup refusal
+also preserves the completed transaction result and retains previous bytes; the
+combined cook/build controls pass 50 tests. The actual optimized
 image-cook/cache rehearsal passes on this source
 ([rollback evidence](docs/validation/cook-publication-rollback.md)).
 Native application builds now validate and prepare Wicked runtime links before

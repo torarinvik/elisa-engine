@@ -29,3 +29,21 @@ atomically visible to readers, establish crash durability, or serialize concurre
 writers. A cache-write failure can leave successfully published outputs requiring
 recooking; the cache never authenticates unchecked new bytes. Full native project
 package acceptance remains open.
+
+## Backup cleanup preserves the transaction outcome
+
+A new injected `Path.unlink` refusal reproduced a cleanup exception after all
+cooked outputs had already been published. The publication helper now treats
+backup cleanup as best effort: refused deletion retains previous bytes and does
+not replace a successful publication result (or mask the original rollback error).
+The caller can therefore record cache state for the output that actually committed.
+
+The new control fails against the previous source, with output retained in
+`build/validation/cook-cleanup-before.log`. After repair,
+`/opt/homebrew/bin/python3.14 -m unittest test_cook_publication test_elisa_build_run`
+from `scripts/` passes 50 tests in 5.185 seconds; output:
+`build/validation/cook-cleanup-after.log`. It verifies new bytes published, staged
+file consumed and old bytes recoverable in the retained backup. Existing later
+replacement failure and failed-rollback controls pass. No crash/concurrent-writer
+atomicity or native package acceptance is claimed. This is Python filesystem
+behavior outside Elisa prover modeling.
