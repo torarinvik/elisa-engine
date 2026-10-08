@@ -156,9 +156,16 @@ another. Commit documentation and tests together with source changes.
   compiler source `dd8aea22` (Stage1 SHA256
   `a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`). The
   ordinary `main.elisa` entry now also declares the grants required by
-  `CharacterCourse::run`; its clean optimized package is being rebuilt against
-  the same compiler before relocation acceptance. The complete consumer check
-  still needs a sequential rerun: overlapping runs
+  `CharacterCourse::run`. Its clean optimized build and compiled-shader-only
+  macOS package now pass on commit `7404f2d2` with the same Stage1; relocated
+  offline startup and restart acceptance remain open. The three dedicated
+  relaunch, live-input and cell-streaming entrypoints also carry their grants
+  and pass project-context semantic checks. A newer Studio preflight reports 71
+  engine grant findings across 12 animation, asset and viewport files, but the
+  compiler owner has isolated a same-leaf cross-module effect attribution bug.
+  Do not add blanket grants from this provisional census; rerun it after the
+  owner-identity repair. The complete consumer check still needs a sequential
+  rerun: overlapping runs
   raced in shared test/proof outputs, so their reports are not qualification
   evidence. Despite the
   file-picker timeout, Studio loaded the
@@ -216,7 +223,7 @@ and hosted clean-checkout CI reproduce the qualified tuple.
 | 2 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. The diagnosed grant omissions now have source contracts, and the Character Course hidden self-test application builds and links under default enforcement. Rerun the complete consumer check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
 | 3 | **Finish actual redraw/reveal and observer integration.** Consume the qualified mesh repair and read-only observer in the real Studio path. This closes a public consumer contract and confirms the native guards through the app. | Studio redraws valid geometry unchanged; malformed inverse-bind, influence, joint and triangle shapes fail before output changes. Observer registration/reveal passes for original, quarantined, conflicting and uncertain locations without gaining restore/delete authority. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and heap/GPU/VM diagnostics to identify the retaining owner and measured memory domain. | A source fix has a reproducer or decisive resource-accounting regression, then passes the original full lifecycle/native gate with warmup, cycles and the 8 MiB allowance unchanged. A retry alone is not a diagnosis. |
-| 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with refreshed, generator-checked content and package the public-API client. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |
+| 5 | **Refresh and relocate Character Course — Q02/Q04.** The clean current-source optimized public entrypoint now builds and packages against the default-grant compiler. Complete relocation acceptance next. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |
 | 6 | **Rehearse a second ordinary project — Q07a/Q02.** Follow current build/cook/package instructions in a fresh project and repair the first demonstrated blocker. | A runnable package uses public APIs without sample-specific native exports or undocumented steps; invalid resources produce actionable errors. Record exact command and tuple. |
 | 7 | **Qualify hosted clean-checkout CI — Q03.** Promote the qualified local compiler/core/prover/ElisaScript tuple to full-SHA pins and fail-closed provisioning. | A hosted headless run retains provisioning, build, proof and package artifacts; GPU qualification stays separate. |
 | 8 | **Finish gameplay and physical acceptance — Q07a/Q06.** Extend the course route for unsampled win/fall, input, audio and Jolt/GPU ownership outcomes. | The complete playable loop and reload/restart/teardown baselines pass. Physical checks require hardware evidence; unavailable hardware does not block ready local work. |

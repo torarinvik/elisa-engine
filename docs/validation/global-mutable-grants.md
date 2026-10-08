@@ -311,13 +311,45 @@ The build completed archive generation in 87.63 seconds and native linking in
 15.27 seconds. The binary SHA256 is
 `5d0dc493d4fb394fb7a1b275aeda1ed7017bf3c408ad21e628df71fcee6c6a92`; its build
 identity is `3fec82a0134d4444`. This is compile/link evidence only; the binary
-was not launched, and the complete consumer check and optimized shipping package
-remain open.
+was not launched, and the complete consumer check and relocated startup remain
+open.
 
-The ordinary public entrypoint `examples/character_course/main.elisa` now
-declares the same grants when it calls `CharacterCourse::run`. A clean optimized
-build of this entrypoint against the compiler above is the next package check;
-the self-test build does not substitute for that shipping path.
+The ordinary public entrypoint `examples/character_course/main.elisa` declares
+the same grants when it calls `CharacterCourse::run`. The dedicated
+`live_input_test_main.elisa`, `relaunch_main.elisa`, and `stream_test_main.elisa`
+entrypoints carry the same contract. Project-context checks that include
+`src/runtime/public.elisa` pass for all three; direct root compilation without
+that project wrapper is not a valid check for these client files. Current Stage1
+command: `elisac-stage1 -emit check` over a wrapper that includes
+`src/runtime/public.elisa` and each entrypoint. The three exit 0 results with
+zero grant diagnostics are retained in
+`build/validation/global-grants-course-entry-checks.log`.
+
+## Provisional Studio engine diagnostics — 2026-10-08
+
+The Studio project preflight logged 71 apparent grant gaps in 12 engine
+animation, asset and viewport modules. Source review found no `global mutable`
+declarations in those modules; representative flagged operations such as
+`LongClip::read`, `LongClip::set_local` and `GizmoPolicy::next_state` use only
+their explicit arguments and immutable constants. The compiler owner traced a
+likely false-positive cause to effect-call lookup by leaf function name across
+modules. No grants were added from this census. Re-run the exact project check
+after the compiler owner-identity repair, then add only effects confirmed by
+resolved calls or direct mutable-global access. The 71-row input census and its
+log hash are retained in the ignored
+`build/validation/engine-global-grants-studio-census.txt`; this is provisional
+diagnostic evidence, not a source requirement or acceptance result.
+
+The ordinary entrypoint builds optimized and packages as a compiled-shader-only
+macOS app from clean engine commit `7404f2d2534cf30656976d1c3aeaaaac1d28b177`
+with compiler Stage1 above and runtime object SHA256
+`70e2397f260b42c11f6478a70b0baf95ae09d654ac6b1dfe99bb9f9a4e896de5`. The
+executable SHA256 is
+`6f5354e393ae8202de5f0856b4e21615f7f451feb86dc650375ba465dcc58671`, build
+identity `629e2167d39eab9e`; package size is 127,448,725 bytes with 81 verified
+notice files. Elisa archive generation took 126.49 seconds and native linking
+took 40.12 seconds. This establishes compile/package integration only; relocated
+offline startup, restart and teardown have not yet been run.
 
 This integration also corrected `scripts/elisa_build_run.py`: the build runner
 invokes the selected compiler binary directly, so it now passes an empty
