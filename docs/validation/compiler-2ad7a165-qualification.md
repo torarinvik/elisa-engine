@@ -129,3 +129,20 @@ peak sampled RSS 726,896 KiB. Artifact:
 `build/validation/elisascript-2ad7a165-permanent-copy-build.log` and JSON.
 This introduces an additional copy for longer strings; launcher behavior remains
 runtime-unverified, and no escape-check suppression is used.
+
+## Semantic clearance and backend emission
+
+Ten remaining text/path returns now copy validated counted views into permanent
+backing, preserving exact length and embedded NULs through permanent_text_copy.
+All semantic diagnostics clear. The bounded build reaches backend emission but
+exits 2 with 13 declined functions; no linkable object/executable is produced.
+Artifact: `build/validation/elisascript-2ad7a165-return-copies-build.log` and JSON.
+These copies add allocation/work for longer strings. Launcher runtime behavior
+and backend compatibility remain unverified.
+
+Declined functions: output_render_record_bytes, output_render_header_bytes,
+output_render_footer_bytes, output_transport_planned_preflight,
+elisascript_posix_waitpid, write_output_transport_fd, python_text_decode_next,
+decode_utf8, split_lines, trim_unicode_whitespace, returned_exec_status,
+report_test_setup_failure_machine and run_test_mode. This is a new backend
+failure family exposed after semantic repairs; it is not a successful launcher.
