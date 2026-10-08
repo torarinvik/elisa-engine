@@ -49,3 +49,14 @@ Existing failed-rollback recovery controls remain included. These are host Pytho
 filesystem controls, with no Elisa proof obligation count; the prover does not model
 these operations. Actual optimized package acceptance and crash/concurrent-observer
 limitations above remain open.
+
+## Registered gate coverage
+
+`scripts/native_unit_tests.py` now invokes the build-runner, build-provenance and
+VM-region report controls as part of its existing fail-fast native-facing unit
+stage. Executing these registered commands directly passes 46, 3 and 3 tests,
+respectively. Logs: `build/validation/registered-build-publication-controls.log`,
+`registered-build-provenance-controls.log` and `registered-vm-report-controls.log`.
+This closes manual-only coverage for these source repairs. The full native-unit
+stage, hosted CI and actual renderer acceptance were not run by this registration
+change; the stage's later C++/GPU-related prerequisites retain their own gates.

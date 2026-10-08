@@ -24,6 +24,9 @@ def main() -> int:
         (ROOT / "scripts/test_input_codes.py",),
         (ROOT / "scripts/test_animation_contract.py",),
         (ROOT / "scripts/test_application_native_smoke.py",),
+        (ROOT / "scripts/test_elisa_build_run.py",),
+        (ROOT / "scripts/test_build_provenance.py",),
+        (ROOT / "scripts/test_effect_memory_region_report.py",),
     )
     for command in tests:
         result = subprocess.run([sys.executable, *(str(part) for part in command)], check=False)
