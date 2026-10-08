@@ -646,3 +646,12 @@ current range-binder handling. Fixture theorem types now match the merged model.
 The merged clean paired build is running (`prover-scalar-copy-main-merge-build.log`)
 before repeating focused and engine qualification. The production engine prover
 branch is not yet advanced; full compatibility acceptance remains open.
+
+The first merged build rejects two automatic-merge duplicates in
+`immutable_bindings.elisa`: a repeated stable-condition helper and an unreachable
+second conditional-initializer arm. Follow-up `cf280488` retains the existing
+source-exact conditional-value path (including prior immutable captures) once,
+removing the redundant implementation. The clean merged paired build retries
+in `prover-scalar-copy-main-merge-fixed-build.log`. The nine-case copied-bound,
+seven-case immediate-copy and updated diagnostic suites all passed against
+the final pre-merge product; merged-product acceptance is still pending.
