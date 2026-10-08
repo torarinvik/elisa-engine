@@ -287,6 +287,8 @@ def resolve_project_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
             raise BuildConfigurationError(f"Output path would overwrite the {label}: {output}")
     if output.exists() and output.is_dir():
         raise BuildConfigurationError(f"Output path is a directory: {output}")
+    if output.exists() and not output.is_file():
+        raise BuildConfigurationError(f"Output path is not a regular file: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
     return project, main_source, output
 

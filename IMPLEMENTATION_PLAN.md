@@ -137,18 +137,17 @@ another. Commit documentation and tests together with source changes.
   actual Studio acceptance. Engine identity helpers have local grants; promote
   only a clean authenticated product that passes the actual CLI controls and
   owning compiler regressions ([evidence](docs/validation/global-mutable-grants.md)).
-  Newer default-enforcement source `f4f0cda8` passes semantic preflight but its
-  official seed fails during runtime-object compilation: 312 Global diagnostics,
-  unchanged source, 84.64 seconds and 7,051,056 KiB under 8 GiB. No qualified
-  runtime/provenance tuple exists. The next compiler source task is conservative
-  candidate resolution for
-  target-specific lock helpers: multiple static-if variants currently produce
-  false read/write requirements despite existing trusted cache blocks. Preserve
-  possible variadic, generic and integer-alias targets and fail closed on missing
-  summaries; actual profiler and host-callback effects remain required. Backend
-  repairs are integrated with this source at `7ff4b840`,
-  currently source-only. Resolve this gate before Studio, latest prover pair or
-  package qualification; avoid building the superseded `10ae0267` prover as current.
+  Candidate resolution and module-owner context repairs are committed through
+  `aec8acea`; the unrelated-module refusal is repaired in focused diagnostic
+  controls. Its official seed still fails with 183 runtime Global diagnostics
+  (83.69 seconds, 6,231,056 KiB under 8 GiB). The compiler owner is migrating
+  the affected runtime call chains. Next: finish those demonstrated grant
+  requirements, build a clean seed and qualify the actual CLI. Retain conservative
+  callee/callback analysis and real profiler/host-callback effects.
+  Backend ownership repairs and committed grant repairs are integrated at
+  `5c2f47d0`, currently source-only. No qualified replacement runtime/provenance
+  tuple exists. Finish this shared gate before Studio, the latest prover pair or
+  package qualification; do not install a diagnostic product.
 - **Shipping client:** the guide rig refresh is committed at `a30d3af9`.
   Current rig, sound and cell generator checks pass on this checkout. The
   historical relocated Character Course bundle still needs a fresh optimized
@@ -176,7 +175,7 @@ project reproduce that result.
 
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
-| 1 | **Finish compiler grant qualification — Q01/Q03.** This user-requested default policy affects engine and mocap callers. Repair the demonstrated default-driver, exact-callee and callback defects in the owning compiler; qualify its source/runtime pair, then repair demonstrated missing engine caller grants. Use newly published compiler performance changes only after semantic qualification. | Run `scripts/qualify_global_grants.py` on the actual candidate CLI (no opt-in headers); default reads/writes without grants fail; exact grants and transitive caller grants pass; `-permissive` bypasses these checks. Preserve method, callback, default-argument and local-shadowing controls. Record source/runtime/product hashes and complete runtime results. Keep compiler defects in the compiler repository. |
+| 1 | **Finish compiler grant qualification — Q01/Q03.** This user-requested default policy affects engine and mocap callers. Finish the runtime grant migration in the owning compiler, retain the committed default-driver, exact-callee, module-context and callback repairs, qualify its source/runtime pair, then repair demonstrated missing engine caller grants. Use newly published compiler performance changes only after semantic qualification. | Run `scripts/qualify_global_grants.py` on the actual candidate CLI (no opt-in headers); default reads/writes without grants fail; exact grants and transitive caller grants pass; `-permissive` bypasses these checks. Preserve method, callback, default-argument and local-shadowing controls. Record source/runtime/product hashes and complete runtime results. Keep compiler defects in the compiler repository. |
 | 2 | **Qualify the repaired prover memory path — Q01.** The previous current pair passes five CLI controls but breaches 3 GiB on the first engine input. The controlled comparison isolates emitted-code behavior. Carry the completed builtin-worklist and custom-pop repairs into the qualified compiler tuple; proceed to original-input acceptance with lexical scope and global-publication controls retained. This shares the toolchain adoption gate with item 1 and prevents wasting the census on a known early failure. | A causal source repair passes the original first input under the unchanged cap, all five original CLI regressions, and all 73 engine reports retaining the original 4,246 obligations plus new obligations. Then run immutable snapshot census/matrix checks with explicit concurrency and Python 3.14; classify all nine historical timeouts. Full shared/native qualification precedes promotion. |
 | 3 | **Close actual Studio consumer acceptance.** The mesh repair and build/cook safeguards are integrated at `dc180e49`; consume that tuple and register the qualified read-only observer. This protects a real public API from malformed mutable arrays and has a bounded acceptance workload. | Local source/proof/runtime acceptance passes; consume the clean tuple in the actual Studio redraw path. Retain all original engine proof obligations. O0/O2 controls reject truncated/extra inverse binds, influence shape mismatches, positive-weight joints out of range, incomplete triangles and invalid indices before changing output. Valid geometry remains identical. Add sanitizer evidence where practical, record actual redraw and reveal outcomes against the integrated source/header tuple. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and existing heap/GPU/VM diagnostics to identify retained resources or the measured memory domain responsible for the jump. This is the remaining observed native release failure. | A source repair has a reproducer or a decisive resource-accounting regression, then passes the original full renderer lifecycle and native gate. Keep warmup, cycles and the 8 MiB allowance unchanged. A passing retry is supporting evidence, not a diagnosis. |
@@ -186,6 +185,12 @@ project reproduce that result.
 | 8 | **Finish gameplay and physical acceptance — Q07a/Q06.** Extend the existing course route for unsampled win/fall, input, audio and Jolt/GPU ownership outcomes. | Evidence covers the complete playable loop and reload/restart/teardown resource baselines. Physical checks require actual hardware evidence; unavailable hardware does not block ready local tasks. |
 
 ### Ordinary-project preparation
+
+Executable output admission now rejects existing FIFOs and Unix sockets before
+compilation, preserving their inode and type. The focused build/run collection
+passes 47 controls (`build/validation/build-special-output-controls.log`). This
+closes a demonstrated destination-validation gap; actual fresh optimized package
+and public-API application acceptance remain open.
 
 Executable output now refuses entry-source and project-manifest collisions,
 including filesystem aliases, before invoking tools. All 36 build-runner controls
@@ -279,13 +284,14 @@ interrupted snapshot census is incomplete evidence.
 | Backend repair complete; qualified integrated compiler required | Qualify repaired prover memory on original engine input | Integrate the qualified default-grant compiler repair with backend e791ec50 and consume the latest clean prover source (including signed-minimum and source-annotation repairs), then build an authenticated pair and repeat the unchanged original input under 3 GiB. Follow with five CLI regressions and all 73 engine reports; diagnostic harness success does not close those gates. |
 | Owning compiler repair in progress | Default grants and Studio compiler repair | Highest cross-client return. Require 22/22 actual CLI controls, exact-callee/callback regressions and authenticated source/runtime/product identity before client acceptance or installation. |
 | Consumer integration ready; execution depends on compiler | Actual Studio redraw and observer reveal | Use `dc180e49` and the retained observer header identity. Validate the existing public API in its real consumer; avoid further handoff-only work. |
-| Ready without a heavy compile slot | Finish native executable/provenance publication — Q07/Q02 | Prepare the manifest from the staged binary using the final output identity; publish it with runtime links before the executable. On preparation or replacement failure, retain the previous executable, links and sidecar; retain recovery data if rollback fails. Use focused Python fault controls. Focused preparation, replacement, rollback and identity controls pass; actual optimized package acceptance remains open. |
+| Ready without a heavy compile slot | Reproduce a concrete ordinary-project obstacle — Q07/Q02 | Publication rollback, manifest identity and package resource controls are implemented and registered in the unit stage. Walk the existing author workflow and implement only a newly demonstrated failure that prevents a runnable public-API package. End the slice when that failure is repaired; full native and hosted unit-stage execution remain open. |
 | Ready after coordinated heavy slot | Renderer lifecycle diagnosis and repair | Observe the failing full sequence, identify the retained owner/domain, then repair its lifetime. Keep original cycles, warmup and 8 MiB allowance. |
 | Ready after compatible tuple and native gate | Fresh package and ordinary author workflow | Reuse one clean optimized build for Character Course relocation and a fresh public-API application. Console image cooking and native package reading are preparation; the packaged application remains open. |
 
 When the completed compiler product arrives, qualification takes precedence.
-While waiting, integrate the completed native provenance transaction and
-select a demonstrated source failure with an independent acceptance path.
+While waiting, select a demonstrated author-workflow failure with an independent
+acceptance path. Completed publication safeguards need actual package consumption;
+additional fault controls alone do not outrank release acceptance.
 Reserve each heavy slot through the existing coordination; record its
 explicit handoff and terminal result in the validation record, since slot ownership
 changes during execution. Defer census, broad native retries and package rebuilds
@@ -293,16 +299,29 @@ until their prerequisite can produce a meaningful acceptance result.
 
 ### Next three outcomes
 
-1. **Integrate the completed publication transaction.** Native builds now prepare
-   provenance before publication and roll back sidecar/link changes on failure;
-   48 build/provenance controls pass. Carry this source into the fresh optimized
-   package rehearsal once the toolchain gate closes.
-2. **Obtain one qualified integrated compiler/runtime tuple.** Resolve the lock
-   candidate defect, pass default grant/refusal and permissive controls, and retain
-   the backend ownership repairs. Install only the authenticated passing product.
-3. **Spend that tuple on real acceptance.** Run the original prover input first;
-   use separately reserved slots for actual Studio redraw/reveal and the failing
-   renderer lifecycle sequence. Their results select the next source repair.
+1. **Qualify one integrated compiler/runtime tuple.** Finish the runtime grant
+   migration, pass default grant/refusal and explicit permissive controls, and
+   retain backend ownership repairs. Install only the authenticated passing
+   product. This unblocks every remaining client acceptance path.
+2. **Close the original prover memory gate.** Build the latest clean prover with
+   that tuple, prove/replay all 265 obligations of the original first engine
+   input under 3 GiB / 120 seconds, then advance to the five CLI controls and
+   all 73 reports. Stop at the first actionable failure and repair its owner.
+3. **Turn the tuple into usable clients.** Reserve separate slots for actual
+   Studio redraw/reveal and renderer lifecycle diagnosis. Close their observed
+   failures, then reuse a fresh optimized build for Character Course relocation
+   and a second ordinary public-API application. Register the qualified tuple
+   in hosted CI once the local acceptance paths pass.
+
+### Choose work by unblock value
+
+| Decision | Action |
+|---|---|
+| Compiler owner has a concrete failing call chain | Finish the smallest correct grant migration and qualify its clean product. This is the first shared prerequisite. |
+| An integrated product is qualified and a heavy slot is handed off | Run the original acceptance workload next. Prefer a result that closes a release gate over another reduced fixture. |
+| Compiler qualification is still pending | Implement a reproduced author-workflow obstacle that can be accepted independently; otherwise prepare the exact next client run and preserve slot availability. |
+| A package or second application exposes a missing public service | Promote that specific F–X task with a consumer and end-to-end acceptance; avoid implementing unused subsystem breadth. |
+| Completed safeguards already pass focused controls | Consume them in real builds, packages and hosted CI. Reopen them only for a newly observed failure. |
 
 ### ROI and exit rules
 

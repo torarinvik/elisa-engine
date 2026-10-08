@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import hashlib
 import os
+import socket
 import subprocess
 import sys
 import tempfile
@@ -301,6 +302,31 @@ class BuildRunCliTests(unittest.TestCase):
         self.assertIn("-O2", optimized)
         self.assertNotIn("-O0", optimized)
         self.assertIn("-DELISA_APPLICATION_BUILD_ID=74565", identified)
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "requires Unix special files")
+    def test_special_output_paths_are_refused_before_tools(self) -> None:
+        runner = __import__("elisa_build_run")
+        with tempfile.TemporaryDirectory(prefix="Elisa special output ") as temporary:
+            project = Path(temporary)
+            (project / "main.elisa").write_text("def main() -> i32:\n    0\n", encoding="utf-8")
+            fifo = project / "output fifo"
+            os.mkfifo(fifo)
+            endpoint = project / "output socket"
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+                listener.bind(str(endpoint))
+                for output in (fifo, endpoint):
+                    with self.subTest(output=output.name):
+                        before = output.stat()
+                        args = runner.parse_arguments([
+                            "build", "--project", str(project), "--main", "main.elisa",
+                            "--output", str(output),
+                        ])
+                        with self.assertRaisesRegex(runner.BuildConfigurationError,
+                                                    "not a regular file"):
+                            runner.resolve_project_paths(args)
+                        after = output.stat()
+                        self.assertEqual((after.st_ino, after.st_mode),
+                                         (before.st_ino, before.st_mode))
 
     def test_command_line_paths_override_manifest(self) -> None:
         with tempfile.TemporaryDirectory(prefix="Elisa manifest overrides ") as temporary_directory:
