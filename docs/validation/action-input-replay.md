@@ -691,3 +691,20 @@ annotation failure is gone: the actual R-019 indexed-vs-linear oracle now passes
 with collision, marker, width, duplicate and shadowing controls. The retry and
 the independent full native gate are still live; no terminal matrix/native
 acceptance is claimed.
+
+### Corpus identity repair and remaining replay failures (2026-10-08)
+
+Isolated prover commit `0e4cd497` repins the reviewed Luna corpus to integrated
+source ancestor `f593c886` and updates the changed names-and-scale expectation
+source hash. The diff changes two values; expected semantic categories are
+unchanged. All 13 manifest controls pass under Python 3.14, retaining stale-hash,
+ancestry and malformed-evidence refusals. This commit is not integrated into the
+production worktree while its full regression matrix remains active.
+
+Actual paired-product semantic execution still fails `symbolic_quantifier`
+(3 replay gaps), `rejected_symbolic_quantifier` (2) and `branch_join` (1).
+The branch gap is the line-32 `keep_or_replace` return certificate following
+`b: mutable usize = best; if flag: b <- slot`; the assertion remains
+`result <= 8`. Reports and unchanged outcome inventory are retained in
+`build/validation/luna-corpus-f593c886-reports/`. These source/replay defects
+require owning prover repairs; manifest controls alone do not qualify the corpus.
