@@ -470,3 +470,13 @@ on other errors in 12.83 seconds, peak sampled RSS 726,720 KiB. Artifacts:
 `build/validation/elisascript-error-family-fixed-build.log` plus JSON.
 Full runtime, proof, shared and native qualification of 2ad7a165 remains open;
 the earlier ddbc803d evidence does not qualify the new compiler product.
+
+### Three runtime boundaries on the corrected compiler
+
+On immutable compiler 2ad7a165, the POSIX writer qualifies EsRuntime's EINTR
+constant, the file reader grants a local cstr conversion after appending NUL,
+and the debug signal handler grants its integer-to-pointer context recovery.
+The three diagnostics clear in the bounded build, which exits 1 elsewhere in
+5.80 seconds with peak sampled RSS 726,928 KiB. Artifact:
+`build/validation/elisascript-2ad7a165-runtime-boundaries-build.log` and JSON.
+POSIX output, file reading and signal-handler behavior remain runtime-unverified.
