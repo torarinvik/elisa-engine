@@ -21,6 +21,46 @@ from elisa_build_run_asset_cook_cases import AssetCookTests  # noqa: F401 - coll
 
 
 class BuildRunCliTests(unittest.TestCase):
+    def test_output_collisions_preserve_author_files_before_compile(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="Elisa author paths ") as temporary:
+            project = Path(temporary)
+            source = project / "main.elisa"
+            source.write_text("def main() -> i32:\n    0\n", encoding="utf-8")
+            manifest = project / "elisa.project.json"
+            compiler = project / "inert compiler"
+            marker = project / "compiler invoked"
+            compiler.write_text(f"#!{sys.executable}\nfrom pathlib import Path\n"
+                f"Path({str(marker)!r}).write_text('invoked')\nraise SystemExit(42)\n", encoding="utf-8")
+            compiler.chmod(0o755)
+            symlink = project / "source symlink"
+            symlink.symlink_to(source)
+            hardlink = project / "source hardlink"
+            os.link(source, hardlink)
+            manifest_link = project / "manifest hardlink"
+            manifest.write_text("{}", encoding="utf-8")
+            os.link(manifest, manifest_link)
+            for output in ("main.elisa", "./main.elisa", str(source), str(symlink),
+                           str(hardlink), "elisa.project.json", str(manifest_link)):
+                with self.subTest(output=output):
+                    manifest.write_text(json.dumps({"main": "main.elisa", "host": "console",
+                        "output": output}), encoding="utf-8")
+                    before = {path: path.read_bytes() for path in (source, manifest)}
+                    result = subprocess.run([sys.executable, str(SCRIPT), "build",
+                        "--project", str(project), "--compiler", str(compiler)],
+                        capture_output=True, text=True, check=False)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("Output path would overwrite", result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+                    self.assertFalse(marker.exists())
+                    self.assertEqual(before, {path: path.read_bytes() for path in before})
+            # A distinct output still reaches the selected compiler.
+            manifest.write_text(json.dumps({"main": "main.elisa", "host": "console",
+                "output": "build/game"}), encoding="utf-8")
+            result = subprocess.run([sys.executable, str(SCRIPT), "build", "--project",
+                str(project), "--compiler", str(compiler)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 42, result.stderr)
+            self.assertTrue(marker.exists())
+
     def test_hosted_archive_optimization_and_runtime_ownership(self) -> None:
         runner = __import__("elisa_build_run")
         for optimize in (False, True):

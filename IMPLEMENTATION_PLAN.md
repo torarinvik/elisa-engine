@@ -124,6 +124,13 @@ another. Commit documentation and tests together with source changes.
 | 7 | **Rehearse the ordinary project path — Q07a/Q02.** Follow existing build/cook/package instructions in a fresh project and fix the first demonstrated authoring, resource-discovery or diagnostic gap. | A runnable packaged Elisa application uses public APIs without sample-specific native exports or undocumented steps. Missing/invalid resources yield actionable errors; retain the exact command/product tuple. |
 | 8 | **Finish gameplay and physical acceptance — Q07a/Q06.** Extend the existing course route for unsampled win/fall, input, audio and Jolt/GPU ownership outcomes. | Evidence covers the complete playable loop and reload/restart/teardown resource baselines. Physical checks require actual hardware evidence; unavailable hardware does not block ready local tasks. |
 
+### Ordinary-project preparation
+
+Executable output now refuses entry-source and project-manifest collisions,
+including filesystem aliases, before invoking tools. All 30 build-runner controls
+pass; author files remain unchanged ([evidence](docs/validation/project-output-collisions.md)).
+The full fresh public-API author/cook/package rehearsal remains open.
+
 ### Bounded consumer work while release gates run
 
 Mocap-cleaner requested the read-only

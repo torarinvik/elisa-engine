@@ -275,6 +275,16 @@ def resolve_project_paths(args: argparse.Namespace) -> tuple[Path, Path, Path]:
     if not output.is_absolute():
         output = project / output
     output = output.resolve()
+    for protected, label in ((main_source, "Elisa entry source"),
+                             (project / PROJECT_MANIFEST, "project manifest")):
+        collision = output == protected
+        try:
+            if not collision and output.exists() and protected.exists():
+                collision = output.samefile(protected)
+        except OSError as error:
+            raise BuildConfigurationError(f"Could not check output path {output}: {error}") from error
+        if collision:
+            raise BuildConfigurationError(f"Output path would overwrite the {label}: {output}")
     if output.exists() and output.is_dir():
         raise BuildConfigurationError(f"Output path is a directory: {output}")
     output.parent.mkdir(parents=True, exist_ok=True)
