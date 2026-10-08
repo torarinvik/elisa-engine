@@ -606,3 +606,26 @@ experimental in that worktree; the production prover and native gate continue
 to use the unchanged qualified generation. Next authenticate the derived
 consequence at copy time without granting equality to the mutated current field,
 and retain independent source/forgery checks before integrating either side.
+
+The isolated repair now reconstructs a copy-time guard independently from source:
+unique immutable unsigned local, formal-rooted primitive field with fitting width,
+exact dominating early-return comparison, and no destination writes. It admits
+the copied inequality only; source-field equality is not made live after mutation.
+Unknown preceding statements, operator overrides, ambiguous field types and
+primitive-name aliases/types remain unsupported. Producer and replay changes
+are committed on `codex/scalar-copy-snapshot` as `879d3726`, not yet integrated
+into the engine prover branch.
+
+The initial source-authenticated product passes nine accepted/refused cases
+through both JSON routes, including the original 5/5 copied-bound repair,
+pre-copy mutation, wrong source field and a fall-through guard. It also passes
+the uncached 73-report engine sweep, all 4,246 obligations with zero diagnostics
+or replay gaps. Final hardening adds primitive-shadow refusal, literal-width
+checks and malformed summary refusal. Its compiled O0 source-gate harness passes
+the authentic copy and rejects wrong line/literal/local/kind/summary metadata
+and a source alias (`scalar-copy-bound-source-forgery-typed.log`, 30.98s,
+1,717,424 KiB peak RSS). These are independently compiled source checks, not
+serialized JSON filtering. Both regression suites are added to the full matrix.
+The final committed paired build is running (`prover-scalar-copy-final-build.log`)
+before repeating focused controls and the uncached engine sweep on that exact
+product; full compatibility remains open.
