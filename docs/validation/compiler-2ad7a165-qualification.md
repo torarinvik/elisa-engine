@@ -77,3 +77,14 @@ source remains 95db5c6b). Logs:
 `build/validation/proof-3e1a6c50-2ad7a165-build-final.log` and
 `build/validation/proof-3e1a6c50-2ad7a165-engine-proofs.log`.
 Full regression matrix, shared and native gates remain open.
+
+## Environment and directory C strings
+
+Environment access/mutation and directory operations bind validated terminated
+names, values and paths as cstr. The child-process working-directory conversion
+is local to its checked non-null branch, backed by the existing owned buffer.
+All 15 remaining pointer-conversion diagnostics clear. Bounded build exits 1
+with only 11 interpreter return-lifetime diagnostics in 4.93 seconds, peak
+sampled RSS 727,504 KiB. Artifact:
+`build/validation/elisascript-2ad7a165-env-directory-cstr-build.log` and JSON.
+Environment/directory behavior remains runtime-unverified on this compiler.
