@@ -46,3 +46,13 @@ product SHA, then used stage1_provenance.record with the seed manifest as the
 expected input fingerprint; exact source-tree and build-recipe hashes matched.
 The manifest now records committed 2ad7a165 and was copied into the snapshot.
 No compiler binary or source was changed by this provenance refresh.
+
+## Recursive copy and canonical path strings
+
+Recursive copying and canonical-path resolution now bind validated terminated
+paths as cstr before host calls. Copy traversal bounds, symlink handling and
+realpath result validation/freeing remain. Three prior conversion diagnostic
+rows clear; bounded build exits 1 elsewhere in 5.13 seconds, peak sampled RSS
+726,800 KiB. Artifact:
+`build/validation/elisascript-2ad7a165-copytree-realpath-build.log` and JSON.
+Recursive copy and canonical-path behavior remain runtime-unverified.
