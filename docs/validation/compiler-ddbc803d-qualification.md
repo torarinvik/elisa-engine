@@ -258,3 +258,15 @@ other launcher errors remain. It exits 1 normally in 11.30 seconds, sampled
 peak RSS 463,664 KiB. Engine artifact:
 `build/validation/elisascript-ddbc803d-hash-context-build.log` and JSON.
 Hash state transitions and refusal behavior remain unexecuted on this compiler.
+
+LowerState now holds its 21 read-only metadata tables as borrows matching
+lower_function's parameters. Its four annotation traversals use bounded
+indices; required effects/errors are constructed as owned loop results before
+state construction, retaining zero-iteration values, order, empty filtering
+and error-name deduplication. This applies Stage1 container value-threading
+at the actual allocation-owner boundary. The initial borrow-only attempt
+reduced 20 lowering diagnostics to six; the completed change clears all
+lower_ast diagnostics. The bounded build still exits 1 on other errors in
+7.18 seconds, sampled peak RSS 463,616 KiB. Engine artifact:
+`build/validation/elisascript-ddbc803d-lowering-owned-build.log` and JSON.
+Lowered-program behavior and metadata lifetimes remain runtime-unverified.
