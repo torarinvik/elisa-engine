@@ -80,3 +80,29 @@ is used in fixed-product qualification.
 215 total, zero cached compiles, zero remote compiles. This restores runtime
 qualification; full prover compatibility and native acceptance of this product
 remain open. The concurrent native gate uses the earlier cb10dd72 product.
+
+## Review hardening and integration
+
+Compiler `0baaa951cb7beddcb0ced13c43112203942345bc` resolves the geometric
+helper before emitting caller instructions or splitting blocks, and validates
+cached helper signatures. Its product SHA-256 is
+`30d7507debb10e1b79483268fab6fa509a009bac623e5630ff20f6e2b99e3c16`.
+The malformed-helper negative case now produces a safe backend unit decline,
+status 2, no object written and no invalid-IR diagnostic. O0/O2 growth controls
+and the real boxer test pass with the matching rebuilt runtime; the latter uses
+138,992 KiB in 0.49s under the unchanged 524,288 KiB cap. All 215 uncached engine
+runtime tests pass in 21.79s, peak 1,326,208 KiB under the original 3 GiB cap.
+
+The hardened O3 bootstrap first exceeded its 8 GiB build watchdog by about
+1.75 MiB. After confirming 75% free host memory and terminal native work, a
+10 GiB build-only retry passed. Both logs are retained; runtime limits were not
+increased. Compiler main fast-forwarded to the two committed fixes. The exact
+product and matching runtime were transferred atomically after content provenance
+verification; main's normal wrapper passes the growth control. Installed global
+wrappers remain unchanged pending broader qualification.
+
+The initial prover build selected the historical frontend pin and was rejected
+by borrow exclusivity. The matching-pin build completed but classified the renamed
+raw product as Stage0 in its manifest. Neither generation establishes paired
+Stage1 provenance. A fresh build through the official Stage1 wrapper, with exact
+product/runtime and frontend overrides, is running before engine proof replay.
