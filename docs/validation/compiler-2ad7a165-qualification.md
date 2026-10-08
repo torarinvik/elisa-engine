@@ -158,3 +158,13 @@ error mapping is unchanged. The bounded build exits 2 in 5.58 seconds, peak
 sampled RSS 821,360 KiB; no executable is produced. Artifact:
 `build/validation/elisascript-2ad7a165-backend-forms-build.log` and JSON.
 Python text and report behavior remain runtime-unverified.
+
+## Native wait-status reference
+
+ElisaScript commit `d2f97ef6` passes `&native_status` to the native waitpid
+mutable i32 reference. C writes four bytes into the local; the wrapper widens
+the result only when a child is reported. The bounded build clears this
+backend decline, leaving seven catch/error declines. It exits 2 normally in
+3.85 seconds with peak sampled RSS 808,192 KiB; no object or executable is
+produced. Artifact: `build/validation/elisascript-2ad7a165-waitpid-build.log`
+and JSON. Wait/timeout behavior and the full native gate remain unverified.

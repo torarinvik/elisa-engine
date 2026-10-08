@@ -58,11 +58,12 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `ddbc803d`
-on 2026-10-08. Section 6 now marks owned value-threading and builtin container
-value forms as working in Stage1. The immutable ddbc803d product separately
-passes 215 uncached runtime tests and the 73-report engine proof sweep; full
-prover matrix/shared/native qualification remains open ([evidence](../validation/compiler-ddbc803d-qualification.md)).
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `2ad7a165`
+on 2026-10-08; its latest guide change is `44b81b1a`. Section 6 marks owned
+value-threading and builtin container value forms as working in Stage1.
+The immutable 2ad7a165 product separately passes 215 uncached runtime tests
+and 73/73 engine proofs; full prover matrix/shared/native qualification
+remains open ([evidence](../validation/compiler-2ad7a165-qualification.md)).
 The loop, region and strict-lint guidance is already in the main plan. Apply
 these additional checks within implementation slices:
 
@@ -123,6 +124,8 @@ these additional checks within implementation slices:
 - Retain mutable-reference helpers for fields reached through borrowed owners,
   arenas and side-effect-only operations. A move into a different result ends
   the original binding's usable lifetime. Do not drop the returned owner.
+  Prefer scalar input/result assignment for a global that conflicts with a
+  call borrow; scalar helpers are ordinary value functions, not owned threading.
 - Inspect expression-position calls and function-value uses before converting a
   helper: those keep by-value semantics and prevent its other calls from using
   the in-place rewrite. Global threading uses a local copy; preserve reads of
