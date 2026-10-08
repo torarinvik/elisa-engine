@@ -290,7 +290,7 @@ module RenderSceneSnapshotNativeTests:
             0
 
     public:
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             asset_setup: i32 = register_test_snapshot_assets()
             return 30 + asset_setup if asset_setup != 0
             world: mutable World::World = catch World::World():

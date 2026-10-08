@@ -265,7 +265,7 @@ module CellStreamingSmoke:
                 if dropped == 0 and paints[x].token != 0:
                     dropped <- 83 if not native_drop(paints[x])
 
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             return 30 if not pump(2)
             baseline: i32 = instances()
             return 31 if baseline < 0
@@ -292,7 +292,7 @@ module CellStreamingSmoke:
             AssetStream::stream_reset()
             0
 
-        def execute() -> i32:
+        def execute() -> i32 can[Global.Read, Global.Write]:
             config: Application::Config = Application::Config{
                 title: "Elisa Cell Streaming Smoke",
                 width: 320,
@@ -329,8 +329,8 @@ module CellStreamingSmoke:
             0
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             CellStreamingSmoke::execute()
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     CellStreamingSmoke::run()

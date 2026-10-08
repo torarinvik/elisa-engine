@@ -1,6 +1,6 @@
 include "../src/world/commands.elisa"
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     world: mutable World::World = catch World::World():
         value: value
         error failure: return 1

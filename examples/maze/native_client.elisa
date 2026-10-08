@@ -251,7 +251,7 @@ module MazeNativeClient:
             presenter: mutable RenderScene::SnapshotPresenter&,
             lighting: mutable MazeLighting::Runtime&,
             status_text: RenderScene::OverlayTextHandle,
-            input: mutable ActionInput::Input&, view: mutable MazeMenuView::View&) -> i32:
+            input: mutable ActionInput::Input&, view: mutable MazeMenuView::View&) -> i32 can[Global.Read, Global.Write]:
             running: mutable bool = true
             resize_serial: mutable u64 = 0
             failure: mutable i32 = 0
@@ -314,7 +314,7 @@ module MazeNativeClient:
             failure
 
     public:
-        def run(self_test: bool, with_audio_fallback: bool) -> i32:
+        def run(self_test: bool, with_audio_fallback: bool) -> i32 can[Global.Read, Global.Write]:
             config: mutable Application::Config = Application::default_config()
             if self_test:
                 config.width <- 320
@@ -397,7 +397,7 @@ module MazeNativeClient:
             0
 
         def run_after_host(session: mutable RuntimeServices::Session&,
-            config: Application::Config, self_test: bool) -> i32:
+            config: Application::Config, self_test: bool) -> i32 can[Global.Read, Global.Write]:
             viewport: mutable Application::FrameInfo = catch RuntimeServices::frame_info(session):
                 value: value
                 error failure: return 5

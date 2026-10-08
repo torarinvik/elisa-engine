@@ -1,7 +1,7 @@
 # Focused native smoke for listener-to-emitter Jolt occlusion queries.
 include "./world_audio_physics_probe.elisa"
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     config: Application::Config = Application::Config{
         title: "Elisa World Audio Physics Smoke",
         width: 320,

@@ -43,7 +43,7 @@ def diag_snapshot_case(snapshot: PrefabScene::SceneSnapshot&, scene: PrefabScene
     agrees: bool = PrefabScene::snapshot_valid(snapshot, scene, 55) == (found.problem == PrefabScene::Problem.None)
     agrees and diag_is(found, problem, subject, detail)
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     # Node-level cycles and missing parents inside one definition.
     cyclic: mutable Prefab::Definition = Prefab::Definition()
     _ = Prefab::definition_add(&cyclic, diag_node(10, 0))

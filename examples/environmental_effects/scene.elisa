@@ -104,7 +104,7 @@ module EnvironmentalEffects:
 
         def dispatch_impact(world: World::World&, owner: World::EntityRef,
             effects: mutable WorldEffects::Effects&, frame: mutable WorldSchedule::Frame&,
-            catalog: WorldEffectAssets::Catalog&) -> bool:
+            catalog: WorldEffectAssets::Catalog&) -> bool can[Global.Read, Global.Write]:
             begun: bool = catch WorldSchedule::begin_frame(frame):
                 ok: true
                 error failure: false
@@ -184,7 +184,7 @@ module EnvironmentalEffects:
 
         def run_initialized(smoke: bool) -> i32 error[
             RenderScene::RenderSceneError, World::WorldError,
-            WorldEffectAssets::CatalogError]:
+            WorldEffectAssets::CatalogError] can[Global.Read, Global.Write]:
             try create_scene()
             if smoke:
                 try RenderScene::wait_for_pipelines(60000)

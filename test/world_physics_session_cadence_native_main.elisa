@@ -59,7 +59,7 @@ module WorldPhysicsSessionCadenceNative:
                 opened == RuntimeServices::OpenStatus.FallbackRequired)
 
         def simulate(session: mutable RuntimeServices::Session&,
-            high_refresh: bool, result_pose: mutable Geometry::Transform&) -> i32:
+            high_refresh: bool, result_pose: mutable Geometry::Transform&) -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1
@@ -127,7 +127,7 @@ module WorldPhysicsSessionCadenceNative:
             0
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             config: Application::Config = Application::Config{
                 title: "Elisa Session Physics Cadence Smoke",
                 width: Tune::WIDTH,
@@ -154,5 +154,5 @@ module WorldPhysicsSessionCadenceNative:
             return 24 if not transforms_match(thirty_hz_pose, one_twenty_hz_pose)
             0
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     WorldPhysicsSessionCadenceNative::run()

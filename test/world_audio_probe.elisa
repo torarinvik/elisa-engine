@@ -271,7 +271,7 @@ module WorldAudioProbe:
             0
 
     public:
-        def run(session: RuntimeServices::Session&) -> i32:
+        def run(session: RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 246

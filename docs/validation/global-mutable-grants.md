@@ -370,3 +370,35 @@ Stage1 product. Per-test source/binary hashes and logs are recorded in
 `build/validation/global-grant-world-0b43/core-world-qualification.json` and
 adjacent files. This qualifies the core world scheduling and persistence slice;
 the broader engine grant inventory and native consumer remain open.
+
+## World-identity caller propagation — 2026-10-08
+
+The source audit found additional fully qualified callers of the three
+global-backed identity services (`World::World`, `WorldStorage::Catalog`, and
+`WorldAccess::begin_frame` through `WorldSchedule::begin_frame`). Their owning
+functions already declare the grants; missing caller contracts are now declared
+in the maze, environmental-effects, and Character Course source paths and in
+the affected world, prefab, audio, render, streaming, and native test entrypoints.
+This changes only effect contracts, not runtime behavior.
+
+The current strict Stage1 product is compiler source
+`dd8aea2281dd2c2755331d4037c17e5d5db92671`, SHA256
+`a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`. Without
+`-permissive`, all 26 changed Elisa source files pass their direct or required
+project-context checks (21 direct, five wrapped with the public runtime API and
+test support). Project entry checks pass for maze, environmental-effects,
+cell-streaming, hierarchy-render, world-picking, world-audio and physics-cadence
+paths. Commands and per-source results are retained in the ignored
+`build/validation/global-grants-world-caller-project-checks.log`.
+
+The same compiler product rejects all five current Character Course project
+entrypoints on four sound helpers (`start_injected`, `reset_scene`,
+`restart_music`, and `music_stream_test`). Source review finds no global mutable
+binding in those helpers or their audio API callees. Compiler source inspection
+confirms the current caller census reduces calls to leaf names before looking
+up effect rows, allowing unrelated same-name functions in other modules to
+contaminate the result. Do not add grants to these helpers to silence that
+census. The compiler owner is repairing exact callee ownership; rerun these
+entrypoints and the 71-row Studio census after that fix. The optimized
+Character Course package has not been rebuilt from this caller-contract source
+revision, and relocation acceptance remains open.

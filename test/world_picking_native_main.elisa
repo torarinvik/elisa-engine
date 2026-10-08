@@ -63,7 +63,7 @@ module WorldPickingNative:
         # 30 hit verdict, 31 hit entity, 32 miss, 33 other world not stale,
         # 34 despawned entity not stale, 35 despawn failed, 36 an invalid ray
         # was not reported as an error.
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1
@@ -90,7 +90,7 @@ module WorldPickingNative:
             return 34 if verdict(world, ray_at(0.0), &entity) != 2
             0
 
-        def execute() -> i32:
+        def execute() -> i32 can[Global.Read, Global.Write]:
             config: Application::Config = Application::Config{
                 title: "Elisa World Picking Smoke",
                 width: 320,
@@ -127,8 +127,8 @@ module WorldPickingNative:
             0
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             WorldPickingNative::execute()
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     WorldPickingNative::run()

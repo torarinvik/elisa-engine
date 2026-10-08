@@ -388,7 +388,7 @@ module RuntimeServicesProbe:
             return second_status if second_status != 0
             0
 
-        def world_scheduler_probe(session: mutable RuntimeServices::Session&) -> i32:
+        def world_scheduler_probe(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             physics_world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 64

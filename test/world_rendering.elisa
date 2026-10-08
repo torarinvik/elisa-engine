@@ -44,7 +44,7 @@ module WorldRenderingValidation:
                 error failure: 6
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1

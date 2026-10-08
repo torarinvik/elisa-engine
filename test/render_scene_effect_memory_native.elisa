@@ -65,7 +65,7 @@ module RenderSceneEffectMemoryNativeTests:
 
     public:
         # Returns 0, a cycle failure as 20 * cycle + case, or 15/16 for memory.
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 14

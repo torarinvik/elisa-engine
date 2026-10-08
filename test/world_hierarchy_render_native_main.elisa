@@ -45,7 +45,7 @@ module WorldHierarchyRenderNative:
             value.allow_service_fallbacks <- true
             value
 
-        def exercise(session: mutable RuntimeServices::Session&) -> i32:
+        def exercise(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1
@@ -211,7 +211,7 @@ module WorldHierarchyRenderNative:
             return 16 if not render_unbind or not physics_unbind
             0
 
-        def execute() -> i32:
+        def execute() -> i32 can[Global.Read, Global.Write]:
             config: Application::Config = Application::Config{
                 title: "Elisa Session Physics Hierarchy Render Smoke",
                 width: Tune::WIDTH,
@@ -236,8 +236,8 @@ module WorldHierarchyRenderNative:
             0
 
     public:
-        def run() -> i32:
+        def run() -> i32 can[Global.Read, Global.Write]:
             WorldHierarchyRenderNative::execute()
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     WorldHierarchyRenderNative::run()

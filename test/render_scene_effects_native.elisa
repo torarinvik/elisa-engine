@@ -43,7 +43,7 @@ module RenderSceneEffectsNativeTests:
         def native_effect_counts_are(emitters: i32, decals: i32) -> bool:
             elisa_render_scene_v1_test_effect_component_count(0) == emitters and elisa_render_scene_v1_test_effect_component_count(1) == decals
 
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             position: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 3.0, z: -1.0}
             velocity: Geometry::Vec3 = Geometry::Vec3{x: 0.0, y: 4.0, z: 1.0}
             identity_rotation: Geometry::Quat = Geometry::quat_identity()
@@ -254,7 +254,7 @@ module WorldEffectEventNativeTests:
                 error failure: EventSpawnOutcome{code: 120, report: none}
 
     public:
-        def exercise() -> i32:
+        def exercise() -> i32 can[Global.Read, Global.Write]:
             identity_rotation: Geometry::Quat = Geometry::quat_identity()
             profile_decal_rotation: Geometry::Quat = Geometry::Quat{
                 x: 0.0, y: 1.0, z: 0.0, w: 0.0,

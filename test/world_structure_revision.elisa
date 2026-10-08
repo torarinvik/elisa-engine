@@ -4,7 +4,7 @@ module World::StructureRevisionTest:
     def force(world: mutable World::World&, revision: i64) -> void:
         world.structure_revision <- revision
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     world: mutable World::World = catch World::World():
         value: value
         error failure: return 1

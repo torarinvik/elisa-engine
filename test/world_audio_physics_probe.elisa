@@ -55,7 +55,7 @@ module WorldAudioPhysicsProbe:
             near(source.occlusion, expected)
 
     public:
-        def run(session: mutable RuntimeServices::Session&) -> i32:
+        def run(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return 1

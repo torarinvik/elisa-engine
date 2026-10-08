@@ -56,7 +56,7 @@ module MazePresentation:
                 door_open: mutable bool
                 player_glowing: mutable bool
 
-        def MazeScene(game: MazeGame::MazeGame&) -> MazeScene error[MazePresentationError, World::WorldError]:
+        def MazeScene(game: MazeGame::MazeGame&) -> MazeScene error[MazePresentationError, World::WorldError] can[Global.Read, Global.Write]:
             raise MazePresentationError.InvalidGame if not MazeGame::game_valid(game)
             raise MazePresentationError.InvalidGame if not MazeLayout::maze_layout_matches_topology()
             world: mutable World::World = try World::World()

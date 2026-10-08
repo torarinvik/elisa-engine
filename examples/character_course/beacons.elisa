@@ -250,7 +250,7 @@ module CourseBeacons:
 
         # Spawns into a fresh World first; the live beacons are only retired
         # once the replacement exists.
-        def replace(beacons: mutable Beacons&, snapshot: PrefabScene::SceneSnapshot&, restored: bool) -> i32 error[RenderScene::RenderSceneError]:
+        def replace(beacons: mutable Beacons&, snapshot: PrefabScene::SceneSnapshot&, restored: bool) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World():
                 value: value
                 error failure: return LOAD_FAILED
@@ -341,7 +341,7 @@ module CourseBeacons:
 
         # Mounts the shipped packages and spawns the authored scene with its
         # render rows: 0, or LOAD_FAILED / LOAD_ASSET_FAILED and not ready.
-        def start(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+        def start(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             mounted: bool = catch AssetStream::stream_mount("cells"):
                 ok: true
                 error failure: false
@@ -397,7 +397,7 @@ module CourseBeacons:
 
         # Returns 0 when the saved beacons replaced the live ones, else a
         # LOAD_* code with the live beacons unchanged.
-        def load(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+        def load(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             status: i32 = read_status(beacons)
             return status if status != 0
             snapshot: PrefabScene::SceneSnapshot = read_saved(beacons)
@@ -406,7 +406,7 @@ module CourseBeacons:
             try replace(beacons, &snapshot, true)
 
         # Back to all lamps unlit in a fresh World.
-        def reset(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError]:
+        def reset(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
             empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
             try replace(beacons, &empty, false)
 

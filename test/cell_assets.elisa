@@ -39,7 +39,7 @@ def travel(runtime: mutable CellWorld::Runtime&, ledger: mutable CellAssets::Led
             code <- 108 if code == 0 and not CellAssetWorld::valid(runtime, ledger, world)
             code <- 109 if code == 0 and CellAssets::live_assets(ledger) > 4
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     world: mutable World::World = catch World::World():
         value: value
         error failure: return 1
