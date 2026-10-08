@@ -492,6 +492,30 @@ class PackageMacosAppTests(unittest.TestCase):
         log = Path(self.tempdir.name) / "Library/Logs/Elisa/org.elisa.game/latest.log"
         self.assertIn("7", log.read_text(encoding="utf-8").splitlines())
 
+    def test_resource_cannot_replace_packaged_executable(self) -> None:
+        app = self.package(self.write_manifest({}))
+        original = (app / "Contents/Resources/Game.bin").read_bytes()
+        marker = app / "previous-version"
+        marker.write_bytes(b"previous")
+        for name in ("Game.bin", "game.bin"):
+            with self.subTest(name=name):
+                touch(self.project / name, b"author resource, not executable")
+                manifest = self.write_manifest({"package": {"resources": [name]}})
+                with self.assertRaisesRegex(packager.PackageError,
+                        "manifest resource conflicts with packaged executable"):
+                    self.package(manifest)
+                self.assertEqual((app / "Contents/Resources/Game.bin").read_bytes(), original)
+                self.assertEqual(marker.read_bytes(), b"previous")
+                self.assertEqual((self.project / name).read_bytes(), b"author resource, not executable")
+
+    def test_resource_cannot_use_packaged_executable_as_directory(self) -> None:
+        touch(self.project / "Game.bin/data", b"author resource")
+        manifest = self.write_manifest({"package": {"resources": ["Game.bin/data"]}})
+        with self.assertRaisesRegex(packager.PackageError,
+                "manifest resource conflicts with packaged executable: Game.bin/data"):
+            self.package(manifest)
+        self.assertFalse(self.output.exists())
+
     def test_symlinked_resource_is_rejected(self) -> None:
         os.symlink(self.project / "assets" / "source", self.project / "assets" / "link")
         with self.assertRaises(packager.PackageError):

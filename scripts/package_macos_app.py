@@ -414,6 +414,11 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     resources.mkdir()
 
     binary_name = f"{bundle_name}.bin"
+    for relative in resource_paths or []:
+        # Resource paths are copied after the executable. Refuse both an exact
+        # overwrite and a path that would treat the executable as a directory.
+        if relative.parts and relative.parts[0].casefold() == binary_name.casefold():
+            raise PackageError(f"manifest resource conflicts with packaged executable: {relative}")
     # Hash the built executable before load-command edits and re-signing so
     # the identity matches the build runner's output.
     build_identity = executable_build_identity(executable)
