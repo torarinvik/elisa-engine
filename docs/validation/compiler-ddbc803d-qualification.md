@@ -417,3 +417,14 @@ vendored compiler-source diagnostics remain in this bounded build. It exits 1
 elsewhere in 4.88 seconds, sampled peak RSS 725,696 KiB. Artifact:
 `build/validation/elisascript-ddbc803d-affine-merge-build.log` and JSON.
 Affine acceptance/rejection behavior remains runtime-unverified on this compiler.
+
+### Transport document value boundary
+
+Transport initialization explicitly reads the borrowed OutputDocument value
+with document[0] when constructing its renderer. The field type mismatch clears;
+this retains the existing value-copy API rather than changing renderer storage
+to a borrowed document. The nine contract-propagation diagnostics remain.
+The bounded build exits 1 elsewhere in 12.78 seconds, sampled peak RSS 726,736
+KiB. Artifact: `build/validation/elisascript-ddbc803d-document-copy-build.log`
+and JSON. Document snapshot and transport behavior remain runtime-unverified
+on the selected compiler.
