@@ -203,3 +203,32 @@ rebuilt and qualified. FBX import, worker completion, surface availability and
 Character/Skeleton switching pass in the app. Timeline playback/posed redraw and
 observer reveal remain unqualified.
 Renderer lifecycle, prover, package and native release gates remain open.
+
+## Engine adoption on the current Stage1 — 2026-10-08
+
+The current compiler source `0b43cbdbd04314fcccbdad361bc671196b1ffb1b`
+adds explicit global effect rows to the JSON standard library. Its freshly
+provenanced Stage1 product is
+`/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`, SHA256
+`5198034700383a76aa25ca7db2e2e31bdd4fa98753f721b53c80233e24257916`, with
+matching runtime object SHA256
+`17a5e88040dbe3f13c0ec70b31c7a0bfab57ad89b5e633760d654260f2dde414`.
+
+Using that product without `-permissive`, semantic checks pass for both
+`examples/maze/capi.elisa` and `test/viewport_gizmo.elisa`. The C-ABI sample now
+declares read/write grants on its stateful accessors and session operations,
+read-only grants on backend profile queries, and propagates the required rows
+through lazy game initialization. The viewport test's callback counter access
+and its callers declare read/write grants. The compiled viewport test runs with
+exit 0, and the maze sample emits a C archive successfully.
+
+Retained artifacts and hashes:
+
+- `build/validation/global-grant-engine-adoption/viewport-gizmo-test` —
+  SHA256 `4a742fdb7063e026bd5b840df90ebaa47625ac948a4cf052e921627063b7c9d7`.
+- `build/validation/global-grant-engine-adoption/libelisa-maze.a` —
+  SHA256 `005549e329d6cdf782efb241f14c2f03ea36633e4e6c3efd6627d1fcc5a9eb9b`.
+
+This qualifies the two affected engine targets on the exact compiler/runtime
+pair; it does not establish the complete engine, native renderer or consumer
+release gates.

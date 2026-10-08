@@ -45,7 +45,7 @@ global mutable hook_calls: i64 = 0
 
 # The app's IK: hip (0) -> knee (1) -> foot (2), 0.45 m segments pointing
 # down at rest, knee bending toward +Z. Places the foot at the goal.
-def leg_ik(held: mutable PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, goal: Geometry::Transform) -> void:
+def leg_ik(held: mutable PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, goal: Geometry::Transform) -> void can[Global.Read, Global.Write]:
     hook_calls <- hook_calls + 1
     return if bone != 2
     models: darray[Geometry::Transform] = models_of(rig, held)
@@ -155,7 +155,7 @@ def rig3(rig: mutable PoseOverride::Rig&) -> i32:
     bad <- bad + add(rig, 1, v(0.0, -0.45, 0.0))
     bad
 
-def drag_case() -> i32:
+def drag_case() -> i32 can[Global.Read, Global.Write]:
     cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
     mutable rig: PoseOverride::Rig = PoseOverride::Rig()
     return 30 if rig3(&rig) != 0
@@ -222,7 +222,7 @@ def snapshot[@r](held: PoseOverride::Overrides& @r, n: usize) -> darray[Geometry
         out.push(PoseOverride::override_local(held, b))
     return out
 
-def adversarial_case() -> i32:
+def adversarial_case() -> i32 can[Global.Read, Global.Write]:
     cam: ViewportCamera::Camera = ViewportCamera::create_ortho(640, 480, ViewportCamera::FRONT)
     mutable rig: PoseOverride::Rig = PoseOverride::Rig()
     return 60 if rig3(&rig) != 0
@@ -253,7 +253,7 @@ def adversarial_case() -> i32:
     return 73 if ViewportGizmo::dragging(&drag) or ViewportGizmo::cancel(&drag, &held)
     0
 
-def main() -> i32:
+def main() -> i32 can[Global.Read, Global.Write]:
     a: i32 = size_case()
     return a if a != 0
     b: i32 = pick_case()

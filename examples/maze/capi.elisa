@@ -29,12 +29,12 @@ global mutable embedded_session_generation: i64 = 0
 global mutable embedded_backend_profile: BackendProfile = zeroed
 global mutable embedded_backend_profile_configured: bool = false
 
-def capi_ensure_game() -> void:
+def capi_ensure_game() -> void can[Global.Read, Global.Write]:
     if not embedded_game_initialized:
         embedded_game <- MazeGame::MazeGame()
         embedded_game_initialized <- true
 
-def capi_start() -> i32:
+def capi_start() -> i32 can[Global.Read, Global.Write]:
     return CapiPolicy::START_UNAVAILABLE if embedded_backend_profile_configured and capi_backend_status() != CapiPolicy::PROFILE_READY
     capi_ensure_game()
     MazeGame::game_start(&embedded_game)
@@ -45,7 +45,7 @@ def capi_start() -> i32:
 def capi_backend_configure(capability_bits: i64, optional_bits: i64,
     max_viewports: i64, max_workers: i64, memory_budget_bytes: i64,
     memory_usage_bytes: i64, resource_format_bits: i64,
-    graphics_workers: i64, streaming_workers: i64, service_version: i64) -> i32:
+    graphics_workers: i64, streaming_workers: i64, service_version: i64) -> i32 can[Global.Read, Global.Write]:
     return CapiPolicy::PROFILE_INVALID if embedded_session_live
     return CapiPolicy::PROFILE_INVALID if not backend_native_bits_valid(capability_bits, optional_bits, resource_format_bits)
     candidate: BackendProfile = backend_profile_from_native(capability_bits, optional_bits,
@@ -56,7 +56,7 @@ def capi_backend_configure(capability_bits: i64, optional_bits: i64,
     embedded_backend_profile_configured <- true
     CapiPolicy::PROFILE_READY
 
-def capi_backend_status() -> i32:
+def capi_backend_status() -> i32 can[Global.Read]:
     return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
     return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
     # Requirement negotiation uses the bounded eight-entry contract plus an
@@ -68,7 +68,7 @@ def capi_backend_status() -> i32:
 
 # Returns 0 when ready, a stable BackendFeature code (1..8) for the first
 # missing required service, or the existing negative profile status otherwise.
-def capi_backend_missing_feature() -> i32:
+def capi_backend_missing_feature() -> i32 can[Global.Read]:
     return CapiPolicy::PROFILE_UNCONFIGURED if not embedded_backend_profile_configured
     return CapiPolicy::PROFILE_INVALID if not backend_profile_valid(embedded_backend_profile)
     required: BackendFeature[8] = [BackendFeature.Rendering, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input, BackendFeature.Input]
@@ -87,24 +87,24 @@ def capi_move_of(direction: i32) -> Maze::MazeMove:
     return Maze::MazeMove.East if direction == 3
     Maze::MazeMove.Idle
 
-def capi_step(direction: i32) -> i32:
+def capi_step(direction: i32) -> i32 can[Global.Read, Global.Write]:
     capi_ensure_game()
     moved: bool = MazeGame::game_step(&embedded_game, capi_move_of(direction))
     1 if moved else 0
 
-def capi_player_x() -> i32:
+def capi_player_x() -> i32 can[Global.Read, Global.Write]:
     capi_ensure_game()
     embedded_game.grid.player_x.i32()
 
-def capi_player_y() -> i32:
+def capi_player_y() -> i32 can[Global.Read, Global.Write]:
     capi_ensure_game()
     embedded_game.grid.player_y.i32()
 
-def capi_status() -> i32:
+def capi_status() -> i32 can[Global.Read, Global.Write]:
     capi_ensure_game()
     MazeGame::game_status_code(embedded_game.status).i32()
 
-def capi_lives() -> i32:
+def capi_lives() -> i32 can[Global.Read, Global.Write]:
     capi_ensure_game()
     embedded_game.lives.i32()
 
@@ -134,10 +134,10 @@ def capi_abi_version() -> i32:
 def capi_feature_bits() -> i64:
     CapiPolicy::GAME_FEATURES + CapiPolicy::FEATURE_BACKEND_PROFILE + CapiPolicy::FEATURE_BACKEND_STATUS
 
-def capi_session_valid(handle: i64) -> bool:
+def capi_session_valid(handle: i64) -> bool can[Global.Read]:
     embedded_session_live and handle > 0 and handle == embedded_session_generation
 
-def capi_session_create() -> i64:
+def capi_session_create() -> i64 can[Global.Read, Global.Write]:
     return 0 if embedded_session_live or embedded_session_generation == 9223372036854775807
     return 0 if embedded_backend_profile_configured and capi_backend_status() != CapiPolicy::PROFILE_READY
     embedded_session_generation <- embedded_session_generation + 1
@@ -145,11 +145,11 @@ def capi_session_create() -> i64:
     capi_start()
     embedded_session_generation
 
-def capi_session_update(handle: i64, direction: i32) -> i32:
+def capi_session_update(handle: i64, direction: i32) -> i32 can[Global.Read, Global.Write]:
     return -1 if not capi_session_valid(handle)
     capi_step(direction)
 
-def capi_session_query(handle: i64, query: i32) -> i64:
+def capi_session_query(handle: i64, query: i32) -> i64 can[Global.Read, Global.Write]:
     return -1 if not capi_session_valid(handle)
     capi_ensure_game()
     return embedded_game.grid.player_x.i64() if query == 0
@@ -157,7 +157,7 @@ def capi_session_query(handle: i64, query: i32) -> i64:
     return embedded_game.lives.i64() if query == 2
     capi_status().i64() if query == 3 else -2
 
-def capi_session_destroy(handle: i64) -> i32:
+def capi_session_destroy(handle: i64) -> i32 can[Global.Read, Global.Write]:
     return -1 if not capi_session_valid(handle)
     embedded_session_live <- false
     0

@@ -147,15 +147,22 @@ another. Commit documentation and tests together with source changes.
   builds, verifies, links and seals `build/MocapStudio.app`; the bundle records
   project base `bca72d19`, engine `4b0a9af7`, UI `261363eb`, compiler
   `2a3dce66`, dirty project/UI worktrees, and the sealed input/executable
-  identity. `mocap-cleaner/scripts/check.sh` stops because its prover
-  frontend/compiler manifest is stale relative to current Stage1; rebuild and
-  qualify that prover tuple. Despite the file-picker timeout, Studio loaded the
+  identity. The 2026-10-08 consumer preflight now passes against current source,
+  frontend, compiler and runtime. Strict grant checks found missing
+  `Global.Read` / `Global.Write` declarations in legacy native test entrypoints
+  and the CLI call graph. Repair those source contracts, then rerun the complete
+  consumer check sequentially: overlapping runs raced in shared test/proof
+  outputs, so their reports are not qualification evidence. Despite the
+  file-picker timeout, Studio loaded the
   FBX as a 337-frame take. The skinned surface is available and `M` switches
   between Character and Skeleton. Playback is the remaining blocker: the GLB has
   sparse two-key channels mixed with 337-frame channels, while Studio requires
   aligned sample times. Fix the grid at the import boundary and verify playback.
   The five engine source files in this checkout now declare explicit native
-  effect contracts; keep these with the functional source slice. Preserve exact
+  effect contracts; the maze C-ABI example and viewport-gizmo test also declare
+  their `Global.Read` / `Global.Write` grants and pass the current Stage1
+  target checks ([evidence](docs/validation/global-mutable-grants.md)). Keep
+  these contracts with their functional source slice. Preserve exact
   callee, callback, default-argument, shadowing, and profiler/host-callback
   checks.
   **FBX isolation:** current native staging/conversion passes for source SHA
@@ -195,7 +202,7 @@ and hosted clean-checkout CI reproduce the qualified tuple.
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
 | 1 | **Complete Studio consumer acceptance — Q01/Q03.** The sealed bundle records project base `bca72d19`, engine `4b0a9af7`, UI `261363eb` and compiler `2a3dce66`; project/UI worktrees are marked dirty. The target FBX stages/converts, loads as a 337-frame take, exposes its skinned surface, and switches with `M`. Playback fails because two-key animation channels are mixed with 337-frame channels. | Resample animated channels onto a common import grid, prove the pose advances in the actual app, and retain constant-channel behavior. Then cover malformed input and observer reveal with the exact sealed snapshot. |
-| 2 | **Qualify the repaired prover memory path — Q01.** `mocap-cleaner/scripts/check.sh` reports its prover frontend/compiler manifest stale relative to current Stage1. Rebuild and qualify the prover against the authenticated compiler/runtime pair, then apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
+| 2 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. First repair the newly exposed global-grant omissions in legacy test entrypoints and the CLI call graph; then rerun the check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
 | 3 | **Finish actual redraw/reveal and observer integration.** Consume the qualified mesh repair and read-only observer in the real Studio path. This closes a public consumer contract and confirms the native guards through the app. | Studio redraws valid geometry unchanged; malformed inverse-bind, influence, joint and triangle shapes fail before output changes. Observer registration/reveal passes for original, quarantined, conflicting and uncertain locations without gaining restore/delete authority. |
 | 4 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and heap/GPU/VM diagnostics to identify the retaining owner and measured memory domain. | A source fix has a reproducer or decisive resource-accounting regression, then passes the original full lifecycle/native gate with warmup, cycles and the 8 MiB allowance unchanged. A retry alone is not a diagnosis. |
 | 5 | **Refresh and relocate Character Course — Q02/Q04.** Rebuild optimized clean source with refreshed, generator-checked content and package the public-API client. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |
@@ -347,10 +354,11 @@ renderer, package and native release gates remain separate acceptance items.
    common timeline grid, verify the 337-frame pose advances in the sealed app,
    then complete malformed-input and read-only observer reveal checks.
 2. **Refresh proof provenance and close the original prover memory gate.**
-   Rebuild and qualify the prover frontend/compiler against the authenticated
-   Stage1/runtime pair, prove/replay all 265 obligations of the original first
-   engine input under 3 GiB / 120 seconds, then advance to the five CLI controls
-   and all 73 reports. Stop at the first actionable failure and repair its owner.
+   Resolve the current strict-grant failures in legacy consumer tests and the CLI,
+   then rerun the consumer check without overlapping writers. Prove/replay all
+   265 obligations of the original first engine input under 3 GiB / 120 seconds,
+   then advance to the five CLI controls and all 73 reports. Stop at the first
+   actionable failure and repair its owner.
 3. **Turn the qualified tuple into repeatable shipped clients.** Diagnose the
    renderer lifecycle failure, reuse a fresh optimized build for Character
    Course relocation and a second ordinary public-API application, then register
