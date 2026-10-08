@@ -102,3 +102,17 @@ interpreter changes. Reproducer/log:
 The permanent payload semantics need an accurate compiler/runtime lifetime
 boundary; no alias or escape suppression has been added. This finding does not
 qualify the launcher or show the lifetime errors are all false positives.
+
+## Length-preserving permanent-copy control
+
+Inspected check_local_view_return_escape: by-value dstr locals are classified
+as inferred-region roots without tracing alloc_perm through ctx_fstr_alloc.
+A standalone control copies a local three-byte dstr through string_view_copy
+and constructs a counted view with unsafe_sview_bounded_bytes. Compilation and
+execution pass, retaining x/NUL/y (three bytes, including the interior NUL).
+This validates that boundary, not the launcher. An earlier control using
+ctx_fstr_alloc/ctx_fstr_append failed the length assertion and needs separate
+investigation before interpreter return sites are changed. No interpreter or
+compiler source changes made in this investigation.
+Artifact: `build/validation/contract-error-marker/permanent_view.elisa`;
+compile log: `permanent-view-copy-direct.log` in the same directory.
