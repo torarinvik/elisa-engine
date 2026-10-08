@@ -182,3 +182,27 @@ returned_exec_status and the prefixed error arm in report_test_setup_failure_mac
 The repair should reuse emit_arm_body_into_slot for statement prefixes and
 terminating paths, retaining arm-local scope and the error status/payload ABI.
 Generic merged-error binding/rethrow declines require separate coverage.
+
+### Catch arm repair
+
+Direct-call value catches now use the existing statement-arm emitter for
+success, wildcard, generic-error and variant arms. Prefixes execute before
+yields; terminating arms use the function return/error ABI; arm locals are
+restored after emission. The focused catch_value_arm_prefix_smoke passes:
+both outcomes, exact prefix counts, outer-binding shadow restoration and
+function returns execute with status 0; an escaped arm local is rejected.
+The existing catch_result_type_smoke also passes (expected exit 84).
+Logs: `build/validation/catch-value-arm-prefix-smoke.log` and
+`build/validation/catch-arm-result-type-smoke.log`.
+
+The first bootstrap stopped at the default 6 GiB limit. A serialized retry
+with an 8 GiB ceiling succeeded on this 24 GiB host; logs are
+`build/validation/catch-value-arm-prefix-seed.log` and `-seed-8g.log`.
+The repair product was built from modified compiler source based on 9c9b514c;
+it is not the immutable qualified 2ad7a165 product.
+Launcher rebuilding exits 2 in 3.64 seconds, peak RSS 818,224 KiB, still
+with seven declines. returned_exec_status advances to its void-success
+discard; report_test_setup_failure_machine advances past its bool initializer
+to a later merged-error binder. Other merged-error binding/rethrow declines
+remain. No executable is produced; full qualification is still open.
+Artifact: `build/validation/elisascript-catch-arm-repair-build.log` and JSON.
