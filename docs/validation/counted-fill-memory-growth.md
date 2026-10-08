@@ -330,3 +330,10 @@ not a confirmed diagnosis. Preserve the real audio acceptance and investigate
 with explicit failure diagnostics before another full gate. This run does not
 establish full native qualification. The f593c886 prover matrix remains live
 and has exposed branch-join and symbolic-quantifier replay gaps.
+
+The focused Character Course smoke/relaunch retry with explicit failure-only
+audio diagnostics passes on the pinned compiler/runtime pair (537.79 seconds,
+940,112 KiB peak RSS). Log: `build/validation/course-relaunch-diagnostic-cputs.log`;
+terminal reports are copied to `build/validation/course-relaunch-diagnostic-terminal/`.
+The diagnostic did not fire. This establishes a passing focused retry, not
+a reproduced cause or a full native gate pass. Preserve the earlier failed run.

@@ -2,6 +2,9 @@
 # in the CharacterCourse private section. Play reapplies them at startup and
 # remembers the window's display on quit; the self-test hands a record to
 # the relaunch smoke, which reapplies it in a second process.
+        @callconv(c)
+        extern puts(message: cstr) -> i32 can[Console.Write]
+
         const DEVICES_KEY: cstr = "course-devices"
 
         def devices_start() -> DeviceSettings::Saved:
@@ -59,7 +62,11 @@
             return 263 if applied.display != DeviceChoice::Source.Saved or ApplicationDisplays::window_display() != applied.display_id
             if AudioDevices::count() > 0:
                 opened: AudioDevices::Opened = DeviceSettings::reopen_audio(&saved, Tune::AUDIO_SAMPLE_RATE_HZ, Tune::AUDIO_CHANNELS)
-                return 264 if opened != AudioDevices::Opened.Chosen
+                if opened != AudioDevices::Opened.Chosen:
+                    can Console.Write:
+                        _ = puts("character-course-relaunch: saved audio output reopen failed (264)")
+                        _ = puts("character-course-relaunch: default output fallback" if opened == AudioDevices::Opened.FellBackToDefault else "character-course-relaunch: no audio output opened")
+                    return 264
             removed: i32 = catch UserData::remove_payload(DEVICES_KEY):
                 value: 0
                 error failure: 1
