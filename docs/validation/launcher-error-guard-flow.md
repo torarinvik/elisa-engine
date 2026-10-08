@@ -75,3 +75,19 @@ Full compiler runtime/prover matrix and rendered native gate remain open.
 Filtered guards with nonzero operation identities remain conservatively
 unqualified; the focused filtered control uses legacy zero identity.
 These checks contain no new engine proof obligations.
+
+## Native build prerequisite
+
+The fresh launcher passes `scripts/wicked_probe.elisascript build-gate` with
+compiler `cb10dd72`, Python 3.14, the CommandLineTools SDK, and explicitly pinned
+`../elisa-boxing-wickedengine/build-elisa-sdl3` (source commit `fd790f55`).
+The bounded result is status 0, 40.78 seconds, peak RSS 669,488 KiB, with a
+2 GiB RSS ceiling and 600-second watchdog. Log and watchdog report:
+`build/validation/guard-flow-native-build-gate.log` and adjacent JSON.
+
+This builds the maze C archive and Wicked probe, exercises FBX/glTF/image
+cooker controls, stages the vendor runtime, performs the KTX2 upload check,
+and runs the 29 project-runner tests. Those runner tests include fake compiler
+and linker fixtures; they establish CLI behavior, not gameplay qualification.
+The build-gate mode skips the application and render-scene smoke suites.
+The full native gate is the next required acceptance step.
