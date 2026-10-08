@@ -770,6 +770,31 @@ frozen f593c886 matrix remains active and none of these isolated changes
 constitutes full compatibility qualification.
 # Focused timeout classification qualification (2026-10-08)
 
+## Terminal compatibility result and corpus follow-up
+
+The frozen `f593c886` full matrix completed with status 1 and 54 failed steps:
+3,375.53s, peak 7,881,968 KiB RSS under the unchanged 8 GiB limit. Exact terminal
+evidence is `build/validation/prover-f593c886-python314-full-matrix.log.json`;
+the extracted failure inventory is
+`build/validation/prover-f593c886-terminal-failure-inventory.json`. This is a
+terminal failed compatibility run, not an observation timeout.
+
+Corpus identity repair `ba5016d8` pins committed ancestor `5016891c` and refreshes
+the changed names/scale oracle hash. All 13 identity controls pass; semantic
+categories are unchanged. The `d961eee0` pair passes 12 of 15 corpus workloads.
+Symbolic quantifiers, rejected symbolic quantifiers and branch joins retain
+respectively four, two and one replay gaps (reports in
+`build/validation/luna-corpus-d961eee0-reports/`).
+
+The extra accepted symbolic-quantifier gap is isolated to `narrow_past_write`:
+the one-function extraction proves/replays 4/4 with `f593c886`, while `d961eee0`
+produces four certificates but independently replays only three. The remaining
+goal is the quantified ensure after writing outside the narrowed range. Preserve
+this regression and its refusal counterparts while locating the owning change;
+do not promote the newer pair as fully compatible. Exact comparison:
+`build/validation/narrow-past-write-comparison.json`, with source in
+`build/validation/narrow-past-write-replay.elisa`.
+
 Clean prover source `d961eee0a231e9f1a8f168c721f18648d89db4bd` built paired
 generation `8948585eca3b47bbab0bd7ef83333809` with frozen compiler `52d60fcf`
 and its matching runtime. Both manifest identities and actual binary hashes
