@@ -740,3 +740,31 @@ source/expectation identity. All 13 manifest controls pass. They do not
 repair the remaining branch-join or symbolic-quantifier replay gaps.
 The full frozen f593c886 matrix remains active; these isolated commits are
 not yet integrated into its worktree. Full compatibility remains open.
+
+### Readonly entry-count fallback repair (2026-10-08)
+
+Prover `7d91bb38` closes two fallback bypasses: duplicate entry-count
+definitions and a declaration-line cutoff that missed body mutation. The
+legacy route now matches the primary route's readonly requirement across
+the owner body. This admits readonly entry equality; it does not preserve
+equality to the current count through a mutation or alias.
+The original O2 source harness passes all seven controls, including
+duplicate/forged definitions, push/pop, writes and borrowed aliases
+(`build/validation/entry-count-readonly-fallback.log`, 251.38 seconds,
+986,848 KiB peak RSS under the unchanged 3 GiB cap).
+
+The official clean paired build publishes immutable generation
+`612f602b7ba54af58094a5cbdd37926b` in 152.98 seconds, peak 1,573,376 KiB.
+Both source manifests and binary hashes were checked. Its uncached engine
+sweep passes all 73 reports / 4,246 obligations in 3.13 seconds, peak
+164,992 KiB; all diagnostics, failures, trusted assumptions and replay gaps
+are zero, with independent replay enabled. Copies are retained in
+`build/validation/entry-count-engine-reports/`.
+
+Subsequent upstream `e27b11bc` literal-product gains were merged before
+CLI repair `d961eee0`. That repair restores focused `timeout` from the exact
+selected goal's diagnostic; baseline inspection found seven `unknown` versus
+`timeout` mismatches and preserved the separate unknown/disproved outcomes.
+Its combined product build and regression checks remain pending. The full
+frozen f593c886 matrix remains active and none of these isolated changes
+constitutes full compatibility qualification.
