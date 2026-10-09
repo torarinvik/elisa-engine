@@ -26,6 +26,10 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
                          "b11e9121c64d94bbc8881db58ae850bf4933ceb9")
         self.assertEqual(self.lock["repositories"]["elisa_proof"]["revision"],
                          "04601de17703ac3ffa1b128086e8d6ea047e9501")
+        self.assertEqual(self.lock["upstream_ref_heads"]["ref"], "refs/heads/main")
+        self.assertEqual(set(self.lock["upstream_ref_heads"]["heads"]), set(provision.REPOSITORIES))
+        self.assertEqual(self.lock["upstream_ref_heads"]["heads"]["elisa_compiler"],
+                         self.lock["repositories"]["elisa_compiler"]["revision"])
 
     def test_lock_rejects_branch_names_and_implicit_urls(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -41,6 +45,16 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
             with self.assertRaisesRegex(provision.ProvisionError, "explicit HTTPS"):
                 provision.load_lock(path)
 
+    def test_compiler_pin_matches_recorded_upstream_main(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            lock = json.loads(json.dumps(self.lock))
+            lock["upstream_ref_heads"]["heads"]["elisa_compiler"] = "0" * 40
+            path.write_text(json.dumps(lock), encoding="utf-8")
+            with self.assertRaisesRegex(provision.ProvisionError,
+                                        "compiler pin must match the recorded upstream main head"):
+                provision.load_lock(path)
+
     def test_lock_rejects_malformed_json_field_types(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / "lock.json"
@@ -52,6 +66,12 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
                  "full lowercase 40-character"),
                 (lambda lock: lock["repositories"]["elisa_core"].__setitem__("url", []),
                  "explicit HTTPS"),
+                (lambda lock: lock.__setitem__("upstream_ref_heads", []),
+                 "upstream_ref_heads"),
+                (lambda lock: lock["upstream_ref_heads"].__setitem__("ref", "refs/heads/dev"),
+                 "refs/heads/main"),
+                (lambda lock: lock["upstream_ref_heads"]["heads"].__setitem__("elisa_proof", "main"),
+                 "upstream head must be a full lowercase"),
                 (lambda lock: lock.__setitem__("build_eligibility", []),
                  "build_eligibility"),
                 (lambda lock: lock["build_blocker"].__setitem__("kind", []),
@@ -82,6 +102,7 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         self.assertEqual(plan["hosted_build_execution"], "deferred")
         self.assertIn("Global.Read/Write", plan["message"])
         self.assertEqual(plan["build_blocker"]["kind"], "proof_global_grants_not_qualified")
+        self.assertEqual(plan["upstream_ref_heads"], self.lock["upstream_ref_heads"])
         self.assertIn("--seed", plan["build_contract"]["stage1"])
         self.assertEqual(plan["build_contract"]["proof"], ["bash", "scripts/build.sh"])
 

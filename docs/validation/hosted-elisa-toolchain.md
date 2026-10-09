@@ -21,6 +21,17 @@ Do not enable hosted builds or use `-permissive` until the pinned proof pair
 passes a strict build, independent replay, the original 265 obligations, five
 CLI regressions, and all 73 engine reports.
 
+The 2026-10-09 upstream `main` heads observed with `git ls-remote` are Elisa-core
+`735118cbe842f6b53be91fecd2ec7c90b294ee15`, Elisa-compiler
+`b11e9121c64d94bbc8881db58ae850bf4933ceb9`, Elisa Proof
+`747621d6de1f3412f7ceaa6480d61ec07e21e46b`, and ElisaScript
+`62928532273f32e1f5e891d7194707c706605ba9`. The lock's core, proof and
+ElisaScript pins are earlier commits. They remain unchanged until the complete
+tuple is qualified; advancing only those pins would not establish compatibility.
+The lock records these observations in `upstream_ref_heads`, and `--plan`
+reports them beside the selected pins so future qualification can review both
+the pinned tuple and the exact upstream heads that were observed.
+
 The lock records `build_eligibility: blocked_qualification` and a typed,
 actionable blocker. `--build` writes it to `toolchain-manifest.json` and exits
 before fetching or compiling anything. Once the proof/compiler/runtime tuple is
@@ -39,7 +50,8 @@ The lock reader also rejects malformed JSON shapes and field types with a
 controlled error: the root and repository pins must be objects, revisions,
 URLs, eligibility, and blocker fields must have their declared string types,
 and a ready lock cannot retain a blocker. The focused provisioner controls
-pass 13/13, including malformed roots, pins, states and blockers. The
+pass 14/14, including malformed roots, pins, states and blockers plus matching
+the selected compiler pin to the recorded upstream main head. The
 cross-platform CI job runs those controls alongside the global-grant harness;
 the workflow YAML and local CI-stage invocations validate, while no hosted
 Actions result is claimed yet.

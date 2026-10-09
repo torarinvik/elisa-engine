@@ -1,6 +1,16 @@
 {
   "schema": "elisa-engine-hosted-toolchain-lock-v1",
   "upstream_ref_verified": "refs/heads/main at 2026-10-09 UTC",
+  "upstream_ref_heads": {
+    "ref": "refs/heads/main",
+    "checked_at": "2026-10-09 UTC",
+    "heads": {
+      "elisa_core": "735118cbe842f6b53be91fecd2ec7c90b294ee15",
+      "elisa_compiler": "b11e9121c64d94bbc8881db58ae850bf4933ceb9",
+      "elisa_proof": "747621d6de1f3412f7ceaa6480d61ec07e21e46b",
+      "elisascript": "62928532273f32e1f5e891d7194707c706605ba9"
+    }
+  },
   "build_eligibility": "blocked_qualification",
   "build_blocker": {
     "kind": "proof_global_grants_not_qualified",

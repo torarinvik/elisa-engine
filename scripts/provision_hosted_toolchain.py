@@ -55,6 +55,20 @@ def load_lock(path: Path) -> dict[str, Any]:
         url = spec.get("url")
         if not isinstance(url, str) or not url.startswith("https://github.com/") or not url.endswith(".git"):
             raise ProvisionError(f"{name} must use an explicit HTTPS GitHub repository URL")
+    upstream = lock.get("upstream_ref_heads")
+    if not isinstance(upstream, dict) or upstream.get("ref") != "refs/heads/main":
+        raise ProvisionError("lock upstream_ref_heads must record refs/heads/main")
+    if not isinstance(upstream.get("checked_at"), str) or not upstream["checked_at"].strip():
+        raise ProvisionError("lock upstream_ref_heads must include checked_at")
+    heads = upstream.get("heads")
+    if not isinstance(heads, dict) or set(heads) != set(REPOSITORIES):
+        raise ProvisionError(f"upstream main heads must be exactly {', '.join(REPOSITORIES)}")
+    for name, revision in heads.items():
+        if not isinstance(revision, str) or len(revision) != 40 or any(
+                char not in "0123456789abcdef" for char in revision):
+            raise ProvisionError(f"{name} upstream head must be a full lowercase 40-character commit SHA")
+    if heads["elisa_compiler"] != repositories["elisa_compiler"]["revision"]:
+        raise ProvisionError("compiler pin must match the recorded upstream main head")
     contract = lock.get("build_contract")
     if not isinstance(contract, dict) or set(contract) != {"stage0", "stage1", "proof", "elisascript"}:
         raise ProvisionError("lock build_contract must define stage0, stage1, proof, and elisascript")
@@ -331,6 +345,7 @@ def main(argv: list[str] | None = None) -> int:
                               "build_eligibility": lock["build_eligibility"], "build_blocker": lock.get("build_blocker"),
                               "hosted_build_execution": "deferred" if lock["build_eligibility"] != "ready" else "enabled",
                               "message": message,
+                              "upstream_ref_heads": lock["upstream_ref_heads"],
                               "repositories": lock["repositories"], "build_contract": lock["build_contract"]}, indent=2, sort_keys=True))
             return 0
         provisioner = Provisioner(args.root, lock)
