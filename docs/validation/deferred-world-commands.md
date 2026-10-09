@@ -193,3 +193,46 @@ variant's 256-live-entity assertion when aggregate preflight is removed. The pro
 16 obligations. The negative control described above fails as expected. The full
 shared gate was not rerun for this slice. W03 remains open for compiler-enforced
 affine-copy and phase-borrow lifetime diagnostics.
+
+## 2026-10-09: ordered primary-world preflight and rollback capture repair
+
+An ordered probe found that a batch could despawn a parent and then reparent its
+child to that now-missing parent. Per-command checks used the unchanged original
+world, so the batch passed preflight; the later apply failed after the despawn.
+The rollback path also exposed a capture-arm bug: successful capture constructed
+a zeroed `Snapshot` instead of binding the returned snapshot. The `value: value`
+arm now preserves the captured world.
+
+`WorldCommands::world_batch_order_valid` copies only the bounded hierarchy into a
+shadow tree when a batch contains a reparent. It replays despawns and reparents in
+insertion order, including hierarchy updates, and rejects a missing child or
+parent and cycles created by earlier commands. Reference checks still use the
+primary world for epoch and liveness. This accepts a valid sequence that first
+moves a child to root and then places its former parent under that child. The
+preflight also checks the allocator's remaining ID range for all requested
+spawns before application.
+
+`test/world_command_primary.elisa` covers parent-despawn followed by child
+reparent rejection with no world or revision change, a cycle formed by two
+ordered reparent commands, and the valid order-sensitive reparent sequence.
+It also forces an apply-time hierarchy overflow by composing two valid `3e38`
+translations. That path verifies the captured snapshot restores both live
+entities and leaves the rejected command pending; the structure revision advances
+so any open iteration cursor is invalidated.
+Focused checks passed on the installed Stage1 compiler:
+
+```sh
+~/.elisac/elisac-stage1 -emit exe -O0 -o build/world-test test/world.elisa
+build/world-test
+~/.elisac/elisac-stage1 -emit exe -o build/world-commands-test test/world_commands.elisa
+build/world-commands-test
+~/.elisac/elisac-stage1 -emit exe -o build/world_command_primary-test test/world_command_primary.elisa
+build/world_command_primary-test
+~/.elisac/elisac-stage1 -emit exe -o build/world-phase-iteration-test test/world_phase_iteration.elisa
+build/world-phase-iteration-test
+python3 scripts/check_source_length.py
+```
+
+All four executables exited 0; source-length policy and `git diff --check` pass.
+The full shared gate was not rerun. W03 remains open for compiler-enforced
+affine-copy and phase-borrow lifetime diagnostics.

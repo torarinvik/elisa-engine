@@ -377,25 +377,20 @@ module World:
 
         def world_last_issued(world: World&) -> i64:
             EntityId::entity_id_last_issued(&world.allocator)
-
         def world_epoch(world: World&) -> i64:
             world.epoch
-
         def world_structure_revision(world: World&) -> i64:
             world.structure_revision
-
         def world_live_count(world: World&) -> usize:
             world.live_count
-
+        def world_hierarchy_snapshot(world: World&) -> WorldHierarchy::Snapshot:
+            WorldHierarchy::hierarchy_snapshot(&world.hierarchy)
         def world_registry_count(world: World&) -> usize:
             world.registry_count
-
         def world_actor_count(world: World&) -> usize:
             world.actor_count
-
         def world_enemy_count(world: World&) -> usize:
             world.enemy_count
-
         def world_static_object_count(world: World&) -> usize:
             world.static_object_count
 

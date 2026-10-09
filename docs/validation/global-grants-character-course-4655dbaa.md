@@ -44,3 +44,24 @@ source. A fresh native build, self-test execution, optimized package and
 relocation acceptance remain open. The shared compile lane is currently
 occupied by the coordinated Studio/compiler qualification, so native relinking
 is deferred until that lane is released.
+
+## Requalification on the installed compiler product
+
+On 2026-10-09, all five saved project wrappers were checked again against the
+installed Stage1 product at `/Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1`.
+Its provenance identifies the same compiler source revision and source-tree
+hash above, product SHA256
+`cfcdc1fa99752f417c4267f125ed3419be26e569115fb28df3027095cb7e1da2`, and matching
+runtime SHA256
+`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`.
+The installed snapshot's provenance check passed before compilation, and the
+product hash matched both before and after the checks. `main`, `self_test_main`,
+`relaunch_main`, `stream_test_main`, and `live_input_test_main` each passed
+strict `-emit check` with zero diagnostics and no `-permissive`. The individual
+logs are retained in `build/validation/character-course-*-cfcdc1fa-check.log`.
+
+This requalifies semantic grant admission only. The full 216-source/runtime
+gate and Maze C-ABI probe also passed on this exact product (see the
+[4655dbaa engine-gate record](global-mutable-grants.md#current-4655dbaa-engine-gate)).
+The current proof pair, linked Character Course executable, and Studio
+acceptance remain open.

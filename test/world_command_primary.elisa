@@ -69,6 +69,35 @@ def main() -> i32 can[Global.Read, Global.Write]:
         return 25 if World::world_live_count(&world) != 2
         return 26 if not World::world_is_valid(&world)
 
+        ordered_child: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+            value: value
+            error failure: return 44
+        ordered_revision: i64 = World::world_structure_revision(&world)
+        ordered: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 45 if not WorldCommands::world_despawn(&ordered, parent)
+        return 46 if not WorldCommands::world_reparent(&ordered, ordered_child, parent, false)
+        return 47 if WorldCommands::commit_world(&ordered, &world)
+        return 48 if WorldCommands::world_command_count(&ordered) != 2
+        return 49 if World::world_live_count(&world) != 3 or not World::world_is_live(&world, parent) or not World::world_is_live(&world, ordered_child)
+        return 50 if World::world_structure_revision(&world) != ordered_revision or not World::world_is_valid(&world)
+
+        ordered_cycle: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 51 if not WorldCommands::world_reparent(&ordered_cycle, parent, ordered_child, false)
+        return 52 if not WorldCommands::world_reparent(&ordered_cycle, ordered_child, parent, false)
+        return 53 if WorldCommands::commit_world(&ordered_cycle, &world)
+        return 54 if WorldCommands::world_command_count(&ordered_cycle) != 2 or not World::world_is_valid(&world)
+
+        initial_parenting: i32 = catch World::world_reparent(&world, ordered_child, parent, false):
+            ok: 0
+            error failure: 1
+        return 55 if initial_parenting != 0
+        repaired_order: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        root: World::EntityRef = World::world_root_reference(&world)
+        return 56 if not WorldCommands::world_reparent(&repaired_order, ordered_child, root, false)
+        return 57 if not WorldCommands::world_reparent(&repaired_order, parent, ordered_child, false)
+        return 58 if not WorldCommands::commit_world(&repaired_order, &world)
+        return 59 if WorldCommands::world_command_count(&repaired_order) != 0 or not World::world_is_valid(&world)
+
         near_capacity: mutable World::World = catch World::World():
             value: value
             error failure: return 34
@@ -88,4 +117,30 @@ def main() -> i32 can[Global.Read, Global.Write]:
         return 41 if World::world_last_issued(&near_capacity) != capacity_last_id
         return 42 if World::world_structure_revision(&near_capacity) != capacity_revision
         return 43 if not World::world_is_valid(&near_capacity)
+
+        rollback_world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 60
+        rollback_parent: World::EntityRef = catch World::world_spawn(&rollback_world, World::Actor.Player):
+            value: value
+            error failure: return 61
+        rollback_child: World::EntityRef = catch World::world_spawn(&rollback_world, World::Enemy.Guard):
+            value: value
+            error failure: return 62
+        rollback_identity: Geometry::Transform = Geometry::transform_identity()
+        rollback_extreme: Geometry::Transform = Geometry::transform_translate(rollback_identity,
+            Geometry::Vec3{x: 3.0e38, y: 0.0, z: 0.0})
+        _ = catch World::world_set_transform(&rollback_world, rollback_parent, rollback_extreme):
+            ok: 0
+            error failure: return 63
+        _ = catch World::world_set_transform(&rollback_world, rollback_child, rollback_extreme):
+            ok: 0
+            error failure: return 64
+        rollback_revision: i64 = World::world_structure_revision(&rollback_world)
+        rollback_batch: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 65 if not WorldCommands::world_reparent(&rollback_batch, rollback_child, rollback_parent, false)
+        return 66 if WorldCommands::commit_world(&rollback_batch, &rollback_world)
+        return 67 if WorldCommands::world_command_count(&rollback_batch) != 1
+        return 68 if World::world_live_count(&rollback_world) != 2 or not World::world_is_live(&rollback_world, rollback_parent) or not World::world_is_live(&rollback_world, rollback_child)
+        return 69 if World::world_structure_revision(&rollback_world) <= rollback_revision or not World::world_is_valid(&rollback_world)
         return 0

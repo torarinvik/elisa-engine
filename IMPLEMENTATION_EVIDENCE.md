@@ -178,6 +178,26 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   plan's optional online verification detects upstream drift. The current
   four-ref verification passes; hosted Actions results have not yet been
   observed.
+- **New compiler grant check — partial:** compiler source `7e23b297` installed
+  Linux Stage1 `1dfd59a9a4b4d1c2ff07a9ac79d0d604cd4fed6e410b5f1941c019f4be7cbf68`
+  with runtime `ec97692e90583cb64aab3c0c0724daf5c6441373e3712d7cf23681670ca3602c`.
+  On this exact product, the 42 CLI controls and all 89 strict runtime-wrapped
+  engine entrypoints pass; reports are
+  `build/validation/global-grant-cli-qualification-1dfd59a9.json` and
+  `build/validation/global-grant-entrypoint-qualification-1dfd59a9.json`.
+  The compiler's Gen3/Gen4 objects are byte-identical, and 40/40 repeated
+  emissions match. Promotion remains blocked: the final JSON API O0/O2 check
+  audits 14 transitive standard-library modules and finds 884 missing local
+  grants across 250 functions. Per-function repairs and the rerun are in
+  progress. The candidate has not passed the full engine runtime suite.
+- **Local callback-branch engine gate:** compiler source `c3fc94b1a3d6c525ba52a455fb8acd9ef81de2cd`
+  builds Stage1 `1621d550fdd2efc988662c563601e7cab50c23caea7fefe45c7b57e254bf6da3`
+  with runtime `de964b7e5b764337b9332534627e16bc4dc181037daba62c2e40d1392502512f`;
+  its provenance check passes. The uncached command
+  `python3 scripts/run_tests.py /private/tmp/Elisa-compiler-fbx-latest/bin/elisac-stage1 -j 2 --no-cache`
+  passes 42/42 CLI controls, 89/89 strict entrypoint checks, and all 216 engine
+  tests in 68 seconds. This is a separate tuple from compiler source
+  `7e23b297`; that performance candidate's standard-library audit remains open.
 - **Earlier callback-region repair — separately open:** compiler worktree branch
   `codex/fbx-worker-region-latest` is rebased at `b719dbd5` over installed
   upstream `b11e9121`. Its fresh Stage1 product
@@ -479,3 +499,99 @@ The 600-line source-length gate is complete in engine commit `9e40976a`.
 split. The checker and focused packaging, build/run and asset-cook tests pass;
 full evidence and artifact paths are in
 [`docs/validation/source-length-policy.md`](docs/validation/source-length-policy.md).
+
+## Carrier-analysis compiler candidate — 2026-10-09
+
+Compiler source `09f15cf8056825871b83589014596cea5ce70cd4` defers type queries
+in generic region analysis. Its focused O0/O2/ASan controls pass 42/42, the
+global-permissions smoke passes, and the native backend checks pass 567/567.
+The Gen2 driver build completed in under three minutes (the current-main
+comparison was about 3m50s). The bounded self-host command
+`SELF_HOST_PROBE_TIMEOUT_SECONDS=600 bash test/parity/self_host_gen3_smoke.sh`
+passed Stage A 5/5, then Stage B timed out at 600 seconds with exit 124 and no
+Gen3 object. The harness reported `baseline 0` and `bootstrap closure BROKE`.
+The exact current-main seed reaches the same 600-second limit, so this is a
+matched timeout rather than a candidate-only regression. Stage C and fixed
+point identity were not reached, so this candidate is not qualified for
+promotion. Use a trace/profile to classify the long run; if it is healthy work,
+set a justified bound and finish Stage B/C without rebaselining. The matching
+normal-CLI performance comparison also remains open; the earlier 66-pass /
+12.2-second phase log and 14.9-second full-check median used different routes.
+
+## Incremental compiler baseline — 2026-10-09
+
+The compiler performance owner measured a normal self-host semantic check at
+18 minutes 10 seconds of CPU time, but the run rejected the `Str.__cast__`
+implementations because their `Unsafe` effects exceed the protocol contract.
+That result is not a completed cold-build timing or evidence of a candidate-only
+slowdown. The corrected seed has progressed past those protocol errors and is
+still building. A later identity-pinned current-main run spent 23 minutes 54
+seconds of CPU in mutable-global authority analysis and was stopped with SIGTERM
+before the pass completion timer or successful exit. The command used `-emit
+check`, so no object was expected. It confirms the semantic cost center but is
+an incomplete sample, not a completed cold timing. Revised
+controls support the Global-grant rule on the generic `Str` path; the `Atomics`
+case remains a warning-level question. The previous phase log's 66 semantic
+passes accumulated 12.2 seconds, but its route differs from the earlier
+14.9-second full-check median; neither substitutes for the matched valid
+baseline.
+
+The compiler project currently flattens an entrypoint and its includes into
+one source unit. The incremental design targets persistent reuse across compiler
+invocations within that unit: keep per-function body facts separate from
+dependency closure, then add generated-body reuse. A function-fact collector
+prototype appeared in a separate VAST checkout with in-memory counters, but its
+entry point is not wired into the production checker, it has no persistent cache
+or cold/warm parity, and its unit fixture is not yet reported passing. Review
+found fail-closed risks for local callable shadowing of a top-level function or
+`panic`, and partial facts when collection rejects a body midway. Keep it out of
+semantic results until those cases, dependency invalidation and clean-build
+fallback are qualified. Measure semantic reuse separately from code generation
+and relinking; require clean-build diagnostic and artifact parity for no-op,
+body-only, and interface/effect edits. There is no measured speedup or
+implemented cache to report yet.
+
+## Proof grant migration on compiler `09f15cf8` — 2026-10-09
+
+The proof source migration adds scoped Global grants to 44 functions across
+13 modules and is committed as `5a12c8fd` (`Propagate global grants through
+proof pipeline`). Initial strict O2 builds against compiler `09f15cf8` exposed
+three source issues in two wrappers: `Semantic::check_full_into` now mutates
+its `lmut` table and returns `void`, its new final `carrier_surface` argument
+was omitted, and the call requires explicit local `Global.Read/Write` grants.
+The committed wrappers call it in place with `false`, scope both grants, and
+propagate the effects through their callers. The strict O2 build succeeds.
+
+The successful product was built immediately before the source commit, so its
+first manifest named the prior proof HEAD and marked the source dirty. The Mocap
+Studio freshness gate correctly rejected that artifact. Rebuilding from the
+committed tree refreshed the manifest, and a direct freshness check now passes
+for proof source, frontend, compiler and runtime. The first optimized Studio
+compile hit its default 4 GiB guard at 4.25 GiB, without a source or runtime
+diagnostic. The 8 GiB retry passed freshness, file-length and FBX ABI preflights,
+then was stopped after ten minutes because repeated samples stayed in the same
+LLVM 23 AArch64 SelectionDAG/DAGCombiner path. A two-second macOS sample contained
+178 samples, 177 of them in `FoldingSet::NodeEquals` beneath
+`SelectionDAG::ReplaceAllUsesWith`; the retry emitted no object or compiler
+diagnostic. A matching O1 attempt passed the same preflights but also remained in
+the DAG-combine path and was stopped. O0 codegen completed and packaged
+`build/MocapStudio.app`; its Studio process is running for inspection. The O0
+app main thread is in the AppKit event loop and no new crash report is present;
+the original FBX digest is unchanged. Window automation timed out attaching, so
+the planned near-60% playback check is unverified. The O0
+build reported 23 failed test targets, many with missing Global grant diagnostics.
+The post-build proof pass was stopped after multiple laws exceeded 13 minutes.
+Its log reports broad Global grant admission failures and missing or unreviewed
+proof baselines, so the full corpus is not qualified. The
+O0 app uses Stage1 compiler `09f15cf8`, including `806772c7` for the global-rehome
+repair. It predates the separate effect-owner index candidate now under parity
+review; rerun the grant/proof gate with that indexed product before treating the
+diagnostics as source gaps. The failed
+O2/O1 attempts remain isolated as failed generations; O0 uses a new
+generation. This is not a matched compiler performance comparison and does not
+qualify optimized app behavior. The exact
+Studio acceptance, all 265 obligations, five CLI regressions and 73 engine
+reports remain open. Earlier
+diagnostic logs are retained at
+`/private/tmp/mocap-cleaner-proof-current/build/compiler-09f-build.log`,
+`compiler-09f-proof-rebuild2.log` and `compiler-09f-proof-rebuild3.log`.

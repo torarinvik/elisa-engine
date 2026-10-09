@@ -6,7 +6,8 @@ cook declaration checks live in `scripts/asset_cook_config.py`, launcher
 identity and script generation live in `scripts/package_macos_launcher.py`,
 and launcher tests use their own module with shared fixture support. The asset
 cook cache fingerprint includes the extracted configuration module so edits to
-that behavior invalidate cached outputs.
+that behavior invalidate cached outputs. Source and test changes are committed
+in `9e40976a`.
 
 ## Qualification
 

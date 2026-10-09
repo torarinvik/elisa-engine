@@ -594,3 +594,7 @@ runtime-wrapped census is now an automatic runner preflight; its implementation
 and post-migration 216-test result are recorded in [the entrypoint census
 note](global-grant-entrypoint-census-1505c598.md). The proof and fresh consumer
 build gates remain open.
+
+## Local callback-branch engine gate — 2026-10-09
+
+Compiler source `c3fc94b1` builds Stage1 `1621d550…` with runtime `de964b7e…`; provenance passes. Its uncached `scripts/run_tests.py` gate passes 42/42 CLI controls, 89/89 strict entrypoints and 216/216 engine tests in 68s; reports: `build/validation/global-grant-cli-qualification-1621d550fdd2.json` and `build/validation/global-grant-entrypoint-qualification-1621d550fdd2.json`. Compiler self-host is still running. Separate Linux candidate source `7e23b297` passes 42/42 and 89/89 grant controls, but its JSON O0/O2 audit still finds 884 missing local grants across 250 functions in 14 standard-library modules; its runtime suite and proof-pair replay remain open.

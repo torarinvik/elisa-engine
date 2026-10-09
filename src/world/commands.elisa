@@ -145,15 +145,61 @@ module WorldCommands:
                 for index in 0..<buffer.count |spawns: usize = 0| -> spawns:
                     spawns <- spawns + 1 if buffer.commands[index].kind == Kind.Spawn
 
+            def world_reparent_references_valid(world: World::World&, command: WorldCommand) -> bool:
+                return false if not World::world_is_live(world, command.entity)
+                return false if not World::world_reference_epoch_matches(World::world_epoch(world), command.parent.world_epoch)
+                return false if command.parent.id != WorldHierarchy::ROOT and not World::world_is_live(world, command.parent)
+                true
+
+            def world_shadow_command_valid(world: World::World&,
+                hierarchy: mutable WorldHierarchy::Hierarchy&, command: WorldCommand) -> bool:
+                match command.kind:
+                    Kind.Spawn:
+                        true
+                    Kind.Despawn:
+                        return false if not World::world_is_live(world, command.entity)
+                        return false if WorldHierarchy::hierarchy_slot_of(hierarchy, command.entity.id) == WorldHierarchy::MAX_NODES
+                        return false if not WorldHierarchy::hierarchy_remove(hierarchy, command.entity.id)
+                        WorldHierarchy::hierarchy_update(hierarchy)
+                        true
+                    Kind.Reparent:
+                        return false if not world_reparent_references_valid(world, command)
+                        return false if WorldHierarchy::hierarchy_slot_of(hierarchy, command.entity.id) == WorldHierarchy::MAX_NODES
+                        return false if command.parent.id != WorldHierarchy::ROOT and WorldHierarchy::hierarchy_slot_of(hierarchy, command.parent.id) == WorldHierarchy::MAX_NODES
+                        return false if not WorldHierarchy::hierarchy_set_parent(
+                            hierarchy, command.entity.id, command.parent.id, command.keep_world)
+                        WorldHierarchy::hierarchy_update(hierarchy)
+                        true
+
+            def world_batch_order_valid(buffer: WorldBuffer&, world: World::World&) -> bool:
+                has_reparent: bool =
+                    for index in 0..<buffer.count |found: bool = false| -> found:
+                        found <- true if buffer.commands[index].kind == Kind.Reparent
+                return true if not has_reparent
+                hierarchy_snapshot: WorldHierarchy::Snapshot = World::world_hierarchy_snapshot(world)
+                shadow_hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+                restored: bool = WorldHierarchy::hierarchy_restore(&shadow_hierarchy, hierarchy_snapshot)
+                return false if not restored
+                for index in 0..<buffer.count |valid: bool = true| -> valid:
+                    valid <- false if not world_shadow_command_valid(world,
+                        &shadow_hierarchy, buffer.commands[index])
+
             def world_batch_valid(buffer: WorldBuffer&, world: World::World&) -> bool:
                 return false if not WorldCommandBounds::spawn_budget_fits(
                     World::world_live_count(world), world_spawn_count(buffer), World::MAX_ENTITIES)
-                for index in 0..<buffer.count |valid: bool = true| -> valid:
-                    valid <- false if not world_command_valid(world, buffer.commands[index])
-                    duplicate_free: bool =
-                        for earlier in 0..<index |inner: bool = true| -> inner:
-                            inner <- false if world_commands_conflict(buffer.commands[index], buffer.commands[earlier])
-                    valid <- valid and duplicate_free
+                return false if World::world_last_issued(world) > EntityId::ENTITY_ID_MAX - world_spawn_count(buffer).i64()
+                commands_valid: bool =
+                    for index in 0..<buffer.count |valid: bool = true| -> valid:
+                        command: WorldCommand = buffer.commands[index]
+                        if command.kind == Kind.Reparent:
+                            valid <- false if not world_reparent_references_valid(world, command)
+                        else:
+                            valid <- false if not world_command_valid(world, command)
+                        duplicate_free: bool =
+                            for earlier in 0..<index |inner: bool = true| -> inner:
+                                inner <- false if world_commands_conflict(command, buffer.commands[earlier])
+                        valid <- valid and duplicate_free
+                commands_valid and world_batch_order_valid(buffer, world)
 
             def restore_world_snapshot(world: mutable World::World&, snapshot: World::Rollback::Snapshot&) -> bool:
                 catch World::Rollback::restore(world, snapshot):
@@ -185,7 +231,7 @@ module WorldCommands:
                 return false if World::world_structure_revision(world) > World::MAX_STRUCTURE_REVISION - buffer.count.i64() - 1
                 return false if not world_batch_valid(buffer, world)
                 snapshot: mutable World::Rollback::Snapshot = catch World::Rollback::capture(world):
-                    value: World::Rollback::Snapshot()
+                    value: value
                     error failure: return false
                 accepted: mutable bool = true
                 for index in 0..<buffer.count |accepted|:

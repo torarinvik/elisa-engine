@@ -25,3 +25,38 @@ This establishes real project declaration/cook/cache/failure behavior for image
 bundles and console executable generation. It does not establish native public-API
 consumption, geometry cooking, relocated application packaging, replacement
 compiler qualification, or physical GPU acceptance. Those gates remain open.
+
+## Compiler b11e9121 follow-up — 2026-10-09
+
+Repeated the same ordinary project flow with the current default-grant Stage1
+product and its matching runtime. The optimized console build used compiler
+source `b11e9121`, Stage1 SHA256
+`5888942e08da166185c76a8e6a13d774c3aa57cf290f093f1c9ce03dd60a887e`, and runtime
+SHA256 `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`.
+The retained report is `build/validation/ordinary-image-cook-b11e9121.json`; the
+individual build logs are `build/validation/image-b11e-*.log`.
+
+Fresh cook, unchanged-input cache hit, edited-image invalidation, corrupted
+package regeneration, and malformed-PNG refusal all passed. The failed cook
+preserved both the last good package and cache. The generated console executable
+exited 0. `build/validation/ordinary-image-native-reader` accepted the actual
+ELPK from this run and refused a missing section and mutated payload without
+leaving stale texture output.
+
+This upgrades image-cook and standalone native-reader evidence to the current
+compiler tuple. It still does not exercise a native public-API game package,
+relocated startup, signing, or GPU upload; Q02/Q07 acceptance remains open.
+
+## Production native reader follow-up
+
+A standalone O2 C++ consumer includes the real `native/bundle_texture.h` and
+`native/package_manifest.h` and reads the actual project-generated ELPK. It
+accepts the albedo image at 2×2 and its empty dependency manifest. It then refuses
+a missing section and a mutated payload while clearing seeded output bytes;
+no stale texture remains after either refusal.
+
+Command: `/usr/bin/clang++ -std=c++17 -O2 -I native -I /opt/homebrew/include -L /opt/homebrew/lib build/validation/ordinary-image-native-reader.cpp -lzstd -o build/validation/ordinary-image-native-reader`,
+then run it against `ordinary-image-cook-project/build/tile.elpk` and a corruption
+output path. Both commands exit zero. The source and executable are retained in
+`build/validation/`. This is production package/texture-reader acceptance without
+GPU upload or the full Elisa Application/native package path.
