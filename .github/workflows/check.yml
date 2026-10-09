@@ -1,6 +1,7 @@
 # Toolchain-free checks need only Python, so they run across hosts. The pinned
-# Elisa compiler/prover/ElisaScript build remains deferred until a compatible
-# compiler commit is published; interactive graphics validation remains local.
+# Elisa compiler/prover/ElisaScript build remains deferred until the pinned
+# proof/compiler/runtime tuple passes strict qualification; interactive graphics
+# validation remains local.
 name: cook
 
 on:
@@ -42,6 +43,10 @@ jobs:
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
       - name: CI stage recorder self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
+      - name: Global grant and hosted toolchain policy controls
+        run: |
+          python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" grant-policy -- python scripts/test_qualify_global_grants.py
+          python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-policy -- python scripts/test_provision_hosted_toolchain.py
       - name: Hosted toolchain plan (build deferred until proof qualification)
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-plan -- python scripts/provision_hosted_toolchain.py --plan
       - name: Native smoke artifact self-test

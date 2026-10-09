@@ -41,6 +41,36 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
             with self.assertRaisesRegex(provision.ProvisionError, "explicit HTTPS"):
                 provision.load_lock(path)
 
+    def test_lock_rejects_malformed_json_field_types(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            mutations = (
+                (lambda lock: [], "root must be an object"),
+                (lambda lock: lock["repositories"].__setitem__("elisa_core", []),
+                 "repository pin must be an object"),
+                (lambda lock: lock["repositories"]["elisa_core"].__setitem__("revision", []),
+                 "full lowercase 40-character"),
+                (lambda lock: lock["repositories"]["elisa_core"].__setitem__("url", []),
+                 "explicit HTTPS"),
+                (lambda lock: lock.__setitem__("build_eligibility", []),
+                 "build_eligibility"),
+                (lambda lock: lock["build_blocker"].__setitem__("kind", []),
+                 "build_blocker.kind"),
+                (lambda lock: lock["build_blocker"].__setitem__("detail", {}),
+                 "build_blocker.kind"),
+                (lambda lock: lock.__setitem__("build_eligibility", "ready"),
+                 "ready lock must not include build_blocker"),
+            )
+            for mutate, message in mutations:
+                lock = json.loads(json.dumps(self.lock))
+                malformed = mutate(lock)
+                if malformed is not None:
+                    lock = malformed
+                path.write_text(json.dumps(lock), encoding="utf-8")
+                with self.subTest(message=message), self.assertRaisesRegex(
+                        provision.ProvisionError, message):
+                    provision.load_lock(path)
+
     def test_plan_is_read_only_and_reports_pinned_commands(self) -> None:
         result = subprocess.run([sys.executable, str(Path(provision.__file__)), "--plan"],
                                 capture_output=True, text=True, check=False)

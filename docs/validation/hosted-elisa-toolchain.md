@@ -35,6 +35,15 @@ retains that preflight in
 native dependency and sanitizer gates. No hosted toolchain build or Actions
 execution is claimed yet.
 
+The lock reader also rejects malformed JSON shapes and field types with a
+controlled error: the root and repository pins must be objects, revisions,
+URLs, eligibility, and blocker fields must have their declared string types,
+and a ready lock cannot retain a blocker. The focused provisioner controls
+pass 13/13, including malformed roots, pins, states and blockers. The
+cross-platform CI job runs those controls alongside the global-grant harness;
+the workflow YAML and local CI-stage invocations validate, while no hosted
+Actions result is claimed yet.
+
 After the exact proof/compiler/runtime tuple passes those gates, update the
 qualification state and enable `--fetch`/`--build` in the macOS job. The
 provisioner keeps source checkouts, logs, and products under

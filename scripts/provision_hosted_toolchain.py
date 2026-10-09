@@ -36,6 +36,8 @@ def load_lock(path: Path) -> dict[str, Any]:
         lock = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ProvisionError(f"cannot read toolchain lock {path}: {error}") from error
+    if not isinstance(lock, dict):
+        raise ProvisionError("hosted toolchain lock root must be an object")
     if lock.get("schema") != "elisa-engine-hosted-toolchain-lock-v1":
         raise ProvisionError("unsupported hosted toolchain lock schema")
     if not isinstance(lock.get("bootstrap_go"), str) or not lock["bootstrap_go"]:
@@ -44,11 +46,14 @@ def load_lock(path: Path) -> dict[str, Any]:
     if not isinstance(repositories, dict) or set(repositories) != set(REPOSITORIES):
         raise ProvisionError(f"lock repositories must be exactly {', '.join(REPOSITORIES)}")
     for name, spec in repositories.items():
-        revision = spec.get("revision", "")
-        url = spec.get("url", "")
-        if len(revision) != 40 or any(char not in "0123456789abcdef" for char in revision):
+        if not isinstance(spec, dict):
+            raise ProvisionError(f"{name} repository pin must be an object")
+        revision = spec.get("revision")
+        if not isinstance(revision, str) or len(revision) != 40 or any(
+                char not in "0123456789abcdef" for char in revision):
             raise ProvisionError(f"{name} revision must be a full lowercase 40-character commit SHA")
-        if not url.startswith("https://github.com/") or not url.endswith(".git"):
+        url = spec.get("url")
+        if not isinstance(url, str) or not url.startswith("https://github.com/") or not url.endswith(".git"):
             raise ProvisionError(f"{name} must use an explicit HTTPS GitHub repository URL")
     contract = lock.get("build_contract")
     if not isinstance(contract, dict) or set(contract) != {"stage0", "stage1", "proof", "elisascript"}:
@@ -57,16 +62,21 @@ def load_lock(path: Path) -> dict[str, Any]:
            for command in contract.values()):
         raise ProvisionError("each build_contract command must be a nonempty array of strings")
     eligibility = lock.get("build_eligibility")
-    if eligibility not in {"ready", "blocked_qualification"}:
+    if not isinstance(eligibility, str) or eligibility not in {"ready", "blocked_qualification"}:
         raise ProvisionError("lock build_eligibility must be ready or blocked_qualification")
     blocker = lock.get("build_blocker")
     if eligibility == "blocked_qualification":
-        if not isinstance(blocker, dict) or not blocker.get("kind") or not blocker.get("detail"):
+        if not isinstance(blocker, dict) or any(
+                not isinstance(blocker.get(key), str) or not blocker[key].strip()
+                for key in ("kind", "detail")):
             raise ProvisionError("blocked lock must include build_blocker.kind and actionable detail")
         if blocker["kind"] == "compiler_revision_not_published":
-            required = blocker.get("required_compiler_commit", "")
-            if len(required) != 40 or any(char not in "0123456789abcdef" for char in required):
+            required = blocker.get("required_compiler_commit")
+            if not isinstance(required, str) or len(required) != 40 or any(
+                    char not in "0123456789abcdef" for char in required):
                 raise ProvisionError("build blocker must name the exact required compiler commit")
+    elif blocker is not None:
+        raise ProvisionError("ready lock must not include build_blocker")
     return lock
 
 
