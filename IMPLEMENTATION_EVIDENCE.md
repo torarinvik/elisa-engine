@@ -157,29 +157,27 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   The 89 additional runtime-wrapped engine entrypoints now pass on the installed
   baseline; proof integration, fresh Course/Studio builds and rechecking on the
   newer compiler candidate remain open.
-- **Engine grant regression guard:** `scripts/run_tests.py` now performs the
-  direct default-grant/`-permissive` qualification before compiling engine
-  tests. It pins the report to the selected compiler product SHA256 and uses a
-  distinct artifact path per product. Its actual runner entrypoint now passes
-  42/42 controls on installed Stage1 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`, covering indexed array operations, global index expressions, and aggregate-field reads, writes and read-modify-write;
-  report: `build/validation/global-grant-cli-qualification-1505c598a71e.json`.
-  Twelve Python controls cover report validation, exact product pinning,
-  false-positive denial text, and that
-  the runner aborts before engine work when the preflight fails. After the
-  source change, the normal runner also passes
-  all 216 engine tests with 216 compile results cached, zero remote compiles
-  and exit 0 in 13 seconds. The separate uncached 216-test run above was
-  obtained on this same product before the runner change.
-  Commits `8daa161d` and `88bc06ec` expand indexed-global coverage and make the
-  refusal matcher reject unrelated syntax errors that mention a permission.
-  The portable `cook` workflow now runs the grant-harness and hosted-toolchain
-  policy suites on Windows, macOS and Linux; the current local runs pass 12/12
-  and 17/17, and the workflow YAML parses. Lock schema controls reject malformed
-  JSON types without permitting an invalid eligibility state. The hosted
-  lock records all four verified `main` heads, rejects a compiler pin that
-  differs from its recorded head, and the plan's optional online verification
-  detects upstream drift. The current four-ref verification passes; hosted
-  Actions results have not yet been observed.
+- **Engine grant regression guard:** `scripts/run_tests.py` now performs two
+  identity-pinned preflights before compiling engine tests: the direct
+  default-grant/`-permissive` controls and strict runtime-wrapped compilation of
+  every native, probe and example entrypoint outside the gate manifest. On
+  installed Stage1 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`,
+  they pass 42/42 CLI controls and 89/89 strict entrypoint checks. Reports are
+  `build/validation/global-grant-cli-qualification-1505c598a71e.json` and
+  `build/validation/global-grant-entrypoint-qualification-1505c598.json`.
+  Twenty Python controls cover inventory discovery, wrapper construction,
+  exact product pinning, source and recursive include stability, denial
+  matching, and aborting before engine work on failure. With both preflights enabled, the normal runner passes
+  all 216 tests in an uncached 73-second run; the focused `anim-state`
+  executable also builds and passes. The portable `cook` workflow runs the
+  grant-harness and hosted-toolchain policy suites on Windows, macOS and Linux;
+  the current local runs pass 20/20 and 17/17, and the workflow YAML parses.
+  Lock schema controls reject malformed JSON types without permitting an
+  invalid eligibility state. The hosted lock records all four verified `main`
+  heads, rejects a compiler pin that differs from its recorded head, and the
+  plan's optional online verification detects upstream drift. The current
+  four-ref verification passes; hosted Actions results have not yet been
+  observed.
 - **Earlier callback-region repair — separately open:** compiler worktree branch
   `codex/fbx-worker-region-latest` is rebased at `b719dbd5` over installed
   upstream `b11e9121`. Its fresh Stage1 product

@@ -586,10 +586,11 @@ temporary empty manifest. The compiler binary hash remained
 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`; the
 product-pinned report is
 `build/validation/global-grant-cli-qualification-1505c598a71e.json`. The
-integration unit controls pass 12/12, including rejection of unrelated syntax
-errors that mention the permission name. The refusal matcher accepts only a
-Global permission diagnostic or a diagnostic identifying a mutable global.
-This focused expansion does not rerun the 216-test engine suite or close the
-proof and consumer gates above.
-
-The 89-entry strict runtime-wrapped census and its source-backed repairs are recorded in [the entrypoint census note](global-grant-entrypoint-census-1505c598.md). The proof pair and fresh Course/Studio builds remain open.
+integration unit controls pass 20/20, including strict entrypoint discovery,
+product and recursive include pinning, and rejection of unrelated syntax errors
+that mention the permission name. The refusal matcher accepts only a Global permission
+diagnostic or a diagnostic identifying a mutable global. The 89-entry strict
+runtime-wrapped census is now an automatic runner preflight; its implementation
+and post-migration 216-test result are recorded in [the entrypoint census
+note](global-grant-entrypoint-census-1505c598.md). The proof and fresh consumer
+build gates remain open.

@@ -8,8 +8,9 @@ run (in parallel, cwd = repo root). Exit status is the first failing test's stat
 order, with that test's output printed; else 0.
 
 Before the engine suite, the selected compiler must pass the default mutable-global grant controls
-and their explicit -permissive bypass. The exact compiler product is hashed before and after these
-source-admission checks; a machine-readable report is written to build/validation/.
+and their explicit -permissive bypass, then strictly compile every native, probe, and example
+entrypoint outside the engine manifest. The exact compiler product is hashed before and after these
+checks; machine-readable reports are written to build/validation/.
 
 With --remote / ELISA_COMPILE_REMOTE (see scripts/remote_compile.py) compiles also go to Linux
 hosts that cross-compile Mac objects; linking and running stay here. A remotely built binary's
@@ -109,6 +110,26 @@ def qualify_default_global_grants(compiler, compiler_sha):
     return result.returncode
 
 
+def qualify_global_grant_entrypoints(compiler, compiler_sha):
+    report = ROOT / "build/validation" / f"global-grant-entrypoint-qualification-{compiler_sha[:12]}.json"
+    product = Path(compiler).resolve()
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/qualify_global_grant_entrypoints.py"),
+        "--compiler", str(product),
+        "--expected-product-sha256", compiler_sha,
+        "--report", str(report),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        print(f"strict global-grant entrypoint qualification failed; report: {report}", file=sys.stderr)
+    return result.returncode
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("compiler")
@@ -126,6 +147,9 @@ def main():
     grant_status = qualify_default_global_grants(a.compiler, compiler_sha)
     if grant_status != 0:
         return grant_status
+    entrypoint_status = qualify_global_grant_entrypoints(a.compiler, compiler_sha)
+    if entrypoint_status != 0:
+        return entrypoint_status
     cache = ROOT / "build/test-cache"
     cache.mkdir(parents=True, exist_ok=True)
     failure_path = ROOT / "build/test-failures.json"
