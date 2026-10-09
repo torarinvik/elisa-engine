@@ -37,6 +37,16 @@ class GlobalGrantQualificationTests(unittest.TestCase):
 
         self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
 
+    def test_aggregate_field_controls_cover_each_required_grant(self):
+        permissions = {name: permission for name, _, permission in gate.CASES}
+        self.assertEqual({name: permissions[name] for name in gate.AGGREGATE_CASES}, {
+            "aggregate-field-read": "Global.Read",
+            "aggregate-field-write": "Global.Write",
+            "aggregate-field-rmw-missing-write": "Global.Write",
+            "aggregate-field-rmw-missing-read": "Global.Read",
+            "aggregate-field-rmw-granted": "",
+        })
+
     def test_transitive_refusal_wording_preserves_bypass_requirement(self):
         permissions = {name: permission for name, _, permission in gate.CASES}
 

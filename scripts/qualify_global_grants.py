@@ -16,6 +16,18 @@ import tempfile
 
 
 GLOBAL = "global mutable count: i64 = 0\n"
+AGGREGATE_GLOBAL = (
+    "struct Counter:\n"
+    "    value: i64\n"
+    "global mutable counter: Counter = Counter{value: 0}\n"
+)
+AGGREGATE_CASES = frozenset({
+    "aggregate-field-read",
+    "aggregate-field-write",
+    "aggregate-field-rmw-missing-write",
+    "aggregate-field-rmw-missing-read",
+    "aggregate-field-rmw-granted",
+})
 CASES = (
     ("missing-read", "def read_count() -> i64:\n    return count\n", "Global.Read"),
     ("missing-write", "def write_count() -> i64:\n    count <- 1\n    return 0\n", "Global.Write"),
@@ -33,6 +45,11 @@ CASES = (
     ("array-index-write-missing-write", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\ndef write_slot() -> i64:\n    can Global.Read:\n        slots[0] <- 1\n        return 0\n", "Global.Write"),
     ("array-index-write-missing-index-read", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\nglobal mutable cursor: i64 = 0\ndef write_slot() -> i64:\n    can Global.Write:\n        slots[cursor] <- 1\n        return 0\n", "Global.Read"),
     ("array-index-write-granted", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\nglobal mutable cursor: i64 = 0\ndef write_slot() -> i64:\n    can Global{Read,Write}:\n        slots[cursor] <- 1\n        return slots[cursor]\n", ""),
+    ("aggregate-field-read", "def read_counter() -> i64:\n    return counter.value\n", "Global.Read"),
+    ("aggregate-field-write", "def write_counter() -> i64:\n    counter.value <- 1\n    return 0\n", "Global.Write"),
+    ("aggregate-field-rmw-missing-write", "def update_counter() -> i64:\n    can Global.Read:\n        counter.value += 1\n    return 0\n", "Global.Write"),
+    ("aggregate-field-rmw-missing-read", "def update_counter() -> i64:\n    can Global.Write:\n        counter.value += 1\n    return 0\n", "Global.Read"),
+    ("aggregate-field-rmw-granted", "def update_counter() -> i64:\n    can Global{Read,Write}:\n        counter.value += 1\n        return counter.value\n", ""),
 )
 
 
@@ -40,7 +57,8 @@ def qualify(compiler: str, directory: Path, timeout: float = 60) -> list[dict]:
     records = []
     for name, body, permission in CASES:
         source = directory / f"{name}.elisa"
-        source.write_text(GLOBAL + body, encoding="utf-8")
+        prefix = AGGREGATE_GLOBAL if name in AGGREGATE_CASES else GLOBAL
+        source.write_text(prefix + body, encoding="utf-8")
         source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
         for permissive in (False, True):
             command = [compiler, "-emit", "check"]

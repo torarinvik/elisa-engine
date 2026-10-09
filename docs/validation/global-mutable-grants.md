@@ -576,16 +576,18 @@ passed 24/24 and all 216 engine tests passed with 216 compile results cached,
 zero remote compiles and exit 0 in 13 seconds. The exact command was
 `python3 scripts/run_tests.py /Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 -j 2`.
 
-On the same identity-pinned Stage1, the engine preflight now also checks
-global-mutable array access: indexed reads require `Global.Read`, indexed stores
-require `Global.Write`, and a store whose index reads another global requires
-both grants. The new 16-case source set (32 invocations including
-`-permissive`) passes 32/32 controls. The compiler binary hash remained
+On the same identity-pinned Stage1, the engine preflight checks global-mutable
+array and aggregate access. Indexed reads require `Global.Read`, indexed stores
+require `Global.Write`, a store whose index reads another global requires both,
+and aggregate-field reads/writes/read-modify-write enforce the matching grants.
+The expanded 21-case source set (42 invocations including `-permissive`) passes
+42/42 controls through the normal `scripts/run_tests.py` entrypoint using a
+temporary empty manifest. The compiler binary hash remained
 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`; the
-updated report is
+product-pinned report is
 `build/validation/global-grant-cli-qualification-1505c598a71e.json`. The
-integration unit controls pass 11/11, including rejection of unrelated syntax
+integration unit controls pass 12/12, including rejection of unrelated syntax
 errors that mention the permission name. The refusal matcher accepts only a
 Global permission diagnostic or a diagnostic identifying a mutable global.
-The focused expansion does not rerun the 216-test engine suite or close the
+This focused expansion does not rerun the 216-test engine suite or close the
 proof and consumer gates above.
