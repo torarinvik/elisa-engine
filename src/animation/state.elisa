@@ -76,7 +76,10 @@ module Anim:
     private:
         module Playback:
             private:
-                def push_event(state: mutable AnimState&, id: i64) -> void:
+                def current_clip_length(state: Anim::AnimState&) -> i64:
+                    Anim::clip_length(state.clip)
+
+                def push_event(state: mutable Anim::AnimState&, id: i64) -> void:
                     return if state.event_count >= Anim::MAX_QUEUED_EVENTS
                     region event_slot_scope:
                         slot: usize = state.event_count
@@ -92,7 +95,7 @@ module Anim:
                     state.blend_left <- Anim::Tune::BLEND_TICKS
 
                 def tick(state: mutable AnimState&) -> void:
-                    length: i64 = Anim::clip_length(state.clip)
+                    length: i64 = current_clip_length(state)
                     return if length <= 0
                     next: mutable i64 = state.tick + 1
                     wrapped: bool = next >= length

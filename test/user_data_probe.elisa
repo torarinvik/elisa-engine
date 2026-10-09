@@ -130,9 +130,9 @@ def exercise_user_data() -> i32 can[Global.Read, Global.Write]:
         ok: 0
         error failure: return 52
     return 53 if RuntimeDecisionLogStore::load("decisions").stored != RuntimeDecisionLogStore::Stored.NotFound
-    session_code: i32 = DecisionSessionProbe::run()
+    session_code: i32 = DecisionSessionProbe::run() can Global.Read, Global.Write
     return session_code if session_code != 0
-    input_store_code: i32 = ActionInputStoreProbe::run()
+    input_store_code: i32 = ActionInputStoreProbe::run() can Global.Read, Global.Write
     return input_store_code if input_store_code != 0
 
     invalid_key: i32 = catch UserData::write_blob("../outside", &blob):

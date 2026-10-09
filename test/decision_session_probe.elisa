@@ -19,8 +19,8 @@ module DecisionSessionProbe:
             return 60 if saves != 3
             m: RuntimeDecisionSessionStore::Manifest = RuntimeDecisionSessionStore::manifest()
             return 61 if m.stored != RuntimeDecisionLogStore::Stored.Ok or m.chunks != 3
-            return 62 if RuntimeDecisionSessionStore::load_chunk(3).stored != RuntimeDecisionLogStore::Stored.NotFound
-            first: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(0)
+            return 62 if (RuntimeDecisionSessionStore::load_chunk(3) can Global.Read, Global.Write).stored != RuntimeDecisionLogStore::Stored.NotFound
+            first: RuntimeDecisionLogStore::Read = (RuntimeDecisionSessionStore::load_chunk(0) can Global.Read, Global.Write)
             return 63 if first.stored != RuntimeDecisionLogStore::Stored.Ok
             mutable replay: RuntimeDecisionLog::Log = first.loaded.log
             mutable at: i64 = 0
@@ -28,7 +28,7 @@ module DecisionSessionProbe:
             mutable missing: bool = false
             for t in 0..<600 |replay, at, redrawn, missing|:
                 if RuntimeDecisionChunks::finished(&replay) and replay.count == RuntimeDecisionLog::CAP:
-                    next: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(at + 1)
+                    next: RuntimeDecisionLogStore::Read = (RuntimeDecisionSessionStore::load_chunk(at + 1) can Global.Read, Global.Write)
                     missing <- missing or next.stored != RuntimeDecisionLogStore::Stored.Ok
                     replay <- RuntimeDecisionChunks::advance(&replay, &next.loaded.log)
                     at <- at + 1
@@ -37,5 +37,5 @@ module DecisionSessionProbe:
             return 65 if redrawn != drawn or not RuntimeDecisionLog::complete(&replay)
             return 66 if not RuntimeDecisionSessionStore::clear()
             return 67 if RuntimeDecisionSessionStore::manifest().stored != RuntimeDecisionLogStore::Stored.NotFound
-            return 68 if RuntimeDecisionSessionStore::load_chunk(0).stored != RuntimeDecisionLogStore::Stored.NotFound
+            return 68 if (RuntimeDecisionSessionStore::load_chunk(0) can Global.Read, Global.Write).stored != RuntimeDecisionLogStore::Stored.NotFound
             0

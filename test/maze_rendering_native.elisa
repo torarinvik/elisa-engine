@@ -43,7 +43,7 @@ module MazeRenderingNativeTests:
             return 19 if not MazeRenderAssets::register(
                 "examples/maze/assets/maze_tile.elpk", "examples/maze/assets/maze_textures.elpk")
             game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
-            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
+            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game) can Global.Read, Global.Write:
                 value: value
                 error failure: return 1
             snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()

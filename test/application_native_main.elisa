@@ -405,7 +405,7 @@ def exercise_application() -> i32 can[Global.Read, Global.Write]:
         live: true,
     }
     return 44 if ActionInput::bind_checked(&actions, escape) != ActionInput::BindResult.Bound
-    _ = ActionInputRuntime::begin_frame(&actions)
+    _ = ActionInputRuntime::begin_frame(&actions) can Global.Read, Global.Write
     return 45 if ActionInput::action_down(&actions, 1)
     # Mouse-look mode either engages (and reports so) or is refused and stays off.
     relative: Application::RelativeMouse = Application::set_relative_mouse(true)
@@ -450,9 +450,9 @@ def exercise_application() -> i32 can[Global.Read, Global.Write]:
         Application::BackendProfileError.NotInitialized: 0
         error failure: 2
     return 25 if closed_profile != 0
-    startup_status: i32 = check_startup_requirements(config)
+    startup_status: i32 = check_startup_requirements(config) can Global.Read, Global.Write
     return startup_status if startup_status != 0
-    services_status: i32 = RuntimeServicesProbe::run()
+    services_status: i32 = RuntimeServicesProbe::run() can Global.Read, Global.Write
     return services_status if services_status != 0
     0
 
@@ -463,9 +463,9 @@ def main() -> i32 can[Global.Read, Global.Write]:
     return 180 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_missing_shader_root() != 1
     return 181 if NativeApplicationTestProbe::elisa_application_v1_test_rejects_invalid_shader_manifest() != 1
     return 182 if NativeApplicationTestProbe::elisa_application_v1_test_shader_manifest_verifies_contents() != 1
-    storage_result: i32 = exercise_user_data()
+    storage_result: i32 = (exercise_user_data() can Global.Read, Global.Write)
     return 104 + storage_result if storage_result != 0
-    result: i32 = exercise_application()
+    result: i32 = exercise_application() can Global.Read, Global.Write
     shutdown_ok: bool = Application::shutdown()
     return 103 if not shutdown_ok
     result

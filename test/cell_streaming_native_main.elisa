@@ -272,7 +272,7 @@ module CellStreamingSmoke:
             return 32 if memory().cpu_footprint <= 0
             shelf: mutable VisualShelf::Shelf = VisualShelf::Shelf()
             return 33 if not stock(&shelf)
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 34
             runtime: mutable CellWorld::Runtime = CellWorld::Runtime(4, 1)
@@ -318,7 +318,7 @@ module CellStreamingSmoke:
                 error failure: 1
             result: mutable i32 = 21
             if init_status == 0:
-                result <- exercise()
+                result <- exercise() can Global.Read, Global.Write
                 closed_scene: bool = catch RenderScene::shutdown():
                     ok: true
                     error failure: false
@@ -330,7 +330,7 @@ module CellStreamingSmoke:
 
     public:
         def run() -> i32 can[Global.Read, Global.Write]:
-            CellStreamingSmoke::execute()
+            CellStreamingSmoke::execute() can Global.Read, Global.Write
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    CellStreamingSmoke::run()
+    CellStreamingSmoke::run() can Global.Read, Global.Write

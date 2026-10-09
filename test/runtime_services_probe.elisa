@@ -209,7 +209,7 @@ module RuntimeServicesProbe:
             0
 
         def hierarchy_physics_probe(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 98
             parent: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
@@ -389,7 +389,7 @@ module RuntimeServicesProbe:
             0
 
         def world_scheduler_probe(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            physics_world: mutable World::World = catch World::World():
+            physics_world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 64
             physics_entity: World::EntityRef = catch World::world_spawn(&physics_world,
@@ -465,7 +465,7 @@ module RuntimeServicesProbe:
             return 118 if RuntimeServices::audio_provider(session) != Capabilities::BackendFallbackProvider.MiniaudioSilent
             motion_status: i32 = RuntimeServicesMotionProbe::run(&session)
             return motion_status if motion_status != 0
-            world_pose_status: i32 = WorldPhysicsPoseProbe::run(&session, config(), &requirements, &report)
+            world_pose_status: i32 = WorldPhysicsPoseProbe::run(&session, config(), &requirements, &report) can Global.Read, Global.Write
             return world_pose_status if world_pose_status != 0
             occupied_report: mutable BackendRequirements::BackendRequirementsReport = zeroed
             occupied: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
@@ -538,11 +538,11 @@ module RuntimeServicesProbe:
                 ok: 0
                 error failure: 1
             return 128 if replay_stopped != 0
-            world_audio_status: i32 = WorldAudioProbe::run(session)
+            world_audio_status: i32 = WorldAudioProbe::run(session) can Global.Read, Global.Write
             return world_audio_status if world_audio_status != 0
-            world_scheduler_status: i32 = world_scheduler_probe(&session)
+            world_scheduler_status: i32 = world_scheduler_probe(&session) can Global.Read, Global.Write
             return world_scheduler_status if world_scheduler_status != 0
-            hierarchy_physics_status: i32 = hierarchy_physics_probe(&session)
+            hierarchy_physics_status: i32 = hierarchy_physics_probe(&session) can Global.Read, Global.Write
             if hierarchy_physics_status != 0:
                 return 113 if not RuntimeServices::shutdown(&session)
                 return hierarchy_physics_status

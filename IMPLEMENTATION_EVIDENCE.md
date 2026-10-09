@@ -88,7 +88,14 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   grants narrow: do not adopt the old four Character Course or 71-row Studio
   provisional censuses. The 26 engine sample/test caller updates and project
   checks for world, save/swap, maze, audio, input and UI are recorded in the same
-  evidence; the complete current consumer census remains open.
+  evidence. On installed Stage1 `1505c598…`, the previously inventoried 89
+  additional native, probe and example entrypoints outside the 216-test
+  manifest now pass strict runtime-wrapped `-emit check` (89/89); the full
+  uncached 216-test gate also passes after the caller repairs. This qualifies
+  that installed baseline's engine consumers. Recheck on the newer compiler
+  after qualification; proof integration, the inferred-row reporter, and fresh
+  linked Course/Studio consumers remain open. Exact source hashes and results
+  are in [the grant validation note](docs/validation/global-grant-entrypoint-census-1505c598.md).
   Consumer commit `1e98f075` resamples multi-key FBX tracks on a shared grid,
   and the bounded bridge regression passes with strict default grants. An old
   open Studio instance replayed its loaded 337-frame take through frame 248
@@ -147,15 +154,16 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   native SDL3/Metal visual smoke, changing 2,580/2,304,000 pixels; the physics
   hidden native self-test builds and exits 0. Exact binaries, hashes, commands
   and limits are in [the example grant record](docs/validation/global-grant-public-examples.md).
-  This verifies these client integrations only; proof integration and complete
-  engine-wide strict-consumer inventory remain open.
+  The 89 additional runtime-wrapped engine entrypoints now pass on the installed
+  baseline; proof integration, fresh Course/Studio builds and rechecking on the
+  newer compiler candidate remain open.
 - **Engine grant regression guard:** `scripts/run_tests.py` now performs the
   direct default-grant/`-permissive` qualification before compiling engine
   tests. It pins the report to the selected compiler product SHA256 and uses a
-  distinct artifact path per product. Its actual runner entrypoint passed
-  32/32 controls on installed Stage1 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`, including indexed array reads/writes and a global index expression;
+  distinct artifact path per product. Its actual runner entrypoint now passes
+  42/42 controls on installed Stage1 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`, covering indexed array operations, global index expressions, and aggregate-field reads, writes and read-modify-write;
   report: `build/validation/global-grant-cli-qualification-1505c598a71e.json`.
-  Eleven Python controls cover report validation, exact product pinning,
+  Twelve Python controls cover report validation, exact product pinning,
   false-positive denial text, and that
   the runner aborts before engine work when the preflight fails. After the
   source change, the normal runner also passes
@@ -165,7 +173,7 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   Commits `8daa161d` and `88bc06ec` expand indexed-global coverage and make the
   refusal matcher reject unrelated syntax errors that mention a permission.
   The portable `cook` workflow now runs the grant-harness and hosted-toolchain
-  policy suites on Windows, macOS and Linux; the current local runs pass 11/11
+  policy suites on Windows, macOS and Linux; the current local runs pass 12/12
   and 17/17, and the workflow YAML parses. Lock schema controls reject malformed
   JSON types without permitting an invalid eligibility state. The hosted
   lock records all four verified `main` heads, rejects a compiler pin that
@@ -205,23 +213,35 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   globals even when the callee allocates nothing. The focused fixture exercises
   an owning optional aggregate crossing a short-lived caller region. The owner
   committed the compiler change as `806772c7`; its rebuilt Stage1 SHA256 is
-  `5596ef202f07647791b9d3fa24c708397f61b65a7d9f22846cf99b1214fd042d`, with
+  `a8eb8b5947b4941dd723a3381483c4c3fdafa986a7170dd8f4109708d9d2c391`, with
   matching runtime SHA256
   `de964b7e5b764337b9332534627e16bc4dc181037daba62c2e40d1392502512f`. The
   exact command `bash test/parity/global_store_auto_region_smoke.sh` now passes:
   its optional owning aggregate survives the caller-region close at O0, O2 and
   under AddressSanitizer. This qualifies the focused compiler regression only;
-  the Studio app has not yet been rebuilt or retested.
+  the Studio app has not yet been rebuilt or retested. The crash-report bundle
+  was compiled with earlier compiler revision `b719dbd5`, so the reports do not
+  yet test the `806772c7` fix; rebuild the same app after compiler qualification.
   An earlier version of the compiler patch also passed the native backend smoke
-  (567/567 checks). The owner then narrowed the additional scan to by-value
-  parameters that can carry region-backed storage and rebuilt Stage1; that
-  final source version passes the focused regression, while its 591-check fast
-  parity profile runs against the fetched Stage0 oracle. The observed first
-  failure is `emit_ast_parity_smoke.sh`: 28 of 579 fixtures differ, beginning
-  with `zeroed_using_scoped_module_alias.elisa`. The run is still active and has
-  not established whether these differences predate this patch. The earlier
-  567-check result does not qualify this tightened version. Self-host/native
-  qualification and the Studio app rebuild remain open.
+  (567/567 checks). The tightened source's fast profile selects 37 of 591
+  total checks and is still active and unqualified. Against the fetched Stage0 oracle,
+  `emit_ast_parity_smoke.sh` reports 28/579 differences,
+  `emit_iface_parity_smoke.sh` 61/333, interpretation 17 divergences (781
+  skipped), and header parity 34 divergences (515 skipped). Test-run parity has
+  11 identical cases and one divergence; packed output has 362 exact results,
+  two divergences and 33 Stage1 rejections. Real-slice parity fails 0/5 with an
+  invalid-call diagnostic and a missing arena-cache-lock-release symbol. Format
+  parity passed after 2,490 seconds and doc parity after 3,404 seconds; header
+  parity failed after 2,992 seconds. These failures
+  have not yet been compared with the exact parent-baseline Stage1, so regression
+  status is unknown. The merged Stage1→Gen2 self-host build has since completed,
+  and Gen2 passes five regression probes. Gen2 then compiled the full merged source into a
+  25,669,472-byte Gen3 object in about 19 minutes. Gen3 is being linked; the
+  byte-identical Gen3→Gen4 comparison and 40-run determinism follow, while
+  merged-head JSON O0/O2, parity resolution, and the Studio app rebuild remain
+  pending. The current log is
+  `/private/tmp/Elisa-compiler-fbx-latest/build/global-store-fast-gate.log`.
+  Earlier 567/567 native checks do not qualify this tightened build.
   The current chooser leaves Open disabled with the FBX selected, so playback
   could not be repeated through that flow. This compiler/global-rehome
   investigation is separate from the earlier `path_copy` hidden-region failure.

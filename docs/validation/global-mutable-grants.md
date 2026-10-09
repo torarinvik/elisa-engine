@@ -591,3 +591,5 @@ errors that mention the permission name. The refusal matcher accepts only a
 Global permission diagnostic or a diagnostic identifying a mutable global.
 This focused expansion does not rerun the 216-test engine suite or close the
 proof and consumer gates above.
+
+The 89-entry strict runtime-wrapped census and its source-backed repairs are recorded in [the entrypoint census note](global-grant-entrypoint-census-1505c598.md). The proof pair and fresh Course/Studio builds remain open.

@@ -112,7 +112,7 @@ def exercise_render_scene() -> i32:
     return 33 if valid_camera != 0
     animation_submission_status: i32 = RenderSceneAnimationSubmissionNativeTests::exercise()
     return 79 + animation_submission_status if animation_submission_status != 0
-    effects_test_status: i32 = RenderSceneEffectsNativeTests::exercise()
+    effects_test_status: i32 = RenderSceneEffectsNativeTests::exercise() can Global.Read, Global.Write
     return 80 + effects_test_status if effects_test_status != 0
     environment_test_status: i32 = RenderSceneEnvironmentNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(197, environment_test_status) if environment_test_status != 0
@@ -353,7 +353,7 @@ def exercise_render_scene() -> i32:
     for attempt in 0..<3:
         return 136 if Application::pump() != Application::PumpStatus.Running
     return 137 if elisa_render_scene_v1_last_frame_has_overlay_panel() == 0
-    snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise()
+    snapshot_test_status: i32 = RenderSceneSnapshotNativeTests::exercise() can Global.Read, Global.Write
     return elisa_render_scene_v1_test_failed_case(227, snapshot_test_status) if snapshot_test_status != 0
     retained_snapshot_status: i32 = RenderSceneSnapshotRetainedNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(195, retained_snapshot_status) if retained_snapshot_status != 0
@@ -573,7 +573,7 @@ def exercise_render_scene() -> i32:
         RenderScene::RenderSceneError.UnknownHandle: 1
         error failure: 2
     return 39 if stale_after_scene_replacement != 1
-    maze_snapshot: i32 = MazeRenderingNativeTests::exercise()
+    maze_snapshot: i32 = MazeRenderingNativeTests::exercise() can Global.Read, Global.Write
     return 120 + maze_snapshot if maze_snapshot != 0
     final_handle: RenderScene::InstanceHandle = catch RenderScene::create(RenderScene::Primitive.Plane,
         Geometry::transform_identity(), RenderScene::Color{red: 0.9, green: 0.75, blue: 0.1, alpha: 1.0}):
@@ -582,7 +582,7 @@ def exercise_render_scene() -> i32:
     return 28 if RenderScene::instance_count() != 1
     debug_updates: i32 = RenderSceneDebugNativeTests::exercise()
     return elisa_render_scene_v1_test_failed_case(231, debug_updates) if debug_updates != 0
-    effect_memory: i32 = RenderSceneEffectMemoryNativeTests::exercise()
+    effect_memory: i32 = RenderSceneEffectMemoryNativeTests::exercise() can Global.Read, Global.Write
     return elisa_render_scene_v1_test_failed_case(238, effect_memory) if effect_memory != 0
     application_shutdown: bool = Application::shutdown()
     return 29 if not application_shutdown
@@ -594,6 +594,6 @@ def exercise_render_scene() -> i32:
     return 31 if post_shutdown != 1
     0
 def main() -> i32:
-    result: i32 = exercise_render_scene()
+    result: i32 = exercise_render_scene() can Global.Read, Global.Write
     return 103 if not Application::shutdown()
     result

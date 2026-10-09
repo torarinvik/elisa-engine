@@ -3,4 +3,4 @@
 include "./user_data_probe.elisa"
 
 def main() -> i64:
-    exercise_user_data().i64()
+    (exercise_user_data() can Global.Read, Global.Write).i64()

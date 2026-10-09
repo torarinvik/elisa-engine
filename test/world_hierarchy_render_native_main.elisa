@@ -46,7 +46,7 @@ module WorldHierarchyRenderNative:
             value
 
         def exercise(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 1
             previous: Geometry::Transform = Geometry::Transform{
@@ -229,7 +229,7 @@ module WorldHierarchyRenderNative:
                 opened != RuntimeServices::OpenStatus.FallbackRequired):
                 _ = RuntimeServices::shutdown(&session)
                 return 20
-            result: i32 = exercise(&session)
+            result: i32 = exercise(&session) can Global.Read, Global.Write
             closed: bool = RuntimeServices::shutdown(&session)
             return result if result != 0
             return 21 if not closed
@@ -237,7 +237,7 @@ module WorldHierarchyRenderNative:
 
     public:
         def run() -> i32 can[Global.Read, Global.Write]:
-            WorldHierarchyRenderNative::execute()
+            WorldHierarchyRenderNative::execute() can Global.Read, Global.Write
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    WorldHierarchyRenderNative::run()
+    WorldHierarchyRenderNative::run() can Global.Read, Global.Write

@@ -102,10 +102,10 @@ module WorldPhysicsPoseProbe:
                 error failure: return 92
             return 93 if resumed_frame.steps != 0 or resumed_frame.tick_count != before_pause.tick_count
             return 94 if resumed_frame.paused or resumed_frame.interpolation <= paused_frame.interpolation
-            character_status: i32 = PhysicsCharacterProbe::run(session)
+            character_status: i32 = PhysicsCharacterProbe::run(session) can Global.Read, Global.Write
             return character_status if character_status != 0
 
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 1
             entity: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
@@ -138,7 +138,7 @@ module WorldPhysicsPoseProbe:
                 value: value
                 error failure: return 62
             return 63 if joined.id != entity.id or joined.world_epoch != entity.world_epoch
-            contact_events: i32 = catch WorldContactEventsProbe::run(session, world, direct_bindings, contact_key, entity):
+            contact_events: i32 = catch WorldContactEventsProbe::run(session, world, direct_bindings, contact_key, entity) can Global.Read, Global.Write:
                 value: value
                 error failure: return 114
             return contact_events if contact_events != 0
@@ -146,7 +146,7 @@ module WorldPhysicsPoseProbe:
                 value: value
                 error failure: return 64
             return 65 if unknown.id != 0 or unknown.world_epoch != 0
-            other_world: mutable World::World = catch World::World():
+            other_world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 66
             other_entity: World::EntityRef = catch World::world_spawn(&other_world, World::Actor.Player):

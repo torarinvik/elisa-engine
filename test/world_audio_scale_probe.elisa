@@ -124,7 +124,7 @@ module WorldAudioScaleProbe:
 
     public:
         def run(session: RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 101
             clip: AudioRuntime::ClipHandle = catch RuntimeServices::audio_decode_file(session,

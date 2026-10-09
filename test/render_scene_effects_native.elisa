@@ -142,7 +142,7 @@ module RenderSceneEffectsNativeTests:
                 error failure: return 34
             return 35 if not native_effect_baseline_is_empty()
 
-            world: World::World = catch World::World():
+            world: World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 12
             entity: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
@@ -259,7 +259,7 @@ module WorldEffectEventNativeTests:
             profile_decal_rotation: Geometry::Quat = Geometry::Quat{
                 x: 0.0, y: 1.0, z: 0.0, w: 0.0,
             }
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 1
             entity: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
@@ -336,7 +336,7 @@ module WorldEffectEventNativeTests:
             effects: mutable WorldEffects::Effects = WorldEffects::Effects()
             return 39 if WorldEffects::binding_count(&effects) != 0
             frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
-            _ = catch WorldSchedule::begin_frame(&frame):
+            _ = catch WorldSchedule::begin_frame(&frame) can Global.Read, Global.Write:
                 ok: 0
                 error failure: return 6
             _ = catch WorldSchedule::subscribe(&frame, LISTENER_ID, WorldEvents::Phase.Simulation):

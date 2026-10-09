@@ -15,7 +15,7 @@ def main() -> i32:
         ok: 0
         error failure: 1
     return 2 if initialized != 0
-    event_status: i32 = WorldEffectEventNativeTests::exercise()
+    event_status: i32 = WorldEffectEventNativeTests::exercise() can Global.Read, Global.Write
     baseline_before_shutdown: bool = RenderSceneEffectsNativeTests::native_effect_baseline_is_empty()
     scene_shutdown: i32 = catch RenderScene::shutdown():
         ok: 0

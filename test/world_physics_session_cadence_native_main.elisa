@@ -60,7 +60,7 @@ module WorldPhysicsSessionCadenceNative:
 
         def simulate(session: mutable RuntimeServices::Session&,
             high_refresh: bool, result_pose: mutable Geometry::Transform&) -> i32 can[Global.Read, Global.Write]:
-            world: mutable World::World = catch World::World():
+            world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
                 error failure: return 1
             actor: World::EntityRef = catch World::world_spawn(&world,
@@ -140,14 +140,14 @@ module WorldPhysicsSessionCadenceNative:
             session: mutable RuntimeServices::Session = RuntimeServices::Session()
             return 20 if not open_session(&session, config, &startup, &report)
             thirty_hz_pose: mutable Geometry::Transform = Geometry::transform_identity()
-            thirty_hz_status: i32 = simulate(&session, false, &thirty_hz_pose)
+            thirty_hz_status: i32 = simulate(&session, false, &thirty_hz_pose) can Global.Read, Global.Write
             thirty_hz_closed: bool = RuntimeServices::shutdown(&session)
             return thirty_hz_status if thirty_hz_status != 0
             return 21 if not thirty_hz_closed
 
             return 22 if not open_session(&session, config, &startup, &report)
             one_twenty_hz_pose: mutable Geometry::Transform = Geometry::transform_identity()
-            one_twenty_hz_status: i32 = simulate(&session, true, &one_twenty_hz_pose)
+            one_twenty_hz_status: i32 = simulate(&session, true, &one_twenty_hz_pose) can Global.Read, Global.Write
             one_twenty_hz_closed: bool = RuntimeServices::shutdown(&session)
             return one_twenty_hz_status if one_twenty_hz_status != 0
             return 23 if not one_twenty_hz_closed
@@ -155,4 +155,4 @@ module WorldPhysicsSessionCadenceNative:
             0
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    WorldPhysicsSessionCadenceNative::run()
+    WorldPhysicsSessionCadenceNative::run() can Global.Read, Global.Write
