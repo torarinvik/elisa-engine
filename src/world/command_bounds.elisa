@@ -1,0 +1,12 @@
+# Capacity admission for atomic world command batches. Count each requested
+# spawn against the same pre-commit capacity before capturing rollback state.
+module WorldCommandBounds:
+    public:
+        def spawn_budget_fits(live_count: usize, requested_spawns: usize,
+            capacity: usize) -> bool:
+            ensure not result or live_count <= capacity
+            ensure not result or requested_spawns <= capacity - live_count
+            ensure live_count > capacity or requested_spawns > capacity - live_count or result
+            return false if live_count > capacity
+            return false if requested_spawns > capacity - live_count
+            true

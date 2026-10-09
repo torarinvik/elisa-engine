@@ -2,6 +2,7 @@
 # boundary that accepts or rejects the complete batch.
 include "./hierarchy.elisa"
 include "./rollback.elisa"
+include "./command_bounds.elisa"
 
 module WorldCommands:
     public:
@@ -140,7 +141,13 @@ module WorldCommands:
             def world_commands_conflict(left: WorldCommand, right: WorldCommand) -> bool:
                 left.kind != Kind.Spawn and right.kind != Kind.Spawn and left.entity.world_epoch == right.entity.world_epoch and left.entity.id == right.entity.id
 
+            def world_spawn_count(buffer: WorldBuffer&) -> usize:
+                for index in 0..<buffer.count |spawns: usize = 0| -> spawns:
+                    spawns <- spawns + 1 if buffer.commands[index].kind == Kind.Spawn
+
             def world_batch_valid(buffer: WorldBuffer&, world: World::World&) -> bool:
+                return false if not WorldCommandBounds::spawn_budget_fits(
+                    World::world_live_count(world), world_spawn_count(buffer), World::MAX_ENTITIES)
                 for index in 0..<buffer.count |valid: bool = true| -> valid:
                     valid <- false if not world_command_valid(world, buffer.commands[index])
                     duplicate_free: bool =

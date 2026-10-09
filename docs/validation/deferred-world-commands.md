@@ -148,3 +148,48 @@ The recorded compiler product is Stage1 commit `b903bd1e` (SHA-256
 commit `6d6b6652` (SHA-256
 `827f274506a9aa4b2d43b36728ad48a853cdfe232ce25b20202a04239e5d4982`). The
 validation report is `build/validation.json`.
+
+## 2026-10-09: aggregate spawn-capacity preflight
+
+`WorldCommands::world_batch_valid` now counts all requested spawns and checks them
+against the same remaining world capacity before it captures a rollback snapshot.
+The previous per-command check compared every spawn with the unchanged pre-commit
+live count. A two-spawn batch against a world with one free slot therefore entered
+application, added the first entity, then refused the second. The negative control
+that removes the aggregate check exits at test assertion 40 with 256 live entities
+after the rejected batch, demonstrating the partial mutation. The fixed path rejects
+the batch before capture; the two commands remain pending, the live count and
+allocator high-water mark stay unchanged, the structure revision does not advance,
+and `World::world_is_valid` remains true.
+
+`src/world/command_bounds.elisa` contains the pure budget predicate, and
+`proof/world_command_bounds.elisa` proves exact-fit admission, over-budget refusal,
+and refusal when the live count already exceeds the capacity. The new near-capacity
+case is in `test/world_command_primary.elisa`.
+
+Validation on macOS 27.0.1 / Apple M5, using the installed Stage1 snapshot from
+compiler source `b11e9121` (source tree SHA-256
+`40b306621d1e1aa7cdd68a73179360ba1b6b9ba61aae2d491cd3087d4b819fff`), product
+SHA-256 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`,
+and matching runtime SHA-256
+`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`:
+
+```sh
+~/.elisac/elisac-stage1 -emit exe -o build/world-w03-exact-test test/world.elisa
+build/world-w03-exact-test
+~/.elisac/elisac-stage1 -emit exe -o build/world_commands-w03-exact-test test/world_commands.elisa
+build/world_commands-w03-exact-test
+~/.elisac/elisac-stage1 -emit exe -o build/world_command_primary-w03-exact-test test/world_command_primary.elisa
+build/world_command_primary-w03-exact-test
+~/.elisac/elisac-stage1 -emit exe -o build/world_phase_iteration-w03-exact-test test/world_phase_iteration.elisa
+build/world_phase_iteration-w03-exact-test
+../elisa-engine-proof/build/elisa-proof --json proof/world_command_bounds.elisa
+```
+
+All four executables exited 0. The negative control exits at the diagnostic
+variant's 256-live-entity assertion when aggregate preflight is removed. The proof product from
+`elisa-engine-proof@f593c886` (SHA-256
+`d08b69e0b6fed0f6006351c862defcf5b57054e718300105fffb195f004c7d6f`) proved all
+16 obligations. The negative control described above fails as expected. The full
+shared gate was not rerun for this slice. W03 remains open for compiler-enforced
+affine-copy and phase-borrow lifetime diagnostics.

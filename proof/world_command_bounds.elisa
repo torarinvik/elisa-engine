@@ -1,0 +1,23 @@
+# Batch spawn admission is bounded by the world's remaining entity capacity.
+include "../src/world/command_bounds.elisa"
+
+extend WorldCommandBounds:
+    def prove_exact_fit_is_admitted(live_count: usize, requested_spawns: usize,
+        capacity: usize) -> bool:
+        requires live_count <= capacity
+        requires requested_spawns <= capacity - live_count
+        ensure result
+        return spawn_budget_fits(live_count, requested_spawns, capacity)
+
+    def prove_over_budget_is_refused(live_count: usize, requested_spawns: usize,
+        capacity: usize) -> bool:
+        requires live_count <= capacity
+        requires requested_spawns > capacity - live_count
+        ensure not result
+        return spawn_budget_fits(live_count, requested_spawns, capacity)
+
+    def prove_invalid_live_count_is_refused(live_count: usize, requested_spawns: usize,
+        capacity: usize) -> bool:
+        requires live_count > capacity
+        ensure not result
+        return spawn_budget_fits(live_count, requested_spawns, capacity)

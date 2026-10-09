@@ -68,4 +68,24 @@ def main() -> i32 can[Global.Read, Global.Write]:
         return 24 if WorldCommands::world_command_count(&mixed) != 2
         return 25 if World::world_live_count(&world) != 2
         return 26 if not World::world_is_valid(&world)
+
+        near_capacity: mutable World::World = catch World::World():
+            value: value
+            error failure: return 34
+        for step in 0..<(World::MAX_ENTITIES - 1) |near_capacity|:
+            _ = catch World::world_spawn(&near_capacity, World::Actor.Player):
+                value: 0
+                error failure: return 35
+        capacity_revision: i64 = World::world_structure_revision(&near_capacity)
+        capacity_last_id: i64 = World::world_last_issued(&near_capacity)
+        capacity_batch: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 36 if not WorldCommands::world_spawn(&capacity_batch, World::Enemy.Guard)
+        return 37 if not WorldCommands::world_spawn(&capacity_batch, World::StaticObject.Structure)
+        rejected_capacity_batch: bool = WorldCommands::commit_world(&capacity_batch, &near_capacity)
+        return 38 if rejected_capacity_batch
+        return 39 if WorldCommands::world_command_count(&capacity_batch) != 2
+        return 40 if World::world_live_count(&near_capacity) != World::MAX_ENTITIES - 1
+        return 41 if World::world_last_issued(&near_capacity) != capacity_last_id
+        return 42 if World::world_structure_revision(&near_capacity) != capacity_revision
+        return 43 if not World::world_is_valid(&near_capacity)
         return 0
