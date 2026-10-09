@@ -19,7 +19,7 @@ class GlobalGrantQualificationTests(unittest.TestCase):
 
     def test_silent_acceptance_fails_missing_grants(self):
         rows = self.run_controls(lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""))
-        self.assertEqual(len(rows), 24)
+        self.assertEqual(len(rows), len(gate.CASES) * 2)
         self.assertTrue(any(not row["passed"] and not row["expected_accept"] for row in rows))
 
     def test_unrelated_failure_is_not_grant_evidence(self):

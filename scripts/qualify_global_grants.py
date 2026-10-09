@@ -29,6 +29,10 @@ CASES = (
     ("shadowed-local", "def local(count: i64) -> i64:\n    return count\n", ""),
     ("transitive-missing", "def read_count() -> i64 can[Global.Read]:\n    return count\ndef caller() -> i64:\n    return read_count()\n", "Global.Read"),
     ("transitive-granted", "def read_count() -> i64 can[Global.Read]:\n    can Global.Read:\n        return count\ndef caller() -> i64:\n    can Global.Read:\n        return read_count()\n", ""),
+    ("array-index-read", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\ndef read_slot() -> i64:\n    return slots[0]\n", "Global.Read"),
+    ("array-index-write-missing-write", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\ndef write_slot() -> i64:\n    can Global.Read:\n        slots[0] <- 1\n        return 0\n", "Global.Write"),
+    ("array-index-write-missing-index-read", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\nglobal mutable cursor: i64 = 0\ndef write_slot() -> i64:\n    can Global.Write:\n        slots[cursor] <- 1\n        return 0\n", "Global.Read"),
+    ("array-index-write-granted", "global mutable slots: array[i64, 4] = [0, 0, 0, 0]\nglobal mutable cursor: i64 = 0\ndef write_slot() -> i64:\n    can Global{Read,Write}:\n        slots[cursor] <- 1\n        return slots[cursor]\n", ""),
 )
 
 
