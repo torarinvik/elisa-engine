@@ -41,7 +41,18 @@ renderer include and feature flags. Retained log:
 A source-qualified renderer build must exercise the original full sequence with
 this opt-in diagnostic and compare tag totals at the actual failing sample.
 No full native gate, leak repair, lifecycle acceptance or tolerance change is
-claimed. Hold heavy runs while the coordinated Studio compiler repair builds.
+claimed. Hold the native diagnostic while the Studio playback/UI checks and
+separate UI runtime test are active.
+
+The native run will use `scripts/run_process_budget.py`, which starts a new
+process group, samples aggregate RSS from `ps`, and sends TERM then KILL to the
+group when a resource limit is reached. Six focused Python controls pass on
+macOS, covering successful completion, timeout, RSS termination, descendant
+cleanup, and invalid budgets; GitHub's macOS native job runs the same controls.
+The exact renderer command, log path and 3 GiB / 180-second limits are recorded
+in the ignored preparation JSON. The watchdog report records peak aggregate
+RSS, elapsed time, exit status, and termination reason separately from the
+renderer lifecycle report.
 
 ## Report preparation
 

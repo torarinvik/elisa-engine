@@ -172,6 +172,8 @@ jobs:
           python3 scripts/ci_stage.py build/ci native fetch-recast -- python3 scripts/fetch_recast.py
       - name: Crash reports (forked SIGSEGV/SIGABRT children)
         run: python3 scripts/ci_stage.py build/ci native crash-report -- python3 scripts/test_crash_report.py
+      - name: Process-group time and RSS budget controls
+        run: python3 scripts/test_run_process_budget.py
       - name: Boundary sanitizers (ASan + UBSan)
         run: python3 scripts/ci_stage.py build/ci native boundary-sanitizers -- python3 scripts/run_boundary_sanitized.py
       - name: Save validated native dependency cache
