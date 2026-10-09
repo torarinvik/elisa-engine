@@ -129,6 +129,16 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   runtime calls. Executable and bundle hashes, commands, Python runtime and
   remaining limits are in
   [the Maze acceptance record](docs/validation/maze-global-grants.md).
+- **Public example grant adoption:** the environmental-effects scene and public
+  entrypoint, physics-interactables runtime and both entrypoints, including its
+  hidden self-test, now declare and locally scope the default global grants.
+  The changed entrypoints pass strict semantic checks on saved `b11e9121`
+  Stage1 `5888942e…` with runtime `013d3174…`. Environmental-effects passes its
+  native SDL3/Metal visual smoke, changing 2,580/2,304,000 pixels; the physics
+  hidden native self-test builds and exits 0. Exact binaries, hashes, commands
+  and limits are in [the example grant record](docs/validation/global-grant-public-examples.md).
+  This verifies these client integrations only; proof integration and complete
+  engine-wide strict-consumer inventory remain open.
 - **Engine grant regression guard:** `scripts/run_tests.py` now performs the
   direct default-grant/`-permissive` qualification before compiling engine
   tests. It pins the report to the selected compiler product SHA256 and uses a

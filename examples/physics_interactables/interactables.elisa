@@ -292,91 +292,93 @@ module PhysicsInteractables:
 
         def run_interactive(session: mutable RuntimeServices::Session&,
             scene: Scene&, door_hinge: PhysicsRuntime::ConstraintHandle&,
-            lift_slider: PhysicsRuntime::ConstraintHandle&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError]:
-            input: mutable ActionInput::Input = ActionInput::Input()
-            return 20 if not bind_controls(&input)
-            running: mutable bool = true
-            door_open: mutable bool = false
-            lift_raised: mutable bool = false
-            previous_elapsed_nanos: mutable u64 = 0
-            resize_serial: mutable u64 = 0
-            clock: mutable Runtime::StepClock = Runtime::StepClock()
-            while running |session, scene, input, door_hinge, lift_slider, door_open, lift_raised, previous_elapsed_nanos, resize_serial, clock|:
-                pump: Application::PumpStatus = try RuntimeServices::pump(session)
-                if pump == Application::PumpStatus.ExitRequested:
-                    running <- false
-                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
-                    return 21
-                if running and pump == Application::PumpStatus.Running:
-                    frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
-                    _ = ActionInputRuntime::begin_frame(input)
-                    if ActionInput::action_pressed(input, Tune::ACTION_QUIT):
+            lift_slider: PhysicsRuntime::ConstraintHandle&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, Runtime::ClockError, RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
+            can Global.Read, Global.Write:
+                input: mutable ActionInput::Input = ActionInput::Input()
+                return 20 if not bind_controls(&input)
+                running: mutable bool = true
+                door_open: mutable bool = false
+                lift_raised: mutable bool = false
+                previous_elapsed_nanos: mutable u64 = 0
+                resize_serial: mutable u64 = 0
+                clock: mutable Runtime::StepClock = Runtime::StepClock()
+                while running |session, scene, input, door_hinge, lift_slider, door_open, lift_raised, previous_elapsed_nanos, resize_serial, clock|:
+                    pump: Application::PumpStatus = try RuntimeServices::pump(session)
+                    if pump == Application::PumpStatus.ExitRequested:
                         running <- false
-                    if ActionInput::action_pressed(input, Tune::ACTION_DOOR):
-                        speed: f32 = -Tune::DOOR_MOTOR_SPEED if door_open else Tune::DOOR_MOTOR_SPEED
-                        try RuntimeServices::physics_constraint_set_motor(session,
-                            door_hinge, speed, Tune::DOOR_MOTOR_TORQUE)
-                        door_open <- not door_open
-                    if ActionInput::action_pressed(input, Tune::ACTION_LIFT):
-                        speed: f32 = -Tune::LIFT_MOTOR_SPEED if lift_raised else Tune::LIFT_MOTOR_SPEED
-                        try RuntimeServices::physics_constraint_set_motor(session,
-                            lift_slider, speed, Tune::LIFT_MOTOR_FORCE)
-                        lift_raised <- not lift_raised
-                    if ActionInput::action_pressed(input, Tune::ACTION_PENDULUM):
-                        try RuntimeServices::physics_body_apply_impulse(session,
-                            scene.pendulum.body,
-                            Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0})
-                    elapsed_delta: i64 = ((frame.elapsed_nanos -
-                        previous_elapsed_nanos) / 1000).i64()
-                    previous_elapsed_nanos <- frame.elapsed_nanos
-                    due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
-                    for _ in 0..<due_steps |session|:
-                        _ = try RuntimeServices::physics_fixed_step(session,
-                            Runtime::fixed_step_seconds())
-                    _ = try update_scene(session, scene)
-                    if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
-                        _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
-                        resize_serial <- frame.resize_serial
-            0
+                    elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                        return 21
+                    if running and pump == Application::PumpStatus.Running:
+                        frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                        _ = ActionInputRuntime::begin_frame(input)
+                        if ActionInput::action_pressed(input, Tune::ACTION_QUIT):
+                            running <- false
+                        if ActionInput::action_pressed(input, Tune::ACTION_DOOR):
+                            speed: f32 = -Tune::DOOR_MOTOR_SPEED if door_open else Tune::DOOR_MOTOR_SPEED
+                            try RuntimeServices::physics_constraint_set_motor(session,
+                                door_hinge, speed, Tune::DOOR_MOTOR_TORQUE)
+                            door_open <- not door_open
+                        if ActionInput::action_pressed(input, Tune::ACTION_LIFT):
+                            speed: f32 = -Tune::LIFT_MOTOR_SPEED if lift_raised else Tune::LIFT_MOTOR_SPEED
+                            try RuntimeServices::physics_constraint_set_motor(session,
+                                lift_slider, speed, Tune::LIFT_MOTOR_FORCE)
+                            lift_raised <- not lift_raised
+                        if ActionInput::action_pressed(input, Tune::ACTION_PENDULUM):
+                            try RuntimeServices::physics_body_apply_impulse(session,
+                                scene.pendulum.body,
+                                Geometry::Vec3{x: 4.0, y: 0.0, z: 0.0})
+                        elapsed_delta: i64 = ((frame.elapsed_nanos -
+                            previous_elapsed_nanos) / 1000).i64()
+                        previous_elapsed_nanos <- frame.elapsed_nanos
+                        due_steps: usize = try Runtime::advance(&clock, elapsed_delta)
+                        for _ in 0..<due_steps |session|:
+                            _ = try RuntimeServices::physics_fixed_step(session,
+                                Runtime::fixed_step_seconds())
+                        _ = try update_scene(session, scene)
+                        if frame.resize_serial != resize_serial and frame.pixel_width > 0 and frame.pixel_height > 0:
+                            _ = try RenderScene::resize(frame.pixel_width, frame.pixel_height)
+                            resize_serial <- frame.resize_serial
+                return 0
 
     public:
-        def run(self_test: bool) -> i32:
-            config: mutable Application::Config = Application::default_config()
-            config.title <- "Elisa Physics Interactables"
-            config.width <- Tune::WIDTH
-            config.height <- Tune::HEIGHT
-            config.hidden <- self_test
-            session: mutable RuntimeServices::Session = RuntimeServices::Session()
-            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
-            requirements.services[0] <- Capabilities::BackendFeature.Input
-            requirements.services[1] <- Capabilities::BackendFeature.Rendering
-            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
-            requirements.services[3] <- Capabilities::BackendFeature.Physics
-            requirements.service_count <- 4
-            requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
-            requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
-            requirements.allow_service_fallbacks <- true
-            report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
-            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
-                config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
-                AudioRuntime::MIN_CHANNEL_COUNT, &report)
-            if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
-                _ = RuntimeServices::shutdown(&session)
-                return 1
-            if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
-                _ = RuntimeServices::shutdown(&session)
-                return 2
-            result: i32 = catch run_after_open(&session, self_test):
-                value: value
-                error failure: 3
-            render_closed: mutable bool = true
-            if RenderScene::is_initialized():
-                render_closed <- catch RenderScene::shutdown():
-                    ok: true
-                    error failure: false
-            app_closed: bool = RuntimeServices::shutdown(&session)
-            return 4 if not render_closed or not app_closed
-            result
+        def run(self_test: bool) -> i32 can[Global.Read, Global.Write]:
+            can Global.Read, Global.Write:
+                config: mutable Application::Config = Application::default_config()
+                config.title <- "Elisa Physics Interactables"
+                config.width <- Tune::WIDTH
+                config.height <- Tune::HEIGHT
+                config.hidden <- self_test
+                session: mutable RuntimeServices::Session = RuntimeServices::Session()
+                requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+                requirements.services[0] <- Capabilities::BackendFeature.Input
+                requirements.services[1] <- Capabilities::BackendFeature.Rendering
+                requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+                requirements.services[3] <- Capabilities::BackendFeature.Physics
+                requirements.service_count <- 4
+                requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+                requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+                requirements.allow_service_fallbacks <- true
+                report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
+                opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                    config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                    AudioRuntime::MIN_CHANNEL_COUNT, &report)
+                if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 1
+                if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 2
+                result: i32 = catch run_after_open(&session, self_test):
+                    value: value
+                    error failure: 3
+                render_closed: mutable bool = true
+                if RenderScene::is_initialized():
+                    render_closed <- catch RenderScene::shutdown():
+                        ok: true
+                        error failure: false
+                app_closed: bool = RuntimeServices::shutdown(&session)
+                return 4 if not render_closed or not app_closed
+                return result
 
     private:
         def create_door_hinge(session: RuntimeServices::Session&,
@@ -426,27 +428,28 @@ module PhysicsInteractables:
                 description, output)
 
         def run_after_open(session: mutable RuntimeServices::Session&,
-            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError]:
-            scene: Scene = catch initialize_scene(session):
-                value: value
-                error failure: return 30
-            door_hinge: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
-            _ = try create_door_hinge(session, scene.door.body, door_hinge)
-            lift_slider: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
-            _ = try create_lift_slider(session, scene.lift.body, lift_slider)
-            pendulum_joint: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
-            _ = try create_pendulum_joint(session, scene.pendulum.body,
-                pendulum_joint)
-            _ = catch RuntimeServices::physics_fixed_step(session, Tune::FIXED_STEP):
-                value: value
-                error failure: return 31
-            if self_test:
-                _ = try RuntimeServices::pump(session)
-                catch run_test(session, scene, door_hinge, lift_slider,
-                    pendulum_joint):
+            self_test: bool) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError] can[Global.Read, Global.Write]:
+            can Global.Read, Global.Write:
+                scene: Scene = catch initialize_scene(session):
                     value: value
-                    error failure: return 32
-            else:
-                catch run_interactive(session, scene, door_hinge, lift_slider):
+                    error failure: return 30
+                door_hinge: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+                _ = try create_door_hinge(session, scene.door.body, door_hinge)
+                lift_slider: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+                _ = try create_lift_slider(session, scene.lift.body, lift_slider)
+                pendulum_joint: mutable PhysicsRuntime::ConstraintHandle = PhysicsRuntime::ConstraintHandle()
+                _ = try create_pendulum_joint(session, scene.pendulum.body,
+                    pendulum_joint)
+                _ = catch RuntimeServices::physics_fixed_step(session, Tune::FIXED_STEP):
                     value: value
-                    error failure: return 33
+                    error failure: return 31
+                if self_test:
+                    _ = try RuntimeServices::pump(session)
+                    return catch run_test(session, scene, door_hinge, lift_slider,
+                        pendulum_joint):
+                        value: value
+                        error failure: return 32
+                else:
+                    return catch run_interactive(session, scene, door_hinge, lift_slider):
+                        value: value
+                        error failure: return 33

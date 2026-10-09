@@ -105,55 +105,56 @@ module EnvironmentalEffects:
         def dispatch_impact(world: World::World&, owner: World::EntityRef,
             effects: mutable WorldEffects::Effects&, frame: mutable WorldSchedule::Frame&,
             catalog: WorldEffectAssets::Catalog&) -> bool can[Global.Read, Global.Write]:
-            begun: bool = catch WorldSchedule::begin_frame(frame):
-                ok: true
-                error failure: false
-            return false if not begun
-            subscribed: bool = catch WorldSchedule::subscribe(frame, Layout::LISTENER_ID,
-                WorldEvents::Phase.Simulation):
-                ok: true
-                error failure: false
-            return false if not subscribed
-            advanced: bool = catch WorldSchedule::advance_phase(frame, WorldEvents::Phase.Simulation):
-                ok: true
-                error failure: false
-            return false if not advanced
-            spark_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
-                phase: WorldEvents::Phase.Simulation,
-                kind: WorldEvents::EventKind.Spawn,
-                listener_id: Layout::LISTENER_ID,
-                entity: owner,
-                position: Geometry::vec3_zero(),
-                payload: Layout::SPARK_PROFILE,
-                delivered: false,
-            }):
-                ok: true
-                error failure: false
-            return false if not spark_emitted
-            scorch_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
-                phase: WorldEvents::Phase.Simulation,
-                kind: WorldEvents::EventKind.Spawn,
-                listener_id: Layout::LISTENER_ID,
-                entity: owner,
-                position: Geometry::vec3_zero(),
-                payload: Layout::SCORCH_PROFILE,
-                delivered: false,
-            }):
-                ok: true
-                error failure: false
-            return false if not scorch_emitted
-            dispatched: usize = catch WorldSchedule::dispatch_current(frame):
-                value: value
-                error failure: return false
-            report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
-                effects, frame, world, catalog, dispatched):
-                value: value
-                error failure: return false
-            ended: usize = catch WorldSchedule::end_frame(frame):
-                value: value
-                error failure: return false
-            _ = ended
-            report.spawned == 2
+            can Global.Read, Global.Write:
+                begun: bool = catch WorldSchedule::begin_frame(frame):
+                    ok: true
+                    error failure: false
+                return false if not begun
+                subscribed: bool = catch WorldSchedule::subscribe(frame, Layout::LISTENER_ID,
+                    WorldEvents::Phase.Simulation):
+                    ok: true
+                    error failure: false
+                return false if not subscribed
+                advanced: bool = catch WorldSchedule::advance_phase(frame, WorldEvents::Phase.Simulation):
+                    ok: true
+                    error failure: false
+                return false if not advanced
+                spark_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
+                    phase: WorldEvents::Phase.Simulation,
+                    kind: WorldEvents::EventKind.Spawn,
+                    listener_id: Layout::LISTENER_ID,
+                    entity: owner,
+                    position: Geometry::vec3_zero(),
+                    payload: Layout::SPARK_PROFILE,
+                    delivered: false,
+                }):
+                    ok: true
+                    error failure: false
+                return false if not spark_emitted
+                scorch_emitted: bool = catch WorldSchedule::emit_world(frame, world, WorldEvents::Event{
+                    phase: WorldEvents::Phase.Simulation,
+                    kind: WorldEvents::EventKind.Spawn,
+                    listener_id: Layout::LISTENER_ID,
+                    entity: owner,
+                    position: Geometry::vec3_zero(),
+                    payload: Layout::SCORCH_PROFILE,
+                    delivered: false,
+                }):
+                    ok: true
+                    error failure: false
+                return false if not scorch_emitted
+                dispatched: usize = catch WorldSchedule::dispatch_current(frame):
+                    value: value
+                    error failure: return false
+                report: WorldEffects::EventSpawnReport = catch WorldEffects::spawn_dispatched_events(
+                    effects, frame, world, catalog, dispatched):
+                    value: value
+                    error failure: return false
+                ended: usize = catch WorldSchedule::end_frame(frame):
+                    value: value
+                    error failure: return false
+                _ = ended
+                return report.spawned == 2
 
         def pump_frames(count: usize, world: World::World&,
             effects: mutable WorldEffects::Effects&) -> bool:
@@ -185,65 +186,67 @@ module EnvironmentalEffects:
         def run_initialized(smoke: bool) -> i32 error[
             RenderScene::RenderSceneError, World::WorldError,
             WorldEffectAssets::CatalogError] can[Global.Read, Global.Write]:
-            try create_scene()
-            if smoke:
-                try RenderScene::wait_for_pipelines(60000)
-            world: mutable World::World = try World::World()
-            owner: World::EntityRef = try World::world_spawn(&world,
-                World::StaticObject.Structure)
-            owner_pose: Geometry::Transform = transform(
-                Geometry::Vec3{x: 0.0, y: 1.15, z: 0.0}, Geometry::vec3_one())
-            try World::world_set_transform(&world, owner, owner_pose)
-            effects: mutable WorldEffects::Effects = WorldEffects::Effects()
-            frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
-            catalog: mutable WorldEffectAssets::Catalog = WorldEffectAssets::Catalog()
-            try register_profiles(&catalog)
+            can Global.Read, Global.Write:
+                try create_scene()
+                if smoke:
+                    try RenderScene::wait_for_pipelines(60000)
+                world: mutable World::World = try World::World()
+                owner: World::EntityRef = try World::world_spawn(&world,
+                    World::StaticObject.Structure)
+                owner_pose: Geometry::Transform = transform(
+                    Geometry::Vec3{x: 0.0, y: 1.15, z: 0.0}, Geometry::vec3_one())
+                try World::world_set_transform(&world, owner, owner_pose)
+                effects: mutable WorldEffects::Effects = WorldEffects::Effects()
+                frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+                catalog: mutable WorldEffectAssets::Catalog = WorldEffectAssets::Catalog()
+                try register_profiles(&catalog)
 
-            if smoke:
-                return 10 if not pump_frames(4, &world, &effects)
-                baseline: cstr = Application::environment_value(
-                    "ELISA_EFFECTS_BASELINE_CAPTURE")
-                return 11 if baseline == "" or not Application::save_screenshot(baseline)
-            if not dispatch_impact(&world, owner, &effects, &frame, catalog):
-                return 12
-            try create_impact_visuals()
-            if smoke:
-                return 13 if not pump_frames(12, &world, &effects)
-                impact: cstr = Application::environment_value(
-                    "ELISA_EFFECTS_IMPACT_CAPTURE")
-                return 14 if impact == "" or not Application::save_screenshot(impact)
-                return 15 if not cleanup(&world, owner, &effects)
+                if smoke:
+                    return 10 if not pump_frames(4, &world, &effects)
+                    baseline: cstr = Application::environment_value(
+                        "ELISA_EFFECTS_BASELINE_CAPTURE")
+                    return 11 if baseline == "" or not Application::save_screenshot(baseline)
+                if not dispatch_impact(&world, owner, &effects, &frame, catalog):
+                    return 12
+                try create_impact_visuals()
+                if smoke:
+                    return 13 if not pump_frames(12, &world, &effects)
+                    impact: cstr = Application::environment_value(
+                        "ELISA_EFFECTS_IMPACT_CAPTURE")
+                    return 14 if impact == "" or not Application::save_screenshot(impact)
+                    return 15 if not cleanup(&world, owner, &effects)
+                    return 0
+
+                running: mutable bool = true
+                while running |world, effects|:
+                    status: Application::PumpStatus = Application::pump()
+                    running <- false if status == Application::PumpStatus.ExitRequested
+                    if status == Application::PumpStatus.Running:
+                        running <- false if not update_effects(world, effects)
+                    elif status != Application::PumpStatus.Suspended and status != Application::PumpStatus.ExitRequested:
+                        running <- false
+                _ = cleanup(&world, owner, &effects)
                 return 0
 
-            running: mutable bool = true
-            while running |world, effects|:
-                status: Application::PumpStatus = Application::pump()
-                running <- false if status == Application::PumpStatus.ExitRequested
-                if status == Application::PumpStatus.Running:
-                    running <- false if not update_effects(world, effects)
-                elif status != Application::PumpStatus.Suspended and status != Application::PumpStatus.ExitRequested:
-                    running <- false
-            _ = cleanup(&world, owner, &effects)
-            0
-
     public:
-        def run() -> i32:
-            smoke: bool = Application::environment_value("ELISA_EFFECTS_SAMPLE_SMOKE") != ""
-            config: mutable Application::Config = Application::default_config()
-            config.hidden <- true if smoke
-            return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
-            scene_status: i32 = catch RenderScene::initialize(Layout::WIDTH, Layout::HEIGHT, 10.0):
-                ok: 0
-                error failure: 2
-            if scene_status != 0:
-                _ = Application::shutdown()
-                return scene_status
-            result: i32 = catch run_initialized(smoke):
-                value: value
-                error failure: 18
-            scene_closed: bool = catch RenderScene::shutdown():
-                ok: true
-                error failure: false
-            return 19 if not scene_closed
-            return 17 if not Application::shutdown()
-            result
+        def run() -> i32 can[Global.Read, Global.Write]:
+            can Global.Read, Global.Write:
+                smoke: bool = Application::environment_value("ELISA_EFFECTS_SAMPLE_SMOKE") != ""
+                config: mutable Application::Config = Application::default_config()
+                config.hidden <- true if smoke
+                return 1 if Application::initialize(config) != Application::InitializeStatus.Ready
+                scene_status: i32 = catch RenderScene::initialize(Layout::WIDTH, Layout::HEIGHT, 10.0):
+                    ok: 0
+                    error failure: 2
+                if scene_status != 0:
+                    _ = Application::shutdown()
+                    return scene_status
+                result: i32 = catch run_initialized(smoke):
+                    value: value
+                    error failure: 18
+                scene_closed: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                return 19 if not scene_closed
+                return 17 if not Application::shutdown()
+                return result
