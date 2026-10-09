@@ -63,6 +63,33 @@ bundle.
   examples/maze ../elisa-boxing-wickedengine/WickedEngine/shaders
 ```
 
+The packaged-shader entrypoint was also updated with the same explicit grant
+contract, built against the same Stage1/runtime, and passed the packaged Metal
+shader smoke. Its executable is
+`examples/maze/build/maze-packaged-smoke-global-grants-20261009`, SHA256
+`b3c267e27afe38dafd0105def519c0f1f351bfe942ba1971c9cb477417b165d5`; its
+provenance manifest records compiler/runtime hashes, build identity
+`77cdf9b2c5af8df7`, engine commit `c94214ab` and the corresponding dirty source
+diff. `scripts/packaged_shader_smoke.py` staged 392 Metal binaries and denied
+reads of the Projects tree and writes to packaged shaders. Cold and warm startup
+passed without shader compilation; the changed-package archive key, tampered
+shader rejection and restored archive controls all passed. Measured cold
+pipeline/first-frame times were 474/124 ms; warm times were 184/11 ms. Each run
+rendered two frames.
+
+```sh
+DEVELOPER_DIR=/Library/Developer/CommandLineTools \
+ELISA_COMPILER_BIN="$PWD/../Elisa-compiler/build/goal-compiler-latest-b11e/bin/elisac-stage1" \
+ELISA_RUNTIME_OBJ="$PWD/../Elisa-compiler/build/goal-compiler-latest-b11e/build/runtime/elisacore_runtime.o" \
+/opt/homebrew/bin/python3 scripts/elisa_build_run.py build \
+  --project examples/maze --main packaged_smoke_main.elisa \
+  --output build/maze-packaged-smoke-global-grants-20261009
+
+/opt/homebrew/bin/python3 scripts/packaged_shader_smoke.py \
+  examples/maze/build/maze-packaged-smoke-global-grants-20261009 \
+  examples/maze ../elisa-boxing-wickedengine/WickedEngine/shaders/metal
+```
+
 The first native build attempt used Command Line Tools Python 3.9 and stopped
 at asset cooking because that interpreter has no zstd module. The accepted
 rerun used Homebrew Python 3.14, which provides `compression.zstd`; both bundles
