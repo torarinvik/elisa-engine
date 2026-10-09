@@ -57,8 +57,11 @@ def qualify(compiler: str, directory: Path, timeout: float = 60) -> list[dict]:
                 # A missing compiler, parse error or unrelated failure is not a grant refusal.
                 if not expected_accept:
                     passed = passed and result.returncode == 1 and permission in diagnostic
-                    passed = passed and ("requires" in diagnostic or "required" in diagnostic
-                        or f"accesses a global mutable binding without {permission}" in diagnostic)
+                    passed = passed and (f"requires can[{permission}]" in diagnostic
+                        or any(permission in line and ("global mutable" in line.lower()
+                            or "mutable global" in line.lower())
+                            and any(word in line.lower() for word in ("requires", "required", "without"))
+                            for line in diagnostic.splitlines()))
                 record = {"status": result.returncode, "diagnostic": diagnostic, "passed": passed}
             except (OSError, subprocess.TimeoutExpired) as error:
                 record = {"status": None, "diagnostic": str(error), "passed": False}

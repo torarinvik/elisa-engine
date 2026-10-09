@@ -33,7 +33,7 @@ class GlobalGrantQualificationTests(unittest.TestCase):
             permission = permissions[Path(command[-1]).stem]
             denied = permission and "-permissive" not in command
             return subprocess.CompletedProcess(command, 1 if denied else 0, "",
-                f"mutable global requires {permission}" if denied else "")
+                f"accesses a global mutable binding without {permission}" if denied else "")
 
         self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
 
@@ -48,6 +48,19 @@ class GlobalGrantQualificationTests(unittest.TestCase):
                 if denied else "")
 
         self.assertTrue(all(row["passed"] for row in self.run_controls(respond)))
+
+    def test_unrelated_permission_text_is_not_grant_evidence(self):
+        permissions = {name: permission for name, _, permission in gate.CASES}
+
+        def respond(command, **kwargs):
+            permission = permissions[Path(command[-1]).stem]
+            denied = permission and "-permissive" not in command
+            return subprocess.CompletedProcess(command, 1 if denied else 0, "",
+                f"parser requires a valid expression; token text included {permission}" if denied else "")
+
+        rows = self.run_controls(respond)
+        self.assertFalse(any(row["passed"] for row in rows if row["required_permission"]
+            and not row["permissive"]))
 
     def test_wrong_product_hash_stops_before_compiler(self):
         with tempfile.TemporaryDirectory() as temporary:

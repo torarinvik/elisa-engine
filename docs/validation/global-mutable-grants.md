@@ -584,5 +584,8 @@ both grants. The new 16-case source set (32 invocations including
 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`; the
 updated report is
 `build/validation/global-grant-cli-qualification-1505c598a71e.json`. The
-integration unit controls still pass 10/10. This focused expansion does not
-rerun the 216-test engine suite or close the proof and consumer gates above.
+integration unit controls pass 11/11, including rejection of unrelated syntax
+errors that mention the permission name. The refusal matcher accepts only a
+Global permission diagnostic or a diagnostic identifying a mutable global.
+The focused expansion does not rerun the 216-test engine suite or close the
+proof and consumer gates above.
