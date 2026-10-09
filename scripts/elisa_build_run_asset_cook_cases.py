@@ -188,12 +188,16 @@ class AssetCookTests(unittest.TestCase):
             }]}
             runner = __import__("elisa_build_run")
             native_dependency = runner.asset_cooks.ENGINE_ROOT / "native/fbx_asset_cooker.cpp"
-            native_revision = ["cooker source revision 1"]
+            configuration_module = runner.asset_cooks.ENGINE_ROOT / "scripts/asset_cook_config.py"
+            source_revisions = {
+                native_dependency: "cooker source revision 1",
+                configuration_module: "configuration source revision 1",
+            }
             real_hash = runner.asset_cooks.sha256_file
 
             def hash_with_native_revision(path: Path) -> str:
-                if path == native_dependency:
-                    return native_revision[0]
+                if path in source_revisions:
+                    return source_revisions[path]
                 return real_hash(path)
 
             with mock.patch.object(runner.asset_cooks, "_external_tool_identity",
@@ -206,10 +210,14 @@ class AssetCookTests(unittest.TestCase):
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
                 self.assertEqual(len(run.call_args_list), 1)
-                native_revision[0] = "cooker source revision 2"
+                source_revisions[native_dependency] = "cooker source revision 2"
                 self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
                 self.assertEqual(len(run.call_args_list), 2,
                     "native cooker source edits must invalidate cooked assets")
+                source_revisions[configuration_module] = "configuration source revision 2"
+                self.assertEqual(runner.cook_declared_assets(project.resolve(), config), 0)
+                self.assertEqual(len(run.call_args_list), 3,
+                    "asset-cook configuration edits must invalidate cooked assets")
 
     def test_cook_outputs_cannot_overwrite_gltf_referenced_images(self) -> None:
         runner = __import__("elisa_build_run")
