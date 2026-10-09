@@ -19,15 +19,16 @@ GLOBAL = "global mutable count: i64 = 0\n"
 CASES = (
     ("missing-read", "def read_count() -> i64:\n    return count\n", "Global.Read"),
     ("missing-write", "def write_count() -> i64:\n    count <- 1\n    return 0\n", "Global.Write"),
-    ("read-granted", "def read_count() -> i64 can[Global.Read]:\n    return count\n", ""),
-    ("write-granted", "def write_count() -> i64 can[Global.Write]:\n    count <- 1\n    return 0\n", ""),
-    ("rmw-read-only", "def increment() -> i64 can[Global.Read]:\n    count <- count + 1\n    return 0\n", "Global.Write"),
-    ("rmw-write-only", "def increment() -> i64 can[Global.Write]:\n    count <- count + 1\n    return 0\n", "Global.Read"),
-    ("rmw-both", "def increment() -> i64 can[Global.Read, Global.Write]:\n    count <- count + 1\n    return count\n", ""),
+    ("read-granted", "def read_count() -> i64:\n    can Global.Read:\n        return count\n", ""),
+    ("write-granted", "def write_count() -> i64:\n    can Global.Write:\n        count <- 1\n        return 0\n", ""),
+    ("rmw-read-only", "def increment() -> i64:\n    can Global.Read:\n        count <- count + 1\n        return 0\n", "Global.Write"),
+    ("rmw-write-only", "def increment() -> i64:\n    can Global.Write:\n        count <- count + 1\n        return 0\n", "Global.Read"),
+    ("rmw-both", "def increment() -> i64:\n    can Global{Read,Write}:\n        count <- count + 1\n        return count\n", ""),
+    ("signature-is-not-local-grant", "def read_count() -> i64 can[Global.Read]:\n    return count\n", "Global.Read"),
     ("local-grants", "def increment() -> i64:\n    can Global.Read, Global.Write:\n        count <- count + 1\n        return count\n", ""),
     ("shadowed-local", "def local(count: i64) -> i64:\n    return count\n", ""),
     ("transitive-missing", "def read_count() -> i64 can[Global.Read]:\n    return count\ndef caller() -> i64:\n    return read_count()\n", "Global.Read"),
-    ("transitive-granted", "def read_count() -> i64 can[Global.Read]:\n    return count\ndef caller() -> i64 can[Global.Read]:\n    return read_count()\n", ""),
+    ("transitive-granted", "def read_count() -> i64 can[Global.Read]:\n    can Global.Read:\n        return count\ndef caller() -> i64:\n    can Global.Read:\n        return read_count()\n", ""),
 )
 
 

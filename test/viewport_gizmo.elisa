@@ -46,7 +46,8 @@ global mutable hook_calls: i64 = 0
 # The app's IK: hip (0) -> knee (1) -> foot (2), 0.45 m segments pointing
 # down at rest, knee bending toward +Z. Places the foot at the goal.
 def leg_ik(held: mutable PoseOverride::Overrides&, rig: PoseOverride::Rig&, bone: usize, goal: Geometry::Transform) -> void can[Global.Read, Global.Write]:
-    hook_calls <- hook_calls + 1
+    can Global{Read,Write}:
+        hook_calls <- hook_calls + 1
     return if bone != 2
     models: darray[Geometry::Transform] = models_of(rig, held)
     h: Geometry::Vec3 = models[0].position
@@ -181,8 +182,10 @@ def drag_case() -> i32 can[Global.Read, Global.Write]:
     # Live IK: every update moves the chain so the foot reaches the goal.
     held_before: darray[Geometry::Transform] = snapshot(&held, 3)
     for step in 1..<6:
-        hook_calls <- 0
-        return 36 if not ViewportGizmo::update(&drag, &cam, q.x + 6.0 * step.f32(), q.y - 8.0 * step.f32(), &rig, &held, leg_ik) or hook_calls != 1
+        can Global{Read,Write}:
+            hook_calls <- 0
+        can Global{Read,Write}:
+            return 36 if not ViewportGizmo::update(&drag, &cam, q.x + 6.0 * step.f32(), q.y - 8.0 * step.f32(), &rig, &held, leg_ik) or hook_calls != 1
         want: Geometry::Transform = ViewportGizmo::goal(&drag, &cam, q.x + 6.0 * step.f32(), q.y - 8.0 * step.f32())
         now: darray[Geometry::Transform] = models_of(&rig, &held)
         return 37 if not near3(now[2].position, want.position, 1.0e-3)
@@ -211,10 +214,11 @@ def drag_case() -> i32 can[Global.Read, Global.Write]:
     _ = PoseOverride::set_override(&held, 1, seeded)
     now_models: darray[Geometry::Transform] = models_of(&rig, &held)
     return 47 if begin_code(&drag, &cam, &g, GizmoPolicy::PLANE_XY, q.x, q.y, &held, &rig, 2, now_models[2]) != 0
-    _ = ViewportGizmo::update(&drag, &cam, q.x + 25.0, q.y - 25.0, &rig, &held, leg_ik)
+    can Global{Read,Write}:
+        _ = ViewportGizmo::update(&drag, &cam, q.x + 25.0, q.y - 25.0, &rig, &held, leg_ik)
     _ = ViewportGizmo::cancel(&drag, &held)
     return 48 if not same_bits(PoseOverride::override_local(&held, 1), seeded) or not PoseOverride::is_overridden(&held, 1) or PoseOverride::is_overridden(&held, 0)
-    0
+    return 0
 
 def snapshot[@r](held: PoseOverride::Overrides& @r, n: usize) -> darray[Geometry::Transform] @r:
     mutable out: darray[Geometry::Transform] @r = []
@@ -242,8 +246,10 @@ def adversarial_case() -> i32 can[Global.Read, Global.Write]:
     return 67 if begin_code(&drag, &cam, &rot, GizmoPolicy::AXIS_X, c.x, c.y, &held, &rig, 2, foot) != 2
     return 68 if ViewportGizmo::dragging(&drag)
     # Idle: update calls no hook, cancel restores nothing, goal is the start.
-    hook_calls <- 0
-    return 69 if ViewportGizmo::update(&drag, &cam, c.x, c.y, &rig, &held, leg_ik) or hook_calls != 0
+    can Global{Read,Write}:
+        hook_calls <- 0
+    can Global{Read,Write}:
+        return 69 if ViewportGizmo::update(&drag, &cam, c.x, c.y, &rig, &held, leg_ik) or hook_calls != 0
     return 70 if ViewportGizmo::cancel(&drag, &held)
     # NaN pointer mid-drag keeps the start transform.
     return 71 if begin_code(&drag, &cam, &g, GizmoPolicy::AXIS_X, c.x + 40.0, c.y, &held, &rig, 2, foot) != 0
@@ -251,13 +257,14 @@ def adversarial_case() -> i32 can[Global.Read, Global.Write]:
     ViewportGizmo::commit(&drag)
     ViewportGizmo::commit(&drag)
     return 73 if ViewportGizmo::dragging(&drag) or ViewportGizmo::cancel(&drag, &held)
-    0
+    return 0
 
 def main() -> i32 can[Global.Read, Global.Write]:
     a: i32 = size_case()
     return a if a != 0
     b: i32 = pick_case()
     return b if b != 0
-    c: i32 = drag_case()
-    return c if c != 0
-    adversarial_case()
+    can Global{Read,Write}:
+        c: i32 = drag_case()
+        return c if c != 0
+        return adversarial_case()

@@ -1,6 +1,6 @@
 # Elisa Engine — native implementation backlog
 
-**Updated:** 2026-10-08. **Focus:** close measured release blockers, then ship reusable public-API games on Wicked + SDL3.
+**Updated:** 2026-10-09. **Focus:** close measured release blockers, then ship reusable public-API games on Wicked + SDL3.
 **Baseline:** inspect the current tree and linked validation notes before starting work.
 This is the active execution plan. [Architecture](Elisa_Engine_Architecture_and_Plan.md) defines the ownership model; [capabilities](docs/capabilities.md) records evidence.
 Unfinished tasks below are proposals, not claims of existing engine support.
@@ -67,176 +67,46 @@ another. Commit documentation and tests together with source changes.
 
 ### Current evidence and open gates
 
-- **Qualified baseline:** compiler `52d60fcf` and matching runtime pass 215
-  uncached runtime tests and the shared gate. Production prover `f593c886`
-  retains all 73 engine reports / 4,246 obligations; its full matrix failed.
-- **Latest isolated proof repair:** clean prover `5c40d273`, paired generation
-  `65851d44058c49fca2e0d06974214022`, retains all 73 uncached engine reports /
-  4,277 obligations with independent replay and zero diagnostics, gaps or trusted
-  assumptions. Original strict-order, signed-constant and return-branch CLI
-  regressions pass. Full compatibility remains open; production is unchanged.
-- **Current prover blocker:** clean `10ae0267` and immutable compiler
-  `fb8e0927` build paired generation `649d72a317c342dba3607ca7e77493b8`
-  in 64.92 seconds. Five original CLI regressions pass. Engine inventory fails:
-  `proof/action_input_context.elisa` alone exceeds the unchanged 3 GiB cap in
-  0.31 seconds. The historical pair processes the same source at 52,416 KiB
-  with 265/265 proved and replayed; this comparison diagnoses a regression and
-  does not qualify the new implementation. Minimize and separate prover-source
-  changes from compiler code generation/runtime before another full run.
-  Subsequent fixed-source/frontend/runtime O0 comparison isolates emitted-code
-  behavior: current emitter peaks at 757,284,864 bytes versus 17,203,200 bytes
-  historically on a self-contained 25-obligation case. Recent prover changes and
-  a borrowed-array hypothesis are ruled out; 90,033 allocations of 8 KiB dominate
-  current cumulative allocation. Repair the owning compiler's allocation/lifetime
-  path, then repeat the original engine input and inventory; mixed historical
-  products are diagnostic only. Frame-pointer attribution now identifies
-  `proof_kernel_replay_expr_equal`'s 32-byte-pair worklist: its 256-element
-  literal allocates 8 KiB directly in the static arena. The method-only repair
-  `220ae3f9` passes native O0/O2 controls but leaves the original memory result
-  unchanged. Lexical receiver typing for builtin `darray.pop`/`push` was the
-  causal follow-up, preserving conservative treatment of custom, generic,
-  ambiguous and unknown calls plus genuine global publication. Typed builtin
-  repair `d69f219b` and custom-pop dispatch correction `e791ec50` now pass semantic
-  preflight and official seed provenance. Three native ownership controls pass at
-  O0/O2, including 100,000 worklists, real global publication and retained custom
-  receiver storage. The unchanged 25-obligation checker/replay harness peaks at
-  16,089,088 bytes versus 757,284,864 before, with source/frontend/runtime/O0 fixed.
-  This proves the causal improvement on that diagnostic harness; it emits no full
-  normalized JSON, so exact report-byte equality is not established. Current paired
-  prover build, original engine input and full inventory still require acceptance.
-  Preserve explicit compile-slot handoffs
-  ([evidence](../elisa-engine-proof-counterexample/docs/validation/dispatcher-budget-repair.md)).
-- **Compatibility throughput:** retention/provenance repairs are committed in
-  isolated prover `4d9f3a8d`. A diagnostic census covered 1,174 inputs with nine
-  timeouts, but used mutable compiler inputs. Snapshot-backed census/matrix
-  acceptance waits for the first-input memory repair; retain every input and
-  original budget.
-- **Strict-negative repair:** isolated prover `5077910c` evaluates exact,
-  non-wrapping unsigned subtraction at widths 8/16/32 for diagnostic
-  counterexamples. Focused controls pass, including overloaded-operator refusal;
-  the original return-branch fixture replays 23/23 and its strict negative is
-  disproved. Clean paired build and original return-branch CLI acceptance pass; full
-  compatibility remains open.
-- **Consumer mesh bounds:** skin/draw source guards are implemented and pass
-  O0/O2 malformed-input controls, focused AddressSanitizer and the existing GLB
-  loader regression. All 73 engine reports now independently replay 4,277
-  obligations; the original 4,246 are retained. Actual mocap consumer integration
-  remains open ([evidence](docs/validation/mesh-overlay-shapes.md)).
-- **Native release blocker:** capture and Character Course relaunch have focused
-  repairs, but effect lifecycle memory remains intermittently above the original
-  8 MiB allowance after the full renderer sequence. Heap/GPU and VM-domain
-  diagnostics are present; opt-in region-tag observation now has focused mapping
-  and overflow controls ([region evidence](docs/validation/effect-memory-vm-regions.md)).
-  No root cause or leak repair is established. Preserve
-  the failed full-gate evidence ([native evidence](docs/validation/counted-fill-memory-growth.md)).
-- **Compiler policy — default grants qualified; exact cross-module caller attribution and the current consumer recheck remain open:**
-  compiler commit `ee028bbb` enforces `Global.Read` / `Global.Write` for mutable
-  globals by default, with explicit `-permissive` bypass. Its exact Stage1 product
-  passes 52 grant/global cases and six explicit permissive bypass cases, 12 grouped
-  protocol controls, eight runtime wrapper/grant controls, and bounded rehome
-  checks at O0/O2 including the nested callback reproducer. The follow-up export
-  target fix is `dc4a7486`; compiler source and product provenance are recorded in
-  [grant qualification](docs/validation/global-mutable-grants.md). Compiler
-  source `2a3dce66` also rejects by-value optional-to-payload-reference coercion
-  while preserving `T?&` container borrowing; its negative/positive verifier pair
-  and the 52 grant cases, six permissive bypasses, eight runtime controls, 12
-  grouped-protocol controls, strict unsafe and export controls pass. Studio callers
-  bind optional payloads and preserve absence behavior. A previous sealed snapshot
-  exposed that the generation inventory omitted `semantic.log` and `compiler.log`;
-  root fix `7d47b063` closes that issue. The exact compiler/UI/engine tuple
-  builds, verifies, links and seals `build/MocapStudio.app`; the bundle records
-  project base `bca72d19`, engine `4b0a9af7`, UI `261363eb`, compiler
-  `2a3dce66`, dirty project/UI worktrees, and the sealed input/executable
-  identity. The 2026-10-08 consumer preflight now passes against current source,
-  frontend, compiler and runtime. Strict grant checks found missing
-  `Global.Read` / `Global.Write` declarations in legacy native test entrypoints
-  and the CLI call graph. Source contracts are now repaired across the shared
-  audio/input/decision/UI helpers and the Character Course call graph; its
-  hidden self-test application builds and links with default enforcement on
-  compiler source `dd8aea22` (Stage1 SHA256
-  `a95da6ad1daee9aab219047782ec04ca5ecb3d063f653f9a2e06b3cdf2a626a3`). The
-  ordinary `main.elisa` entry now also declares the grants required by
-  `CharacterCourse::run`. Its clean optimized build and compiled-shader-only
-  macOS package now pass on commit `7404f2d2` with the same Stage1; relocated
-  offline startup and restart acceptance remain open. The three dedicated
-  relaunch, live-input and cell-streaming entrypoints carry their own grants.
-  A direct caller audit added effects to 26 engine sample/test modules for
-  qualified world identity, catalog and frame APIs; all 26 pass direct or
-  required project-context checks. Maze, environmental-effects, world-picking,
-  cell-streaming, hierarchy-render, world-audio and physics-cadence consumer
-  checks pass. A unified Character Course recheck now stops at four apparent
-  sound-helper grants (`start_injected`, `reset_scene`, `restart_music`,
-  `music_stream_test`). Source review found no matching mutable global access;
-  compiler source inspection confirms its effect call lookup currently keys by
-  leaf name. A newer Studio preflight reports 71 engine grant findings across
-  12 animation, asset and viewport files, with the same owner-identity defect.
-  Do not add blanket grants from either provisional census. Fix exact callee
-  ownership, then rerun the Character Course entrypoints and Studio census. The
-  complete consumer check still needs a sequential
-  rerun: overlapping runs
-  raced in shared test/proof outputs, so their reports are not qualification
-  evidence. Despite the
-  file-picker timeout, Studio loaded the
-  FBX as a 337-frame take. The skinned surface is available and `M` switches
-  between Character and Skeleton. Playback is the remaining blocker: the GLB has
-  sparse two-key channels mixed with 337-frame channels, while Studio requires
-  aligned sample times. Fix the grid at the import boundary and verify playback.
-  The five engine source files in this checkout now declare explicit native
-  effect contracts; the maze C-ABI example and viewport-gizmo test also declare
-  their `Global.Read` / `Global.Write` grants and pass the current Stage1
-  target checks ([evidence](docs/validation/global-mutable-grants.md)). The
-  build runner now passes an empty runtime-object path to direct compiler
-  invocations, matching the wrapper's `none` translation and preventing a
-  bogus `none` archive member. Keep these contracts with their functional
-  source slice. Preserve exact
-  callee, callback, default-argument, shadowing, and profiler/host-callback
-  checks.
-  **FBX isolation:** current native staging/conversion passes for source SHA
-  `50048a8a…`, emits GLB SHA `36cba16f…`, and preserves the original. Earlier
-  direct worker loading passed, but task/readiness/join crashed at
-  `arena_alloc +356`. The selected compiler includes the global pose-cache
-  rehome fix, and the integrated app now imports and switches the skinned mesh.
-  Keep playback acceptance open until converter output aligns every animated
-  channel with the 337-frame timeline and the pose visibly advances.
-- **Shipping client:** the guide rig refresh is committed at `a30d3af9`.
-  Current rig, sound and cell generator checks pass on this checkout. The
-  historical relocated Character Course bundle still needs a fresh optimized
-  build/package acceptance; older green runs do not qualify the replacement
-  toolchain or package.
+The detailed compiler/runtime evidence, exact source and binary identities, and open-gate status are maintained in [IMPLEMENTATION_EVIDENCE.md](IMPLEMENTATION_EVIDENCE.md). The execution order and acceptance criteria follow below.
 
 ### Delivery milestones and ranking
 
 Use dependencies and expected unblock value to choose the next task; table order
-is not a reason to idle behind another owner. The first milestone is **real
-client acceptance**: run the committed sealed Studio build through FBX import,
-redraw and observer reveal, and qualify the current-source prover against its
-original memory budget. The second is **repeatable shipping**: diagnose the
-measured renderer lifecycle failure and ship Character Course from a fresh
-optimized build. The third is **reuse**: a second ordinary public-API project
-and hosted clean-checkout CI reproduce the qualified tuple.
+is not a reason to idle behind another owner. The immediate milestone is the
+reproduced function-value aggregate ABI failure: establish a fresh compiler
+chain, pass the focused callback regression, then retry the original FBX import.
+Next, refresh the exact default-grant compiler/runtime and proof pair. Then
+complete Studio's full import, playback, redraw, malformed-input and observer
+acceptance on that tuple. Close the measured prover-memory and renderer-lifecycle
+gates next; then refresh the shipping package, exercise a second ordinary
+public-API project, and promote the qualified tuple to hosted clean-checkout CI.
 
 | Priority | Highest-return outcome | Why now |
 |---|---|---|
-| P0 | Fix cross-module global-effect caller attribution | Current strict checks reject real projects on same-leaf false positives; exact callee ownership is required before safe grant adoption and full consumer qualification. |
-| P0 | Finish committed-tree Studio FBX/redraw/reveal acceptance | The authenticated compiler/engine/UI tuple now seals; one real workflow closes the highest-value consumer gate and catches integration defects. |
-| P0 | Qualify the current-source prover under its original budget | A causal compiler allocation repair passes the diagnostic harness; only the original input and full engine inventory establish compatibility. |
-| P0 | Diagnose the measured renderer lifecycle memory failure | This is an observed release failure with focused diagnostics; establish the retaining owner before changing resource lifetimes. |
-| P1 | Ship the fresh Character Course package, then automate the qualified tuple | Converts repairs into a usable deliverable and prevents repeated manual qualification. |
+| P0 | Repair function-value callback region ABI and ownership | The fresh sealed O0 crash is a null arena dereference in `arena_alloc`; `StudioFbxImportWorker.path_copy` receives its hidden region in x1, but the generic function-value callback does not forward it. The initial 1,024-byte aggregate fix `37091274` remains necessary but did not close this failure. Compiler branch commit `d5a9b58a` adds callback region metadata and worker result-arena transfer; four core-file conflicts are being reconciled against the newer compiler. No combined Stage1/runtime or Studio retry is qualified yet. See [evidence](IMPLEMENTATION_EVIDENCE.md). |
+| P0 | Integrate default global grants into the proof and consumers | Combined compiler source `12120f6b` has a fresh pair: Stage1 `356d4a14…`, runtime `013d3174…`. Strict driver checking, 103 authority cases, 24 actual CLI controls (including `-permissive`), Stage0/Stage1 parity, nested match-arm and large-aggregate regressions pass; gen3 fixpoint and 40-run reproducibility pass. This exact pair exposed 49 missing local grants in `examples/maze/capi.elisa` and 12 in `test/viewport_gizmo.elisa`. Narrow body scopes now pass strict checks; the embedded maze host and viewport executable assertions also pass. Refresh the proof migration's pre-`trusted` inventory on this pair before exact build/replay qualification. |
+| P0 | Build and exercise the exact Studio consumer tuple | The shared-grid converter bridge passes focused strict controls. The O2 build reached LLVM AArch64 DAGCombiner at about 28.4 GB physical memory and stopped without an object. The owner added `STUDIO_OPT_LEVEL` (O2 stays default) and built/sealed an O0 app against compiler SHA `ad0e16c9…` and runtime `013d3174…`; it still quits when opening the FBX. The new report confirms a null hidden arena at `arena_alloc`; the callback ABI repair is not yet integrated or qualified. Once it is, rebuild against the exact compiler/runtime and verify all 337 frames, repeated redraw, malformed-input refusal and observer reveal. |
+| P0 | Qualify the repaired prover under its original memory budget | The builtin-worklist/custom-pop repair has strong focused allocation evidence, but the original first input and full 73-report inventory must pass under the unchanged 3 GiB / 120-second limit. |
+| P0 | Diagnose the measured renderer lifecycle memory failure | This is an observed release failure with focused diagnostics; identify the retaining owner before changing resource lifetimes, then preserve the original 8 MiB gate. |
+| P1 | Restore the source-length gate — complete in `9e40976a` | Split asset-cook validation and macOS launcher generation into focused modules, separated launcher tests, and included the new configuration module in cook-cache identity. The full 600-line gate and 91 focused tests pass. See [validation](docs/validation/source-length-policy.md). |
+| P1 | Ship a fresh Character Course package and automate the qualified tuple | Converts the repaired path into a usable deliverable, then prevents repeated manual qualification. |
 | P1 | Package a second ordinary application and complete its playable loop | Exposes reusable API and authoring gaps that should select the next subsystem work. |
 
 ### Ordered release work
 
 | Order | Concrete deliverable and return | Acceptance / stop condition |
 |---|---|---|
-| 1 | **Repair exact Global.Read/Write callee ownership — compiler integration.** Both the Studio census and the current Character Course project check contain same-leaf false positives. Preserve their source-level direct-access audit; do not suppress them with broad grants. | Same-leaf functions in different modules retain distinct effect rows; positive and negative cross-module controls pass; current Character Course entrypoints and the exact Studio census rerun without unexplained rows. |
-| 2 | **Complete Studio consumer acceptance — Q01/Q03.** The sealed bundle records project base `bca72d19`, engine `4b0a9af7`, UI `261363eb` and compiler `2a3dce66`; project/UI worktrees are marked dirty. The target FBX stages/converts, loads as a 337-frame take, exposes its skinned surface, and switches with `M`. Playback fails because two-key animation channels are mixed with 337-frame channels. | Resample animated channels onto a common import grid, prove the pose advances in the actual app, and retain constant-channel behavior. Then cover malformed input and observer reveal with the exact sealed snapshot. |
-| 3 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. The diagnosed grant omissions now have source contracts, and the Character Course hidden self-test application previously built and linked under default enforcement. Rerun the complete consumer check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
-| 4 | **Finish actual redraw/reveal and observer integration.** Consume the qualified mesh repair and read-only observer in the real Studio path. This closes a public consumer contract and confirms the native guards through the app. | Studio redraws valid geometry unchanged; malformed inverse-bind, influence, joint and triangle shapes fail before output changes. Observer registration/reveal passes for original, quarantined, conflicting and uncertain locations without gaining restore/delete authority. |
-| 5 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and heap/GPU/VM diagnostics to identify the retaining owner and measured memory domain. | A source fix has a reproducer or decisive resource-accounting regression, then passes the original full lifecycle/native gate with warmup, cycles and the 8 MiB allowance unchanged. A retry alone is not a diagnosis. |
-| 6 | **Refresh and relocate Character Course — Q02/Q04.** The clean current-source optimized public entrypoint builds and packages against the default-grant compiler. Complete relocation acceptance after the grant checker is corrected. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |
-| 7 | **Rehearse a second ordinary project — Q07a/Q02.** Follow current build/cook/package instructions in a fresh project and repair the first demonstrated blocker. | A runnable package uses public APIs without sample-specific native exports or undocumented steps; invalid resources produce actionable errors. Record exact command and tuple. |
-| 8 | **Qualify hosted clean-checkout CI — Q03.** Promote the qualified local compiler/core/prover/ElisaScript tuple to full-SHA pins and fail-closed provisioning. | A hosted headless run retains provisioning, build, proof and package artifacts; GPU qualification stays separate. |
-| 9 | **Finish gameplay and physical acceptance — Q07a/Q06.** Extend the course route for unsampled win/fall, input, audio and Jolt/GPU ownership outcomes. | The complete playable loop and reload/restart/teardown baselines pass. Physical checks require hardware evidence; unavailable hardware does not block ready local work. |
+| 1 | **Repair function-value callback region ABI and ownership — Q01/Q03.** The fresh O0 crash report faults in `arena_alloc` at `+0x58` while dereferencing a null arena; disassembly shows `path_copy` expects its hidden region in x1, which the generic callback path does not forward. Commit `d5a9b58a` adds callback region metadata and task-owned result arena transfer, but integration with the newer compiler has four core-file conflicts. | Reconcile the ABI repair with current compiler source, add/retain regression coverage for aggregate arguments, hidden region slots and result lifetime, build a fresh exact Stage1/runtime, then retry the same FBX in the sealed O0 app. O2 remains blocked after reaching AArch64 DAGCombiner at about 28.4 GB without an object. |
+| 2 | **Integrate compiler default grants — Q01.** Combined source `12120f6b` is freshly seeded and passes strict compiler-driver checking, 103 authority cases, 24 actual CLI controls, permission-row parity, gen3 fixpoint/reproducibility, the nested permission-match regression and the large-aggregate smoke. The engine C ABI and viewport test have local body grants, pass strict checks, and pass the embedded-host and viewport executable regressions on this pair. The proof worktree's 1,166 earlier findings and `check_full_into` grants predate corrected `trusted` behavior. | Refresh the proof diagnostic inventory on this exact Stage1/runtime pair, build and replay the current proof product, qualify the original 265 obligations and five CLI regressions, then retain all 73 engine reports. Rebuild Studio with that same compiler and address only reproduced backend declines. |
+| 3 | **Complete current-tuple Studio consumer acceptance — Q01/Q03.** Consumer commit `1e98f075` aligns multi-key FBX tracks. Its bounded bridge regression passes on the promoted compiler's fresh Stage1/runtime pair against the supplied high-block FBX, preserving source bytes and aligning multi-key clocks ([evidence](docs/validation/global-mutable-grants.md#promoted-exact-callee-compiler-and-fbx-bridge-check)). This proves conversion structure, not fresh-app playback. | Build the app from the exact current compiler/engine/UI tuple; verify pose advancement through all 337 frames, constant channels, repeated redraw, malformed-input refusal and observer reveal in that same sealed snapshot. |
+| 4 | **Qualify the repaired prover memory path — Q01.** Current-source preflight passes on the authenticated compiler/runtime pair. The diagnosed grant omissions now have source contracts, and the Character Course hidden self-test application previously built and linked under default enforcement. Rerun the complete consumer check sequentially because overlapping runs raced in shared outputs. Apply the builtin-worklist and custom-pop repairs whose 25-obligation diagnostic harness fell from 757,284,864 to 16,089,088 bytes. That is diagnostic evidence only; original-input and full-inventory acceptance remain open. | The current clean pair passes the original first input under 3 GiB / 120 seconds with all 265 obligations proved and independently replayed, then the five CLI regressions and all 73 engine reports. Preserve the original 4,246 obligations, run immutable snapshot census/matrix afterward, and classify all nine historical timeouts. |
+| 5 | **Finish actual redraw/reveal and observer integration.** Consume the qualified mesh repair and read-only observer in the real Studio path. This closes a public consumer contract and confirms the native guards through the app. | Studio redraws valid geometry unchanged; malformed inverse-bind, influence, joint and triangle shapes fail before output changes. Observer registration/reveal passes for original, quarantined, conflicting and uncertain locations without gaining restore/delete authority. |
+| 6 | **Resolve renderer lifecycle footprint — R17/Q01.** Use the full-sequence failure and heap/GPU/VM diagnostics to identify the retaining owner and measured memory domain. | A source fix has a reproducer or decisive resource-accounting regression, then passes the original full lifecycle/native gate with warmup, cycles and the 8 MiB allowance unchanged. A retry alone is not a diagnosis. |
+| 7 | **Restore the source-length gate — complete in `9e40976a`.** Split the three over-limit Python files by responsibility and fingerprint the extracted asset-cook configuration module. | `python3 scripts/check_source_length.py` passes; 41 packaging, 48 build/run and asset-cook, and 2 dense-cook tests pass. Full details and log paths are in [validation](docs/validation/source-length-policy.md). |
+| 8 | **Refresh and relocate Character Course — Q02/Q04.** The clean current-source optimized public entrypoint builds and packages against the default-grant compiler. Complete relocation acceptance after the grant checker is corrected. | Generated outputs match; resource hashes/notices are complete; relocated offline startup, restart and teardown pass with source/Homebrew denied. Keep signing, legal and separate-machine acceptance open. |
+| 9 | **Rehearse a second ordinary project — Q07a/Q02.** Follow current build/cook/package instructions in a fresh project and repair the first demonstrated blocker. | A runnable package uses public APIs without sample-specific native exports or undocumented steps; invalid resources produce actionable errors. Record exact command and tuple. |
+| 10 | **Qualify hosted clean-checkout CI — Q03.** Promote the qualified local compiler/core/prover/ElisaScript tuple to full-SHA pins and fail-closed provisioning. | A hosted headless run retains provisioning, build, proof and package artifacts; GPU qualification stays separate. |
+| 11 | **Finish gameplay and physical acceptance — Q07a/Q06.** Extend the course route for unsampled win/fall, input, audio and Jolt/GPU ownership outcomes. | The complete playable loop and reload/restart/teardown baselines pass. Physical checks require hardware evidence; unavailable hardware does not block ready local work. |
 
 ### Ordinary-project preparation
 
@@ -303,17 +173,20 @@ location outcomes. See the [coordinated M track](docs/plans/mocap-engine-track.m
 
 ### Immediate source slices and handoffs
 
-1. **Studio integration:** compiler source `2a3dce66`, its fresh product/runtime,
-   linked engine source `4b0a9af7`, the UI caller repair and root inventory fix
-   `7d47b063` produced a sealed `build/MocapStudio.app`. The consumer owner is
-   running the bundle from its sealed input snapshot; metadata marks its project
-   and UI worktrees dirty. Finish FBX acceptance and repeat from clean inputs
-   before calling the build reproducible. Migrate only caller chains or FFI
+1. **Studio integration:** the sealed O0 diagnostic app opens its file picker,
+   then crashes importing the supplied high-block FBX because a 9,232-byte
+   `Job` crosses a function-value callback with the wrong aggregate ABI. The O2
+   attempt on compiler `9d2cf1b` stopped in AArch64 SelectionDAG/DAGCombiner
+   without an object. Neither build qualifies Studio. Rebuild the app only after
+   the compiler ABI repair passes its source-matched bootstrap and callback
+   regression; then exercise the bundle from sealed inputs and repeat from clean
+   inputs before claiming reproducibility. Migrate only caller chains or FFI
    effect boundaries exposed by that run.
-2. **Engine owner → mocap consumer:** use clean integrated dependency `dc180e49` (mesh repair retained) for
-   actual Studio redraw and observer registration/reveal acceptance. Local mesh
-   source acceptance passes; avoid another handoff-only slice or dependency move
-   while sealed-bundle FBX acceptance is in progress.
+2. **Engine owner → mocap consumer:** after the callback ABI regression passes,
+   use clean integrated dependency `dc180e49` (mesh repair retained) for actual
+   Studio redraw and observer registration/reveal acceptance. Local mesh source
+   acceptance passes; avoid handoff-only changes or dependency moves that do
+   not advance this gate.
 3. **Compiler/prover owners:** retain the completed `e791ec50` allocation and
    custom-pop repair and its passing semantic, seed and O0/O2 ownership controls.
    Integrate the qualified default-grant repair and build the latest clean prover
@@ -342,7 +215,7 @@ availability. The interrupted snapshot census is incomplete evidence.
 
 | Readiness | Task | Why it leads / next action |
 |---|---|---|
-| Sealed app snapshot; FBX load and Character/Skeleton switch pass | Align FBX channels to the timeline grid | Fix sparse two-key channels at import, verify pose advances across the 337-frame timeline, then cover malformed input and observer reveal. |
+| Studio/UI strict semantic gate is clear; six codegen declines and proof freshness remain open | Repair the five generic-helper call declines and AppKit file-drop callback, refresh and authenticate the proof pair, then build the sealed Studio app and run playback/redraw/reveal acceptance. After explicit slot handoff, run `physics_rig` and the latest Studio character regression sequentially. | Mocap source commit `b79608a7` and UI commit `65f370f3` pass strict app semantics. Clean committed compiler snapshot `19294e83` Stage1 SHA is `752fe51db92ed27d3ef133e0f3e94b757e98964727b5702b7e6af02c7925bec5`; runtime SHA is `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`. Its detached provenance passes. The shared checkout has uncommitted generic-codegen edits and must be reseeded before they can qualify. The proof frontend pin `2a3dce66` is stale; rebuild the proof snapshot on a matching compiler/runtime pair without weakening freshness. No current Studio app or physics executable is qualified. |
 | Backend repair complete; current-source prover pair required | Qualify repaired prover memory on original engine input | Integrate default-grant compiler with backend `e791ec50` and latest clean prover repairs, then run unchanged first input under 3 GiB / 120 seconds. Follow with five CLI regressions and all 73 engine reports; diagnostic-harness success does not close these gates. |
 | Consumer integration ready | Actual Studio mesh redraw and observer reveal | Use the current mesh repair and retained observer-header identity; validate the public API in the real consumer. |
 | Ready without a heavy compile slot | Reproduce a concrete ordinary-project obstacle — Q07/Q02 | Publication rollback, manifest identity and package resource controls are implemented and registered in the unit stage. Walk the existing author workflow and implement only a newly demonstrated failure that prevents a runnable public-API package. End the slice when that failure is repaired; full native and hosted unit-stage execution remain open. |
@@ -359,22 +232,80 @@ until their prerequisite can produce a meaningful acceptance result.
 
 ### Current compiler and consumer status
 
-Compiler source `2a3dce665ff462096de961d340a50cc1ef83369d` has a fresh,
-source-matched Stage1/runtime pair. It passes 52 grant/global cases, six explicit
-permissive bypasses, eight runtime controls, 12 grouped-protocol controls, strict
-unsafe enforcement, export alias/ABI controls, and the optional/reference
-negative/positive LLVM-verifier regression. Exact product and provenance hashes
-are in [global grant validation](docs/validation/global-mutable-grants.md). The
-Studio caller repair, root inventory fix `7d47b063` and linked engine source
-`4b0a9af7` produced a sealed app bundle. Its metadata records base project
-`bca72d19`, UI `261363eb`, compiler `2a3dce66`, and dirty project/UI worktrees;
-its seal verifies the recorded inputs and copied executable.
-`mocap-cleaner/scripts/check.sh` reports that the prover frontend/compiler
-manifest is stale relative to current Stage1 and needs a rebuilt, qualified
-pair. The app imports the source as a 337-frame take and `M` switches its
-skinned surface; playback is blocked by sparse key grids. The consumer owner is
-fixing converter sampling. Full prover, mesh redraw/reveal,
-renderer, package and native release gates remain separate acceptance items.
+Compiler exact-callee authority is promoted on `42fd1cbee38293b1f7c66a9a6b05eab58b3437c6`.
+Its candidate worktree has a fresh Stage1/runtime pair (Stage1 SHA256
+`599b3f762db05dba698af0818d3af331387ebcbac64be2f1b137cb0811d97133`, runtime
+SHA256 `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`).
+The focused authority suite (103 cases), Stage0/Stage1 parity, grouped-effect
+formatting, CLI grant behavior and strict-Unsafe controls pass. The broader Core
+fast suite still fails because legacy fixtures omit local global grants and
+semantic tests expect old warning text. The primary compiler checkout now has
+a fresh installed Stage1 (`71df842ce3fef2e456337d0d1b2c8da9082ca43a0a022d098701aee833825615`)
+paired with runtime `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`;
+Stage2 self-host passed, the installed binary passed the focused grant/format
+smokes, and a proof agent has the exact source/product snapshot for Linux-native
+qualification.
+
+Compiler commit `891d2d30ac544245de89a0758e78c6720e94d068` contains the
+void-return ensure backend repair and `test/parity/void_return_ensure_smoke.sh`.
+The current source-matched Stage1 candidate is SHA256
+`ef71c5298815fae721a31082faea6002a247a808dea6420af6a744be0203a359`, paired
+with runtime SHA256
+`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`. The
+focused regression passes at O0 and O2. This is not yet full compiler/Core or
+consumer qualification. The compiler checkout still has a local JSON standard
+library grant edit; the Mocap owner is working through current source/parser and
+UI blockers. Do not reuse the older `8110c2c6` candidate for acceptance.
+
+Consumer branch `1e98f075` aligns multi-key FBX animation tracks, and its bounded
+bridge regression passes on the fresh `42fd1cbe` product with strict default
+grants. The currently installed Studio bundle is stale: it records an older
+dirty compiler and predates current consumer source. The earlier temporary
+`d73f2cf3` preflight logged 10,017 grant-related diagnostics. The follow-up
+preflight at `mocap-cleaner/build/studio-build.5iL67X/semantic.log` was current
+for its recorded snapshot at compiler commit `42fd1cbe`, fresh Stage1 SHA
+`5f3735d2503f4add196f64ac35af10bdcdbc8a49e1ad5749819642057dfc52ed`, and runtime
+SHA `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`. It
+reports 2,253 global-grant diagnostics across Mocap Studio/core source and 47 UI
+contract diagnostics (31 global grants, 16 Painter protocol capabilities), plus
+separate return-flow and runtime type errors. It produced no app. The compiler
+checkout then added six `Global.Read/Write` annotations to its JSON standard
+library and rebuilt Stage1; the matching product SHA is
+`f5f36a9f726355984382a3aa84f63f8653e0e68b9546778877b85c2906bd0ddb`, with the
+same runtime SHA. Its provenance check passes against the edited compiler source.
+The next preflight at `mocap-cleaner/build/studio-build.eZoCyo/semantic.log`
+reports 1,260 Global-grant findings and 34 UI capability rows; completed source
+repairs cover generated icons, geometry drawing, pointer and keyboard input,
+gizmo handling, app entry points, export review/publication, and batch
+accessibility. The follow-up `build/scene-character-check-current.log` reports
+zero diagnostics in `scene.elisa` and `character.elisa`, with 1,239 grant
+findings remaining in the full closure. Test commit `aa9f018c` adds the grants
+needed by `test/studio_character.elisa`; its current executable build clears all
+test-file findings but still stops on 191 dependency findings across 19 files.
+The largest are `rig_physics.elisa` (36), `rig_legs.elisa` (35), and
+`model.elisa` (33). The regression has not executed yet. Separate return-flow
+and runtime errors and the fresh-app acceptance remain open. The old installed
+app bundle still cannot qualify current playback or the skin-cache fix.
+Those counts are from the earlier `eZoCyo` / scene-character snapshot and are
+stale after subsequent consumer commits. The focused physics source/test change
+was integrated into Mocap main at commit `1c3dea3b` (original isolated patch
+`3da1c5ba`). It adds local scopes across the physics regression's direct
+dependency closure and pairs them with `test/physics_rig.elisa`. Current Stage1
+semantic checking passes that complete closure with no grant diagnostics. Executable
+emission is blocked by three backend declines: `balance_frames@12`,
+`accumulate_residual@11`, and `merge_residual@39` return statements. The same
+three declines reproduce on parent `ecc743c6` with `-permissive`, before these
+scopes, so this is an independent compiler/code-generation blocker. The test
+binary was not emitted and runtime behavior remains unqualified. Rerun the
+Studio dependency census on the latest integrated source before using old totals.
+The generated Studio icon function now opens the required local grant scope;
+the regenerated 30-icon / 383-segment output passes the standalone icon test on
+the installed Stage1. Consumer commit `dfe41779` carries the generator and test
+source together. This removes the 383 generated-source errors from the latest
+preflight, not the broader UI/Studio grant migration.
+The full current Character Course census, actual app playback/repeated redraw,
+mesh redraw/reveal, prover qualification, renderer diagnosis and shipping gates
+remain open.
 The world epoch, catalog-brand and access-frame identity counters now also
 declare `Global.Read` / `Global.Write`; their three caller tests compile and run
 on default-enforcement Stage1 `0b43cbdb` (artifacts and hashes are recorded in
@@ -397,21 +328,122 @@ bounded source-adoption win; continue with newly demonstrated roots alongside
 their real callers. Evidence and limits are in
 [global grant validation](docs/validation/global-mutable-grants.md).
 
-### Next three outcomes
+### Latest integrated checkpoint — 2026-10-08
 
-1. **Finish FBX animation acceptance.** Resample sparse channels onto the
-   common timeline grid, verify the 337-frame pose advances in the sealed app,
-   then complete malformed-input and read-only observer reveal checks.
-2. **Refresh proof provenance and close the original prover memory gate.**
-   Resolve the current strict-grant failures in legacy consumer tests and the CLI,
-   then rerun the consumer check without overlapping writers. Prove/replay all
-   265 obligations of the original first engine input under 3 GiB / 120 seconds,
-   then advance to the five CLI controls and all 73 reports. Stop at the first
-   actionable failure and repair its owner.
-3. **Turn the qualified tuple into repeatable shipped clients.** Diagnose the
-   renderer lifecycle failure, reuse a fresh optimized build for Character
-   Course relocation and a second ordinary public-API application, then register
-   the tuple in hosted CI after local acceptance passes.
+This checkpoint supersedes earlier consumer diagnostic counts and candidate
+hashes in the historical notes above. The consumer owner reports a clean strict
+Stage1 semantic check after Mocap commit `b79608a7` and UI commit `65f370f3`,
+using compiler source `34574304`. The current Stage1 product SHA256 is
+`f4c9d54c759f098b294c2146c28c372fa465da6e4cb7f2b48135cbe1e0f189c4`.
+`mocap-cleaner/scripts/build_studio.sh` initially stopped at its proof freshness
+gate because the proof checkout pinned frontend `2a3dce66` while Stage1 came from
+`34574304`. The subsequent proof build advanced to current compiler sources but
+stopped on 45 missing default-global grants (39 in `src/semantic/symbols.elisa`,
+five in `src/semantic/symbols_hash_index.elisa`, one callback in
+`src/parser/parser_machine_states.elisa`). A documented runtime-checks fallback
+then declined two backend declarations, so no proof-qualified prover is
+available. The latest build-only app attempt initially declined 25 constructs.
+The focused runtime `join` change and scalar/32-byte aggregate regression now
+pass at O0 and O2 against a fresh seed; the current app compile declines 17
+constructs. Remaining diagnostics include `ctx_concurrency_result_read` and its
+index-expression specialization, `generation_scan_root`, five generic call
+expressions and the AppKit file-drop callback. Its Stage1 product hash is not
+yet recorded. The saved crash trace maps to an older retained package
+(`studio-package.cO7zyV/previous.app`, project `31459ca3`, compiler `e24c29e6`);
+it does not qualify or contradict the current source. The repository executable
+UUID `A20800ED…` is also from a separate older build, and no current app bundle
+is qualified. Do not suppress the grants or weaken provenance. After fresh
+proof acceptance and backend support, build and seal the app, then run the
+existing FBX playback, redraw, malformed-input and observer reveal checks. The
+physics executable and renderer-memory diagnostic remain queued behind explicit
+compiler/native slot handoffs. The existing renderer
+diagnostic preparation records engine commit `ebf55d46`, while the current engine
+head is `d56ed6cc`; revalidate and regenerate its source/dependency hashes before
+using it.
+
+### Compiler/toolchain checkpoint — 2026-10-09
+
+The latest provenance-checked compiler product is from clean main source
+`ec41ca95`: Stage1 SHA256
+`acc5c27caf0fae47b39d0bba0b870b5d29f218c18f50130400b7e462bf01c526`, runtime
+SHA256 `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`,
+and source-tree hash
+`391012beba8144c36eb131598f94db5d80bfc9069643c3dec368025c86c11e44`. The
+corrected actual-CLI mutable-global grant gate passes 24/24 controls on this
+exact product, including the explicit `-permissive` bypass. This qualifies
+compiler source admission only; the proof pair and current Studio app remain
+unqualified. The prior `19294e83` product still records the 103-case authority
+smoke, Stage0/Stage1 permission parity and SDK package SHA256
+`d9664cd42f15cfafadd13bfbe5d110c3c24a6070860b18e27b25d3f4edda1d6e` as
+historical evidence.
+
+Compiler main includes fixed-array `usize` inference (`ca06f6cb`) and effectful
+export-alias resolution (`ec41ca95`); the clean main product above passes
+provenance. The isolated `codex/compiler-global-grant-adoption` branch is also
+based on `ec41ca95` and has localized grants across 93 compiler source files.
+Its first full strict check on pre-scope Stage1 `358a2d3b` ran over four
+hours and was stopped in the generic effect-row path. A five-second sample
+placed 2,915 of 3,203 main-thread samples in `ga_generic_call_rows`, repeatedly
+scanning all annotations to classify generic permission parameters. The source
+now indexes parameter names once and uses the existing indexed predicate. After
+the seed exposed 29 bindings that escaped narrow `can` scopes, outer mutable
+locals now receive the allocated results inside those scopes. A fresh branch
+Stage1 seed passed from the clean Stage0 oracle: product SHA-256
+`a1fc208ff1b68a6025b7d2360294bb26d1d944de092dc38152ac5fedc9a1a5a6`, source tree
+SHA-256 `bd8d8d67cb612f4a335a1d7438a0e4fa9f8a6966d85e576383cf0e2a33029883`, and
+matching runtime SHA-256 `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`.
+The exact product's strict check, reporter/CLI gates, parity and freshness now
+pass. The branch's prior 24/24 CLI result on pre-scope product `358a2d3b` remains
+iteration-only.
+
+The earlier complete Stage1 check on the `19294e83` product found 1,225 missing
+`Global.Read/Write` call grants across 87 compiler files, with no redundant
+warnings; its 1,228-line log took 171.94 seconds and remains at
+`build/global-grant-check-stage1-19294.log`. This is a historical migration
+baseline from before the latest compiler source and scan optimization, not the
+current inventory. The old 71-row Stage0 snapshot is narrower and is not
+comparable. The isolated branch has now been seeded, provenance-checked and
+qualified for strict source checking and actual CLI behavior. The next work is
+to build and authenticate the matching proof pair, resolve backend declines on
+the newest clean Studio tuple, and build the sealed app. The consumer check on the older product
+passed Studio semantics but did not build or launch a current app. Keep
+`-permissive` confined to explicit bypass controls.
+
+### Next four outcomes
+
+1. **Fix and qualify the function-value large-aggregate ABI.** The O0 sealed
+   Studio app reproduced a crash when the 9,232-byte `Job` crossed a callback.
+   Compiler commit `37091274` fixes the call convention and passes the focused
+   1,024-byte callback regression with exact Stage1 provenance. The consumer
+   owner rebuilt and sealed an O0 diagnostic app against compiler SHA
+   `ad0e16c9…` and matching runtime `013d3174…`; opening the supplied FBX still
+   makes the app quit. The fresh report faults at `arena_alloc + 0x58` with a
+   null arena; `path_copy` expects the hidden region in x1. Compiler branch
+   commit `d5a9b58a` adds region metadata and task-owned result arena transfer,
+   but four core-file conflicts are being reconciled against newer compiler
+   source. Its product and Studio retry are not qualified. `STUDIO_OPT_LEVEL`
+   is committed as `0a39989b`, with O2 still default.
+   O2 reached AArch64 DAGCombiner at about 28.4 GB physical memory and was
+   stopped without an object. The grant-adoption branch carries the ABI fix as
+   `12120f6b`.
+2. **Finish compiler and proof integration.** Combined source `12120f6b` includes
+   default Global grants, match-arm repair `9d2cf1b`, and the aggregate ABI fix.
+   Rebuild and requalify the exact Stage1/runtime, then refresh the proof
+   diagnostic inventory and prove and independently replay the original 265
+   obligations.
+3. **Finish current Studio acceptance.** Retry the FBX import with the qualified
+   compiler, then build and seal the current app. The exact-identity O0 app still
+   quits on the FBX; analyze its new crash report before playback checks. O2
+   reached AArch64 DAGCombiner at about 28.4 GB physical memory and was stopped
+   without an object, so optimized-build acceptance remains separate. Verify all
+   337 frames, constant channels, repeated redraw, malformed-input refusal and
+   read-only observer reveal.
+4. **Close the prover memory and renderer release blockers.** Run all 73 engine
+   reports with the unchanged 3 GiB / 120-second cap and preserve the original
+   obligation inventory. In parallel after the optimized build lane clears,
+   identify the renderer's measured retaining owner and prove the fix against the
+   unchanged 8 MiB lifecycle gate. Then refresh Character Course packaging and
+   promote the accepted tuple to hosted clean-checkout CI.
 
 ### Choose work by unblock value
 
