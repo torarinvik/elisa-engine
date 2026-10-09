@@ -160,6 +160,15 @@ cross-cook overwrite of an authored glTF image is refused before any cooker runs
 48 build/run controls pass (`build/validation/cook-referenced-source-controls.log`).
 The full fresh public-API author/cook/package rehearsal remains open.
 
+Bounded Q02/Q07 package relocation is now exercised with the existing
+physics-interactables native self-test executable. Its manifest explicitly
+declares no runtime asset files, and package provenance captures the separate
+assembly-manifest identity, shader settings and complete bundle payload
+inventory. Two relocated launches pass with source and Homebrew access denied.
+This uses a saved prebuilt executable and does not close fresh author/cook/build,
+interactive gameplay, signing/legal, clean-machine, or current compiler/proof
+acceptance ([evidence](docs/validation/physics-interactables-package.md)).
+
 ### Bounded consumer work while release gates run
 
 Mocap-cleaner requested the read-only
@@ -227,7 +236,7 @@ availability. The interrupted snapshot census is incomplete evidence.
 | Current Studio crash and proof freshness remain open | Resolve the matching-bundle `Studio.clip.rehome` crash, qualify the earlier callback-region path separately, refresh and authenticate the proof pair, then run playback/redraw/reveal acceptance. After explicit slot handoff, run `physics_rig` and the latest Studio character regression sequentially. | Mocap source commit `b79608a7` and UI commit `65f370f3` passed strict app semantics on the earlier snapshot. The clean `19294e83` compiler product passed detached provenance, but its tuple had six codegen declines and the proof frontend pin `2a3dce66` was stale. A newer O0 diagnostic bundle exists and matches the two crash reports at `Studio.clip.rehome+1160`; it is not accepted. The shared compiler checkout has uncommitted generic-codegen edits and must be reseeded before they can qualify. No physics executable is qualified. |
 | Backend repair complete; current-source prover pair required | Qualify repaired prover memory on original engine input | Integrate default-grant compiler with backend `e791ec50` and latest clean prover repairs, then run unchanged first input under 3 GiB / 120 seconds. Follow with five CLI regressions and all 73 engine reports; diagnostic-harness success does not close these gates. |
 | Consumer integration ready | Actual Studio mesh redraw and observer reveal | Use the current mesh repair and retained observer-header identity; validate the public API in the real consumer. |
-| Ready without a heavy compile slot | Reproduce a concrete ordinary-project obstacle — Q07/Q02 | Publication rollback, manifest identity and package resource controls are implemented and registered in the unit stage. Walk the existing author workflow and implement only a newly demonstrated failure that prevents a runnable public-API package. End the slice when that failure is repaired; full native and hosted unit-stage execution remain open. |
+| Ready without a heavy compile slot | Package identity and relocation rehearsal — Q02/Q07 — bounded acceptance complete | The physics-interactables native self-test now packages from its explicit empty resource allowlist; its package manifest, shader settings and 406-file bundle inventory are recorded. Two source/Homebrew-denied launches pass. The fresh public-API author/cook/build/package workflow remains open and should use a compatible accepted compiler tuple. |
 | Ready after coordinated heavy slot | Renderer lifecycle diagnosis and repair | Observe the failing full sequence, identify the retained owner/domain, then repair its lifetime. Keep original cycles, warmup and 8 MiB allowance. |
 | Ready after compatible tuple and native gate | Fresh package and ordinary author workflow | Reuse one clean optimized build for Character Course relocation and the existing Maze public-API application. Console image cooking and native package reading are preparation; the packaged application remains open. |
 

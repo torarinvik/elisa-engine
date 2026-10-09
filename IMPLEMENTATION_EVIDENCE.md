@@ -66,6 +66,16 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   and overflow controls ([region evidence](docs/validation/effect-memory-vm-regions.md)).
   No root cause or leak repair is established. Preserve
   the failed full-gate evidence ([native evidence](docs/validation/counted-fill-memory-growth.md)).
+- **Bounded package relocation:** the physics-interactables native self-test
+  packages and launches twice from a relocated macOS bundle with source and
+  Homebrew access denied. New `package-provenance.json` records the package
+  manifest SHA256 separately from binary build provenance, the allowlist and
+  shader settings, and hashes/sizes for all other bundle payload files. The
+  existing saved executable uses compiler Stage1 `5888942e…` and runtime object
+  `013d3174…`; this is not a fresh build on the current candidate tuple. Focused
+  packaging tests and the 600-line source gate pass. Interactive gameplay,
+  fresh author/cook/build, signing/legal, clean-machine, and full Q02/Q07
+  acceptance remain open ([evidence](docs/validation/physics-interactables-package.md)).
 - **Compiler policy — default grants and exact callee attribution are promoted; integration acceptance remains open:**
   Compiler `42fd1cbe` enforces `Global.Read` / `Global.Write` by default, with
   `-permissive` as the explicit bypass. Its installed Stage1 is freshness-checked;

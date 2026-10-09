@@ -55,4 +55,5 @@ class PackageAppTestSupport:
 
     def staged(self, app: Path) -> set[str]:
         resources = app / "Contents" / "Resources"
-        return {str(path.relative_to(resources)) for path in resources.rglob("*") if path.is_file()}
+        return {str(path.relative_to(resources)) for path in resources.rglob("*")
+            if path.is_file() and path.name != "package-provenance.json"}

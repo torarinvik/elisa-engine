@@ -43,6 +43,7 @@ class PackageMacosAppTests(PackageAppTestSupport, unittest.TestCase):
         source_provenance = {
             "build_identity": "0011223344556677",
             "project_root": str(self.project),
+            "project_manifest_sha256": "f" * 64,
             "main_source": str(self.project / "src/main.elisa"),
             "repositories": {"game": {"root": str(self.project), "commit": "abc"}},
             "tools": {"elisa_compiler": {"resolved": "/opt/private/bin/elisac"}},
@@ -61,7 +62,10 @@ class PackageMacosAppTests(PackageAppTestSupport, unittest.TestCase):
         record_path = resource_root / "build-provenance.json"
         self.assertTrue(record_path.is_file())
         record = json.loads(record_path.read_text(encoding="utf-8"))
+        package_record_path = resource_root / "package-provenance.json"
+        package_record = json.loads(package_record_path.read_text(encoding="utf-8"))
         self.assertEqual(record["build_identity"], "0011223344556677")
+        self.assertEqual(record["project_manifest_sha256"], "f" * 64)
         self.assertEqual(record["repositories"]["game"]["commit"], "abc")
         self.assertEqual(record["repositories"]["game"]["root"], "<game>")
         self.assertEqual(record["tools"]["elisa_compiler"]["resolved"], "elisac")
@@ -70,7 +74,23 @@ class PackageMacosAppTests(PackageAppTestSupport, unittest.TestCase):
         self.assertEqual(record["options"]["compiler_request"], "elisac")
         self.assertEqual(record["packaged_binary"]["sha256"],
             hashlib.sha256((resource_root / "Game.bin").read_bytes()).hexdigest())
+        manifest_bytes = (self.project / "elisa.project.json").read_bytes()
+        self.assertEqual(package_record["package_manifest_sha256"],
+            hashlib.sha256(manifest_bytes).hexdigest())
+        self.assertEqual(package_record["layout"]["resource_mode"], "allowlist")
+        self.assertEqual(package_record["layout"]["resources"], [])
+        shader_manifest = resource_root / "shaders" / packager.SHADER_MANIFEST_NAME
+        self.assertEqual(package_record["layout"]["shader_manifest_sha256"],
+            hashlib.sha256(shader_manifest.read_bytes()).hexdigest())
+        self.assertFalse(package_record["layout"]["compiled_shaders_only"])
+        self.assertEqual(package_record["payload_root"], "Contents")
+        indexed_payload = {entry["path"]: entry for entry in package_record["payload_files"]}
+        self.assertIn("Resources/Game.bin", indexed_payload)
+        self.assertIn("MacOS/Game", indexed_payload)
+        self.assertEqual(indexed_payload["Resources/Game.bin"]["sha256"],
+            hashlib.sha256((resource_root / "Game.bin").read_bytes()).hexdigest())
         self.assertNotIn(str(self.project), record_path.read_text(encoding="utf-8"))
+        self.assertNotIn(str(self.project), package_record_path.read_text(encoding="utf-8"))
 
     def test_stale_build_provenance_is_rejected_without_replacing_app(self) -> None:
         executable = self.project / "build/game"
@@ -101,6 +121,7 @@ class PackageMacosAppTests(PackageAppTestSupport, unittest.TestCase):
         shutil.rmtree(self.project / "assets")
         shutil.rmtree(self.project / "build" / "cooked")
         app = self.package(self.write_manifest({"package": {"resources": []}}))
+        self.assertTrue((app / "Contents/Resources/package-provenance.json").is_file())
         self.assertEqual(self.staged(app), {
             "Game.bin", "shaders/metal/basic.cso", "shaders/elisa.shader-manifest.json"})
 
@@ -173,11 +194,14 @@ class PackageMacosAppTests(PackageAppTestSupport, unittest.TestCase):
     def test_notices_are_staged_with_original_bytes(self) -> None:
         touch(self.project / "third_party/SDL/LICENSE.txt", b"SDL notice\n")
         touch(self.project / "third_party/Jolt/LICENSE.txt", b"Jolt notice\n")
-        app = self.package(self.write_manifest({"package": {"notices": [
-            "third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}}))
+        manifest = self.write_manifest({"package": {"notices": [
+            "third_party/SDL/LICENSE.txt", "third_party/Jolt/LICENSE.txt"]}})
+        app = self.package(manifest)
         root = app / "Contents/Resources/Notices/third_party"
         self.assertEqual((root / "SDL/LICENSE.txt").read_bytes(), b"SDL notice\n")
         self.assertEqual((root / "Jolt/LICENSE.txt").read_bytes(), b"Jolt notice\n")
+        package_record = json.loads((app / "Contents/Resources/package-provenance.json").read_text())
+        self.assertEqual(package_record["layout"]["notices"], manifest["package"]["notices"])
 
     def test_missing_or_escaping_notices_are_rejected(self) -> None:
         for entry in ("missing.txt", "../outside.txt", "/absolute.txt"):

@@ -37,18 +37,33 @@ from macos_bundle_support import (  # noqa: F401 - re-exported for callers and t
     linked_libraries, run_tool, shader_manifest,
 )
 
+_MANIFEST_HASH_UNSET = object()
 
-def load_project_manifest(project: Path) -> dict[str, object]:
+
+def load_project_manifest_snapshot(project: Path) -> tuple[dict[str, object], str | None]:
     manifest = project / "elisa.project.json"
     if not manifest.is_file():
-        return {}
+        return {}, None
     try:
-        value = json.loads(manifest.read_text(encoding="utf-8"))
+        raw = manifest.read_bytes()
+        value = json.loads(raw.decode("utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise PackageError(f"could not read {manifest}: {error}") from error
     if not isinstance(value, dict):
         raise PackageError(f"{manifest} must contain a JSON object")
-    return value
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def load_project_manifest(project: Path) -> dict[str, object]:
+    return load_project_manifest_snapshot(project)[0]
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def manifest_application(manifest: dict[str, object], project: Path) -> tuple[str, str, Path]:
@@ -222,9 +237,16 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     window: tuple[str, int, int] | None = None,
     shader_root: Path | None = None,
     notice_paths: list[Path] | None = None,
-    compiled_shaders_only: bool = False) -> Path:
+    compiled_shaders_only: bool = False,
+    package_manifest_sha256: str | None | object = _MANIFEST_HASH_UNSET) -> Path:
     project = project.expanduser().resolve()
     output = output.expanduser().resolve()
+    if package_manifest_sha256 is _MANIFEST_HASH_UNSET:
+        _, package_manifest_sha256 = load_project_manifest_snapshot(project)
+    if package_manifest_sha256 is not None and (
+            not isinstance(package_manifest_sha256, str) or
+            re.fullmatch(r"[0-9a-f]{64}", package_manifest_sha256) is None):
+        raise PackageError("package manifest sha256 must be a lowercase SHA256 digest")
     app = output if output.suffix == ".app" else output.with_suffix(".app")
     if app == project or app in project.parents:
         raise PackageError("bundle output must not replace or contain the source project")
@@ -244,7 +266,7 @@ def package_app(project: Path, executable: Path, output: Path, name: str,
     with tempfile.TemporaryDirectory(prefix=".elisa-app-stage-", dir=app.parent) as folder:
         staged = _assemble_app(project, executable, Path(folder) / app.name, name,
             bundle_id, version, icon, resource_paths, window, shader_root, notice_paths,
-            compiled_shaders_only)
+            compiled_shaders_only, package_manifest_sha256)
         backup = Path(tempfile.mkdtemp(prefix=".elisa-app-backup-", dir=app.parent))
         backup.rmdir()
         previous = app.exists()
@@ -272,7 +294,8 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
     window: tuple[str, int, int] | None = None,
     shader_root: Path | None = None,
     notice_paths: list[Path] | None = None,
-    compiled_shaders_only: bool = False) -> Path:
+    compiled_shaders_only: bool = False,
+    package_manifest_sha256: str | None = None) -> Path:
     project = project.expanduser().resolve()
     executable = executable.expanduser().resolve()
     output = output.expanduser().resolve()
@@ -314,6 +337,8 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
         # overwrite and a path that would treat the executable as a directory.
         if relative.parts and relative.parts[0].casefold() == binary_name.casefold():
             raise PackageError(f"manifest resource conflicts with packaged executable: {relative}")
+        if relative.parts and relative.parts[0].casefold() == "package-provenance.json":
+            raise PackageError(f"manifest resource conflicts with package provenance: {relative}")
     # Hash the built executable before load-command edits and re-signing so
     # the identity matches the build runner's output.
     build_identity = executable_build_identity(executable)
@@ -433,6 +458,38 @@ def _assemble_app(project: Path, executable: Path, output: Path, name: str,
             shutil.copy2(icon, resources / "AppIcon.icns")
             info["CFBundleIconFile"] = "AppIcon.icns"
         plistlib.dump(info, stream, sort_keys=False)
+    shader_manifest_path = resources / "shaders" / SHADER_MANIFEST_NAME
+    payload_files = []
+    for path in sorted(item for item in contents.rglob("*") if item.is_file()):
+        if path == resources / "package-provenance.json":
+            continue
+        payload_files.append({
+            "path": path.relative_to(contents).as_posix(),
+            "sha256": _sha256_file(path),
+            "size_bytes": path.stat().st_size,
+        })
+    package_provenance = {
+        "schema_version": 1,
+        "package_manifest_sha256": package_manifest_sha256,
+        "payload_root": "Contents",
+        "bundle": {"name": bundle_name, "identifier": bundle_id, "version": version},
+        "layout": {
+            "resource_mode": "all-assets" if resource_paths is None else "allowlist",
+            "resources": None if resource_paths is None else [path.as_posix() for path in resource_paths],
+            "cooked_directory_auto_included": cooked.is_dir(),
+            "notices": [path.as_posix() for path in notices],
+            "shader_source": "external" if shader_root is not None else "project",
+            "compiled_shaders_only": compiled_shaders_only,
+            "shader_manifest_sha256": _sha256_file(shader_manifest_path)
+                if shader_manifest_path.is_file() else None,
+        },
+        "payload_files": payload_files,
+    }
+    package_provenance_path = resources / "package-provenance.json"
+    if package_provenance_path.exists():
+        raise PackageError("a packaged resource conflicts with package-provenance.json")
+    package_provenance_path.write_text(
+        json.dumps(package_provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return app
 
 
@@ -461,7 +518,7 @@ def main() -> int:
     options = parse_arguments()
     try:
         project = options.project.expanduser().resolve()
-        manifest = load_project_manifest(project)
+        manifest, package_manifest_sha256 = load_project_manifest_snapshot(project)
         manifest_name, manifest_bundle_id, manifest_executable = manifest_application(
             manifest, project)
         name = safe_bundle_name(options.name) if options.name else manifest_name
@@ -476,7 +533,8 @@ def main() -> int:
         app = package_app(project, executable, output, name, bundle_id,
             options.version, icon, manifest_resources(manifest, project),
             manifest_window(manifest, project), options.shader_root,
-            manifest_notices(manifest, project), options.compiled_shaders_only)
+            manifest_notices(manifest, project), options.compiled_shaders_only,
+            package_manifest_sha256)
         print(f"App packaging: {time.perf_counter() - stage_started:.2f}s", flush=True)
     except (OSError, PackageError, ValueError) as error:
         print(f"macOS app packaging failed: {error}")
