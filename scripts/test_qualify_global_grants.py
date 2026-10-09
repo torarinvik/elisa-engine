@@ -3,11 +3,13 @@ from pathlib import Path
 import subprocess
 import hashlib
 import json
+import sys
 import tempfile
 import unittest
 from unittest import mock
 
 import qualify_global_grants as gate
+import run_tests
 
 
 class GlobalGrantQualificationTests(unittest.TestCase):
@@ -83,6 +85,46 @@ class GlobalGrantQualificationTests(unittest.TestCase):
     def test_missing_compiler_fails(self):
         rows = self.run_controls(mock.Mock(side_effect=FileNotFoundError("missing candidate")))
         self.assertTrue(all(not row["passed"] and row["status"] is None for row in rows))
+
+
+class EngineSuiteGrantPreflightTests(unittest.TestCase):
+    def test_preflight_pins_the_candidate_product_hash(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            compiler = Path(temporary) / "elisac-stage1"
+            compiler.write_bytes(b"candidate compiler")
+            expected = hashlib.sha256(compiler.read_bytes()).hexdigest()
+            completed = subprocess.CompletedProcess([], 0, "Global grant CLI qualification: PASS\n", "")
+            with mock.patch.object(run_tests.subprocess, "run", return_value=completed) as execute:
+                self.assertEqual(run_tests.qualify_default_global_grants(str(compiler), expected), 0)
+
+            command = execute.call_args.args[0]
+            self.assertEqual(command[command.index("--expected-product-sha256") + 1], expected)
+            self.assertEqual(command[command.index("--product") + 1], str(compiler.resolve()))
+            self.assertEqual(command[command.index("--compiler") + 1], str(compiler.resolve()))
+            self.assertTrue(str(command[command.index("--report") + 1]).endswith(
+                f"build/validation/global-grant-cli-qualification-{expected[:12]}.json"))
+
+    def test_preflight_propagates_policy_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            compiler = Path(temporary) / "elisac-stage1"
+            compiler.write_bytes(b"candidate compiler")
+            expected = hashlib.sha256(compiler.read_bytes()).hexdigest()
+            completed = subprocess.CompletedProcess([], 1, "Global grant CLI qualification: FAIL\n", "")
+            with mock.patch.object(run_tests.subprocess, "run", return_value=completed):
+                self.assertEqual(run_tests.qualify_default_global_grants(str(compiler), expected), 1)
+
+    def test_runner_aborts_before_engine_suite_after_policy_failure(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            compiler = Path(temporary) / "elisac-stage1"
+            compiler.write_bytes(b"candidate compiler")
+            manifest = Path(temporary) / "empty-tests.json"
+            manifest.write_text("[]\n", encoding="utf-8")
+            arguments = ["run_tests.py", str(compiler), "--manifest", str(manifest)]
+            with mock.patch.object(sys, "argv", arguments), \
+                    mock.patch.object(run_tests, "qualify_default_global_grants", return_value=23), \
+                    mock.patch.object(run_tests, "setup_remotes") as setup:
+                self.assertEqual(run_tests.main(), 23)
+                setup.assert_not_called()
 
 
 if __name__ == "__main__":

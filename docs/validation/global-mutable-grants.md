@@ -6,106 +6,20 @@ The compiler must enforce `Global.Read` for reads of `global mutable` values
 and `Global.Write` for writes by default. A read-modify-write needs both.
 `-permissive` bypasses these grant checks. Default enforcement, selective grants,
 qualified names, shadowing, indexed/member writes and transitive calls require
-compiler-owned positive and negative regressions. Compiler source
-`12120f6b7148ce3f72ea8fba66be29b8cf2825d3` and its freshly seeded Stage1/runtime
-pass the focused current controls, including explicit `-permissive` bypasses.
-Studio and proof acceptance remain open; exact product details are in the
-candidate evidence below.
+compiler-owned positive and negative regressions. An earlier installed compiler source
+`4655dbaa17131bcb158be69d5b4939bf64eb6bea` and Stage1 product
+`cfcdc1fa99752f417c4267f125ed3419be26e569115fb28df3027095cb7e1da2` pass the
+Global authority controls, and the matching engine/runtime gate passed 216/216
+on that earlier tuple. The exact current b11e evidence is below. Proof-pair and
+Studio acceptance remain open.
 
-## Last exactly qualified compiler candidate — 12120f6b
+## Prior candidate and source-boundary evidence
 
-Exact source/product qualification and the engine consumer fixes are recorded
-in [the 12120f6b candidate evidence](global-grants-12120f6b.md). All 216 engine
-gate sources now pass semantic checking and all 216 compile-and-run tests pass
-on this exact pair. The full proof pair, latest-source requalification and Studio
-acceptance remain open.
-
-## Superseded compiler milestones — cfbb8a8b and 107f5e14
-
-These intermediate candidates record how the current compiler source was
-assembled. `cfbb8a8b` added upstream update `53ae9363`; `107f5e14` then added
-source fix `9d2cf1b65d526c681b9fd8e282d0124569f3eb04`, which preserves a value
-yielded by a nested `can` / `trusted` block when it is the final value of a
-match arm. The reproducer is
-`test/repro/nested_enum_permission_block_match_return.elisa`, with parity
-control `test/parity/nested_enum_permission_block_match_return_smoke.sh`.
-The current combined source `12120f6b` includes both changes plus the
-function-value large-aggregate fix; its exact Stage1/runtime passed focused
-qualification recorded in [candidate evidence](global-grants-12120f6b.md).
-Older products remain historical and do not qualify the current proof or Studio
-build.
-
-The latest mocap-cleaner O2 compile using consumer compiler `9d2cf1b` was stopped
-after about 20 minutes in LLVM AArch64 SelectionDAG/DAGCombiner and produced no
-object. A sealed O0 diagnostic Studio app opened the file picker but crashed on
-the supplied high-block FBX. Its crash report identifies `load_fbx_import_job`
-copying 9,232 bytes from source pointer `1` into the inline `Job` value. The
-Elisa caller passes that aggregate through a function value; ordinary function
-calls use indirect arguments and hidden sret returns for aggregates of at least
-1,024 bytes, while the function-value emitter previously constructed a direct
-aggregate signature. Compiler fix `37091274` emits the indirect argument and
-sret conventions, rejects unsupported large-aggregate closures, and adds a
-focused native regression. That source was combined with the grant-adoption
-branch as `12120f6b`; its fresh Stage1/runtime and compiler controls are recorded
-in [the exact candidate evidence](global-grants-12120f6b.md). The mocap-cleaner
-owner rebuilt Studio with `37091274` to retry the original FBX import and
-playback. O2 reached LLVM AArch64 DAGCombiner at about 28.4 GB physical memory
-and was stopped without an object. Mocap-cleaner commit `0a39989b` adds
-`STUDIO_OPT_LEVEL` while keeping O2 as default. A sealed O0 diagnostic app now
-builds against compiler SHA256
-`ad0e16c9eddea0132a6ffee252f3dab4a3008dd805c042e1cb01cd48791a78f1` and
-runtime SHA256
-`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`. The
-supplied FBX SHA256 remains
-`50048a8a08f307d378e83d976462addcac62b5529bf60ae690da200d9d9f4485`; the app
-still quits when that FBX is opened. Its crash report
-(`MocapStudio-2026-10-09-042258.ips`) identifies a null arena in
-`arena_alloc`: `StudioFbxImportWorker.path_copy` receives its hidden region in
-x1, but the generic function-value callback does not forward that region. The
-focused 1,024-byte aggregate regression therefore does not qualify the actual
-9,232-byte job path. Compiler change `d5a9b58a` adds callback region metadata
-and task-owned result-arena transfer, but it is not included in `12120f6b`; its
-integration, fresh toolchain and Studio retry remain open. Optimization is a
-separate gate. Older `107f5e14` and `9d2cf1b` products do not qualify current
-consumer acceptance.
-
-## Audited application, input and UserData native boundaries
-
-`src/runtime/application.elisa`, `src/runtime/application_input.elisa` and
-`src/runtime/user_data.elisa` now give their native declarations explicit
-`can[Unsafe.RawExtern]` contracts. The reviewed C++ shims own process/runtime
-state and exchange values through explicit arguments and buffers; the audited
-entrypoints do not access Elisa `global mutable` bindings. Each Elisa call site
-uses a narrow `trusted Unsafe.RawExtern` block, keeping that implementation
-detail inside the engine wrappers rather than making the public APIs unsafe.
-The pointer-replay API also lost its inherited uncertainty through its
-`ApplicationInput` dependency.
-
-On Stage1
-`/private/tmp/Elisa-compiler-prover-method-rehome/bin/elisac-stage1`
-(SHA256 `5198034700383a76aa25ca7db2e2e31bdd4fa98753f721b53c80233e24257916`):
-
-- `-emit check src/runtime/user_data.elisa` succeeds.
-- `-Wnever-leak=strict -emit check src/runtime/user_data.elisa` succeeds with
-  zero findings; temporary effect/status locals are scoped with `region` blocks
-  and the staged payload read yields its two outputs from a tuple block.
-- `test/user_data_probe.elisa` compiles with no global-grant diagnostics; this
-  consumer probe previously reported 106 such diagnostics.
-- A `# strict` / `# unsafe` fixture including
-  `src/runtime/action_pointer_replay.elisa` compiles to an object, covering the
-  application and input native call sites as well as their transitive caller.
-
-This is a source-boundary qualification, not a full engine grant audit or a
-native application/UserData runtime test.
-
-## Engine source preparation
-
-The engine has three global mutable identity counters: world epochs, storage
-catalog brands and access-frame identities. Each issuance helper now encloses
-its reads, exhaustion checks and writes in `can Global.Read, Global.Write`.
-The monotonic identity algorithm, maximum bounds and typed errors are unchanged.
-No `trusted` block conceals effects. Explicit returns preserve the existing
-compiler's control-flow requirements inside grant blocks.
+The `12120f6b` compiler candidate, superseded milestones, native-boundary audit,
+identity-counter grant adoption and frozen-source qualification are summarized in
+[the consumer history note](global-mutable-grants-consumer-history.md). These
+older product results do not qualify the current b11e Stage1 or its proof/Studio
+acceptance.
 
 ## Focused qualification
 
@@ -563,7 +477,7 @@ build and authenticate the matching proof pair, then resolve only backend
 declines reproduced on the newest Studio tuple. `-permissive` remains limited to
 explicit bypasses; do not use it as evidence for default grant behavior.
 
-## Current qualification follow-up
+## Earlier qualification follow-up
 
 The refreshed `12120f6b` Stage1/runtime includes upstream `53ae9363` and the
 nested match-arm repair. Strict compiler checking, authority and actual-CLI
@@ -574,11 +488,90 @@ proof integration's earlier 1,166 diagnostics predate the corrected `trusted`
 behavior; recapture that inventory and qualify the generated proof pair against
 the latest clean compiler/runtime before accepting the migration.
 
-The compiler checkout has since advanced locally through `4655dbaa`. A fresh,
-provenance-checked Stage1/runtime pair from that source tree now passes the
-Character Course strict project-context checks after engine-side grant adoption.
-The compiler tree contains an uncommitted JSON grant change, so `12120f6b`
-remains the last fully qualified compiler candidate. Repeat the compiler suite,
-216-source/runtime gates and proof qualification after the compiler owner
-promotes a clean product. The course's fresh native build and package acceptance
-also remain open. See [the exact Character Course grant record](global-grants-character-course-4655dbaa.md).
+At that checkpoint the compiler source had advanced to `4655dbaa`. Its installed, provenance-checked
+Stage1/runtime passes compiler Global authority controls and the Character
+Course strict project-context checks after engine-side grant adoption. The full
+engine gate on that exact product is recorded below. Proof-pair freshness,
+course native build/package, and Studio acceptance remain open. See [the exact
+Character Course grant record](global-grants-character-course-4655dbaa.md).
+
+<a id="current-4655dbaa-engine-gate"></a>
+## 4655dbaa engine gate — 2026-10-09 (previous installed tuple)
+
+Engine commit `565b39c1` contains the Character Course scopes and explicit tail
+returns required by default Global grant checking. The installed Stage1 product
+`/Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1` has compiler source
+revision `4655dbaa17131bcb158be69d5b4939bf64eb6bea`, source-tree SHA256
+`40b306621d1e1aa7cdd68a73179360ba1b6b9ba61aae2d491cd3087d4b819fff`, Stage1
+SHA256 `cfcdc1fa99752f417c4267f125ed3419be26e569115fb28df3027095cb7e1da2`, and
+matching runtime SHA256
+`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`.
+Installed provenance passed; the compiler and runtime hashes were checked before
+the run and remained unchanged afterward.
+
+All five Character Course public entrypoints pass strict `-emit check` with zero
+diagnostics and without `-permissive`; detailed wrappers and logs are in
+[the Character Course evidence](global-grants-character-course-4655dbaa.md).
+The full gate command
+`python3 scripts/run_tests.py /Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 -j 2 --no-cache`
+compiled and ran 216 tests: 216 passed, 0 cached, 0 remote, exit 0 in 36
+seconds. This closed the engine manifest gate on the 4655dbaa tuple at that checkpoint.
+It does not qualify every source outside the manifest, the proof pair, a fresh
+Character Course native build/package, or the current Studio app.
+
+The C-ABI Maze example, which is outside the 216-entrypoint manifest, was
+separately requalified on this exact compiler/runtime tuple with
+`ELISA_COMPILER_BIN=/Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 python3 scripts/embed_probe.py`.
+The command exited 0: it emitted and linked the C archive, exercised session
+and gameplay exports, mapped a live SDL key event into gameplay, and passed the
+world/map and repeated-call checks. The Stage1 and runtime hashes above were
+rechecked after the run and were unchanged. This closes the Maze C-ABI gate only;
+the proof pair and fresh Course/Studio native builds remain open.
+
+## Current b11e9121 engine gate — 2026-10-09
+
+The installed compiler at `/Users/torarinvikbjarko/.elisac/stage1` identifies
+source revision `b11e9121c64d94bbc8881db58ae850bf4933ceb9`, source-tree SHA256
+`40b306621d1e1aa7cdd68a73179360ba1b6b9ba61aae2d491cd3087d4b819fff`, Stage1
+SHA256 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`, and
+runtime SHA256
+`013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`.
+Installed provenance passed before and after engine qualification; the product
+and runtime hashes remained unchanged. The installed artifact identity is tied
+to the exact source-tree digest above, independently of later worktree changes.
+
+On this exact product, `ELISA_STAGE1_BIN=/Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 bash test/parity/mutable_global_cli_smoke.sh`
+passes. It confirms ungranted reads and writes fail by default, read-modify-write
+requires both grants, exact local grants pass, and `-permissive` bypasses each
+missing-grant case. The uncached engine gate
+`python3 scripts/run_tests.py /Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 -j 2 --no-cache`
+passes 216/216 in 27 seconds (0 cached, 0 remote). All five Character Course
+entrypoint wrappers pass strict `-emit check` with zero diagnostics and no
+`-permissive`; per-entry logs are in
+`build/validation/character-course-*-b11e-clean-check.log`. The separate C-ABI Maze
+probe also exits 0 after archive generation, native linking, session/gameplay
+calls, live SDL input and the 100,000-call bridge check.
+
+These results qualify the direct CLI behavior and listed engine consumers on
+the b11e9121 product. The compiler's 28-case inferred-row propagation helper
+is still unresolved: it expects `S <severity>` records that the current
+`parse_report` source does not emit, so no Stage0/Stage1 propagation-parity
+claim is made for this product. The proof pair, fresh Course executable/package
+and Studio app remain open.
+
+The engine test runner invokes `scripts/qualify_global_grants.py` before
+compiling its suite, pins the check to the selected compiler's SHA256, and
+writes a product-specific report under
+`build/validation/global-grant-cli-qualification-<sha12>.json`. This prevents a
+replacement compiler from silently weakening the default policy while still
+allowing the explicit `-permissive` migration path. On 2026-10-09, the runner
+entrypoint was exercised with a temporary empty test manifest on installed
+Stage1 `1505c598…`; the preflight passed 24/24 and the runner exited 0. Its
+report is `build/validation/global-grant-cli-qualification-1505c598a71e.json`.
+The integration unit controls pass 10/10, including a check that runner
+execution stops before engine work when the grant preflight fails. The uncached
+216-test result above was qualified separately on the same product before the runner change. The normal
+runner was then rerun on 2026-10-09 with `-j 2`: its grant preflight again
+passed 24/24 and all 216 engine tests passed with 216 compile results cached,
+zero remote compiles and exit 0 in 13 seconds. The exact command was
+`python3 scripts/run_tests.py /Users/torarinvikbjarko/.elisac/stage1/bin/elisac-stage1 -j 2`.

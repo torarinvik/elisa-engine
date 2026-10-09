@@ -7,6 +7,10 @@ compiler binary, the test's flags and every file its include closure reaches. So
 run (in parallel, cwd = repo root). Exit status is the first failing test's status in manifest
 order, with that test's output printed; else 0.
 
+Before the engine suite, the selected compiler must pass the default mutable-global grant controls
+and their explicit -permissive bypass. The exact compiler product is hashed before and after these
+source-admission checks; a machine-readable report is written to build/validation/.
+
 With --remote / ELISA_COMPILE_REMOTE (see scripts/remote_compile.py) compiles also go to Linux
 hosts that cross-compile Mac objects; linking and running stay here. A remotely built binary's
 key uses the remote compiler's identity, so either compiler's binary satisfies the cache. A
@@ -83,6 +87,28 @@ def setup_remotes(a, root_scratch, local_sha):
     return live, linker
 
 
+def qualify_default_global_grants(compiler, compiler_sha):
+    report = ROOT / "build/validation" / f"global-grant-cli-qualification-{compiler_sha[:12]}.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    product = Path(compiler).resolve()
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/qualify_global_grants.py"),
+        "--compiler", str(product),
+        "--product", str(product),
+        "--expected-product-sha256", compiler_sha,
+        "--report", str(report),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    if result.returncode != 0:
+        print(f"default Global.Read/Global.Write qualification failed; report: {report}", file=sys.stderr)
+    return result.returncode
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("compiler")
@@ -97,6 +123,9 @@ def main():
     started = time.monotonic()
     tests = json.loads(Path(a.manifest).read_text())
     compiler_sha = hashlib.sha256(Path(a.compiler).read_bytes()).hexdigest()
+    grant_status = qualify_default_global_grants(a.compiler, compiler_sha)
+    if grant_status != 0:
+        return grant_status
     cache = ROOT / "build/test-cache"
     cache.mkdir(parents=True, exist_ok=True)
     failure_path = ROOT / "build/test-failures.json"
