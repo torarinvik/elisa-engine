@@ -252,96 +252,98 @@ module MazeNativeClient:
             lighting: mutable MazeLighting::Runtime&,
             status_text: RenderScene::OverlayTextHandle,
             input: mutable ActionInput::Input&, view: mutable MazeMenuView::View&) -> i32 can[Global.Read, Global.Write]:
-            running: mutable bool = true
-            resize_serial: mutable u64 = 0
-            failure: mutable i32 = 0
-            while running |session, game, scene, snapshot, presenter, lighting, status_text, input, view, resize_serial, failure|:
-                pump: Application::PumpStatus = catch RuntimeServices::pump(session):
-                    value: value
-                    error failure: Application::PumpStatus.Failed
-                if pump == Application::PumpStatus.ExitRequested:
-                    running <- false
-                elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
-                    failure <- 61
-                    running <- false
-                if running and pump == Application::PumpStatus.Running:
-                    frame: Application::FrameInfo = catch RuntimeServices::frame_info(session):
+            can Global.Read, Global.Write:
+                running: mutable bool = true
+                resize_serial: mutable u64 = 0
+                failure: mutable i32 = 0
+                while running |session, game, scene, snapshot, presenter, lighting, status_text, input, view, resize_serial, failure|:
+                    pump: Application::PumpStatus = catch RuntimeServices::pump(session):
                         value: value
-                        error failure: return 62
-                    if frame.resize_serial != resize_serial:
-                        resize_serial <- frame.resize_serial
-                        if frame.pixel_width > 0 and frame.pixel_height > 0:
-                            resized: bool = catch RenderScene::resize(frame.pixel_width, frame.pixel_height):
-                                ok: true
-                                error failure: false
-                            if not resized:
-                                failure <- 63
-                                running <- false
-                    if running:
-                        _ = ActionInputRuntime::begin_frame(input)
-                        if ActionInput::action_pressed(input, Actions::QUIT):
-                            MazeGame::game_quit(game)
-                            exit_requested: bool = catch RuntimeServices::request_exit(session):
-                                value: value
-                                error failure: false
-                            failure <- 66 if not exit_requested
-                            running <- false
-                        else:
-                            action_result: i32 = apply_actions_result(session, game, input, view)
-                            if action_result == 0:
-                                failure <- 67
-                                running <- false
-                            elif action_result == 1:
-                                if not sync_game_scene(game, scene, snapshot, presenter, lighting):
-                                    failure <- 64
+                        error failure: Application::PumpStatus.Failed
+                    if pump == Application::PumpStatus.ExitRequested:
+                        running <- false
+                    elif pump != Application::PumpStatus.Running and pump != Application::PumpStatus.Suspended:
+                        failure <- 61
+                        running <- false
+                    if running and pump == Application::PumpStatus.Running:
+                        frame: Application::FrameInfo = catch RuntimeServices::frame_info(session):
+                            value: value
+                            error failure: return 62
+                        if frame.resize_serial != resize_serial:
+                            resize_serial <- frame.resize_serial
+                            if frame.pixel_width > 0 and frame.pixel_height > 0:
+                                resized: bool = catch RenderScene::resize(frame.pixel_width, frame.pixel_height):
+                                    ok: true
+                                    error failure: false
+                                if not resized:
+                                    failure <- 63
                                     running <- false
-                                else:
-                                    text_updated: bool = catch UiRenderer::sync_hud_clipped(
-                                        status_text, status_message(game), 12, 12, Actions::FONT_SIZE,
-                                        UiClip::box(0, 0, frame.pixel_width.i64(), frame.pixel_height.i64())):
-                                        value: true
-                                        error failure: false
-                                    if not text_updated:
-                                        failure <- 65
+                        if running:
+                            _ = ActionInputRuntime::begin_frame(input)
+                            if ActionInput::action_pressed(input, Actions::QUIT):
+                                MazeGame::game_quit(game)
+                                exit_requested: bool = catch RuntimeServices::request_exit(session):
+                                    value: value
+                                    error failure: false
+                                failure <- 66 if not exit_requested
+                                running <- false
+                            else:
+                                action_result: i32 = apply_actions_result(session, game, input, view)
+                                if action_result == 0:
+                                    failure <- 67
+                                    running <- false
+                                elif action_result == 1:
+                                    if not sync_game_scene(game, scene, snapshot, presenter, lighting):
+                                        failure <- 64
                                         running <- false
-                                    menu_drawn: bool = catch MazeMenuView::refresh(view, game,
-                                        frame.pixel_width.i64(), frame.pixel_height.i64()):
-                                        ok: true
-                                        error failure: false
-                                    if not menu_drawn:
-                                        failure <- 68
-                                        running <- false
-            failure
+                                    else:
+                                        text_updated: bool = catch UiRenderer::sync_hud_clipped(
+                                            status_text, status_message(game), 12, 12, Actions::FONT_SIZE,
+                                            UiClip::box(0, 0, frame.pixel_width.i64(), frame.pixel_height.i64())):
+                                            value: true
+                                            error failure: false
+                                        if not text_updated:
+                                            failure <- 65
+                                            running <- false
+                                        menu_drawn: bool = catch MazeMenuView::refresh(view, game,
+                                            frame.pixel_width.i64(), frame.pixel_height.i64()):
+                                            ok: true
+                                            error failure: false
+                                        if not menu_drawn:
+                                            failure <- 68
+                                            running <- false
+                return failure
 
     public:
         def run(self_test: bool, with_audio_fallback: bool) -> i32 can[Global.Read, Global.Write]:
-            config: mutable Application::Config = Application::default_config()
-            if self_test:
-                config.width <- 320
-                config.height <- 200
-                config.hidden <- true
-            session: mutable RuntimeServices::Session = RuntimeServices::Session()
-            requirements: mutable BackendRequirements::BackendStartupRequirements = startup_requirements(with_audio_fallback)
-            report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
-            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
-                config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
-                AudioRuntime::MIN_CHANNEL_COUNT, &report)
-            if opened != RuntimeServices::OpenStatus.Ready:
-                if opened != RuntimeServices::OpenStatus.FallbackRequired:
-                    _ = RuntimeServices::shutdown(&session)
-                    return 1
-            if report.state != Capabilities::RequirementState.Ready:
-                if report.state != Capabilities::RequirementState.Fallback:
-                    _ = RuntimeServices::shutdown(&session)
-                    return 2
-            run_status: i32 = run_after_host(&session, config, self_test)
-            render_closed: bool = catch RenderScene::shutdown():
-                ok: true
-                error failure: false
-            app_closed: bool = RuntimeServices::shutdown(&session)
-            return 3 if not render_closed
-            return 4 if not app_closed
-            run_status
+            can Global.Read, Global.Write:
+                config: mutable Application::Config = Application::default_config()
+                if self_test:
+                    config.width <- 320
+                    config.height <- 200
+                    config.hidden <- true
+                session: mutable RuntimeServices::Session = RuntimeServices::Session()
+                requirements: mutable BackendRequirements::BackendStartupRequirements = startup_requirements(with_audio_fallback)
+                report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
+                opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                    config, &requirements, AudioRuntime::MIN_SAMPLE_RATE_HZ,
+                    AudioRuntime::MIN_CHANNEL_COUNT, &report)
+                if opened != RuntimeServices::OpenStatus.Ready:
+                    if opened != RuntimeServices::OpenStatus.FallbackRequired:
+                        _ = RuntimeServices::shutdown(&session)
+                        return 1
+                if report.state != Capabilities::RequirementState.Ready:
+                    if report.state != Capabilities::RequirementState.Fallback:
+                        _ = RuntimeServices::shutdown(&session)
+                        return 2
+                run_status: i32 = run_after_host(&session, config, self_test)
+                render_closed: bool = catch RenderScene::shutdown():
+                    ok: true
+                    error failure: false
+                app_closed: bool = RuntimeServices::shutdown(&session)
+                return 3 if not render_closed
+                return 4 if not app_closed
+                return run_status
 
     private:
         # Frames keep running under a loading overlay while the asset worker
@@ -398,82 +400,83 @@ module MazeNativeClient:
 
         def run_after_host(session: mutable RuntimeServices::Session&,
             config: Application::Config, self_test: bool) -> i32 can[Global.Read, Global.Write]:
-            viewport: mutable Application::FrameInfo = catch RuntimeServices::frame_info(session):
-                value: value
-                error failure: return 5
-            viewport_width: i32 = config.width if viewport.pixel_width <= 0 else viewport.pixel_width
-            viewport_height: i32 = config.height if viewport.pixel_height <= 0 else viewport.pixel_height
-            initialized: bool = catch RenderScene::initialize(viewport_width, viewport_height,
-                Actions::CAMERA_VERTICAL_SIZE):
-                ok: true
-                error failure: false
-            return 6 if not initialized
-            loaded: i32 = load_assets(session)
-            return 0 if loaded == -1
-            return loaded if loaded != 0
-            arena_bodies: usize = catch MazePhysics::arena_create(session):
-                value: value
-                error failure: return 72
-            return 73 if arena_bodies != MazeLayout::maze_layout_count() + 1
-
-            game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
-            lighting: mutable MazeLighting::Runtime = MazeLighting::Runtime()
-            lighting_started: bool = catch MazeLighting::start(&lighting,
-                game.grid.player_x, game.grid.player_y):
-                ok: true
-                error failure: false
-            return 16 if not lighting_started
-            scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
-                value: value
-                error failure: return 7
-            snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
-            presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
-            input: mutable ActionInput::Input = ActionInput::Input()
-            return 8 if not bind_controls(&input)
-            presented: bool = extract_and_present(&scene, &snapshot, &presenter)
-            return 9 if not presented
-            status_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
-                status_message(game), Overlay::LOADING_TEXT_X, Overlay::LOADING_TEXT_Y, Actions::FONT_SIZE,
-                RenderScene::Color{red: Overlay::TEXT_RED, green: Overlay::TEXT_GREEN,
-                    blue: Overlay::TEXT_BLUE, alpha: Overlay::TEXT_ALPHA}):
-                value: value
-                error failure: return 10
-            view: mutable MazeMenuView::View = catch MazeMenuView::create(game):
-                value: value
-                error failure: return 18
-            first_frame: Application::PumpStatus = catch RuntimeServices::pump(session):
-                value: value
-                error failure: return 11
-            return 0 if first_frame == Application::PumpStatus.ExitRequested
-            return 11 if first_frame != Application::PumpStatus.Running and first_frame != Application::PumpStatus.Suspended
-            viewport <- catch RuntimeServices::frame_info(session):
-                value: value
-                error failure: return 15
-            if viewport.pixel_width > 0 and viewport.pixel_height > 0 and (viewport.pixel_width != viewport_width or viewport.pixel_height != viewport_height):
-                resized: bool = catch RenderScene::resize(viewport.pixel_width, viewport.pixel_height):
+            can Global.Read, Global.Write:
+                viewport: mutable Application::FrameInfo = catch RuntimeServices::frame_info(session):
+                    value: value
+                    error failure: return 5
+                viewport_width: i32 = config.width if viewport.pixel_width <= 0 else viewport.pixel_width
+                viewport_height: i32 = config.height if viewport.pixel_height <= 0 else viewport.pixel_height
+                initialized: bool = catch RenderScene::initialize(viewport_width, viewport_height,
+                    Actions::CAMERA_VERTICAL_SIZE):
                     ok: true
                     error failure: false
-                return 14 if not resized
-            result: mutable i32 = 0
-            if self_test:
-                result <- scripted_native_smoke(session, &game, &scene, &snapshot,
-                    &presenter, &lighting, &view, status_text, viewport_width.i64(), viewport_height.i64())
-            else:
-                result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
-                    &lighting, status_text, &input, &view)
-            lighting_closed: bool = catch MazeLighting::shutdown(&lighting):
-                ok: true
-                error failure: false
-            return 17 if not lighting_closed
-            menu_closed: bool = catch MazeMenuView::destroy(&view):
-                ok: true
-                error failure: false
-            return 19 if not menu_closed
-            return result if result != 0
-            clear_status: bool = catch RenderSnapshotScene::clear(&presenter):
-                ok: true
-                error failure: false
-            return 12 if not clear_status
-            live_instances: usize = RenderScene::instance_count()
-            return 13 if live_instances != 0
-            0
+                return 6 if not initialized
+                loaded: i32 = load_assets(session)
+                return 0 if loaded == -1
+                return loaded if loaded != 0
+                arena_bodies: usize = catch MazePhysics::arena_create(session):
+                    value: value
+                    error failure: return 72
+                return 73 if arena_bodies != MazeLayout::maze_layout_count() + 1
+
+                game: mutable MazeGame::MazeGame = MazeGame::MazeGame()
+                lighting: mutable MazeLighting::Runtime = MazeLighting::Runtime()
+                lighting_started: bool = catch MazeLighting::start(&lighting,
+                    game.grid.player_x, game.grid.player_y):
+                    ok: true
+                    error failure: false
+                return 16 if not lighting_started
+                scene: mutable MazePresentation::MazeScene = catch MazePresentation::MazeScene(game):
+                    value: value
+                    error failure: return 7
+                snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+                presenter: mutable RenderScene::SnapshotPresenter = RenderScene::SnapshotPresenter()
+                input: mutable ActionInput::Input = ActionInput::Input()
+                return 8 if not bind_controls(&input)
+                presented: bool = extract_and_present(&scene, &snapshot, &presenter)
+                return 9 if not presented
+                status_text: RenderScene::OverlayTextHandle = catch RenderScene::create_overlay_text(
+                    status_message(game), Overlay::LOADING_TEXT_X, Overlay::LOADING_TEXT_Y, Actions::FONT_SIZE,
+                    RenderScene::Color{red: Overlay::TEXT_RED, green: Overlay::TEXT_GREEN,
+                        blue: Overlay::TEXT_BLUE, alpha: Overlay::TEXT_ALPHA}):
+                    value: value
+                    error failure: return 10
+                view: mutable MazeMenuView::View = catch MazeMenuView::create(game):
+                    value: value
+                    error failure: return 18
+                first_frame: Application::PumpStatus = catch RuntimeServices::pump(session):
+                    value: value
+                    error failure: return 11
+                return 0 if first_frame == Application::PumpStatus.ExitRequested
+                return 11 if first_frame != Application::PumpStatus.Running and first_frame != Application::PumpStatus.Suspended
+                viewport <- catch RuntimeServices::frame_info(session):
+                    value: value
+                    error failure: return 15
+                if viewport.pixel_width > 0 and viewport.pixel_height > 0 and (viewport.pixel_width != viewport_width or viewport.pixel_height != viewport_height):
+                    resized: bool = catch RenderScene::resize(viewport.pixel_width, viewport.pixel_height):
+                        ok: true
+                        error failure: false
+                    return 14 if not resized
+                result: mutable i32 = 0
+                if self_test:
+                    result <- scripted_native_smoke(session, &game, &scene, &snapshot,
+                        &presenter, &lighting, &view, status_text, viewport_width.i64(), viewport_height.i64())
+                else:
+                    result <- interactive_loop(session, &game, &scene, &snapshot, &presenter,
+                        &lighting, status_text, &input, &view)
+                lighting_closed: bool = catch MazeLighting::shutdown(&lighting):
+                    ok: true
+                    error failure: false
+                return 17 if not lighting_closed
+                menu_closed: bool = catch MazeMenuView::destroy(&view):
+                    ok: true
+                    error failure: false
+                return 19 if not menu_closed
+                return result if result != 0
+                clear_status: bool = catch RenderSnapshotScene::clear(&presenter):
+                    ok: true
+                    error failure: false
+                return 12 if not clear_status
+                live_instances: usize = RenderScene::instance_count()
+                return 13 if live_instances != 0
+                return 0

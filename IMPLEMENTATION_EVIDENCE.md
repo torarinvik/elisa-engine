@@ -89,15 +89,131 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   an earlier temporary compiler preflight is not installed-tuple evidence.
   Preserve exact callee, callback, default-argument, shadowing, and
   profiler/host-callback controls.
-- **Character Course grant adoption on the pulled compiler:** the current local
-  compiler tree at `4655dbaa` has a provenance-checked Stage1/runtime pair.
+- **Character Course grant adoption on compiler `4655dbaa`:** the compiler tree
+  used for that qualification had a provenance-checked Stage1/runtime pair.
   Its strict project-context check exposed 265 `Global.Read/Write` findings;
   local grant scopes now cover the affected course/runtime calls, with explicit
   returns preserving tail values. All five public course entrypoints pass
-  strict `-emit check` with zero diagnostics. This is semantic evidence only:
-  the current course app has not been freshly linked or run. See
+  strict `-emit check` with zero diagnostics. At that checkpoint, this was
+  semantic evidence only; the course app had not been freshly linked or run. See
   [exact candidate and check records](docs/validation/global-grants-character-course-4655dbaa.md).
-- **Newest compiler integration — consumer semantics clear; compiler grants, proof-pair freshness, and backend integration are the release blockers:**
+- **Previous 4655dbaa engine grant gate:** installed Stage1
+  `cfcdc1fa99752f417c4267f125ed3419be26e569115fb28df3027095cb7e1da2` and
+  runtime `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`
+  match the provenance-checked compiler source tree. All five Character Course
+  entrypoints pass strict semantic checking, and the uncached engine gate passes
+  all 216 tests (0 cached, 0 remote, 36 seconds). The separate Maze C-ABI
+  embedding probe also passes on this unchanged pair, including archive
+  emission, native linking, session/gameplay exports and live SDL input. This
+  closed those engine gates on the previous tuple; proof-pair qualification and
+  fresh Course/Studio native consumer acceptance remain open. Full command and
+  identity are recorded in
+  [the 4655dbaa record](docs/validation/global-mutable-grants.md#current-4655dbaa-engine-gate).
+- **Current b11e9121 Global-grant gate:** installed Stage1
+  `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24` and
+  runtime `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`
+  match the installed provenance record for source tree
+  `40b306621d1e1aa7cdd68a73179360ba1b6b9ba61aae2d491cd3087d4b819fff`. The
+  compiler's direct CLI smoke passes default denials, exact grants and
+  `-permissive` bypasses. All five Character Course entrypoints pass strict
+  checks, the uncached engine gate passes 216/216 in 27 seconds, and the
+  separate C-ABI embedding probe passes, including live SDL input. The
+  compiler's inferred-row parity helper still has a report-format mismatch;
+  proof-pair and fresh Course/Studio app acceptance remain open. See
+  [current grant validation](docs/validation/global-mutable-grants.md#current-b11e9121-engine-gate).
+- **Existing Maze consumer grant/package acceptance:** The headless game route,
+  native SDL3/Metal app build and scripted run, and all nine relocated-package
+  controls pass on the saved `b11e9121` Stage1 product
+  `5888942e…` with runtime `013d3174…`. The consumer now declares and scopes
+  the required `Global.Read/Write` grants through world construction and native
+  runtime calls. Executable and bundle hashes, commands, Python runtime and
+  remaining limits are in
+  [the Maze acceptance record](docs/validation/maze-global-grants.md).
+- **Engine grant regression guard:** `scripts/run_tests.py` now performs the
+  direct default-grant/`-permissive` qualification before compiling engine
+  tests. It pins the report to the selected compiler product SHA256 and uses a
+  distinct artifact path per product. Its actual runner entrypoint passed
+  32/32 controls on installed Stage1 `1505c598a71e76d0d7f1a201cdf458320960d9f024531eca2c4bff19f5c08c24`, including indexed array reads/writes and a global index expression;
+  report: `build/validation/global-grant-cli-qualification-1505c598a71e.json`.
+  Eleven Python controls cover report validation, exact product pinning,
+  false-positive denial text, and that
+  the runner aborts before engine work when the preflight fails. After the
+  source change, the normal runner also passes
+  all 216 engine tests with 216 compile results cached, zero remote compiles
+  and exit 0 in 13 seconds. The separate uncached 216-test run above was
+  obtained on this same product before the runner change.
+  Commits `8daa161d` and `88bc06ec` expand indexed-global coverage and make the
+  refusal matcher reject unrelated syntax errors that mention a permission.
+  The portable `cook` workflow now runs the grant-harness and hosted-toolchain
+  policy suites on Windows, macOS and Linux; the current local runs pass 11/11
+  and 17/17, and the workflow YAML parses. Lock schema controls reject malformed
+  JSON types without permitting an invalid eligibility state. The hosted
+  lock records all four verified `main` heads, rejects a compiler pin that
+  differs from its recorded head, and the plan's optional online verification
+  detects upstream drift. The current four-ref verification passes; hosted
+  Actions results have not yet been observed.
+- **Earlier callback-region repair — separately open:** compiler worktree branch
+  `codex/fbx-worker-region-latest` is rebased at `b719dbd5` over installed
+  upstream `b11e9121`. Its fresh Stage1 product
+  `9acf976ee979bec4ad4819b724ba02b3f9d53f7bc6c8d4fde1e01156b79bd6e5`, runtime
+  `de964b7e5b764337b9332534627e16bc4dc181037daba62c2e40d1392502512f`, and
+  source-tree SHA256
+  `77167812ecd7112b81436c6d7590959b3b4de473ad52ae89966b91b22dc3abf8` pass the
+  installed provenance check. The proof rebuild against this tuple failed on
+  missing default `Global.Read/Write` annotations in proof/compiler sources;
+  it did not produce a qualified proof binary. A fresh O0 diagnostic bundle was
+  built with engine source `1e98f075`, a dirty UI worktree, and executable SHA256
+  `51bda2b78342a27e550727f53222356193b5ff56e2158941a2f47e8a342cb9f9`. Its
+  sealed input record matches compiler `b719dbd5` and runtime
+  `de964b7e…`. The bundle opened to “Workspace available,” but this does not
+  establish playback acceptance. Later matching-bundle crash reports fault in
+  `Studio.clip.rehome` while drawing; see the separate current-crash finding
+  below. The O2 build was stopped after more than 13 minutes in LLVM AArch64
+  DAGCombiner without an object. Focused UAF/scalar-carrier regressions and
+  callback-path consumer qualification remain open.
+- **Current Studio global-rehome failure — compiler regression in progress:** the Oct 9
+  reports `MocapStudio-2026-10-09-062450.ips` and
+  `MocapStudio-2026-10-09-063522.ips` both carry executable UUID
+  `5CCF2C5E…`, matching the current diagnostic bundle. Both fault at
+  `Studio.clip.rehome+1160` while the view is drawing. The consumer owner traced
+  the invalid imported-GLB document byte pointer to
+  `src/studio/app/app_edit_transactions.elisa::publish_candidate`: it moves an
+  affine `StudioModel::Clip` into global `clip`, but the generated assignment
+  appears to omit global rehome while the candidate's backing buffers belong to
+  a temporary caller arena. The owner has since added a candidate fix in the
+  active compiler worktree: it detects owning by-value parameters stored in
+  globals even when the callee allocates nothing. The focused fixture exercises
+  an owning optional aggregate crossing a short-lived caller region. The owner
+  committed the compiler change as `806772c7`; its rebuilt Stage1 SHA256 is
+  `5596ef202f07647791b9d3fa24c708397f61b65a7d9f22846cf99b1214fd042d`, with
+  matching runtime SHA256
+  `de964b7e5b764337b9332534627e16bc4dc181037daba62c2e40d1392502512f`. The
+  exact command `bash test/parity/global_store_auto_region_smoke.sh` now passes:
+  its optional owning aggregate survives the caller-region close at O0, O2 and
+  under AddressSanitizer. This qualifies the focused compiler regression only;
+  the Studio app has not yet been rebuilt or retested.
+  An earlier version of the compiler patch also passed the native backend smoke
+  (567/567 checks). The owner then narrowed the additional scan to by-value
+  parameters that can carry region-backed storage and rebuilt Stage1; that
+  final source version passes the focused regression, while its 591-check fast
+  parity profile runs against the fetched Stage0 oracle. The observed first
+  failure is `emit_ast_parity_smoke.sh`: 28 of 579 fixtures differ, beginning
+  with `zeroed_using_scoped_module_alias.elisa`. The run is still active and has
+  not established whether these differences predate this patch. The earlier
+  567-check result does not qualify this tightened version. Self-host/native
+  qualification and the Studio app rebuild remain open.
+  The current chooser leaves Open disabled with the FBX selected, so playback
+  could not be repeated through that flow. This compiler/global-rehome
+  investigation is separate from the earlier `path_copy` hidden-region failure.
+- **Renderer lifecycle diagnosis — prepared, not run:** engine `fa451328` has
+  1,186 revalidated input hashes and unchanged compiler/runtime and
+  Wicked/Jolt/SDL3 identities. `scripts/run_process_budget.py` enforces an
+  aggregate 3 GiB process-group RSS cap and 180-second timeout; all six focused
+  controls pass, including descendant termination and monitor failure cleanup.
+  The exact native command, log path, and watchdog report path are in the
+  ignored `build/validation/effect-memory-vm-regions-next-run-preparation.json`.
+  The run is held until the active Studio/UI tasks release the native slot.
+- **Earlier Studio compiler integration record — app/backend acceptance remains open:**
   after the 54-diagnostic baseline in
   `mocap-cleaner/build/studio-semantic-after-global-scopes-2.elisa.log`, the
   consumer owner reports the latest strict semantic check passed with zero
@@ -133,8 +249,10 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   code generation declines six constructs—five call sites using the same
   fixed-size generic helper and the exported AppKit file-drop callback. The
   generic join regression still passes at O0/O2 for scalar and 32-byte results.
-  No current Studio app package has been produced or launched. The `ec41ca95`
-  consumer snapshot passes compiler freshness, export-alias regression, native
+  At this `19294e83` checkpoint no Studio package had been produced or launched.
+  A later `b719dbd5` O0 diagnostic bundle exists; its current crash evidence is
+  recorded above and it is not accepted. The `ec41ca95` consumer snapshot passes
+  compiler freshness, export-alias regression, native
   ABI/pin checks and strict semantic preflight according to its owner. Earlier O2
   attempts exceeded the 4 GiB and 6 GiB RSS guards; one 8 GiB retry was stopped
   after UI inputs changed. On the later stable 718-input snapshot, the 8 GiB
@@ -175,7 +293,10 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   loading through a null arena pointer. `StudioFbxImportWorker.path_copy` saves
   its hidden region parameter from x1 and forwards it to `__elisa_darray_grow`;
   the generic callback call does not forward the callback's hidden region slot.
-  This confirms the region ABI gap beyond the focused aggregate regression.
+  This earlier report supports a separate region ABI gap beyond the focused
+  aggregate regression. Later matching-bundle reports fault at
+  `Studio.clip.rehome+1160` instead; do not conflate the two call paths or claim
+  the region repair fixes the current document-byte ownership failure.
   Compiler branch commit `d5a9b58a` adds callback region metadata and task-owned
   result arena transfer. The mocap owner reports four core-file conflicts when
   integrating it with the newer compiler and is reconciling them in an isolated
@@ -305,11 +426,14 @@ The report is
 object used for the engine gate was hash-checked against the compiler candidate's
 `build/runtime/elisacore_runtime.o` before testing.
 
-This is the last fully authenticated compiler pair. The separate compiler main
-checkout has advanced locally through `e6b5a0c4` and contains an uncommitted JSON
-grant edit; no Stage1/runtime from that exact source is qualified. Repeat this
-216-source and runtime gate after a clean product is available. The proof pair,
-full project build and current Studio acceptance remain open.
+This records the 12120f6b pair's acceptance at that checkpoint. The later
+4655dbaa Stage1/runtime tuple passed all five strict Character Course entrypoint
+checks, the uncached 216-test engine gate and the Maze C-ABI probe. The current
+b11e9121 tuple has independently passed those engine gates plus the compiler's
+direct Global CLI controls; see the current grant evidence above and
+[the latest qualification record](docs/validation/global-mutable-grants.md#current-b11e9121-engine-gate).
+The proof pair, full Course build/package, and current Studio acceptance remain
+open.
 
 The 600-line source-length gate is complete in engine commit `9e40976a`.
 `scripts/asset_cooks.py`, `scripts/package_macos_app.py`, and

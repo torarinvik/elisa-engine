@@ -1,51 +1,38 @@
-# Targeted runtime delivery — 2026-10-08
+# Targeted runtime delivery — 2026-10-09
 
 This refines the active queue in `IMPLEMENTATION_PLAN.md`. The full backlog
 remains open. Select a concrete defect or missing acceptance result in the
 Character Course before promoting a subsystem-wide feature.
 
-## Next executable slices — authoritative queue
+## Current delivery order
 
-[The active queue](../../IMPLEMENTATION_PLAN.md#active-delivery-queue--highest-return-first)
-is the single scheduling authority. Execute these bounded slices in that order:
+The [active delivery queue](../../IMPLEMENTATION_PLAN.md#active-delivery-queue--highest-return-first)
+is the only scheduling authority and was refreshed on 2026-10-09. Its current
+highest-return gates start with the global rehome defect for owning values,
+followed by the separate callback-region ABI repair and default-grant proof
+integration. Exact Studio acceptance, the original-budget prover run, native
+redraw/reveal, and renderer lifecycle diagnosis follow. Package refresh,
+ordinary-project rehearsal, hosted CI, and physical gameplay acceptance come
+after those prerequisites. The technical slices below are supporting guidance,
+not a second queue.
 
-1. Qualify default global-mutable grants and the `-permissive` bypass on the owning
-   compiler product; migrate real engine caller chains exposed by that policy.
-2. Exercise the actual Studio consumer on integrated dependency `b8dd8add`,
-   including redraw and observer registration/reveal. Local
-   source acceptance passes O0/O2, focused AddressSanitizer, loader controls and
-   all 73 engine reports / 4,277 obligations. Use the already handed-off clean tuple; the historical crash cause remains unestablished. See
-   [mesh evidence](../validation/mesh-overlay-shapes.md).
-3. Qualify dispatcher repair `8341f0fc` after the coordinated heavy-build hold.
-   Original positive/over-budget negative, summary/cast and source-binding forgery
-   controls pass under unchanged caps. Build a clean pair and run original CLI
-   acceptance plus engine inventory, then complete compatibility from the
-   previously qualified prover `5c40d273` baseline. Exact
-   unsigned-subtraction controls pass, the original return branch replays 23/23,
-   and the strict negative is disproved; original strict-order and signed-boundary
-   CLI regressions pass. Report retention and provenance guards
-   are implemented at `4d9f3a8d`; the diagnostic census finishes 1,174 inputs in
-   1,301.46s at 8,184,352 KiB, with nine timeouts. Complete original compatibility
-   checks against immutable snapshots under unchanged budgets before promotion.
-4. Diagnose and repair the intermittent effect lifecycle footprint using the full
-   renderer sequence and existing memory-domain instrumentation. Preserve the
-   original warmup, cycles and 8 MiB allowance.
-5. Rebuild and relocate optimized Character Course with current cooked content,
-   complete resource manifests and offline lifecycle acceptance. Guide assets are
-   already refreshed at `a30d3af9`; current generator checks pass.
-6. Qualify hosted full-SHA pins with an actual clean-checkout headless run.
-7. Rehearse an ordinary public-API project through cooking and packaging; repair a
-   demonstrated authoring or failure-diagnostic gap.
-8. Complete the existing gameplay route and physical hardware acceptance when
-   available, keeping external prerequisites visible.
+For the second ordinary-application gate, use the existing
+`examples/maze` consumer: its manifest cooks an authored PNG texture bundle, its
+client uses the public render and asynchronous asset APIs, and
+`scripts/packaged_maze_smoke.py` already checks relocated execution with the
+checkout denied plus missing, escaping, corrupted and undeclared-dependency
+failures. Its headless route, native SDL3/Metal scripted app and nine packaged
+controls now pass on the saved `b11e9121` Stage1/runtime pair; the consumer's
+default `Global.Read/Write` adoption and exact artifact identities are recorded
+in [`docs/validation/maze-global-grants.md`](../validation/maze-global-grants.md).
+Keep fresh Character Course relocation and hosted CI as separate acceptance.
 
-Follow the main plan's readiness table and coordinated heavy-build hold.
-While waiting on release prerequisites, finish the named mocap consumer's provider
-registration and actual Studio reveal acceptance. The read-only trash location
-observer and focused native identity, readonly-operation, bounded-output and
-uncertainty controls are qualified at engine-mocap `3f60d5ed`; its clean source and
-header tuple has been handed off. Require full retained-binding matching and fresh
-observation before reveal. Keep restore/deletion authority outside this observer.
+The mocap consumer still needs provider registration and actual Studio reveal
+acceptance. The read-only trash location observer and focused native identity,
+readonly-operation, bounded-output and uncertainty controls are qualified at
+engine-mocap `3f60d5ed`; its clean source and header tuple has been handed off.
+Require full retained-binding matching and fresh observation before reveal.
+Keep restore/deletion authority outside this observer.
 
 Historical repair details remain in linked validation notes. They do not define a
 second queue or establish current compatibility. Keep the full subsystem backlog,
@@ -88,9 +75,16 @@ resize tests and course HUD helpers are the starting point for item 2.
 
 ## Compiler style guidance applied to the active queue
 
-Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `b26659e2`
-on 2026-10-08; its latest guide change is `e3087e23` (following `aabad52f`). Section 6 marks owned
-value-threading and builtin container value forms as working in Stage1.
+Rechecked `../Elisa-compiler/STYLE_GUIDE.md` at compiler checkout `b11e9121`
+on 2026-10-09; the latest guide change is `dd8aea22`. Section 7 confirms
+borrow-exclusivity checks across reference locals, returned/conditional refs,
+containers and function values. Its mutable-global subsection states that
+reads require `Global.Read`, writes require `Global.Write`, and
+read-modify-write requires both by default; function effects and local `can`
+blocks grant access, callers carry the capability, and `-permissive` is for
+diagnostic or migration workflows. Section 6 marks owned value-threading and
+builtin container value forms as working in Stage1. Earlier guide changes also
+cover comprehensions and labelled loop results.
 The immutable 2ad7a165 product separately passes 215 uncached runtime tests
 and 73/73 engine proofs; full prover matrix/shared/native qualification
 remains open ([evidence](../validation/compiler-2ad7a165-qualification.md)).
@@ -219,8 +213,8 @@ these additional checks within implementation slices:
 
 ### Concrete asset-code candidates from the guide review
 
-Rechecked the guide at `b26659e2` on 2026-10-08; the latest guide revision
-remains `e3087e23`. Use these candidates when the owning consumer slice next
+Rechecked the guide at `b11e9121` on 2026-10-09; the latest guide revision is
+`dd8aea22`. Use these candidates when the owning consumer slice next
 touches the file, after qualification of the selected product:
 
 - `src/assets/gltf_cubic_sample.elisa`: the final four-element `normalized`

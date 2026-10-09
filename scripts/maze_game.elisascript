@@ -19,7 +19,8 @@ def main(arguments: darray[sview]) -> i64:
     root: Path = Script::source_path().parent().parent()
     compiler: sview = get_environment_or("ELISA_COMPILER_BIN", "elisac-stage1")
     _ = create_directories(root.joinpath("build"))
-    binary: sview = str(root.joinpath("build/maze-game"))
+    default_binary: sview = str(root.joinpath("build/maze-game"))
+    binary: sview = get_environment_or("ELISA_MAZE_GAME_BINARY", default_binary)
     compile_result: ProcessCapture =
         empty_input: sview = ""
         capture_process_result(executable(compiler), ["-emit", "exe", "-o", binary, str(root.joinpath("examples/maze/main.elisa"))], empty_input)

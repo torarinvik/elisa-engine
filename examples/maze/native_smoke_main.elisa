@@ -2,7 +2,8 @@
 # from the ordinary app means gameplay has no test-only environment switches.
 include "./native_client.elisa"
 
-def main() -> i32:
-    first: i32 = MazeNativeClient::run(true, true)
-    return first if first != 0
-    MazeNativeClient::run(true, true)
+def main() -> i32 can[Global.Read, Global.Write]:
+    can Global.Read, Global.Write:
+        first: i32 = MazeNativeClient::run(true, true)
+        return first if first != 0
+        return MazeNativeClient::run(true, true)
