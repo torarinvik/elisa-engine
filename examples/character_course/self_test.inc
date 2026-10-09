@@ -273,84 +273,85 @@
         # rebuilt input map. Gamepad checks are mapping-only: synthetic events,
         # no physical controller.
         def controls_test() -> i32 error[Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
-            defaults: CourseControls::Keymap = CourseControls::defaults()
-            return ControlsCodes::DEFAULTS if not CourseControls::valid(&defaults)
-            escape: CourseControls::AssignOutcome = CourseControls::assign(defaults,
-                CourseControls::SLOT_JUMP, key_code(Application::KeyboardKeyCode.Escape))
-            arrow: CourseControls::AssignOutcome = CourseControls::assign(defaults,
-                CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.ArrowUp))
-            return ControlsCodes::RESERVED if escape.result != CourseControls::AssignResult.Reserved or arrow.result != CourseControls::AssignResult.Reserved or not same_keymap(&escape.keymap, &defaults)
-            swapped: CourseControls::AssignOutcome = CourseControls::assign(defaults,
-                CourseControls::SLOT_JUMP, key_code(Application::KeyboardKeyCode.W))
-            return ControlsCodes::SWAP if swapped.result != CourseControls::AssignResult.Swapped or swapped.keymap.jump != key_code(Application::KeyboardKeyCode.W) or swapped.keymap.forward != key_code(Application::KeyboardKeyCode.Space) or not CourseControls::valid(&swapped.keymap)
-            blob: Save::Blob = try CourseControls::encode(&swapped.keymap)
-            decoded: CourseControls::LoadResult = CourseControls::decode(&blob)
-            return ControlsCodes::ROUND_TRIP if decoded.status != CourseControls::LoadStatus.Loaded or not same_keymap(&decoded.keymap, &swapped.keymap)
-            values: mutable i64[Save::MAX_FIELDS] = zeroed
-            values[0] <- 1
-            values[1] <- defaults.forward
-            values[2] <- defaults.forward
-            values[3] <- defaults.left
-            values[4] <- defaults.right
-            values[5] <- defaults.jump
-            values[6] <- defaults.crouch
-            duplicate_rejected: bool = try rejected_to_defaults(values)
-            values[2] <- key_code(Application::KeyboardKeyCode.Escape)
-            reserved_rejected: bool = try rejected_to_defaults(values)
-            return ControlsCodes::INVALID_MAP if not duplicate_rejected or not reserved_rejected
-            values[2] <- defaults.backward
-            values[0] <- 2
-            version_rejected: bool = try rejected_to_defaults(values)
-            return ControlsCodes::VERSION if not version_rejected
-            _ = catch UserData::remove_blob(CourseControls::storage_key()):
-                ok: true
-                error failure: false
-            missing: CourseControls::LoadResult = CourseControls::load()
-            try CourseControls::save(&swapped.keymap)
-            persisted: CourseControls::LoadResult = CourseControls::load()
-            short_record: Save::Blob = try Save::save_write(values, 2)
-            try UserData::write_blob(CourseControls::storage_key(), &short_record)
-            corrupt: CourseControls::LoadResult = CourseControls::load()
-            try UserData::remove_blob(CourseControls::storage_key())
-            return ControlsCodes::PERSIST if missing.status != CourseControls::LoadStatus.Missing or not same_keymap(&missing.keymap, &defaults) or persisted.status != CourseControls::LoadStatus.Loaded or not same_keymap(&persisted.keymap, &swapped.keymap) or corrupt.status != CourseControls::LoadStatus.Rejected or not same_keymap(&corrupt.keymap, &defaults)
-            menu: mutable CourseControls::Menu = CourseControls::Menu(defaults)
-            menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowDown)).menu
-            down_selected: i64 = menu.selected
-            menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
-            menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
-            wrapped_selected: i64 = menu.selected
-            menu <- CourseControls::Menu{keymap: menu.keymap, selected: CourseControls::SLOT_CROUCH}
-            assigned: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.J))
-            blocked: CourseControls::MenuStep = CourseControls::menu_key(assigned.menu, key_code(Application::KeyboardKeyCode.P))
-            closed: CourseControls::MenuStep = CourseControls::menu_key(blocked.menu, key_code(Application::KeyboardKeyCode.Escape))
-            return ControlsCodes::MENU if down_selected != CourseControls::SLOT_BACKWARD or wrapped_selected != CourseControls::MENU_ROWS - 1 or assigned.result != CourseControls::MenuResult.Assigned or assigned.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J) or blocked.result != CourseControls::MenuResult.Reserved or closed.result != CourseControls::MenuResult.Closed or closed.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J)
-            remapped: CourseControls::Keymap = CourseControls::assign(defaults,
-                CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.J)).keymap
-            input: mutable ActionInput::Input = ActionInput::Input()
-            default_pad: CoursePad::Pad = CoursePad::defaults()
-            return ControlsCodes::REBIND_INPUT if not CourseControls::bind(&input, &remapped, &default_pad)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.W), 1.0))
-            old_key_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.J), 1.0))
-            new_key_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.J), 0.0))
-            released: bool = not ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            return ControlsCodes::REBIND_INPUT if old_key_moves or not new_key_moves or not released
-            ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.ArrowUp), 1.0))
-            arrow_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            focus_lost: mutable Application::InputEvent = zeroed
-            focus_lost.kind <- Application::InputEventKind.FocusLost
-            ActionInputRuntime::apply_application_event(&input, focus_lost)
-            return ControlsCodes::FOCUS if not arrow_moves or ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftYNegative)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad, stick, 0.2))
-            inside_deadzone: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad, stick, 0.8))
-            stick_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
-            ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad,
-                Application::gamepad_button_code(Application::GamepadButtonCode.South), 1.0))
-            return ControlsCodes::GAMEPAD_MAPPING if inside_deadzone or not stick_moves or not ActionInput::action_down(&input, CourseControls::ACTION_JUMP)
-            0
+            can Global.Read, Global.Write:
+                defaults: CourseControls::Keymap = CourseControls::defaults()
+                return ControlsCodes::DEFAULTS if not CourseControls::valid(&defaults)
+                escape: CourseControls::AssignOutcome = CourseControls::assign(defaults,
+                    CourseControls::SLOT_JUMP, key_code(Application::KeyboardKeyCode.Escape))
+                arrow: CourseControls::AssignOutcome = CourseControls::assign(defaults,
+                    CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.ArrowUp))
+                return ControlsCodes::RESERVED if escape.result != CourseControls::AssignResult.Reserved or arrow.result != CourseControls::AssignResult.Reserved or not same_keymap(&escape.keymap, &defaults)
+                swapped: CourseControls::AssignOutcome = CourseControls::assign(defaults,
+                    CourseControls::SLOT_JUMP, key_code(Application::KeyboardKeyCode.W))
+                return ControlsCodes::SWAP if swapped.result != CourseControls::AssignResult.Swapped or swapped.keymap.jump != key_code(Application::KeyboardKeyCode.W) or swapped.keymap.forward != key_code(Application::KeyboardKeyCode.Space) or not CourseControls::valid(&swapped.keymap)
+                blob: Save::Blob = try CourseControls::encode(&swapped.keymap)
+                decoded: CourseControls::LoadResult = CourseControls::decode(&blob)
+                return ControlsCodes::ROUND_TRIP if decoded.status != CourseControls::LoadStatus.Loaded or not same_keymap(&decoded.keymap, &swapped.keymap)
+                values: mutable i64[Save::MAX_FIELDS] = zeroed
+                values[0] <- 1
+                values[1] <- defaults.forward
+                values[2] <- defaults.forward
+                values[3] <- defaults.left
+                values[4] <- defaults.right
+                values[5] <- defaults.jump
+                values[6] <- defaults.crouch
+                duplicate_rejected: bool = try rejected_to_defaults(values)
+                values[2] <- key_code(Application::KeyboardKeyCode.Escape)
+                reserved_rejected: bool = try rejected_to_defaults(values)
+                return ControlsCodes::INVALID_MAP if not duplicate_rejected or not reserved_rejected
+                values[2] <- defaults.backward
+                values[0] <- 2
+                version_rejected: bool = try rejected_to_defaults(values)
+                return ControlsCodes::VERSION if not version_rejected
+                _ = catch UserData::remove_blob(CourseControls::storage_key()):
+                    ok: true
+                    error failure: false
+                missing: CourseControls::LoadResult = CourseControls::load()
+                try CourseControls::save(&swapped.keymap)
+                persisted: CourseControls::LoadResult = CourseControls::load()
+                short_record: Save::Blob = try Save::save_write(values, 2)
+                try UserData::write_blob(CourseControls::storage_key(), &short_record)
+                corrupt: CourseControls::LoadResult = CourseControls::load()
+                try UserData::remove_blob(CourseControls::storage_key())
+                return ControlsCodes::PERSIST if missing.status != CourseControls::LoadStatus.Missing or not same_keymap(&missing.keymap, &defaults) or persisted.status != CourseControls::LoadStatus.Loaded or not same_keymap(&persisted.keymap, &swapped.keymap) or corrupt.status != CourseControls::LoadStatus.Rejected or not same_keymap(&corrupt.keymap, &defaults)
+                menu: mutable CourseControls::Menu = CourseControls::Menu(defaults)
+                menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowDown)).menu
+                down_selected: i64 = menu.selected
+                menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
+                menu <- CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp)).menu
+                wrapped_selected: i64 = menu.selected
+                menu <- CourseControls::Menu{keymap: menu.keymap, selected: CourseControls::SLOT_CROUCH}
+                assigned: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.J))
+                blocked: CourseControls::MenuStep = CourseControls::menu_key(assigned.menu, key_code(Application::KeyboardKeyCode.P))
+                closed: CourseControls::MenuStep = CourseControls::menu_key(blocked.menu, key_code(Application::KeyboardKeyCode.Escape))
+                return ControlsCodes::MENU if down_selected != CourseControls::SLOT_BACKWARD or wrapped_selected != CourseControls::MENU_ROWS - 1 or assigned.result != CourseControls::MenuResult.Assigned or assigned.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J) or blocked.result != CourseControls::MenuResult.Reserved or closed.result != CourseControls::MenuResult.Closed or closed.menu.keymap.crouch != key_code(Application::KeyboardKeyCode.J)
+                remapped: CourseControls::Keymap = CourseControls::assign(defaults,
+                    CourseControls::SLOT_FORWARD, key_code(Application::KeyboardKeyCode.J)).keymap
+                input: mutable ActionInput::Input = ActionInput::Input()
+                default_pad: CoursePad::Pad = CoursePad::defaults()
+                return ControlsCodes::REBIND_INPUT if not CourseControls::bind(&input, &remapped, &default_pad)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.W), 1.0))
+                old_key_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.J), 1.0))
+                new_key_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.J), 0.0))
+                released: bool = not ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                return ControlsCodes::REBIND_INPUT if old_key_moves or not new_key_moves or not released
+                ActionInput::apply(&input, device_event(ActionInput::Device.Keyboard, key_code(Application::KeyboardKeyCode.ArrowUp), 1.0))
+                arrow_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                focus_lost: mutable Application::InputEvent = zeroed
+                focus_lost.kind <- Application::InputEventKind.FocusLost
+                ActionInputRuntime::apply_application_event(&input, focus_lost)
+                return ControlsCodes::FOCUS if not arrow_moves or ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                stick: i64 = Application::gamepad_axis_code(Application::GamepadAxisCode.LeftYNegative)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad, stick, 0.2))
+                inside_deadzone: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad, stick, 0.8))
+                stick_moves: bool = ActionInput::action_down(&input, CourseControls::ACTION_FORWARD)
+                ActionInput::apply(&input, device_event(ActionInput::Device.Gamepad,
+                    Application::gamepad_button_code(Application::GamepadButtonCode.South), 1.0))
+                return ControlsCodes::GAMEPAD_MAPPING if inside_deadzone or not stick_moves or not ActionInput::action_down(&input, CourseControls::ACTION_JUMP)
+                return 0
 
         const module SoundCodes:
             START: i32 = 90
@@ -401,72 +402,73 @@
         # underruns; a scene reset silences events and forgets history; stop
         # releases every clip, voice and stream so a second start reuses them.
         def sound_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return SoundCodes::START if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
-            return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::DUPLICATE
-            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::REPLACED
-            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 2) != CourseSounds::PLAYED
-            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 5) != CourseSounds::COOLING
-            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_WIN, 5) != CourseSounds::PLAYED
-            return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_FALL, 6) != CourseSounds::REPLACED
-            # The authored triggers: a step per 0.65 m walked, and a landing
-            # only after a drop of 0.3 m or more.
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 20) != 0
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.4, y: 0.0, z: 0.0}, 21) != 0
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 22) != CourseSounds::TRACKED_STEP
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 0.2, z: 0.0}, 23) != 0
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 24) != 0
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 2.0, z: 0.0}, 25) != 0
-            return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 40) != CourseSounds::TRACKED_LANDING
-            return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, true)
-            before: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
-            started_at: u64 = Application::uptime_nanos()
-            elapsed: u64 =
-                for _ in 0..<SoundCodes::MAX_PUMPS |waited: u64 = 0, session| -> waited:
-                    pumped: bool = catch RuntimeServices::pump(session):
-                        value: true
-                        error failure: false
-                    waited <- Application::uptime_nanos() - started_at
-                    break SoundCodes::STREAM_NANOS * 2 if not pumped
-                    break waited if waited >= SoundCodes::STREAM_NANOS
-            return SoundCodes::PAUSE if elapsed > SoundCodes::STREAM_NANOS * 2 - 1 or elapsed < SoundCodes::STREAM_NANOS
-            after: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
-            return SoundCodes::MUSIC_ADVANCES if after.state != AudioRuntime::StreamState.Playing or after.frames_played <= before.frames_played
-            return SoundCodes::UNDERRUN if after.underrun_frames != 0
-            played_to: u64 = CourseSounds::music_position(&sounds)
-            return SoundCodes::MUSIC_REWIND if played_to < SoundCodes::REWOUND_FRAMES or not CourseSounds::rewind_music(&sounds)
-            return SoundCodes::MUSIC_REWIND if CourseSounds::music_position(&sounds) >= SoundCodes::REWOUND_FRAMES
-            return SoundCodes::MUSIC_REWIND if seek_outcome(CourseSounds::music_stream(&sounds), SoundCodes::PAST_END) != 1
-            music: AudioRuntime::StreamHandle = CourseSounds::music_stream(&sounds)
-            return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, false)
-            CourseSounds::reset_scene(&sounds)
-            return SoundCodes::SCENE_RESET if CourseSounds::event_voices(&sounds) != 0
-            return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
-            return SoundCodes::VIRTUAL if not set_effects_budget(1)
-            return SoundCodes::VIRTUAL if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 10) != CourseSounds::PLAYED
-            return SoundCodes::VIRTUAL if CourseSounds::update(&sounds) or not CourseSounds::ambience_virtual(&sounds)
-            CourseSounds::reset_scene(&sounds)
-            return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
-            return SoundCodes::VIRTUAL if CourseSounds::ambience_drift(&sounds) > SoundCodes::DRIFT_FRAMES
-            return SoundCodes::VIRTUAL if not set_effects_budget(32)
-            return SoundCodes::SCENE_RESET if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
-            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
-            return SoundCodes::MUSIC_REWIND if seek_outcome(music, 0) != 2
-            return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, 1) != CourseSounds::PLAYED
-            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
-            return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::PLAYED
-            return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_voice_stop() != 0
-            return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_stream_stop() != 0
-            return SoundCodes::RELEASE if CourseSounds::stop(&sounds)
-            remaining_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
-                value: value
-                error failure: 99
-            remaining_streams: usize = catch AudioRuntime::active_stream_count():
-                value: value
-                error failure: 99
-            return SoundCodes::RELEASE if remaining_voices != 1 or remaining_streams != 1
-            return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
-            0
+            can Global.Read, Global.Write:
+                sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return SoundCodes::START if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
+                return SoundCodes::ONCE_PER_TICK if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::DUPLICATE
+                return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::REPLACED
+                return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 2) != CourseSounds::PLAYED
+                return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 5) != CourseSounds::COOLING
+                return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_WIN, 5) != CourseSounds::PLAYED
+                return SoundCodes::GROUPS if CourseSounds::fire(&sounds, CourseSounds::EVENT_FALL, 6) != CourseSounds::REPLACED
+                # The authored triggers: a step per 0.65 m walked, and a landing
+                # only after a drop of 0.3 m or more.
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.0, y: 0.0, z: 0.0}, 20) != 0
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.4, y: 0.0, z: 0.0}, 21) != 0
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 22) != CourseSounds::TRACKED_STEP
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 0.2, z: 0.0}, 23) != 0
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 24) != 0
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, false, Geometry::Vec3{x: 0.8, y: 2.0, z: 0.0}, 25) != 0
+                return SoundCodes::TRIGGERS if CourseSounds::track(&sounds, true, Geometry::Vec3{x: 0.8, y: 0.0, z: 0.0}, 40) != CourseSounds::TRACKED_LANDING
+                return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, true)
+                before: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
+                started_at: u64 = Application::uptime_nanos()
+                elapsed: u64 =
+                    for _ in 0..<SoundCodes::MAX_PUMPS |waited: u64 = 0, session| -> waited:
+                        pumped: bool = catch RuntimeServices::pump(session):
+                            value: true
+                            error failure: false
+                        waited <- Application::uptime_nanos() - started_at
+                        break SoundCodes::STREAM_NANOS * 2 if not pumped
+                        break waited if waited >= SoundCodes::STREAM_NANOS
+                return SoundCodes::PAUSE if elapsed > SoundCodes::STREAM_NANOS * 2 - 1 or elapsed < SoundCodes::STREAM_NANOS
+                after: AudioRuntime::StreamStatus = CourseSounds::music_status(&sounds)
+                return SoundCodes::MUSIC_ADVANCES if after.state != AudioRuntime::StreamState.Playing or after.frames_played <= before.frames_played
+                return SoundCodes::UNDERRUN if after.underrun_frames != 0
+                played_to: u64 = CourseSounds::music_position(&sounds)
+                return SoundCodes::MUSIC_REWIND if played_to < SoundCodes::REWOUND_FRAMES or not CourseSounds::rewind_music(&sounds)
+                return SoundCodes::MUSIC_REWIND if CourseSounds::music_position(&sounds) >= SoundCodes::REWOUND_FRAMES
+                return SoundCodes::MUSIC_REWIND if seek_outcome(CourseSounds::music_stream(&sounds), SoundCodes::PAST_END) != 1
+                music: AudioRuntime::StreamHandle = CourseSounds::music_stream(&sounds)
+                return SoundCodes::PAUSE if not CourseSounds::set_paused(&sounds, false)
+                CourseSounds::reset_scene(&sounds)
+                return SoundCodes::SCENE_RESET if CourseSounds::event_voices(&sounds) != 0
+                return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
+                return SoundCodes::VIRTUAL if not set_effects_budget(1)
+                return SoundCodes::VIRTUAL if CourseSounds::fire(&sounds, CourseSounds::EVENT_LAND, 10) != CourseSounds::PLAYED
+                return SoundCodes::VIRTUAL if CourseSounds::update(&sounds) or not CourseSounds::ambience_virtual(&sounds)
+                CourseSounds::reset_scene(&sounds)
+                return SoundCodes::VIRTUAL if not CourseSounds::update(&sounds) or CourseSounds::ambience_virtual(&sounds)
+                return SoundCodes::VIRTUAL if CourseSounds::ambience_drift(&sounds) > SoundCodes::DRIFT_FRAMES
+                return SoundCodes::VIRTUAL if not set_effects_budget(32)
+                return SoundCodes::SCENE_RESET if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 1) != CourseSounds::PLAYED
+                return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+                return SoundCodes::MUSIC_REWIND if seek_outcome(music, 0) != 2
+                return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_SAVE, 1) != CourseSounds::PLAYED
+                return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+                return SoundCodes::REUSE if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                return SoundCodes::REUSE if CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 2) != CourseSounds::PLAYED
+                return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_voice_stop() != 0
+                return SoundCodes::RELEASE if elisa_audio_v1_test_fail_next_stream_stop() != 0
+                return SoundCodes::RELEASE if CourseSounds::stop(&sounds)
+                remaining_voices: usize = catch RuntimeServices::audio_active_voice_count(session):
+                    value: value
+                    error failure: 99
+                remaining_streams: usize = catch AudioRuntime::active_stream_count():
+                    value: value
+                    error failure: 99
+                return SoundCodes::RELEASE if remaining_voices != 1 or remaining_streams != 1
+                return SoundCodes::RELEASE if not CourseSounds::stop(&sounds) or not audio_idle(session)
+                return 0

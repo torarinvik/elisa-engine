@@ -251,24 +251,25 @@ module CourseBeacons:
         # Spawns into a fresh World first; the live beacons are only retired
         # once the replacement exists.
         def replace(beacons: mutable Beacons&, snapshot: PrefabScene::SceneSnapshot&, restored: bool) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            world: mutable World::World = catch World::World():
-                value: value
-                error failure: return LOAD_FAILED
-            instance: mutable PrefabScene::Instance = PrefabScene::Instance()
-            spawned: bool = PrefabScene::spawn_restored(&instance, &world, beacons.scene, Layout::SCENE_ID, snapshot) if restored else PrefabScene::spawn(&instance, &world, beacons.scene, Layout::SCENE_ID)
-            return LOAD_REJECTED if not spawned
-            rows: Rows = build_rows(&world, &instance, beacons.scene)
-            if not rows.ok:
-                _ = PrefabScene::destroy(&instance, &world)
-                return LOAD_ASSET_FAILED
-            try release_renders(beacons)
-            _ = PrefabScene::destroy(&beacons.instance, &beacons.world)
-            beacons.world <- move world
-            beacons.instance <- move instance
-            beacons.renders <- rows.handles
-            beacons.rendered <- true
-            beacons.ready <- true
-            0
+            can Global.Read, Global.Write:
+                world: mutable World::World = catch World::World():
+                    value: value
+                    error failure: return LOAD_FAILED
+                instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+                spawned: bool = PrefabScene::spawn_restored(&instance, &world, beacons.scene, Layout::SCENE_ID, snapshot) if restored else PrefabScene::spawn(&instance, &world, beacons.scene, Layout::SCENE_ID)
+                return LOAD_REJECTED if not spawned
+                rows: Rows = build_rows(&world, &instance, beacons.scene)
+                if not rows.ok:
+                    _ = PrefabScene::destroy(&instance, &world)
+                    return LOAD_ASSET_FAILED
+                try release_renders(beacons)
+                _ = PrefabScene::destroy(&beacons.instance, &beacons.world)
+                beacons.world <- move world
+                beacons.instance <- move instance
+                beacons.renders <- rows.handles
+                beacons.rendered <- true
+                beacons.ready <- true
+                return 0
 
     public:
         const COUNT: usize = 3
@@ -333,21 +334,23 @@ module CourseBeacons:
         # two calls so the large `create` frame is gone before `start`
         # spawns the scene, since callers are already deep in the stack.
         def create() -> Beacons error[World::WorldError] can[Global.Read, Global.Write]:
-            world: World::World = try World::World()
-            beacons: mutable Beacons = Beacons{scene: build_scene(), shelf: stock_shelf(), world: world, instance: PrefabScene::Instance(),
-                renders: [RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(),
-                    RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle()], rendered: false, announced: 0, ready: false}
-            return move beacons
+            can Global.Read, Global.Write:
+                world: World::World = try World::World()
+                beacons: mutable Beacons = Beacons{scene: build_scene(), shelf: stock_shelf(), world: world, instance: PrefabScene::Instance(),
+                    renders: [RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(),
+                        RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle(), RenderScene::empty_instance_handle()], rendered: false, announced: 0, ready: false}
+                return move beacons
 
-        # Mounts the shipped packages and spawns the authored scene with its
-        # render rows: 0, or LOAD_FAILED / LOAD_ASSET_FAILED and not ready.
+            # Mounts the shipped packages and spawns the authored scene with its
+            # render rows: 0, or LOAD_FAILED / LOAD_ASSET_FAILED and not ready.
         def start(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            mounted: bool = catch AssetStream::stream_mount("cells"):
-                ok: true
-                error failure: false
-            return LOAD_FAILED if not mounted
-            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
-            try replace(beacons, &empty, false)
+            can Global.Read, Global.Write:
+                mounted: bool = catch AssetStream::stream_mount("cells"):
+                    ok: true
+                    error failure: false
+                return LOAD_FAILED if not mounted
+                empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+                return try replace(beacons, &empty, false)
 
         def lamp_reference(beacons: Beacons&, index: usize) -> World::EntityRef:
             PrefabScene::instance_reference(beacons.instance, beacons.scene, link_id(index), Layout::LAMP_NODE)
@@ -369,21 +372,22 @@ module CourseBeacons:
         # Lights every unlit beacon within reach of `position`; returns how
         # many were lit by this call.
         def update(beacons: mutable Beacons&, position: Geometry::Vec3) -> usize error[RenderScene::RenderSceneError]:
-            for index in 0..<COUNT |newly: usize = 0, beacons| -> newly:
-                offset: Geometry::Vec3 = Geometry::Vec3{x: position.x - anchor(index).x, y: 0.0, z: position.z - anchor(index).z}
-                near: bool = Geometry::vec3_length(offset) <= Layout::LIGHT_RADIUS
-                if near and beacons.ready and not lit(beacons, index):
-                    raised: Geometry::Transform = at(0.0, Layout::LIT_LAMP_Y, 0.0, Layout::LAMP_SIZE)
-                    shown: Assets::VisualAsset = visual(Shelf::LAMP_MESH, Shelf::LAMP_LIT)
-                    moved: bool = PrefabScene::override_local(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, raised)
-                    changed: bool = PrefabScene::override_visual(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, true, shown)
-                    if moved and changed:
-                        try relight(beacons, index, shown)
-                        delivered: usize = catch announce(beacons.world, lamp_reference(beacons, index), index):
-                            value: value
-                            error failure: 0
-                        beacons.announced <- beacons.announced + delivered
-                        newly <- newly + 1
+            can Global.Read, Global.Write:
+                return for index in 0..<COUNT |newly: usize = 0, beacons| -> newly:
+                    offset: Geometry::Vec3 = Geometry::Vec3{x: position.x - anchor(index).x, y: 0.0, z: position.z - anchor(index).z}
+                    near: bool = Geometry::vec3_length(offset) <= Layout::LIGHT_RADIUS
+                    if near and beacons.ready and not lit(beacons, index):
+                        raised: Geometry::Transform = at(0.0, Layout::LIT_LAMP_Y, 0.0, Layout::LAMP_SIZE)
+                        shown: Assets::VisualAsset = visual(Shelf::LAMP_MESH, Shelf::LAMP_LIT)
+                        moved: bool = PrefabScene::override_local(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, raised)
+                        changed: bool = PrefabScene::override_visual(&beacons.instance, &beacons.world, beacons.scene, link_id(index), Layout::LAMP_NODE, true, shown)
+                        if moved and changed:
+                            try relight(beacons, index, shown)
+                            delivered: usize = catch announce(beacons.world, lamp_reference(beacons, index), index):
+                                value: value
+                                error failure: 0
+                            beacons.announced <- beacons.announced + delivered
+                            newly <- newly + 1
 
         def capture(beacons: Beacons&) -> PrefabScene::SceneSnapshot:
             PrefabScene::capture(beacons.instance, beacons.world, beacons.scene)
@@ -398,17 +402,19 @@ module CourseBeacons:
         # Returns 0 when the saved beacons replaced the live ones, else a
         # LOAD_* code with the live beacons unchanged.
         def load(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            status: i32 = read_status(beacons)
-            return status if status != 0
-            snapshot: PrefabScene::SceneSnapshot = read_saved(beacons)
-            return LOAD_FAILED if snapshot.link_count != COUNT
-            return LOAD_UNKNOWN_ASSET if not snapshot_on_shelf(&beacons.shelf, &snapshot)
-            try replace(beacons, &snapshot, true)
+            can Global.Read, Global.Write:
+                status: i32 = read_status(beacons)
+                return status if status != 0
+                snapshot: PrefabScene::SceneSnapshot = read_saved(beacons)
+                return LOAD_FAILED if snapshot.link_count != COUNT
+                return LOAD_UNKNOWN_ASSET if not snapshot_on_shelf(&beacons.shelf, &snapshot)
+                return try replace(beacons, &snapshot, true)
 
-        # Back to all lamps unlit in a fresh World.
+            # Back to all lamps unlit in a fresh World.
         def reset(beacons: mutable Beacons&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
-            try replace(beacons, &empty, false)
+            can Global.Read, Global.Write:
+                empty: PrefabScene::SceneSnapshot = PrefabScene::SceneSnapshot()
+                return try replace(beacons, &empty, false)
 
         def release(beacons: mutable Beacons&) -> void error[RenderScene::RenderSceneError]:
             try release_renders(beacons)

@@ -35,23 +35,24 @@
         # The guide walks into the pen once its door opens, and is shut in
         # when the door closes behind it on the way out.
         def door_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
-            try set_door(session, guide, true)
-            inward: NavAgent::State = try plan_guide(session, guide, &agent, pen_center())
-            return 125 if inward != NavAgent::State.Moving or agent.route.status != NavRoute::Status.Found
-            entered: GuideWalk = try walk_guide(session, guide, &agent, 1800)
-            return 126 if entered.state != NavAgent::State.Arrived or not inside_pen(entered.final)
-            _ = try plan_guide(session, guide, &agent, guide_post(true))
-            _ = try walk_guide(session, guide, &agent, LinksTune::DOOR_TICKS)
-            try set_door(session, guide, false)
-            _ = try plan_guide(session, guide, &agent, guide_post(true))
-            return 127 if agent.route.status != NavRoute::Status.Unreachable
-            shut_in: GuideWalk = try walk_guide(session, guide, &agent, 600)
-            return 128 if shut_in.state != NavAgent::State.Stranded or not inside_pen(shut_in.final)
-            0
+            can Global.Read, Global.Write:
+                agent: mutable NavAgent::Agent = NavAgent::Agent(NavAgent::default_tuning())
+                try set_door(session, guide, true)
+                inward: NavAgent::State = try plan_guide(session, guide, &agent, pen_center())
+                return 125 if inward != NavAgent::State.Moving or agent.route.status != NavRoute::Status.Found
+                entered: GuideWalk = try walk_guide(session, guide, &agent, 1800)
+                return 126 if entered.state != NavAgent::State.Arrived or not inside_pen(entered.final)
+                _ = try plan_guide(session, guide, &agent, guide_post(true))
+                _ = try walk_guide(session, guide, &agent, LinksTune::DOOR_TICKS)
+                try set_door(session, guide, false)
+                _ = try plan_guide(session, guide, &agent, guide_post(true))
+                return 127 if agent.route.status != NavRoute::Status.Unreachable
+                shut_in: GuideWalk = try walk_guide(session, guide, &agent, 600)
+                return 128 if shut_in.state != NavAgent::State.Stranded or not inside_pen(shut_in.final)
+                return 0
 
-        # A second character climbs the staged ramp to the summit and takes
-        # the one-way drop link down to the floor.
+            # A second character climbs the staged ramp to the summit and takes
+            # the one-way drop link down to the floor.
         def platform_test(session: mutable RuntimeServices::Session&, guide: Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, NavMesh::NavMeshError]:
             spawn: Geometry::Vec3 = Geometry::Vec3{x: LinksTune::WALKER_X, y: Tune::START_Y, z: LinksTune::WALKER_Z}
             floor_start: Geometry::Vec3 = Geometry::Vec3{x: LinksTune::WALKER_X, y: 0.0, z: LinksTune::WALKER_Z}
@@ -77,15 +78,16 @@
             0
 
         def links_test(session: mutable RuntimeServices::Session&, guide: mutable Guide&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            platform: i32 = try platform_test(session, guide)
-            return platform if platform != 0
-            door: i32 = try door_test(session, guide)
-            return door if door != 0
-            # The guide wall stops a ray between the posts; open floor does not.
-            blocked: NavMesh::RayHit = try NavMesh::raycast(guide.mesh, guide_post(false), guide_post(true), query_extents())
-            return 129 if not blocked.hit or blocked.fraction <= 0.0 or blocked.fraction >= 1.0
-            open_start: Geometry::Vec3 = Geometry::Vec3{x: GuideTune::POST_A_X, y: 0.0, z: 5.5}
-            open_end: Geometry::Vec3 = Geometry::Vec3{x: GuideTune::POST_B_X, y: 0.0, z: 5.5}
-            clear: NavMesh::RayHit = try NavMesh::raycast(guide.mesh, open_start, open_end, query_extents())
-            return 130 if clear.hit or clear.fraction != 1.0
-            0
+            can Global.Read, Global.Write:
+                platform: i32 = try platform_test(session, guide)
+                return platform if platform != 0
+                door: i32 = try door_test(session, guide)
+                return door if door != 0
+                # The guide wall stops a ray between the posts; open floor does not.
+                blocked: NavMesh::RayHit = try NavMesh::raycast(guide.mesh, guide_post(false), guide_post(true), query_extents())
+                return 129 if not blocked.hit or blocked.fraction <= 0.0 or blocked.fraction >= 1.0
+                open_start: Geometry::Vec3 = Geometry::Vec3{x: GuideTune::POST_A_X, y: 0.0, z: 5.5}
+                open_end: Geometry::Vec3 = Geometry::Vec3{x: GuideTune::POST_B_X, y: 0.0, z: 5.5}
+                clear: NavMesh::RayHit = try NavMesh::raycast(guide.mesh, open_start, open_end, query_extents())
+                return 130 if clear.hit or clear.fraction != 1.0
+                return 0

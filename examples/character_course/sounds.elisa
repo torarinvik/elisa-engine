@@ -207,45 +207,49 @@ module CourseSounds:
         # At most one sound per event per `tick`; the caller passes a counter
         # that only moves forward within one scene.
         def fire(sounds: mutable Sounds&, event: u32, tick: u64) -> i32 can[Global.Read, Global.Write]:
-            fire_scaled(sounds, event, tick, AudioTriggers::FULL_PERMILLE)
+            can Global.Read, Global.Write:
+                return fire_scaled(sounds, event, tick, AudioTriggers::FULL_PERMILLE)
 
-        # Once per frame after physics: walking on the ground sounds the
-        # asset's footstep event and a fall sounds its impact event, louder
-        # the further it dropped. Returns TRACKED_* bits for what was heard.
+            # Once per frame after physics: walking on the ground sounds the
+            # asset's footstep event and a fall sounds its impact event, louder
+            # the further it dropped. Returns TRACKED_* bits for what was heard.
         def track(sounds: mutable Sounds&, grounded: bool, position: Geometry::Vec3, tick: u64) -> u32 can[Global.Read, Global.Write]:
-            return 0 if not sounds.live
-            dx: f32 = position.x - sounds.last_x
-            dz: f32 = position.z - sounds.last_z
-            walked: f32 = ElisaMath::sqrtf(dx * dx + dz * dz) if sounds.tracked else 0.0
-            sounds.last_x <- position.x
-            sounds.last_z <- position.z
-            sounds.tracked <- true
-            stepped: bool = AudioTriggers::step(&sounds.triggers.footfalls, grounded, AudioTriggers::millimetres(walked))
-            gain: u64 = AudioTriggers::land(&sounds.triggers.impacts, grounded, AudioTriggers::height_millimetres(position.y))
-            step_heard: bool = stepped and heard_outcome(fire(sounds, sounds.triggers.footfalls.event, tick))
-            landing_heard: bool = gain > 0 and heard_outcome(fire_scaled(sounds, sounds.triggers.impacts.event, tick, gain))
-            (TRACKED_STEP if step_heard else 0) + (TRACKED_LANDING if landing_heard else 0)
+            can Global.Read, Global.Write:
+                return 0 if not sounds.live
+                dx: f32 = position.x - sounds.last_x
+                dz: f32 = position.z - sounds.last_z
+                walked: f32 = ElisaMath::sqrtf(dx * dx + dz * dz) if sounds.tracked else 0.0
+                sounds.last_x <- position.x
+                sounds.last_z <- position.z
+                sounds.tracked <- true
+                stepped: bool = AudioTriggers::step(&sounds.triggers.footfalls, grounded, AudioTriggers::millimetres(walked))
+                gain: u64 = AudioTriggers::land(&sounds.triggers.impacts, grounded, AudioTriggers::height_millimetres(position.y))
+                step_heard: bool = stepped and heard_outcome(fire(sounds, sounds.triggers.footfalls.event, tick))
+                landing_heard: bool = gain > 0 and heard_outcome(fire_scaled(sounds, sounds.triggers.impacts.event, tick, gain))
+                return (TRACKED_STEP if step_heard else 0) + (TRACKED_LANDING if landing_heard else 0)
 
-        # `gain_permille` scales the event's volume; 1000 is full.
+            # `gain_permille` scales the event's volume; 1000 is full.
         def fire_scaled(sounds: mutable Sounds&, event: u32, tick: u64, gain_permille: u64) -> i32 can[Global.Read, Global.Write]:
-            fire_scaled_with_spatial(sounds, event, tick, gain_permille,
-                1.0, 1.0, false)
+            can Global.Read, Global.Write:
+                return fire_scaled_with_spatial(sounds, event, tick, gain_permille,
+                    1.0, 1.0, false)
 
-        # The variant of the last event that started a voice.
-        # Started events recorded through the decision log, across chunks.
+            # The variant of the last event that started a voice.
+            # Started events recorded through the decision log, across chunks.
         def decisions(sounds: Sounds&) -> i64:
             sounds.sealed_chunks * RuntimeDecisionLog::CAP + sounds.decisions.count
 
         # Replays the session saved on disk: sound-event choices come from
         # its chunks in order instead of the generator. False if none loads.
         def replay_saved(sounds: mutable Sounds&) -> bool can[Global.Read, Global.Write]:
-            first: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(0)
-            return false if first.stored != RuntimeDecisionLogStore::Stored.Ok
-            sounds.decisions <- first.loaded.log
-            sounds.sealed_chunks <- 0
-            true
+            can Global.Read, Global.Write:
+                first: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(0)
+                return false if first.stored != RuntimeDecisionLogStore::Stored.Ok
+                sounds.decisions <- first.loaded.log
+                sounds.sealed_chunks <- 0
+                return true
 
-        # Tick of the first replayed choice that differed, or -1.
+            # Tick of the first replayed choice that differed, or -1.
         def replay_diverged_at(sounds: Sounds&) -> i64:
             sounds.decisions.diverged_at
 

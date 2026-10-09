@@ -22,10 +22,11 @@ module WorldSaveLoad:
 
     private:
         def saveload_swap(world: mutable World::World&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
-            catch World::SaveSwap::replace_world(world, bytes, length):
-                ok: 0
-                SaveSwapError.Rejected: 1
-                error failure: 2
+            can Global.Read, Global.Write:
+                return catch World::SaveSwap::replace_world(world, bytes, length):
+                    ok: 0
+                    SaveSwapError.Rejected: 1
+                    error failure: 2
 
         def saveload_unbind_all(session: RuntimeServices::Session&,
             bindings: mutable WorldPhysics::Bindings&) -> void:
@@ -49,11 +50,12 @@ module WorldSaveLoad:
         def load(session: RuntimeServices::Session&, world: mutable World::World&,
             render: mutable WorldRendering::Bindings&, physics: mutable WorldPhysics::Bindings&,
             presentation: Presentation, bytes: u8&, length: usize) -> void error[WorldSaveLoadError] can[Global.Read, Global.Write]:
-            swapped: i32 = saveload_swap(world, bytes, length)
-            raise WorldSaveLoadError.Rejected if swapped == 1
-            raise WorldSaveLoadError.SwapFailed if swapped != 0
-            saveload_unbind_all(session, physics)
-            raise WorldSaveLoadError.PhysicsCleanupFailed if WorldPhysics::binding_count(physics) != 0
-            WorldRendering::clear(render)
-            raise WorldSaveLoadError.RenderFailed if not saveload_render(render, world, presentation)
-            raise WorldSaveLoadError.PhysicsFailed if not saveload_physics(session, world, physics, presentation)
+            can Global.Read, Global.Write:
+                swapped: i32 = saveload_swap(world, bytes, length)
+                raise WorldSaveLoadError.Rejected if swapped == 1
+                raise WorldSaveLoadError.SwapFailed if swapped != 0
+                saveload_unbind_all(session, physics)
+                raise WorldSaveLoadError.PhysicsCleanupFailed if WorldPhysics::binding_count(physics) != 0
+                WorldRendering::clear(render)
+                raise WorldSaveLoadError.RenderFailed if not saveload_render(render, world, presentation)
+                raise WorldSaveLoadError.PhysicsFailed if not saveload_physics(session, world, physics, presentation)

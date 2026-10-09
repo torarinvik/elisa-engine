@@ -28,7 +28,8 @@
                 error failure: false
 
         def access_refused(version: i64, scale: i64, contrast: i64, captions: i64, count: usize) -> bool can[Global.Read, Global.Write]:
-            locale_refused(version, scale, contrast, captions, UiLocale::EN, count)
+            can Global.Read, Global.Write:
+                return locale_refused(version, scale, contrast, captions, UiLocale::EN, count)
 
         def locale_refused(version: i64, scale: i64, contrast: i64, captions: i64, locale: i64, count: usize) -> bool can[Global.Read, Global.Write]:
             return false if not write_access_raw(version, scale, contrast, captions, locale, count)
@@ -54,21 +55,22 @@
         # Up from the first slot wraps to the last settings row; Left/Right
         # adjust a settings row and a letter key there changes nothing.
         def access_menu_test() -> bool can[Global.Read, Global.Write]:
-            defaults: CourseControls::Keymap = CourseControls::defaults()
-            menu: CourseControls::Menu = CourseControls::Menu(defaults)
-            up: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp))
-            last_row: bool = up.result == CourseControls::MenuResult.Moved and up.menu.selected == CourseControls::MENU_ROWS - 1
-            right: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.ArrowRight))
-            left: CourseControls::MenuStep = CourseControls::menu_button(up.menu, Application::gamepad_button_code(Application::GamepadButtonCode.DpadLeft))
-            letter: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.J))
-            slot_side: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowRight))
-            wrapped: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.ArrowDown))
-            adjusted: bool = right.result == CourseControls::MenuResult.Adjusted and right.delta == 1 and left.result == CourseControls::MenuResult.Adjusted and left.delta == -1
-            unchanged: bool = letter.result == CourseControls::MenuResult.Ignored and letter.menu.keymap.crouch == defaults.crouch and slot_side.result == CourseControls::MenuResult.Ignored
-            last_row and adjusted and unchanged and wrapped.menu.selected == CourseControls::SLOT_FORWARD
+            can Global.Read, Global.Write:
+                defaults: CourseControls::Keymap = CourseControls::defaults()
+                menu: CourseControls::Menu = CourseControls::Menu(defaults)
+                up: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowUp))
+                last_row: bool = up.result == CourseControls::MenuResult.Moved and up.menu.selected == CourseControls::MENU_ROWS - 1
+                right: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.ArrowRight))
+                left: CourseControls::MenuStep = CourseControls::menu_button(up.menu, Application::gamepad_button_code(Application::GamepadButtonCode.DpadLeft))
+                letter: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.J))
+                slot_side: CourseControls::MenuStep = CourseControls::menu_key(menu, key_code(Application::KeyboardKeyCode.ArrowRight))
+                wrapped: CourseControls::MenuStep = CourseControls::menu_key(up.menu, key_code(Application::KeyboardKeyCode.ArrowDown))
+                adjusted: bool = right.result == CourseControls::MenuResult.Adjusted and right.delta == 1 and left.result == CourseControls::MenuResult.Adjusted and left.delta == -1
+                unchanged: bool = letter.result == CourseControls::MenuResult.Ignored and letter.menu.keymap.crouch == defaults.crouch and slot_side.result == CourseControls::MenuResult.Ignored
+                return last_row and adjusted and unchanged and wrapped.menu.selected == CourseControls::SLOT_FORWARD
 
-        # A version 1 save (no language) still loads, as English; a version 2
-        # save (no motion flag) loads with full motion.
+            # A version 1 save (no language) still loads, as English; a version 2
+            # save (no motion flag) loads with full motion.
         def version_one_loads() -> bool can[Global.Read, Global.Write]:
             return false if not write_access_raw(2, 150, 0, 1, UiLocale::NB, 5)
             two: CourseAccess::LoadResult = CourseAccess::load()
@@ -80,22 +82,23 @@
         # Captions come from the packaged text/course.loc: English matches the
         # built-in text, Russian is real UTF-8, and a missing file refuses.
         def localized_captions_test() -> bool can[Global.Read, Global.Write]:
-            words: CourseText::Captions = CourseText::load(CourseText::PATH)
-            jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::EN, CourseSounds::EVENT_JUMP)
-            plain: bool = words.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
-            ru_jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::RU, CourseSounds::EVENT_JUMP)
-            cyrillic: bool = ru_jump.length == 24 and ru_jump.bytes[1] == 208u8
-            ja_step: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::JA, CourseSounds::EVENT_STEP)
-            japanese: bool = ja_step.length == 19 and ja_step.bytes[1] == 229u8
-            bad_locale: UiLocaleData::Utf8 = CourseText::line(&words, 9, CourseSounds::EVENT_JUMP)
-            missing: CourseText::Captions = CourseText::load("text/missing.loc")
-            keyed: bool = CourseText::key_of(CourseSounds::EVENT_SAVE) == CourseText::MSG_CAPTION_CHIME
-            # The Language row cycles all five and wraps both ways.
-            start: CourseAccess::Settings = CourseAccess::defaults()
-            back: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_LANGUAGE, -1)
-            on: CourseAccess::Settings = CourseAccess::adjust(back, CourseAccess::ROW_LANGUAGE, 1)
-            cycles: bool = back.locale == UiLocale::JA and on.locale == UiLocale::EN and CourseAccess::row_value(&back, CourseAccess::ROW_LANGUAGE) == "< 日本語 >"
-            plain and cyrillic and japanese and bad_locale.length == 13 and not missing.loaded and keyed and cycles
+            can Global.Read, Global.Write:
+                words: CourseText::Captions = CourseText::load(CourseText::PATH)
+                jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::EN, CourseSounds::EVENT_JUMP)
+                plain: bool = words.loaded and jump.length == 13 and jump.bytes[1] == 83u8 and jump.bytes[12] == 93u8
+                ru_jump: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::RU, CourseSounds::EVENT_JUMP)
+                cyrillic: bool = ru_jump.length == 24 and ru_jump.bytes[1] == 208u8
+                ja_step: UiLocaleData::Utf8 = CourseText::line(&words, UiLocale::JA, CourseSounds::EVENT_STEP)
+                japanese: bool = ja_step.length == 19 and ja_step.bytes[1] == 229u8
+                bad_locale: UiLocaleData::Utf8 = CourseText::line(&words, 9, CourseSounds::EVENT_JUMP)
+                missing: CourseText::Captions = CourseText::load("text/missing.loc")
+                keyed: bool = CourseText::key_of(CourseSounds::EVENT_SAVE) == CourseText::MSG_CAPTION_CHIME
+                # The Language row cycles all five and wraps both ways.
+                start: CourseAccess::Settings = CourseAccess::defaults()
+                back: CourseAccess::Settings = CourseAccess::adjust(start, CourseAccess::ROW_LANGUAGE, -1)
+                on: CourseAccess::Settings = CourseAccess::adjust(back, CourseAccess::ROW_LANGUAGE, 1)
+                cycles: bool = back.locale == UiLocale::JA and on.locale == UiLocale::EN and CourseAccess::row_value(&back, CourseAccess::ROW_LANGUAGE) == "< 日本語 >"
+                return plain and cyrillic and japanese and bad_locale.length == 13 and not missing.loaded and keyed and cycles
 
         def captions_test() -> bool:
             quiet: CourseAccess::Settings = CourseAccess::defaults()
@@ -162,46 +165,47 @@
         # At 150% every caption in every language fits the caption line, and
         # Arabic hangs from the right edge while English starts at the left.
         def captions_fit(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError] can[Global.Read, Global.Write]:
-            captions: CourseText::Captions = CourseText::load(CourseText::PATH)
-            large: CourseAccess::Settings = handoff_access()
-            _ = try widest_caption(&captions, &large)
-            for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
-                _ = try RuntimeServices::pump(session)
-            widest: f32 = try widest_caption(&captions, &large)
-            arabic: CourseAccess::Settings = CourseAccess::Settings{text_scale: large.text_scale, high_contrast: large.high_contrast, captions: large.captions, reduced_motion: large.reduced_motion, locale: UiLocale::AR}
-            english: CourseAccess::Settings = CourseAccess::defaults()
-            anchored: bool = caption_anchor_x(&arabic) == Tune::LEGEND_X + caption_width(&arabic) and caption_anchor_x(&english) == Tune::LEGEND_X
-            return 184 if not captions.loaded or not anchored
-            return 183 if widest <= 0.0 or widest >= caption_width(&large)
-            # 172: Arabic captions reach the renderer shaped and in display
-            # order, so their bytes change; English ones pass through untouched.
-            jump: u32 = CourseSounds::EVENT_JUMP
-            em: i64 = CourseAccess::font_size(&arabic, Tune::LEGEND_FONT_SIZE).i64()
-            logical: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::AR, jump), em, caption_width(&arabic).i64())
-            shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &arabic, jump)
-            plain_em: i64 = CourseAccess::font_size(&english, Tune::LEGEND_FONT_SIZE).i64()
-            plain: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::EN, jump), plain_em, caption_width(&english).i64())
-            english_shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &english, jump)
-            mutable moved: i64 = 0
-            mutable kept: bool = plain.length == english_shown.length
-            for i in 0..<256 |moved, kept|:
-                moved <- moved + 1 if i.u32() < logical.length and logical.bytes[i] != shown.bytes[i] else moved
-                kept <- kept and (i.u32() >= plain.length or plain.bytes[i] == english_shown.bytes[i])
-            return 172 if logical.length == 0u32 or shown.length == 0u32 or moved == 0 or not kept
-            # 173: the bundled Arabic font supplies presentation-form glyphs
-            # the default font lacks. Without it a lam-alef run measures as
-            # the same missing-glyph boxes as unassigned private-use points.
-            ligature: cstr = "ﻻﻻﻻ"
-            missing: cstr = ""
-            _ = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
-            _ = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
-            for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
-                _ = try RuntimeServices::pump(session)
-            glyphs: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
-            boxes: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
-            gap: f32 = glyphs.width - boxes.width
-            return 173 if not glyphs.ready or not boxes.ready or (gap < 0.5 and gap > -0.5)
-            0
+            can Global.Read, Global.Write:
+                captions: CourseText::Captions = CourseText::load(CourseText::PATH)
+                large: CourseAccess::Settings = handoff_access()
+                _ = try widest_caption(&captions, &large)
+                for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
+                    _ = try RuntimeServices::pump(session)
+                widest: f32 = try widest_caption(&captions, &large)
+                arabic: CourseAccess::Settings = CourseAccess::Settings{text_scale: large.text_scale, high_contrast: large.high_contrast, captions: large.captions, reduced_motion: large.reduced_motion, locale: UiLocale::AR}
+                english: CourseAccess::Settings = CourseAccess::defaults()
+                anchored: bool = caption_anchor_x(&arabic) == Tune::LEGEND_X + caption_width(&arabic) and caption_anchor_x(&english) == Tune::LEGEND_X
+                return 184 if not captions.loaded or not anchored
+                return 183 if widest <= 0.0 or widest >= caption_width(&large)
+                # 172: Arabic captions reach the renderer shaped and in display
+                # order, so their bytes change; English ones pass through untouched.
+                jump: u32 = CourseSounds::EVENT_JUMP
+                em: i64 = CourseAccess::font_size(&arabic, Tune::LEGEND_FONT_SIZE).i64()
+                logical: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::AR, jump), em, caption_width(&arabic).i64())
+                shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &arabic, jump)
+                plain_em: i64 = CourseAccess::font_size(&english, Tune::LEGEND_FONT_SIZE).i64()
+                plain: UiLocaleData::Utf8 = UiLocaleData::wrap_utf8(CourseText::line(&captions, UiLocale::EN, jump), plain_em, caption_width(&english).i64())
+                english_shown: UiLocaleData::Utf8 = wrapped_caption(&captions, &english, jump)
+                mutable moved: i64 = 0
+                mutable kept: bool = plain.length == english_shown.length
+                for i in 0..<256 |moved, kept|:
+                    moved <- moved + 1 if i.u32() < logical.length and logical.bytes[i] != shown.bytes[i] else moved
+                    kept <- kept and (i.u32() >= plain.length or plain.bytes[i] == english_shown.bytes[i])
+                return 172 if logical.length == 0u32 or shown.length == 0u32 or moved == 0 or not kept
+                # 173: the bundled Arabic font supplies presentation-form glyphs
+                # the default font lacks. Without it a lam-alef run measures as
+                # the same missing-glyph boxes as unassigned private-use points.
+                ligature: cstr = "ﻻﻻﻻ"
+                missing: cstr = ""
+                _ = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
+                _ = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
+                for _ in 0..<AccessTune::MEASURE_FRAMES |session|:
+                    _ = try RuntimeServices::pump(session)
+                glyphs: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(ligature, AccessTune::BASE_FONT)
+                boxes: RenderSceneText::OverlayTextMetrics = try RenderScene::measure_overlay_text(missing, AccessTune::BASE_FONT)
+                gap: f32 = glyphs.width - boxes.width
+                return 173 if not glyphs.ready or not boxes.ready or (gap < 0.5 and gap > -0.5)
+                return 0
 
         def semantics_describes(keymap: CourseControls::Keymap&, settings: CourseAccess::Settings&) -> bool error[UiSemantics::SemanticsError]:
             pad_defaults: CoursePad::Pad = CoursePad::defaults()
@@ -239,65 +243,69 @@
         # 7 of 16" (36 bytes), and a device row by name only: "Display,
         # slider, 15 of 16" (25 bytes).
         def spoken_row(row: i64, count: usize, last_byte: u8) -> bool can[Global.Read, Global.Write]:
-            keymap: CourseControls::Keymap = CourseControls::defaults()
-            pad_defaults: CoursePad::Pad = CoursePad::defaults()
-            plain: CourseAccess::Settings = CourseAccess::defaults()
-            return false if announce_row(&keymap, &pad_defaults, &plain, row) != ApplicationAccessibility::Announce.Ok
-            spoken: mutable ApplicationAccessibility::Spoken = ApplicationAccessibility::Spoken()
-            return false if ApplicationAccessibility::last(&spoken) != ApplicationAccessibility::Announce.Ok
-            spoken.count == count and spoken.data[count - 1] == last_byte
+            can Global.Read, Global.Write:
+                keymap: CourseControls::Keymap = CourseControls::defaults()
+                pad_defaults: CoursePad::Pad = CoursePad::defaults()
+                plain: CourseAccess::Settings = CourseAccess::defaults()
+                return false if announce_row(&keymap, &pad_defaults, &plain, row) != ApplicationAccessibility::Announce.Ok
+                spoken: mutable ApplicationAccessibility::Spoken = ApplicationAccessibility::Spoken()
+                return false if ApplicationAccessibility::last(&spoken) != ApplicationAccessibility::Announce.Ok
+                return spoken.count == count and spoken.data[count - 1] == last_byte
 
         def announce_test() -> bool can[Global.Read, Global.Write]:
-            keymap: CourseControls::Keymap = CourseControls::defaults()
-            pad_defaults: CoursePad::Pad = CoursePad::defaults()
-            plain: CourseAccess::Settings = CourseAccess::defaults()
-            outside: bool = announce_row(&keymap, &pad_defaults, &plain, CourseControls::MENU_ROWS) == ApplicationAccessibility::Announce.Invalid
-            outside and spoken_row(CourseControls::SLOT_COUNT, 36, 54) and spoken_row(CourseControls::DEVICE_FIRST, 25, 54)
+            can Global.Read, Global.Write:
+                keymap: CourseControls::Keymap = CourseControls::defaults()
+                pad_defaults: CoursePad::Pad = CoursePad::defaults()
+                plain: CourseAccess::Settings = CourseAccess::defaults()
+                outside: bool = announce_row(&keymap, &pad_defaults, &plain, CourseControls::MENU_ROWS) == ApplicationAccessibility::Announce.Invalid
+                return outside and spoken_row(CourseControls::SLOT_COUNT, 36, 54) and spoken_row(CourseControls::DEVICE_FIRST, 25, 54)
 
         def access_test(session: mutable RuntimeServices::Session&) -> i32 error[RenderScene::RenderSceneError, RuntimeServices::RuntimeServicesError, Save::SaveError, UserData::UserDataError] can[Global.Read, Global.Write]:
-            return 153 if not adjust_test()
-            large: CourseAccess::Settings = handoff_access()
-            plain_settings: CourseAccess::Settings = CourseAccess::defaults()
-            return 154 if CourseAccess::font_size(&large, AccessTune::BASE_FONT) != AccessTune::LARGE_FONT or legend_key_offset(&large) <= legend_key_offset(&plain_settings)
-            return 155 if not access_menu_test()
-            try CourseAccess::save(&large)
-            loaded: CourseAccess::LoadResult = CourseAccess::load()
-            return 156 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &large)
-            return 157 if not access_refused(2, 150, 1, 1, 4) or not access_refused(1, 110, 1, 1, 4) or not access_refused(1, 200, 0, 0, 4) or not access_refused(1, 125, 2, 0, 4) or not access_refused(1, 125, 1, 1, 3)
-            return 181 if not locale_refused(2, 125, 1, 1, 5, 5) or not locale_refused(2, 125, 1, 1, -1, 5) or not locale_refused(3, 125, 1, 1, 0, 5)
-            return 182 if not version_one_loads()
-            try UserData::remove_blob(CourseAccess::storage_key())
-            return 157 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
-            return 158 if not captions_test()
-            return 180 if not localized_captions_test()
-            fits: bool = try layout_fits(session)
-            return 159 if not fits
-            caption_status: i32 = try captions_fit(session)
-            return caption_status if caption_status != 0
-            return 201 if not semantics_test(&plain_settings)
-            return 233 if not announce_test()
-            # The live HUD takes every setting and releases every handle.
-            keymap: CourseControls::Keymap = CourseControls::defaults()
-            pad_defaults: CoursePad::Pad = CoursePad::defaults()
-            legend: Legend = try create_legend(&keymap, &pad_defaults, &large)
-            instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text("Access", 18.0, 18.0, AccessTune::BASE_FONT, box_color(1.0, 1.0, 1.0))
-            try layout_hud(&legend, instruction, &large)
-            try refresh_legend(&legend, &keymap, &pad_defaults, &large, CourseControls::MENU_ROWS - 1)
-            try layout_hud(&legend, instruction, &plain_settings)
-            try release_legend(&legend)
-            try RenderScene::destroy_overlay_text(instruction)
-            try CourseAccess::save(&large)
-            0
+            can Global.Read, Global.Write:
+                return 153 if not adjust_test()
+                large: CourseAccess::Settings = handoff_access()
+                plain_settings: CourseAccess::Settings = CourseAccess::defaults()
+                return 154 if CourseAccess::font_size(&large, AccessTune::BASE_FONT) != AccessTune::LARGE_FONT or legend_key_offset(&large) <= legend_key_offset(&plain_settings)
+                return 155 if not access_menu_test()
+                try CourseAccess::save(&large)
+                loaded: CourseAccess::LoadResult = CourseAccess::load()
+                return 156 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &large)
+                return 157 if not access_refused(2, 150, 1, 1, 4) or not access_refused(1, 110, 1, 1, 4) or not access_refused(1, 200, 0, 0, 4) or not access_refused(1, 125, 2, 0, 4) or not access_refused(1, 125, 1, 1, 3)
+                return 181 if not locale_refused(2, 125, 1, 1, 5, 5) or not locale_refused(2, 125, 1, 1, -1, 5) or not locale_refused(3, 125, 1, 1, 0, 5)
+                return 182 if not version_one_loads()
+                try UserData::remove_blob(CourseAccess::storage_key())
+                return 157 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
+                return 158 if not captions_test()
+                return 180 if not localized_captions_test()
+                fits: bool = try layout_fits(session)
+                return 159 if not fits
+                caption_status: i32 = try captions_fit(session)
+                return caption_status if caption_status != 0
+                return 201 if not semantics_test(&plain_settings)
+                return 233 if not announce_test()
+                # The live HUD takes every setting and releases every handle.
+                keymap: CourseControls::Keymap = CourseControls::defaults()
+                pad_defaults: CoursePad::Pad = CoursePad::defaults()
+                legend: Legend = try create_legend(&keymap, &pad_defaults, &large)
+                instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text("Access", 18.0, 18.0, AccessTune::BASE_FONT, box_color(1.0, 1.0, 1.0))
+                try layout_hud(&legend, instruction, &large)
+                try refresh_legend(&legend, &keymap, &pad_defaults, &large, CourseControls::MENU_ROWS - 1)
+                try layout_hud(&legend, instruction, &plain_settings)
+                try release_legend(&legend)
+                try RenderScene::destroy_overlay_text(instruction)
+                try CourseAccess::save(&large)
+                return 0
 
-        # Relaunch: the saved settings come back and apply, then are removed.
+            # Relaunch: the saved settings come back and apply, then are removed.
         def access_relaunch_test() -> i32 error[RenderScene::RenderSceneError, UserData::UserDataError] can[Global.Read, Global.Write]:
-            expected: CourseAccess::Settings = handoff_access()
-            loaded: CourseAccess::LoadResult = CourseAccess::load()
-            return 160 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &expected)
-            keymap: CourseControls::Keymap = CourseControls::defaults()
-            pad_defaults: CoursePad::Pad = CoursePad::defaults()
-            legend: Legend = try create_legend(&keymap, &pad_defaults, &loaded.settings)
-            try release_legend(&legend)
-            try UserData::remove_blob(CourseAccess::storage_key())
-            return 161 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
-            0
+            can Global.Read, Global.Write:
+                expected: CourseAccess::Settings = handoff_access()
+                loaded: CourseAccess::LoadResult = CourseAccess::load()
+                return 160 if loaded.status != CourseAccess::LoadStatus.Loaded or not same_settings(&loaded.settings, &expected)
+                keymap: CourseControls::Keymap = CourseControls::defaults()
+                pad_defaults: CoursePad::Pad = CoursePad::defaults()
+                legend: Legend = try create_legend(&keymap, &pad_defaults, &loaded.settings)
+                try release_legend(&legend)
+                try UserData::remove_blob(CourseAccess::storage_key())
+                return 161 if CourseAccess::load().status != CourseAccess::LoadStatus.Missing
+                return 0

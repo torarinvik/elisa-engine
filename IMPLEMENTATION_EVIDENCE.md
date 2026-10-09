@@ -89,6 +89,14 @@ This file preserves the detailed compiler, proof, Studio, packaging, and runtime
   an earlier temporary compiler preflight is not installed-tuple evidence.
   Preserve exact callee, callback, default-argument, shadowing, and
   profiler/host-callback controls.
+- **Character Course grant adoption on the pulled compiler:** the current local
+  compiler tree at `4655dbaa` has a provenance-checked Stage1/runtime pair.
+  Its strict project-context check exposed 265 `Global.Read/Write` findings;
+  local grant scopes now cover the affected course/runtime calls, with explicit
+  returns preserving tail values. All five public course entrypoints pass
+  strict `-emit check` with zero diagnostics. This is semantic evidence only:
+  the current course app has not been freshly linked or run. See
+  [exact candidate and check records](docs/validation/global-grants-character-course-4655dbaa.md).
 - **Newest compiler integration — consumer semantics clear; compiler grants, proof-pair freshness, and backend integration are the release blockers:**
   after the 54-diagnostic baseline in
   `mocap-cleaner/build/studio-semantic-after-global-scopes-2.elisa.log`, the

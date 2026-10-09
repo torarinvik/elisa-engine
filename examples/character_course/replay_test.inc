@@ -86,30 +86,31 @@
         # tick 5 is named as an input divergence at tick 5, and a cross-build
         # comparison still sees it, because input digests are Exact.
         def replay_digest_test(session: mutable RuntimeServices::Session&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError] can[Global.Read, Global.Write]:
-            first: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
-            second: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
-            return 185 if first.ticks != ReplayTune::TICKS or ReplaySubsystems::judge(&first, &second, true) != ReplaySubsystems::Verdict.Match
-            pushed: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::PUSH_TICK, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
-            found: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, true)
-            across: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, false)
-            return 186 if found.tick != ReplayTune::PUSH_TICK or found.subsystem != 0 or across.tick != ReplayTune::PUSH_TICK
-            # 188: a blind watcher (same input and physics) is named as an AI
-            # divergence; a slower walk blend as an animation divergence that
-            # a cross-build comparison ignores.
-            blind: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, 0.5)
-            unseen: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &blind, false)
-            return 188 if unseen.tick < 0 or unseen.subsystem != 3
-            slow: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, 600, ReplayTune::SIGHT_M)
-            blended: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &slow, true)
-            return 188 if blended.tick < 0 or blended.subsystem != 4 or ReplaySubsystems::judge(&first, &slow, false) != ReplaySubsystems::Verdict.Match
-            # 187: the recorded run saves, reloads intact and still matches a
-            # fresh run; once removed it no longer loads.
-            return 187 if not save_trace(&first)
-            reloaded: ReplaySubsystemsCodec::Loaded = load_trace()
-            return 187 if reloaded.status != ReplaySubsystemsCodec::Decode.Ok or ReplaySubsystemsCodec::encode_trace(&reloaded.trace).len != ReplaySubsystemsCodec::encode_trace(&first).len
-            return 187 if ReplaySubsystems::judge(&reloaded.trace, &second, true) != ReplaySubsystems::Verdict.Match
-            removed: bool = catch UserData::remove_payload("course-replay-trace"):
-                ok: true
-                error failure: false
-            return 187 if not removed or load_trace().status == ReplaySubsystemsCodec::Decode.Ok
-            0
+            can Global.Read, Global.Write:
+                first: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
+                second: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
+                return 185 if first.ticks != ReplayTune::TICKS or ReplaySubsystems::judge(&first, &second, true) != ReplaySubsystems::Verdict.Match
+                pushed: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::PUSH_TICK, ReplayTune::WALK_BLEND_MS, ReplayTune::SIGHT_M)
+                found: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, true)
+                across: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &pushed, false)
+                return 186 if found.tick != ReplayTune::PUSH_TICK or found.subsystem != 0 or across.tick != ReplayTune::PUSH_TICK
+                # 188: a blind watcher (same input and physics) is named as an AI
+                # divergence; a slower walk blend as an animation divergence that
+                # a cross-build comparison ignores.
+                blind: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, ReplayTune::WALK_BLEND_MS, 0.5)
+                unseen: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &blind, false)
+                return 188 if unseen.tick < 0 or unseen.subsystem != 3
+                slow: ReplaySubsystems::Trace = try replay_run(session, ReplayTune::NO_PUSH, 600, ReplayTune::SIGHT_M)
+                blended: ReplaySubsystems::Divergence = ReplaySubsystems::first_divergence(&first, &slow, true)
+                return 188 if blended.tick < 0 or blended.subsystem != 4 or ReplaySubsystems::judge(&first, &slow, false) != ReplaySubsystems::Verdict.Match
+                # 187: the recorded run saves, reloads intact and still matches a
+                # fresh run; once removed it no longer loads.
+                return 187 if not save_trace(&first)
+                reloaded: ReplaySubsystemsCodec::Loaded = load_trace()
+                return 187 if reloaded.status != ReplaySubsystemsCodec::Decode.Ok or ReplaySubsystemsCodec::encode_trace(&reloaded.trace).len != ReplaySubsystemsCodec::encode_trace(&first).len
+                return 187 if ReplaySubsystems::judge(&reloaded.trace, &second, true) != ReplaySubsystems::Verdict.Match
+                removed: bool = catch UserData::remove_payload("course-replay-trace"):
+                    ok: true
+                    error failure: false
+                return 187 if not removed or load_trace().status == ReplaySubsystemsCodec::Decode.Ok
+                return 0

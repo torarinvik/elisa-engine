@@ -574,8 +574,11 @@ proof integration's earlier 1,166 diagnostics predate the corrected `trusted`
 behavior; recapture that inventory and qualify the generated proof pair against
 the latest clean compiler/runtime before accepting the migration.
 
-The compiler checkout has since advanced locally through `e6b5a0c4` and has an
-uncommitted JSON grant change. No Stage1/runtime from that exact source state is
-qualified yet. Treat `12120f6b` as the last authenticated pair, not the latest
-source, and repeat the 216-source and runtime gates after the compiler owner
-produces a clean product.
+The compiler checkout has since advanced locally through `4655dbaa`. A fresh,
+provenance-checked Stage1/runtime pair from that source tree now passes the
+Character Course strict project-context checks after engine-side grant adoption.
+The compiler tree contains an uncommitted JSON grant change, so `12120f6b`
+remains the last fully qualified compiler candidate. Repeat the compiler suite,
+216-source/runtime gates and proof qualification after the compiler owner
+promotes a clean product. The course's fresh native build and package acceptance
+also remain open. See [the exact Character Course grant record](global-grants-character-course-4655dbaa.md).

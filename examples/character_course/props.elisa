@@ -38,17 +38,19 @@ module CourseProps:
                 scale: Geometry::Vec3{x: PropTune::HALF, y: PropTune::HALF, z: PropTune::HALF}}
 
         def props_spawn_world() -> World::World error[World::WorldError] can[Global.Read, Global.Write]:
-            world: mutable World::World = try World::World()
-            for index in 0..<COUNT |world|:
-                crate: World::EntityRef = try World::world_spawn(&world, World::StaticObject.Structure)
-                try World::world_set_transform(&world, crate, Geometry::transform_translate(Geometry::transform_identity(), props_spawn_point(index)))
-            return move world
+            can Global.Read, Global.Write:
+                world: mutable World::World = try World::World()
+                for index in 0..<COUNT |world|:
+                    crate: World::EntityRef = try World::world_spawn(&world, World::StaticObject.Structure)
+                    try World::world_set_transform(&world, crate, Geometry::transform_translate(Geometry::transform_identity(), props_spawn_point(index)))
+                return move world
 
         def props_load_code(session: RuntimeServices::Session&, props: mutable Props&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
-            catch WorldSaveLoad::load(session, &props.world, &props.render, &props.physics, presentation(), bytes, length):
-                ok: 0
-                WorldSaveLoad::WorldSaveLoadError.Rejected: LOAD_REJECTED
-                error failure: LOAD_FAILED
+            can Global.Read, Global.Write:
+                return catch WorldSaveLoad::load(session, &props.world, &props.render, &props.physics, presentation(), bytes, length):
+                    ok: 0
+                    WorldSaveLoad::WorldSaveLoadError.Rejected: LOAD_REJECTED
+                    error failure: LOAD_FAILED
 
         def props_read_code(bytes: mutable u8&, length: mutable usize&) -> i32:
             version: mutable i64 = 0
@@ -107,14 +109,15 @@ module CourseProps:
         # Spawns the authored crates and binds them through the same rebuild
         # passes a load uses.
         def create(session: RuntimeServices::Session&) -> Props error[World::WorldError, RenderScene::RenderSceneError, WorldRendering::WorldRenderingError, WorldSavePhysics::WorldSavePhysicsError] can[Global.Read, Global.Write]:
-            world: World::World = try props_spawn_world()
-            props: mutable Props = Props{world: world, render: WorldRendering::Bindings(),
-                physics: WorldPhysics::Bindings(), draws: RenderScene::InstanceBatch()}
-            shown: WorldSaveLoad::Presentation = presentation()
-            try WorldSaveRendering::rehydrate(&props.render, &props.world, shown.visuals, shown.render_id_base)
-            try WorldSavePhysics::rehydrate(session, &props.world, &props.physics, shown.bodies)
-            try props_create_draws(&props)
-            return move props
+            can Global.Read, Global.Write:
+                world: World::World = try props_spawn_world()
+                props: mutable Props = Props{world: world, render: WorldRendering::Bindings(),
+                    physics: WorldPhysics::Bindings(), draws: RenderScene::InstanceBatch()}
+                shown: WorldSaveLoad::Presentation = presentation()
+                try WorldSaveRendering::rehydrate(&props.render, &props.world, shown.visuals, shown.render_id_base)
+                try WorldSavePhysics::rehydrate(session, &props.world, &props.physics, shown.bodies)
+                try props_create_draws(&props)
+                return move props
 
         def crate_reference(props: Props&, index: usize) -> World::EntityRef:
             catch World::world_live_reference_at(props.world, index):
@@ -155,16 +158,17 @@ module CourseProps:
         # Returns 0 when the saved World replaced the live one, else a LOAD_*
         # code with the live World, rows, bodies and boxes unchanged.
         def load(session: RuntimeServices::Session&, props: mutable Props&) -> i32 error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            bytes: mutable u8[CAPACITY] = zeroed
-            length: mutable usize = 0
-            status: i32 = props_read_code(&bytes[0], &length)
-            return status if status != 0
-            loaded: i32 = props_load_code(session, props, &bytes[0], length)
-            return loaded if loaded == LOAD_REJECTED
-            # Past the swap the old boxes are stale even if a rebuild failed.
-            try props_release_draws(props)
-            try props_create_draws(props)
-            loaded
+            can Global.Read, Global.Write:
+                bytes: mutable u8[CAPACITY] = zeroed
+                length: mutable usize = 0
+                status: i32 = props_read_code(&bytes[0], &length)
+                return status if status != 0
+                loaded: i32 = props_load_code(session, props, &bytes[0], length)
+                return loaded if loaded == LOAD_REJECTED
+                # Past the swap the old boxes are stale even if a rebuild failed.
+                try props_release_draws(props)
+                try props_create_draws(props)
+                return loaded
 
         def release(session: RuntimeServices::Session&, props: mutable Props&) -> void error[RenderScene::RenderSceneError]:
             try props_release_draws(props)

@@ -2,4 +2,5 @@ include "./course.elisa"
 
 # Second smoke process: reloads the saves the self-test left behind.
 def main() -> i32 can[Global.Read, Global.Write]:
-    CharacterCourse::run_relaunch()
+    can Global.Read, Global.Write:
+        return CharacterCourse::run_relaunch()

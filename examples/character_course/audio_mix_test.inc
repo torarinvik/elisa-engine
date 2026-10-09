@@ -41,55 +41,58 @@
         # a reset replays the same variant for the same tick, and stop
         # restores full gains.
         def weighted_jump_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return 168 if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            applied: bool = CourseSounds::mix(&sounds, CourseSounds::MOOD_MENU, 10) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PAUSED, 20) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PLAY, 30)
-            return 168 if not applied
-            common: usize =
-                for tick in 1..<301 |count: usize = 0, sounds| -> count:
-                    fired: i32 = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, tick.u64())
-                    count <- count + 1 if fired != CourseSounds::FIRE_FAILED and CourseSounds::last_variant(&sounds) == 0
-            return 169 if common < 195 or common > 255
-            # Each of the 300 jumps started a voice and logged one decision;
-            # the first 256 were sealed and saved as the session's chunk 0.
-            return 169 if CourseSounds::decisions(&sounds) != 300
-            return 169 if RuntimeDecisionSessionStore::manifest().chunks != 1
-            _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
-            first: u32 = CourseSounds::last_variant(&sounds)
-            CourseSounds::reset_scene(&sounds)
-            _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
-            return 170 if CourseSounds::last_variant(&sounds) != first
-            return 171 if not CourseSounds::stop(&sounds) or not audio_idle(session)
-            # Stopping saved the partial second chunk, so the whole session is on disk.
-            last_chunk: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(1)
-            return 169 if RuntimeDecisionSessionStore::manifest().chunks != 2 or last_chunk.stored != RuntimeDecisionLogStore::Stored.Ok or last_chunk.loaded.log.count < 44
-            return 169 if not RuntimeDecisionSessionStore::clear()
-            0
+            can Global.Read, Global.Write:
+                sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return 168 if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                applied: bool = CourseSounds::mix(&sounds, CourseSounds::MOOD_MENU, 10) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PAUSED, 20) and CourseSounds::mix(&sounds, CourseSounds::MOOD_PLAY, 30)
+                return 168 if not applied
+                common: usize =
+                    for tick in 1..<301 |count: usize = 0, sounds| -> count:
+                        fired: i32 = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, tick.u64())
+                        count <- count + 1 if fired != CourseSounds::FIRE_FAILED and CourseSounds::last_variant(&sounds) == 0
+                return 169 if common < 195 or common > 255
+                # Each of the 300 jumps started a voice and logged one decision;
+                # the first 256 were sealed and saved as the session's chunk 0.
+                return 169 if CourseSounds::decisions(&sounds) != 300
+                return 169 if RuntimeDecisionSessionStore::manifest().chunks != 1
+                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
+                first: u32 = CourseSounds::last_variant(&sounds)
+                CourseSounds::reset_scene(&sounds)
+                _ = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 233)
+                return 170 if CourseSounds::last_variant(&sounds) != first
+                return 171 if not CourseSounds::stop(&sounds) or not audio_idle(session)
+                # Stopping saved the partial second chunk, so the whole session is on disk.
+                last_chunk: RuntimeDecisionLogStore::Read = RuntimeDecisionSessionStore::load_chunk(1)
+                return 169 if RuntimeDecisionSessionStore::manifest().chunks != 2 or last_chunk.stored != RuntimeDecisionLogStore::Stored.Ok or last_chunk.loaded.log.count < 44
+                return 169 if not RuntimeDecisionSessionStore::clear()
+                return 0
 
-        # Fires 300 jumps from tick `first`; returns a hash of the variants.
+            # Fires 300 jumps from tick `first`; returns a hash of the variants.
         def jump_run(sounds: mutable CourseSounds::Sounds&, first: u64) -> u64 can[Global.Read, Global.Write]:
-            for tick in 0..<300 |hash: u64 = 17, sounds| -> hash:
-                _ = CourseSounds::fire(sounds, CourseSounds::EVENT_JUMP, first + tick.u64())
-                hash <- hash * 31u64 + CourseSounds::last_variant(sounds).u64()
+            can Global.Read, Global.Write:
+                return for tick in 0..<300 |hash: u64 = 17, sounds| -> hash:
+                    _ = CourseSounds::fire(sounds, CourseSounds::EVENT_JUMP, first + tick.u64())
+                    hash <- hash * 31u64 + CourseSounds::last_variant(sounds).u64()
 
-        # A recorded 300-jump session, saved on stop, replays from disk with
-        # the same variants and no divergence; a shifted replay diverges.
+            # A recorded 300-jump session, saved on stop, replays from disk with
+            # the same variants and no divergence; a shifted replay diverges.
         def replay_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            recorded: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return 230 if CourseSounds::start(&recorded, session) != CourseSounds::STARTED
-            original: u64 = jump_run(&recorded, 1)
-            return 230 if not CourseSounds::stop(&recorded)
-            replayed: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return 231 if CourseSounds::start(&replayed, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&replayed)
-            again: u64 = jump_run(&replayed, 1)
-            return 231 if again != original or CourseSounds::replay_diverged_at(&replayed) != 0 - 1 or CourseSounds::decisions(&replayed) != 300
-            return 231 if not CourseSounds::stop(&replayed)
-            shifted: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return 232 if CourseSounds::start(&shifted, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&shifted)
-            _ = jump_run(&shifted, 2)
-            return 232 if CourseSounds::replay_diverged_at(&shifted) != 2
-            return 232 if not CourseSounds::stop(&shifted) or not RuntimeDecisionSessionStore::clear() or not audio_idle(session)
-            0
+            can Global.Read, Global.Write:
+                recorded: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return 230 if CourseSounds::start(&recorded, session) != CourseSounds::STARTED
+                original: u64 = jump_run(&recorded, 1)
+                return 230 if not CourseSounds::stop(&recorded)
+                replayed: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return 231 if CourseSounds::start(&replayed, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&replayed)
+                again: u64 = jump_run(&replayed, 1)
+                return 231 if again != original or CourseSounds::replay_diverged_at(&replayed) != 0 - 1 or CourseSounds::decisions(&replayed) != 300
+                return 231 if not CourseSounds::stop(&replayed)
+                shifted: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return 232 if CourseSounds::start(&shifted, session) != CourseSounds::STARTED or not CourseSounds::replay_saved(&shifted)
+                _ = jump_run(&shifted, 2)
+                return 232 if CourseSounds::replay_diverged_at(&shifted) != 2
+                return 232 if not CourseSounds::stop(&shifted) or not RuntimeDecisionSessionStore::clear() or not audio_idle(session)
+                return 0
 
         def cue_gains(sounds: CourseSounds::Sounds&, course: u64, victory: u64) -> bool:
             CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_COURSE) == course and CourseSounds::music_gain_permille(sounds, CourseSounds::MUSIC_VICTORY) == victory
@@ -141,59 +144,62 @@
         # stops the voice of an event the new asset removes. Polling is
         # throttled and reloads nothing while the file is unchanged.
         def reload_live_test(session: mutable RuntimeServices::Session&) -> bool can[Global.Read, Global.Write]:
-            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            workload: mutable CourseAudioWorkload::Stats = CourseAudioWorkload::Stats()
-            before: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
-                value: value
-                error failure: return false
-            measured: mutable bool = CourseAudioWorkload::sample(session, &sounds, &workload, 4)
-            fired: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::PLAYED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 5) == CourseSounds::PLAYED
-            reloaded: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED
-            after: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
-                value: value
-                error failure: return false
-            measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 5) and measured
-            stable: bool = after.clips == before.clips and after.streams == before.streams and after.pcm_bytes == before.pcm_bytes and after.ring_bytes == before.ring_bytes
-            kept: bool = CourseSounds::event_voices(&sounds) == 1 and CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::DUPLICATE
-            removed: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::FIRE_FAILED
-            restored: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::RELOADED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::PLAYED
-            measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 6) and measured
-            throttled: bool = CourseSounds::poll_reload(&sounds, 100) == CourseSounds::UNCHANGED and CourseSounds::poll_reload(&sounds, 700) == CourseSounds::UNCHANGED
-            stopped: bool = CourseSounds::stop(&sounds)
-            released: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
-                value: value
-                error failure: return false
-            buffers_released: bool = released.clips == 0 and released.voices == 0 and released.streams == 0 and released.pcm_bytes == 0 and released.ring_bytes == before.ring_bytes
-            stopped and fired and reloaded and kept and removed and restored and throttled and audio_idle(session) and measured and stable and buffers_released and workload.music_underruns == 0 and workload.victory_underruns == 0
+            can Global.Read, Global.Write:
+                sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                workload: mutable CourseAudioWorkload::Stats = CourseAudioWorkload::Stats()
+                before: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                    value: value
+                    error failure: return false
+                measured: mutable bool = CourseAudioWorkload::sample(session, &sounds, &workload, 4)
+                fired: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::PLAYED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 5) == CourseSounds::PLAYED
+                reloaded: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED
+                after: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                    value: value
+                    error failure: return false
+                measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 5) and measured
+                stable: bool = after.clips == before.clips and after.streams == before.streams and after.pcm_bytes == before.pcm_bytes and after.ring_bytes == before.ring_bytes
+                kept: bool = CourseSounds::event_voices(&sounds) == 1 and CourseSounds::fire(&sounds, CourseSounds::EVENT_JUMP, 5) == CourseSounds::DUPLICATE
+                removed: bool = CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::FIRE_FAILED
+                restored: bool = CourseSounds::reload_events(&sounds, "sounds/events.sfx") == CourseSounds::RELOADED and CourseSounds::fire(&sounds, CourseSounds::EVENT_STEP, 6) == CourseSounds::PLAYED
+                measured <- CourseAudioWorkload::sample(session, &sounds, &workload, 6) and measured
+                throttled: bool = CourseSounds::poll_reload(&sounds, 100) == CourseSounds::UNCHANGED and CourseSounds::poll_reload(&sounds, 700) == CourseSounds::UNCHANGED
+                stopped: bool = CourseSounds::stop(&sounds)
+                released: AudioRuntime::WorkloadSnapshot = catch RuntimeServices::audio_workload_snapshot(session):
+                    value: value
+                    error failure: return false
+                buffers_released: bool = released.clips == 0 and released.voices == 0 and released.streams == 0 and released.pcm_bytes == 0 and released.ring_bytes == before.ring_bytes
+                return stopped and fired and reloaded and kept and removed and restored and throttled and audio_idle(session) and measured and stable and buffers_released and workload.music_underruns == 0 and workload.victory_underruns == 0
 
-        # Live audio: the guide's authored foot plants sound when its clip
-        # passes them, once per tick, and a reload that drops the bindings
-        # silences them.
+            # Live audio: the guide's authored foot plants sound when its clip
+            # passes them, once per tick, and a reload that drops the bindings
+            # silences them.
         def anim_marker_test(session: mutable RuntimeServices::Session&) -> bool can[Global.Read, Global.Write]:
-            sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
-            return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
-            animation: mutable WalkerAnimation = walker_animation_or_empty()
-            listener: Geometry::Vec3 = Geometry::vec3_zero()
-            near_guide: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}
-            far_guide: Geometry::Vec3 = Geometry::Vec3{x: 20.0, y: 0.0, z: 0.0}
-            quiet: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 0, 400, 1, listener, near_guide) == 0
-            right: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 1
-            again: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 0
-            left: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 600, 1000, 3, listener, near_guide) == 1
-            both: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 1000, 2100, 4, listener, near_guide) == 1
-            dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 2100, 2600, 5, listener, far_guide) == 0
-            distance_mix: bool = CourseSounds::guide_sound_gain(listener, near_guide) > CourseSounds::guide_sound_gain(listener, far_guide) and CourseSounds::guide_sound_gain(listener, far_guide) == 0.0
-            CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and distance_mix and audio_idle(session)
+            can Global.Read, Global.Write:
+                sounds: mutable CourseSounds::Sounds = CourseSounds::Sounds()
+                return false if CourseSounds::start(&sounds, session) != CourseSounds::STARTED
+                animation: mutable WalkerAnimation = walker_animation_or_empty()
+                listener: Geometry::Vec3 = Geometry::vec3_zero()
+                near_guide: Geometry::Vec3 = Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}
+                far_guide: Geometry::Vec3 = Geometry::Vec3{x: 20.0, y: 0.0, z: 0.0}
+                quiet: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 0, 400, 1, listener, near_guide) == 0
+                right: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 1
+                again: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 400, 600, 2, listener, near_guide) == 0
+                left: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 600, 1000, 3, listener, near_guide) == 1
+                both: bool = CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 1000, 2100, 4, listener, near_guide) == 1
+                dropped: bool = CourseSounds::reload_events(&sounds, "sounds/events_alt.sfx") == CourseSounds::RELOADED and CourseSounds::animation_markers(&sounds, &animation.events, animation.event_count, &animation.audio_events, animation.duration_ticks, 2100, 2600, 5, listener, far_guide) == 0
+                distance_mix: bool = CourseSounds::guide_sound_gain(listener, near_guide) > CourseSounds::guide_sound_gain(listener, far_guide) and CourseSounds::guide_sound_gain(listener, far_guide) == 0.0
+                return CourseSounds::stop(&sounds) and quiet and right and again and left and both and dropped and distance_mix and audio_idle(session)
 
         def audio_mix_test(session: mutable RuntimeServices::Session&) -> i32 can[Global.Read, Global.Write]:
-            return 166 if not moods_test()
-            return 167 if not ramp_test()
-            return 196 if not crossfade_test()
-            return 197 if not music_stream_test(session)
-            return 198 if not reload_test()
-            return 199 if not reload_live_test(session)
-            return 200 if not anim_marker_test(session)
-            weighted: i32 = weighted_jump_test(session)
-            return weighted if weighted != 0
-            replay_test(session)
+            can Global.Read, Global.Write:
+                return 166 if not moods_test()
+                return 167 if not ramp_test()
+                return 196 if not crossfade_test()
+                return 197 if not music_stream_test(session)
+                return 198 if not reload_test()
+                return 199 if not reload_live_test(session)
+                return 200 if not anim_marker_test(session)
+                weighted: i32 = weighted_jump_test(session)
+                return weighted if weighted != 0
+                return replay_test(session)

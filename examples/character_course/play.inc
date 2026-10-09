@@ -38,47 +38,48 @@
             elapsed_nanos: u64, avatar: RenderScene::InstanceHandle,
             instruction: RenderScene::OverlayTextHandle,
             look: CourseLook::Look) -> bool:
-            restarted: PhysicsRuntime::CharacterHandle = catch restart_character(session, character):
-                value: value
-                error failure: return false
-            character <- restarted
-            CourseState::restart(state)
-            CourseSounds::reset_scene(sounds)
-            _ = CourseSounds::restart_music(sounds)
-            _ = CourseSounds::set_paused(sounds, false)
-            beacon_status: i32 = catch CourseBeacons::reset(beacons):
-                value: value
-                error failure: return false
-            return false if beacon_status != 0
-            crouched <- false
-            jump_queued <- false
-            clock <- Runtime::StepClock()
-            previous_elapsed_nanos <- elapsed_nanos
-            stepped: bool = catch RuntimeServices::physics_fixed_step(session,
-                Runtime::fixed_step_seconds()):
-                value: true
-                error failure: false
-            return false if not stepped
-            ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(session, character):
-                value: value
-                error failure: return false
-            grounded <- ground.state == PhysicsRuntime::CharacterGroundState.OnGround
-            pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(session, character):
-                value: value
-                error failure: return false
-            avatar_updated: bool = catch update_avatar(avatar, pose, crouched):
-                ok: true
-                error failure: false
-            return false if not avatar_updated
-            camera_updated: bool = catch update_camera_look(pose, look):
-                ok: true
-                error failure: false
-            return false if not camera_updated
-            status_updated: bool = catch refresh_status(instruction, state, crouched):
-                ok: true
-                error failure: false
-            return false if not status_updated
-            true
+            can Global.Read, Global.Write:
+                restarted: PhysicsRuntime::CharacterHandle = catch restart_character(session, character):
+                    value: value
+                    error failure: return false
+                character <- restarted
+                CourseState::restart(state)
+                CourseSounds::reset_scene(sounds)
+                _ = CourseSounds::restart_music(sounds)
+                _ = CourseSounds::set_paused(sounds, false)
+                beacon_status: i32 = catch CourseBeacons::reset(beacons):
+                    value: value
+                    error failure: return false
+                return false if beacon_status != 0
+                crouched <- false
+                jump_queued <- false
+                clock <- Runtime::StepClock()
+                previous_elapsed_nanos <- elapsed_nanos
+                stepped: bool = catch RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds()):
+                    value: true
+                    error failure: false
+                return false if not stepped
+                ground: PhysicsRuntime::CharacterGround = catch RuntimeServices::physics_character_ground(session, character):
+                    value: value
+                    error failure: return false
+                grounded <- ground.state == PhysicsRuntime::CharacterGroundState.OnGround
+                pose: PhysicsRuntime::BodyPose = catch RuntimeServices::physics_character_pose(session, character):
+                    value: value
+                    error failure: return false
+                avatar_updated: bool = catch update_avatar(avatar, pose, crouched):
+                    ok: true
+                    error failure: false
+                return false if not avatar_updated
+                camera_updated: bool = catch update_camera_look(pose, look):
+                    ok: true
+                    error failure: false
+                return false if not camera_updated
+                status_updated: bool = catch refresh_status(instruction, state, crouched):
+                    ok: true
+                    error failure: false
+                return false if not status_updated
+                return true
 
         def load_message(status: CourseProgress::LoadStatus) -> cstr:
             if status == CourseProgress::LoadStatus.Missing:
@@ -169,63 +170,66 @@
         # Presses hit-test the legend and the wheel moves the selection.
         def menu_pointer_event(menu: CourseControls::Menu, settings: CourseAccess::Settings&,
             event: Application::PointerEvent) -> CourseControls::MenuStep can[Global.Read, Global.Write]:
-            if event.kind == Application::PointerEventKind.Button and event.pressed:
-                CourseControls::menu_pointer(menu, legend_hit(settings, event.x, event.y), event.button)
-            elif event.kind == Application::PointerEventKind.Wheel:
-                CourseControls::menu_wheel(menu, event.delta_y)
-            else:
-                CourseControls::step(menu, CourseControls::MenuResult.Ignored)
-
-        # Like `drain_menu`: stops at Adjusted so each change is applied first.
-        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&, height: i32) -> CourseControls::MenuStep can[Global.Read, Global.Write]:
-            current: mutable CourseControls::MenuStep = CourseControls::step(menu, CourseControls::MenuResult.Ignored)
-            open: mutable bool = true
-            scale: CourseAccess::Settings = settings
-            visible: i64 = legend_visible_rows(settings, height)
-            first: i64 = CourseMenuView::first(menu.selected, visible)
-            event: mutable Application::PointerEvent = zeroed
-            while open and Application::next_pointer_event(&event) |current, open, scale, event, first, visible|:
-                next: mutable CourseControls::MenuStep = menu_pointer_event(current.menu, &scale, event)
+            can Global.Read, Global.Write:
                 if event.kind == Application::PointerEventKind.Button and event.pressed:
-                    slot: i64 = legend_hit(&scale, event.x, event.y)
-                    next <- CourseControls::menu_pointer(current.menu, CourseMenuView::hit(first, visible, slot), event.button)
-                if next.result != CourseControls::MenuResult.Ignored:
-                    current <- next
-                open <- false if next.result == CourseControls::MenuResult.Adjusted
-            current
+                    return CourseControls::menu_pointer(menu, legend_hit(settings, event.x, event.y), event.button)
+                elif event.kind == Application::PointerEventKind.Wheel:
+                    return CourseControls::menu_wheel(menu, event.delta_y)
+                else:
+                    return CourseControls::step(menu, CourseControls::MenuResult.Ignored)
 
-        # The panel is created first so the text draws over it. Handles are
-        # gathered in locals; element writes into a struct field inside a
-        # captured loop were lost.
+            # Like `drain_menu`: stops at Adjusted so each change is applied first.
+        def drain_menu_pointer(menu: CourseControls::Menu, settings: CourseAccess::Settings&, height: i32) -> CourseControls::MenuStep can[Global.Read, Global.Write]:
+            can Global.Read, Global.Write:
+                current: mutable CourseControls::MenuStep = CourseControls::step(menu, CourseControls::MenuResult.Ignored)
+                open: mutable bool = true
+                scale: CourseAccess::Settings = settings
+                visible: i64 = legend_visible_rows(settings, height)
+                first: i64 = CourseMenuView::first(menu.selected, visible)
+                event: mutable Application::PointerEvent = zeroed
+                while open and Application::next_pointer_event(&event) |current, open, scale, event, first, visible|:
+                    next: mutable CourseControls::MenuStep = menu_pointer_event(current.menu, &scale, event)
+                    if event.kind == Application::PointerEventKind.Button and event.pressed:
+                        slot: i64 = legend_hit(&scale, event.x, event.y)
+                        next <- CourseControls::menu_pointer(current.menu, CourseMenuView::hit(first, visible, slot), event.button)
+                    if next.result != CourseControls::MenuResult.Ignored:
+                        current <- next
+                    open <- false if next.result == CourseControls::MenuResult.Adjusted
+                return current
+
+            # The panel is created first so the text draws over it. Handles are
+            # gathered in locals; element writes into a struct field inside a
+            # captured loop were lost.
         def create_legend(keymap: CourseControls::Keymap&, pads: CoursePad::Pad&, settings: CourseAccess::Settings&) -> Legend error[RenderScene::RenderSceneError] can[Global.Read, Global.Write]:
-            panel: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(Tune::LEGEND_X, Tune::LEGEND_Y, 1.0, 1.0, CourseAccess::panel_color(settings))
-            header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
-                Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
-                box_color(0.78, 0.84, 0.9))
-            labels: mutable RenderScene::OverlayTextHandle[16] = zeroed
-            keys: mutable RenderScene::OverlayTextHandle[16] = zeroed
-            map: CourseControls::Keymap = keymap
-            pad_map: CoursePad::Pad = pads
-            values: CourseAccess::Settings = settings
-            for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, pad_map, values|:
-                label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                    row_label(row), Tune::LEGEND_X, Tune::LEGEND_Y,
-                    Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
-                key: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                    row_key(&map, &pad_map, &values, row), Tune::LEGEND_KEY_X, Tune::LEGEND_Y,
-                    Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
-                labels[row.usize()] <- label
-                keys[row.usize()] <- key
-            caption: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(CourseAccess::caption_text(0),
-                Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
-            try RenderScene::set_overlay_text_visible(caption, false)
-            legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption,
-                words: CourseText::load(CourseText::PATH)}
-            try layout_legend(&legend, settings)
-            try refresh_legend(&legend, keymap, pads, settings, -1)
-            legend
+            can Global.Read, Global.Write:
+                panel: RenderScene::OverlayPanelHandle = try RenderScene::create_overlay_panel(Tune::LEGEND_X, Tune::LEGEND_Y, 1.0, 1.0, CourseAccess::panel_color(settings))
+                header: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(legend_header(false),
+                    Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE,
+                    box_color(0.78, 0.84, 0.9))
+                labels: mutable RenderScene::OverlayTextHandle[16] = zeroed
+                keys: mutable RenderScene::OverlayTextHandle[16] = zeroed
+                map: CourseControls::Keymap = keymap
+                pad_map: CoursePad::Pad = pads
+                values: CourseAccess::Settings = settings
+                for row in 0..<CourseControls::MENU_ROWS |labels, keys, map, pad_map, values|:
+                    label: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                        row_label(row), Tune::LEGEND_X, Tune::LEGEND_Y,
+                        Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
+                    key: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                        row_key(&map, &pad_map, &values, row), Tune::LEGEND_KEY_X, Tune::LEGEND_Y,
+                        Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
+                    labels[row.usize()] <- label
+                    keys[row.usize()] <- key
+                caption: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(CourseAccess::caption_text(0),
+                    Tune::LEGEND_X, Tune::LEGEND_Y, Tune::LEGEND_FONT_SIZE, box_color(1.0, 1.0, 1.0))
+                try RenderScene::set_overlay_text_visible(caption, false)
+                legend: Legend = Legend{panel: panel, header: header, labels: labels, keys: keys, caption: caption,
+                    words: CourseText::load(CourseText::PATH)}
+                try layout_legend(&legend, settings)
+                try refresh_legend(&legend, keymap, pads, settings, -1)
+                return legend
 
-        # The caption line spans the label and key columns.
+            # The caption line spans the label and key columns.
         def caption_width(settings: CourseAccess::Settings&) -> f32:
             legend_key_offset(settings) + CourseAccess::scaled(settings, Tune::LEGEND_KEY_WIDTH)
 

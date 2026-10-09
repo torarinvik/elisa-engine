@@ -60,40 +60,42 @@
 
         def add_obstacle(session: RuntimeServices::Session&, x: f32, z: f32,
             half_x: f32, half_z: f32) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            try add_static_box(session,
-                Geometry::Vec3{x: x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: z},
-                Geometry::Vec3{x: half_x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: half_z},
-                Geometry::quat_identity(), box_color(0.55, 0.36, 0.62))
+            can Global.Read, Global.Write:
+                try add_static_box(session,
+                    Geometry::Vec3{x: x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: z},
+                    Geometry::Vec3{x: half_x, y: GuideTune::OBSTACLE_HALF_HEIGHT, z: half_z},
+                    Geometry::quat_identity(), box_color(0.55, 0.36, 0.62))
 
-        # The wall the guide walks around, a pen entered only through its
-        # door, and the summit's drop link. The walls are shorter than the
-        # capsule, so Recast keeps them solid.
+            # The wall the guide walks around, a pen entered only through its
+            # door, and the summit's drop link. The walls are shorter than the
+            # capsule, so Recast keeps them solid.
         def create_guide_yard(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            thickness: f32 = GuideTune::OBSTACLE_HALF_THICKNESS
-            try add_obstacle(session, GuideTune::WALL_X, GuideTune::WALL_Z,
-                thickness, GuideTune::WALL_HALF_DEPTH)
-            try add_obstacle(session, GuideTune::PEN_X,
-                GuideTune::PEN_Z - GuideTune::PEN_HALF_DEPTH, GuideTune::PEN_HALF_WIDTH, thickness)
-            try add_obstacle(session, GuideTune::PEN_X,
-                GuideTune::PEN_Z + GuideTune::PEN_HALF_DEPTH, GuideTune::PEN_HALF_WIDTH, thickness)
-            # The west wall is two pieces either side of the doorway.
-            door_x: f32 = GuideTune::PEN_X - GuideTune::PEN_HALF_WIDTH
-            piece: f32 = (GuideTune::PEN_HALF_DEPTH - GuideTune::DOOR_HALF_WIDTH) * 0.5
-            try add_obstacle(session, door_x,
-                GuideTune::PEN_Z - GuideTune::PEN_HALF_DEPTH + piece, thickness, piece)
-            try add_obstacle(session, door_x,
-                GuideTune::PEN_Z + GuideTune::PEN_HALF_DEPTH - piece, thickness, piece)
-            try NavMesh::mark_area(
-                Geometry::Vec3{x: door_x - 0.4, y: -0.5, z: GuideTune::PEN_Z - GuideTune::DOOR_HALF_WIDTH},
-                Geometry::Vec3{x: door_x + 0.4, y: 0.5, z: GuideTune::PEN_Z + GuideTune::DOOR_HALF_WIDTH},
-                GuideTune::DOOR_AREA)
-            try add_obstacle(session, GuideTune::PEN_X + GuideTune::PEN_HALF_WIDTH,
-                GuideTune::PEN_Z, thickness, GuideTune::PEN_HALF_DEPTH)
+            can Global.Read, Global.Write:
+                thickness: f32 = GuideTune::OBSTACLE_HALF_THICKNESS
+                try add_obstacle(session, GuideTune::WALL_X, GuideTune::WALL_Z,
+                    thickness, GuideTune::WALL_HALF_DEPTH)
+                try add_obstacle(session, GuideTune::PEN_X,
+                    GuideTune::PEN_Z - GuideTune::PEN_HALF_DEPTH, GuideTune::PEN_HALF_WIDTH, thickness)
+                try add_obstacle(session, GuideTune::PEN_X,
+                    GuideTune::PEN_Z + GuideTune::PEN_HALF_DEPTH, GuideTune::PEN_HALF_WIDTH, thickness)
+                # The west wall is two pieces either side of the doorway.
+                door_x: f32 = GuideTune::PEN_X - GuideTune::PEN_HALF_WIDTH
+                piece: f32 = (GuideTune::PEN_HALF_DEPTH - GuideTune::DOOR_HALF_WIDTH) * 0.5
+                try add_obstacle(session, door_x,
+                    GuideTune::PEN_Z - GuideTune::PEN_HALF_DEPTH + piece, thickness, piece)
+                try add_obstacle(session, door_x,
+                    GuideTune::PEN_Z + GuideTune::PEN_HALF_DEPTH - piece, thickness, piece)
+                try NavMesh::mark_area(
+                    Geometry::Vec3{x: door_x - 0.4, y: -0.5, z: GuideTune::PEN_Z - GuideTune::DOOR_HALF_WIDTH},
+                    Geometry::Vec3{x: door_x + 0.4, y: 0.5, z: GuideTune::PEN_Z + GuideTune::DOOR_HALF_WIDTH},
+                    GuideTune::DOOR_AREA)
+                try add_obstacle(session, GuideTune::PEN_X + GuideTune::PEN_HALF_WIDTH,
+                    GuideTune::PEN_Z, thickness, GuideTune::PEN_HALF_DEPTH)
 
-            try NavMesh::add_link(
-                Geometry::Vec3{x: GuideTune::LINK_START_X, y: GuideTune::LINK_TOP_Y, z: GuideTune::LINK_Z},
-                Geometry::Vec3{x: GuideTune::LINK_END_X, y: 0.0, z: GuideTune::LINK_Z},
-                GuideTune::LINK_RADIUS, false)
+                try NavMesh::add_link(
+                    Geometry::Vec3{x: GuideTune::LINK_START_X, y: GuideTune::LINK_TOP_Y, z: GuideTune::LINK_Z},
+                    Geometry::Vec3{x: GuideTune::LINK_END_X, y: 0.0, z: GuideTune::LINK_Z},
+                    GuideTune::LINK_RADIUS, false)
 
         def door_center() -> Geometry::Vec3:
             Geometry::Vec3{x: GuideTune::PEN_X - GuideTune::PEN_HALF_WIDTH,
@@ -111,39 +113,41 @@
         # way the doorway area follows, and agents must plan again.
         def set_door(session: RuntimeServices::Session&, guide: mutable Guide&,
             open: bool) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            if open and not guide.door_open:
-                try RuntimeServices::physics_body_destroy(session, guide.door_body)
-                try RenderScene::destroy(guide.door_box)
-            elif not open and guide.door_open:
-                guide.door_body <- try create_static_body(session, door_center(),
-                    door_half_extents(), Geometry::quat_identity())
-                guide.door_box <- try create_box_render(door_center(), door_half_extents(),
-                    Geometry::quat_identity(), box_color(0.85, 0.7, 0.3))
-            guide.door_open <- open
-            try apply_door(guide.mesh, open)
+            can Global.Read, Global.Write:
+                if open and not guide.door_open:
+                    try RuntimeServices::physics_body_destroy(session, guide.door_body)
+                    try RenderScene::destroy(guide.door_box)
+                elif not open and guide.door_open:
+                    guide.door_body <- try create_static_body(session, door_center(),
+                        door_half_extents(), Geometry::quat_identity())
+                    guide.door_box <- try create_box_render(door_center(), door_half_extents(),
+                        Geometry::quat_identity(), box_color(0.85, 0.7, 0.3))
+                guide.door_open <- open
+                try apply_door(guide.mesh, open)
 
-        # Bake the staged course, close the pen door and put the guide at post A.
+            # Bake the staged course, close the pen door and put the guide at post A.
         def create_guide(session: RuntimeServices::Session&) -> Guide error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            mesh: NavMesh::Handle = try NavMesh::bake(NavMesh::default_profile())
-            try apply_door(mesh, false)
-            door_body: PhysicsRuntime::BodyHandle = try create_static_body(session, door_center(),
-                door_half_extents(), Geometry::quat_identity())
-            door_box: RenderScene::InstanceHandle = try create_box_render(door_center(),
-                door_half_extents(), Geometry::quat_identity(), box_color(0.85, 0.7, 0.3))
-            start: Geometry::Vec3 = guide_post(false)
-            character: PhysicsRuntime::CharacterHandle = try create_character_at(session,
-                Geometry::Vec3{x: start.x, y: Tune::START_Y, z: start.z}, Tune::STANDING_HALF_HEIGHT)
-            pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
-            body: RenderScene::InstanceHandle = try RenderScene::create(RenderScene::Primitive.Sphere,
-                Geometry::Transform{position: pose.position, rotation: Geometry::quat_identity(),
-                    scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
-                        y: (Tune::STANDING_HALF_HEIGHT + Tune::CHARACTER_RADIUS) * 2.0,
-                        z: Tune::CHARACTER_RADIUS * 2.0}},
-                box_color(0.86, 0.5, 0.9))
-            Guide{character: character, body: body, mesh: mesh, outbound: true,
-                door_body: door_body, door_box: door_box, door_open: false}
+            can Global.Read, Global.Write:
+                mesh: NavMesh::Handle = try NavMesh::bake(NavMesh::default_profile())
+                try apply_door(mesh, false)
+                door_body: PhysicsRuntime::BodyHandle = try create_static_body(session, door_center(),
+                    door_half_extents(), Geometry::quat_identity())
+                door_box: RenderScene::InstanceHandle = try create_box_render(door_center(),
+                    door_half_extents(), Geometry::quat_identity(), box_color(0.85, 0.7, 0.3))
+                start: Geometry::Vec3 = guide_post(false)
+                character: PhysicsRuntime::CharacterHandle = try create_character_at(session,
+                    Geometry::Vec3{x: start.x, y: Tune::START_Y, z: start.z}, Tune::STANDING_HALF_HEIGHT)
+                pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, character)
+                body: RenderScene::InstanceHandle = try RenderScene::create(RenderScene::Primitive.Sphere,
+                    Geometry::Transform{position: pose.position, rotation: Geometry::quat_identity(),
+                        scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
+                            y: (Tune::STANDING_HALF_HEIGHT + Tune::CHARACTER_RADIUS) * 2.0,
+                            z: Tune::CHARACTER_RADIUS * 2.0}},
+                    box_color(0.86, 0.5, 0.9))
+                return Guide{character: character, body: body, mesh: mesh, outbound: true,
+                    door_body: door_body, door_box: door_box, door_open: false}
 
-        # Ask for a route from the guide's position to `goal`.
+            # Ask for a route from the guide's position to `goal`.
         def plan_guide(session: RuntimeServices::Session&, guide: Guide&,
             agent: mutable NavAgent::Agent&, goal: Geometry::Vec3) -> NavAgent::State error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, NavMesh::NavMeshError]:
             pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(session, guide.character)

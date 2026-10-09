@@ -167,67 +167,69 @@ module CharacterCourse:
         def add_static_box(session: RuntimeServices::Session&,
             center: Geometry::Vec3, half_extents: Geometry::Vec3,
             rotation: Geometry::Quat, color: RenderScene::Color) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            _ = try create_static_body(session, center, half_extents, rotation)
-            _ = try create_box_render(center, half_extents, rotation, color)
-            try NavMesh::add_oriented_box(center, half_extents, rotation)
+            can Global.Read, Global.Write:
+                _ = try create_static_body(session, center, half_extents, rotation)
+                _ = try create_box_render(center, half_extents, rotation, color)
+                try NavMesh::add_oriented_box(center, half_extents, rotation)
 
         def create_course(session: RuntimeServices::Session&) -> void error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: 0.0, y: -Tune::FLOOR_HALF_HEIGHT, z: 0.0},
-                Geometry::Vec3{x: Tune::FLOOR_HALF_WIDTH,
-                    y: Tune::FLOOR_HALF_HEIGHT, z: Tune::FLOOR_HALF_DEPTH},
-                Geometry::quat_identity(), box_color(0.19, 0.22, 0.26))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::STEP_X, y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 0.0},
-                Geometry::Vec3{x: Tune::STEP_HALF_WIDTH,
-                    y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 2.0},
-                Geometry::quat_identity(), box_color(0.9, 0.42, 0.12))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::TUNNEL_X,
-                    y: Tune::TUNNEL_ROOF_BOTTOM + Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 0.0},
-                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
-                    y: Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 1.5},
-                Geometry::quat_identity(), box_color(0.2, 0.42, 0.72))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
-                    z: -1.5 - Tune::TUNNEL_HALF_WIDTH},
-                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
-                    y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
-                Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
-                    z: 1.5 + Tune::TUNNEL_HALF_WIDTH},
-                Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
-                    y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
-                Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
-            ramp_rotation: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0,
-                z: Tune::RAMP_HALF_SINE, w: Tune::RAMP_HALF_COSINE}
-            ramp_half_extents: Geometry::Vec3 = Geometry::Vec3{
-                x: Tune::RAMP_HALF_LENGTH, y: Tune::RAMP_HALF_HEIGHT,
-                z: Tune::RAMP_HALF_DEPTH}
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::RAMP_CENTER_X, y: Tune::RAMP_CENTER_Y, z: 0.0},
-                ramp_half_extents, ramp_rotation, box_color(0.16, 0.62, 0.36))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::PLATFORM_CENTER_X,
-                    y: Tune::PLATFORM_CENTER_Y, z: 0.0},
-                Geometry::Vec3{x: Tune::PLATFORM_HALF_WIDTH,
-                    y: Tune::PLATFORM_HALF_HEIGHT, z: Tune::PLATFORM_HALF_DEPTH},
-                Geometry::quat_identity(), box_color(0.72, 0.62, 0.18))
-            _ = try add_static_box(session,
-                Geometry::Vec3{x: Tune::CORNER_WALL_X,
-                    y: Tune::CORNER_WALL_CENTER_Y, z: Tune::CORNER_WALL_CENTER_Z},
-                Geometry::Vec3{x: Tune::CORNER_WALL_HALF_WIDTH,
-                    y: Tune::CORNER_WALL_HALF_HEIGHT,
-                    z: Tune::CORNER_WALL_HALF_DEPTH},
-                Geometry::quat_identity(), box_color(0.68, 0.2, 0.18))
-            goal_position: Geometry::Vec3 = Geometry::Vec3{
-                x: Tune::GOAL_X, y: Tune::GOAL_HEIGHT, z: Tune::GOAL_Z}
-            _ = try RenderScene::create(RenderScene::Primitive.Sphere,
-                Geometry::Transform{position: goal_position,
-                    rotation: Geometry::quat_identity(),
-                    scale: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8}},
-                box_color(0.18, 0.9, 0.38))
+            can Global.Read, Global.Write:
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: 0.0, y: -Tune::FLOOR_HALF_HEIGHT, z: 0.0},
+                    Geometry::Vec3{x: Tune::FLOOR_HALF_WIDTH,
+                        y: Tune::FLOOR_HALF_HEIGHT, z: Tune::FLOOR_HALF_DEPTH},
+                    Geometry::quat_identity(), box_color(0.19, 0.22, 0.26))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::STEP_X, y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 0.0},
+                    Geometry::Vec3{x: Tune::STEP_HALF_WIDTH,
+                        y: Tune::OBSTACLE_STEP_HEIGHT * 0.5, z: 2.0},
+                    Geometry::quat_identity(), box_color(0.9, 0.42, 0.12))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::TUNNEL_X,
+                        y: Tune::TUNNEL_ROOF_BOTTOM + Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 0.0},
+                    Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                        y: Tune::TUNNEL_ROOF_HALF_HEIGHT, z: 1.5},
+                    Geometry::quat_identity(), box_color(0.2, 0.42, 0.72))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
+                        z: -1.5 - Tune::TUNNEL_HALF_WIDTH},
+                    Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                        y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
+                    Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::TUNNEL_X, y: Tune::TUNNEL_WALL_HALF_HEIGHT,
+                        z: 1.5 + Tune::TUNNEL_HALF_WIDTH},
+                    Geometry::Vec3{x: Tune::TUNNEL_HALF_LENGTH,
+                        y: Tune::TUNNEL_WALL_HALF_HEIGHT, z: Tune::TUNNEL_HALF_WIDTH},
+                    Geometry::quat_identity(), box_color(0.16, 0.32, 0.56))
+                ramp_rotation: Geometry::Quat = Geometry::Quat{x: 0.0, y: 0.0,
+                    z: Tune::RAMP_HALF_SINE, w: Tune::RAMP_HALF_COSINE}
+                ramp_half_extents: Geometry::Vec3 = Geometry::Vec3{
+                    x: Tune::RAMP_HALF_LENGTH, y: Tune::RAMP_HALF_HEIGHT,
+                    z: Tune::RAMP_HALF_DEPTH}
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::RAMP_CENTER_X, y: Tune::RAMP_CENTER_Y, z: 0.0},
+                    ramp_half_extents, ramp_rotation, box_color(0.16, 0.62, 0.36))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::PLATFORM_CENTER_X,
+                        y: Tune::PLATFORM_CENTER_Y, z: 0.0},
+                    Geometry::Vec3{x: Tune::PLATFORM_HALF_WIDTH,
+                        y: Tune::PLATFORM_HALF_HEIGHT, z: Tune::PLATFORM_HALF_DEPTH},
+                    Geometry::quat_identity(), box_color(0.72, 0.62, 0.18))
+                _ = try add_static_box(session,
+                    Geometry::Vec3{x: Tune::CORNER_WALL_X,
+                        y: Tune::CORNER_WALL_CENTER_Y, z: Tune::CORNER_WALL_CENTER_Z},
+                    Geometry::Vec3{x: Tune::CORNER_WALL_HALF_WIDTH,
+                        y: Tune::CORNER_WALL_HALF_HEIGHT,
+                        z: Tune::CORNER_WALL_HALF_DEPTH},
+                    Geometry::quat_identity(), box_color(0.68, 0.2, 0.18))
+                goal_position: Geometry::Vec3 = Geometry::Vec3{
+                    x: Tune::GOAL_X, y: Tune::GOAL_HEIGHT, z: Tune::GOAL_Z}
+                _ = try RenderScene::create(RenderScene::Primitive.Sphere,
+                    Geometry::Transform{position: goal_position,
+                        rotation: Geometry::quat_identity(),
+                        scale: Geometry::Vec3{x: 0.8, y: 0.8, z: 0.8}},
+                    box_color(0.18, 0.9, 0.38))
 
         def create_character_at(session: RuntimeServices::Session&,
             position: Geometry::Vec3, half_height: f32) -> PhysicsRuntime::CharacterHandle error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError]:
@@ -339,183 +341,190 @@ module CharacterCourse:
         def run_after_open(session: mutable RuntimeServices::Session&,
             mode: i32, cells: mutable CourseCells::Cells&, cell_runtime: mutable CellWorld::Runtime&,
             cell_world: mutable World::World&) -> i32 error[RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, RenderScene::RenderSceneError, Runtime::ClockError, Save::SaveError, UserData::UserDataError, NavMesh::NavMeshError] can[Global.Read, Global.Write]:
-            frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
-            width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
-            height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
-            try RenderScene::initialize(width, height, 12.0)
-            try RenderScene::add_overlay_font(Tune::ARABIC_FONT)
-            try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
-                Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
-            try NavMesh::begin()
-            _ = try create_course(session)
-            _ = try create_guide_yard(session)
-            guide: mutable Guide = try create_guide(session)
-            character: mutable PhysicsRuntime::CharacterHandle = try create_character(session)
-            avatar_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
-                session, character)
-            avatar: RenderScene::InstanceHandle = try RenderScene::create(
-                RenderScene::Primitive.Sphere,
-                Geometry::Transform{position: avatar_pose.position,
-                    rotation: Geometry::quat_identity(),
-                    scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
-                        y: (Tune::STANDING_HALF_HEIGHT + Tune::CHARACTER_RADIUS) * 2.0,
-                        z: Tune::CHARACTER_RADIUS * 2.0}},
-                box_color(0.16, 0.58, 0.92))
-            _ = try update_camera(avatar_pose)
-            instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
-                "Arrows also move | P pause | Esc quit",
-                18.0, 18.0, 20, box_color(1.0, 1.0, 1.0))
-            _ = try RuntimeServices::physics_fixed_step(session,
-                Runtime::fixed_step_seconds())
-            if mode == 2:
-                try UserData::initialize("org.elisa.elisa-character-course")
-                relaunched: ProgressOutcome = try relaunch_test(session, character)
-                character <- relaunched.character
-                return relaunched.status if relaunched.status != 0
-                props_relaunched: i32 = try props_relaunch_test(session)
-                return props_relaunched if props_relaunched != 0
-                access_relaunched: i32 = try access_relaunch_test()
-                return access_relaunched if access_relaunched != 0
-                devices_relaunched: i32 = devices_relaunch_test()
-                return devices_relaunched if devices_relaunched != 0
-                try NavMesh::unload(guide.mesh)
-                0
-            elif mode == 1:
-                state_status: i32 = state_test()
-                return state_status if state_status != 0
-                _ = try RuntimeServices::pump(session)
-                movement_status: i32 = try simulate_test(session, character)
-                return movement_status if movement_status != 0
-                character <- try restart_character(session, character)
-                restarted_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+            can Global.Read, Global.Write:
+                frame: Application::FrameInfo = try RuntimeServices::frame_info(session)
+                width: i32 = 1280 if frame.pixel_width <= 0 else frame.pixel_width
+                height: i32 = 800 if frame.pixel_height <= 0 else frame.pixel_height
+                try RenderScene::initialize(width, height, 12.0)
+                try RenderScene::add_overlay_font(Tune::ARABIC_FONT)
+                try RenderScene::set_camera_perspective(Tune::CAMERA_FOV,
+                    Tune::CAMERA_NEAR, Tune::CAMERA_FAR)
+                try NavMesh::begin()
+                _ = try create_course(session)
+                _ = try create_guide_yard(session)
+                guide: mutable Guide = try create_guide(session)
+                character: mutable PhysicsRuntime::CharacterHandle = try create_character(session)
+                avatar_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
                     session, character)
-                return Tune::SELF_TEST_RESTART_POSITION_CODE if ElisaMath::fabsf(restarted_pose.position.x - Tune::START_X) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.y - Tune::START_Y) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.z - Tune::START_Z) > Tune::SELF_TEST_RESTART_TOLERANCE
-                try UserData::initialize("org.elisa.elisa-character-course")
-                progress: ProgressOutcome = try progress_test(session, character)
-                character <- progress.character
-                return progress.status if progress.status != 0
-                controls_status: i32 = try controls_test()
-                return controls_status if controls_status != 0
-                sound_status: i32 = sound_test(session)
-                return sound_status if sound_status != 0
-                guide_status: i32 = try guide_test(session, &guide)
-                return guide_status if guide_status != 0
-                links_status: i32 = try links_test(session, &guide)
-                return links_status if links_status != 0
-                walker_status: i32 = try walker_test(session, &guide)
-                return walker_status if walker_status != 0
-                rig_status: i32 = try rig_test()
-                return rig_status if rig_status != 0
-                beacon_status: i32 = try beacons_test()
-                return beacon_status if beacon_status != 0
-                props_status: i32 = try props_test(session)
-                return props_status if props_status != 0
-                access_status: i32 = try access_test(session)
-                return access_status if access_status != 0
-                pointer_status: i32 = pointer_test()
-                return pointer_status if pointer_status != 0
-                pad_status: i32 = try pad_test()
-                return pad_status if pad_status != 0
-                look_status: i32 = look_test()
-                return look_status if look_status != 0
-                recording_status: i32 = recording_test()
-                return recording_status if recording_status != 0
-                mix_status: i32 = audio_mix_test(session)
-                return mix_status if mix_status != 0
-                replay_status: i32 = try replay_digest_test(session)
-                return replay_status if replay_status != 0
-                stressed: ProgressOutcome = try stress_test(session, character)
-                character <- stressed.character
-                return stressed.status if stressed.status != 0
-                try NavMesh::unload(guide.mesh)
-                return 119 if NavMesh::live_count() != 0
-                menu_devices: i32 = devices_menu_test()
-                return menu_devices if menu_devices != 0
-                devices_status: i32 = devices_handoff()
-                return devices_status if devices_status != 0
-                0
-            else:
-                # Without a user-data directory saves report failure in-game.
-                _ = catch UserData::initialize("org.elisa.elisa-character-course"):
-                    ok: true
-                    error failure: false
-                devices: DeviceSettings::Saved = devices_start()
-                # Beacons are built here, not in the loop, so their 2 MB
-                # create frame never stacks on top of the loop's own frame.
-                beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
-                    value: value
-                    error failure: return 34
-                started: i32 = catch CourseBeacons::start(&beacons):
-                    value: value
-                    error failure: -1
-                return 34 if started != 0
-                played: i32 = interactive_loop(session, character, avatar,
-                    instruction, guide, mode, cells, cell_runtime, cell_world,
-                    beacons)
-                _ = devices_quit(&devices)
-                played
+                avatar: RenderScene::InstanceHandle = try RenderScene::create(
+                    RenderScene::Primitive.Sphere,
+                    Geometry::Transform{position: avatar_pose.position,
+                        rotation: Geometry::quat_identity(),
+                        scale: Geometry::Vec3{x: Tune::CHARACTER_RADIUS * 2.0,
+                            y: (Tune::STANDING_HALF_HEIGHT + Tune::CHARACTER_RADIUS) * 2.0,
+                            z: Tune::CHARACTER_RADIUS * 2.0}},
+                    box_color(0.16, 0.58, 0.92))
+                _ = try update_camera(avatar_pose)
+                instruction: RenderScene::OverlayTextHandle = try RenderScene::create_overlay_text(
+                    "Arrows also move | P pause | Esc quit",
+                    18.0, 18.0, 20, box_color(1.0, 1.0, 1.0))
+                _ = try RuntimeServices::physics_fixed_step(session,
+                    Runtime::fixed_step_seconds())
+                if mode == 2:
+                    try UserData::initialize("org.elisa.elisa-character-course")
+                    relaunched: ProgressOutcome = try relaunch_test(session, character)
+                    character <- relaunched.character
+                    return relaunched.status if relaunched.status != 0
+                    props_relaunched: i32 = try props_relaunch_test(session)
+                    return props_relaunched if props_relaunched != 0
+                    access_relaunched: i32 = try access_relaunch_test()
+                    return access_relaunched if access_relaunched != 0
+                    devices_relaunched: i32 = devices_relaunch_test()
+                    return devices_relaunched if devices_relaunched != 0
+                    try NavMesh::unload(guide.mesh)
+                    return 0
+                elif mode == 1:
+                    state_status: i32 = state_test()
+                    return state_status if state_status != 0
+                    _ = try RuntimeServices::pump(session)
+                    movement_status: i32 = try simulate_test(session, character)
+                    return movement_status if movement_status != 0
+                    character <- try restart_character(session, character)
+                    restarted_pose: PhysicsRuntime::BodyPose = try RuntimeServices::physics_character_pose(
+                        session, character)
+                    return Tune::SELF_TEST_RESTART_POSITION_CODE if ElisaMath::fabsf(restarted_pose.position.x - Tune::START_X) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.y - Tune::START_Y) > Tune::SELF_TEST_RESTART_TOLERANCE or ElisaMath::fabsf(restarted_pose.position.z - Tune::START_Z) > Tune::SELF_TEST_RESTART_TOLERANCE
+                    try UserData::initialize("org.elisa.elisa-character-course")
+                    progress: ProgressOutcome = try progress_test(session, character)
+                    character <- progress.character
+                    return progress.status if progress.status != 0
+                    controls_status: i32 = try controls_test()
+                    return controls_status if controls_status != 0
+                    sound_status: i32 = sound_test(session)
+                    return sound_status if sound_status != 0
+                    guide_status: i32 = try guide_test(session, &guide)
+                    return guide_status if guide_status != 0
+                    links_status: i32 = try links_test(session, &guide)
+                    return links_status if links_status != 0
+                    walker_status: i32 = try walker_test(session, &guide)
+                    return walker_status if walker_status != 0
+                    rig_status: i32 = try rig_test()
+                    return rig_status if rig_status != 0
+                    beacon_status: i32 = try beacons_test()
+                    return beacon_status if beacon_status != 0
+                    props_status: i32 = try props_test(session)
+                    return props_status if props_status != 0
+                    access_status: i32 = try access_test(session)
+                    return access_status if access_status != 0
+                    pointer_status: i32 = pointer_test()
+                    return pointer_status if pointer_status != 0
+                    pad_status: i32 = try pad_test()
+                    return pad_status if pad_status != 0
+                    look_status: i32 = look_test()
+                    return look_status if look_status != 0
+                    recording_status: i32 = recording_test()
+                    return recording_status if recording_status != 0
+                    mix_status: i32 = audio_mix_test(session)
+                    return mix_status if mix_status != 0
+                    replay_status: i32 = try replay_digest_test(session)
+                    return replay_status if replay_status != 0
+                    stressed: ProgressOutcome = try stress_test(session, character)
+                    character <- stressed.character
+                    return stressed.status if stressed.status != 0
+                    try NavMesh::unload(guide.mesh)
+                    return 119 if NavMesh::live_count() != 0
+                    menu_devices: i32 = devices_menu_test()
+                    return menu_devices if menu_devices != 0
+                    devices_status: i32 = devices_handoff()
+                    return devices_status if devices_status != 0
+                    return 0
+                else:
+                    # Without a user-data directory saves report failure in-game.
+                    _ = catch UserData::initialize("org.elisa.elisa-character-course"):
+                        ok: true
+                        error failure: false
+                    devices: DeviceSettings::Saved = devices_start()
+                    # Beacons are built here, not in the loop, so their 2 MB
+                    # create frame never stacks on top of the loop's own frame.
+                    beacons: mutable CourseBeacons::Beacons = catch CourseBeacons::create():
+                        value: value
+                        error failure: return 34
+                    started: i32 = catch CourseBeacons::start(&beacons):
+                        value: value
+                        error failure: -1
+                    return 34 if started != 0
+                    played: i32 = interactive_loop(session, character, avatar,
+                        instruction, guide, mode, cells, cell_runtime, cell_world,
+                        beacons)
+                    _ = devices_quit(&devices)
+                    return played
 
     public:
         def run(self_test: bool) -> i32 can[Global.Read, Global.Write]:
-            run_mode(1 if self_test else 0)
+            can Global.Read, Global.Write:
+                return run_mode(1 if self_test else 0)
 
         def run_relaunch() -> i32 can[Global.Read, Global.Write]:
-            run_mode(2)
+            can Global.Read, Global.Write:
+                return run_mode(2)
 
-        # Plays the real game loop hidden while CourseCells pilots the player
-        # across streamed floor cells with pushed key events.
+            # Plays the real game loop hidden while CourseCells pilots the player
+            # across streamed floor cells with pushed key events.
         def run_cells_test() -> i32 can[Global.Read, Global.Write]:
-            run_mode(3)
+            can Global.Read, Global.Write:
+                return run_mode(3)
 
-        # Plays to the summit using pushed keys and the ordinary game loop.
+            # Plays to the summit using pushed keys and the ordinary game loop.
         def run_live_input_test() -> i32 can[Global.Read, Global.Write]:
-            run_mode(4)
+            can Global.Read, Global.Write:
+                return run_mode(4)
 
         def run_mode(mode: i32) -> i32 can[Global.Read, Global.Write]:
-            catch run_mode_cells(mode):
-                value: value
-                error failure: 5
+            can Global.Read, Global.Write:
+                return catch run_mode_cells(mode):
+                    value: value
+                    error failure: 5
 
-        # Streamed floor cells (cells.elisa). Their World and cell runtime
-        # are large by-value state, so they live here once and the play
-        # loop borrows them instead of holding copies in its own frame.
+            # Streamed floor cells (cells.elisa). Their World and cell runtime
+            # are large by-value state, so they live here once and the play
+            # loop borrows them instead of holding copies in its own frame.
         def run_mode_cells(mode: i32) -> i32 error[World::WorldError] can[Global.Read, Global.Write]:
-            cell_world: mutable World::World = try World::World()
-            cell_runtime: mutable CellWorld::Runtime = CourseCells::cells_make_runtime()
-            cells: mutable CourseCells::Cells = CourseCells::Cells()
-            config: mutable Application::Config = Application::default_config()
-            config.hidden <- true if mode != 0
-            session: mutable RuntimeServices::Session = RuntimeServices::Session()
-            requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
-            requirements.services[0] <- Capabilities::BackendFeature.Input
-            requirements.services[1] <- Capabilities::BackendFeature.Rendering
-            requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
-            requirements.services[3] <- Capabilities::BackendFeature.Physics
-            requirements.services[4] <- Capabilities::BackendFeature.Audio
-            requirements.service_count <- 5
-            requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
-            requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
-            # No output device still plays: the silent route keeps sound state honest.
-            requirements.service_fallbacks.audio <- Capabilities::BackendFallbackProvider.MiniaudioDefault
-            requirements.allow_service_fallbacks <- true
-            report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
-            opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
-                config, &requirements, Tune::AUDIO_SAMPLE_RATE_HZ,
-                Tune::AUDIO_CHANNELS, &report)
-            if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
-                _ = RuntimeServices::shutdown(&session)
-                return 1
-            if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
-                _ = RuntimeServices::shutdown(&session)
-                return 2
-            result: i32 = catch run_after_open(&session, mode, &cells, &cell_runtime, &cell_world):
-                value: value
-                error failure: 3
-            render_closed: mutable bool = true
-            if RenderScene::is_initialized():
-                render_closed <- catch RenderScene::shutdown():
-                    ok: true
-                    error failure: false
-            app_closed: bool = RuntimeServices::shutdown(&session)
-            return 4 if not render_closed or not app_closed
-            result
+            can Global.Read, Global.Write:
+                cell_world: mutable World::World = try World::World()
+                cell_runtime: mutable CellWorld::Runtime = CourseCells::cells_make_runtime()
+                cells: mutable CourseCells::Cells = CourseCells::Cells()
+                config: mutable Application::Config = Application::default_config()
+                config.hidden <- true if mode != 0
+                session: mutable RuntimeServices::Session = RuntimeServices::Session()
+                requirements: mutable BackendRequirements::BackendStartupRequirements = zeroed
+                requirements.services[0] <- Capabilities::BackendFeature.Input
+                requirements.services[1] <- Capabilities::BackendFeature.Rendering
+                requirements.services[2] <- Capabilities::BackendFeature.NativeWindow
+                requirements.services[3] <- Capabilities::BackendFeature.Physics
+                requirements.services[4] <- Capabilities::BackendFeature.Audio
+                requirements.service_count <- 5
+                requirements.service_fallbacks <- Capabilities::no_backend_fallback_providers()
+                requirements.service_fallbacks.physics <- Capabilities::BackendFallbackProvider.JoltPhysics
+                # No output device still plays: the silent route keeps sound state honest.
+                requirements.service_fallbacks.audio <- Capabilities::BackendFallbackProvider.MiniaudioDefault
+                requirements.allow_service_fallbacks <- true
+                report: mutable BackendRequirements::BackendRequirementsReport = BackendRequirements::backend_requirements_invalid_report()
+                opened: RuntimeServices::OpenStatus = RuntimeServices::open(&session,
+                    config, &requirements, Tune::AUDIO_SAMPLE_RATE_HZ,
+                    Tune::AUDIO_CHANNELS, &report)
+                if opened != RuntimeServices::OpenStatus.Ready and opened != RuntimeServices::OpenStatus.FallbackRequired:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 1
+                if report.state != Capabilities::RequirementState.Ready and report.state != Capabilities::RequirementState.Fallback:
+                    _ = RuntimeServices::shutdown(&session)
+                    return 2
+                result: i32 = catch run_after_open(&session, mode, &cells, &cell_runtime, &cell_world):
+                    value: value
+                    error failure: 3
+                render_closed: mutable bool = true
+                if RenderScene::is_initialized():
+                    render_closed <- catch RenderScene::shutdown():
+                        ok: true
+                        error failure: false
+                app_closed: bool = RuntimeServices::shutdown(&session)
+                return 4 if not render_closed or not app_closed
+                return result

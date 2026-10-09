@@ -19,39 +19,40 @@ module CourseContactAudio:
 
         def step(session: RuntimeServices::Session&, props: mutable CourseProps::Props&,
             sounds: mutable CourseSounds::Sounds&, tick: u64, stats: mutable Stats&) -> void error[WorldSchedule::Error, RuntimeServices::RuntimeServicesError, PhysicsRuntime::PhysicsError, WorldContactEvents::WorldContactError] can[Global.Read, Global.Write]:
-            frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
-            try WorldSchedule::begin_frame(&frame)
-            try WorldSchedule::subscribe(&frame, 7302, WorldEvents::Phase.Audio)
-            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation)
-            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics)
-            writer: mutable WorldAccess::Token = try WorldSchedule::acquire_write(&frame)
-            synced: bool = catch WorldPhysics::sync_world(session, &props.world, &props.physics):
-                ok: true
-                error failure: false
-            try WorldSchedule::release_access(&frame, &writer)
-            raise WorldSchedule::Error.InvalidEntity if not synced
-            contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
-            dropped: mutable u32 = 0
-            count: usize = try RuntimeServices::physics_poll_contacts(session, &contacts, &dropped)
-            report: WorldContactEvents::Report = try WorldContactEvents::enqueue(&frame,
-                session, &props.world, &props.physics, &contacts, count, dropped, 7302,
-                CourseSounds::EVENT_LAND.i64())
-            stats.emitted <- stats.emitted + report.emitted
-            stats.rejected <- stats.rejected + report.rejected
-            stats.queue_dropped <- stats.queue_dropped + report.queue_dropped
-            stats.native_dropped <- stats.native_dropped + report.native_dropped.u64()
-            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Animation)
-            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Render)
-            try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Audio)
-            delivered: usize = try WorldSchedule::dispatch_current(&frame)
-            stats.delivered <- stats.delivered + delivered
-            for ordinal in 0..<delivered |frame, props, sounds, tick, stats|:
-                event: WorldEvents::Event = try WorldSchedule::dispatched_event_at(&frame, &props.world, ordinal)
-                if event.kind == WorldEvents::EventKind.AudioCue and event.listener_id == 7302:
-                    _ = CourseSounds::fire(sounds, event.payload.u32(), tick)
-                    stats.audio_attempts <- stats.audio_attempts + 1
-            try WorldSchedule::unsubscribe(&frame, 7302)
-            _ = try WorldSchedule::end_frame(&frame)
+            can Global.Read, Global.Write:
+                frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+                try WorldSchedule::begin_frame(&frame)
+                try WorldSchedule::subscribe(&frame, 7302, WorldEvents::Phase.Audio)
+                try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation)
+                try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics)
+                writer: mutable WorldAccess::Token = try WorldSchedule::acquire_write(&frame)
+                synced: bool = catch WorldPhysics::sync_world(session, &props.world, &props.physics):
+                    ok: true
+                    error failure: false
+                try WorldSchedule::release_access(&frame, &writer)
+                raise WorldSchedule::Error.InvalidEntity if not synced
+                contacts: mutable PhysicsRuntime::ContactBuffer = zeroed
+                dropped: mutable u32 = 0
+                count: usize = try RuntimeServices::physics_poll_contacts(session, &contacts, &dropped)
+                report: WorldContactEvents::Report = try WorldContactEvents::enqueue(&frame,
+                    session, &props.world, &props.physics, &contacts, count, dropped, 7302,
+                    CourseSounds::EVENT_LAND.i64())
+                stats.emitted <- stats.emitted + report.emitted
+                stats.rejected <- stats.rejected + report.rejected
+                stats.queue_dropped <- stats.queue_dropped + report.queue_dropped
+                stats.native_dropped <- stats.native_dropped + report.native_dropped.u64()
+                try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Animation)
+                try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Render)
+                try WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Audio)
+                delivered: usize = try WorldSchedule::dispatch_current(&frame)
+                stats.delivered <- stats.delivered + delivered
+                for ordinal in 0..<delivered |frame, props, sounds, tick, stats|:
+                    event: WorldEvents::Event = try WorldSchedule::dispatched_event_at(&frame, &props.world, ordinal)
+                    if event.kind == WorldEvents::EventKind.AudioCue and event.listener_id == 7302:
+                        _ = CourseSounds::fire(sounds, event.payload.u32(), tick)
+                        stats.audio_attempts <- stats.audio_attempts + 1
+                try WorldSchedule::unsubscribe(&frame, 7302)
+                _ = try WorldSchedule::end_frame(&frame)
 
         def verdict(stats: Stats&) -> i32:
             return 270 if stats.emitted == 0 or stats.delivered == 0 or stats.audio_attempts == 0

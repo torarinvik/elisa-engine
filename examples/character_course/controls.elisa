@@ -388,71 +388,75 @@ module CourseControls:
         # Escape closes, Left/Right adjust a settings row, and any other key
         # is offered to the selected slot.
         def menu_key(menu: Menu, code: i64) -> MenuStep can[Global.Read, Global.Write]:
-            setting: bool = menu.selected >= SLOT_COUNT
-            if code == key(Application::KeyboardKeyCode.ArrowUp):
-                moved(menu, MENU_ROWS - 1 if menu.selected == 0 else menu.selected - 1)
-            elif code == key(Application::KeyboardKeyCode.ArrowDown):
-                moved(menu, 0 if menu.selected == MENU_ROWS - 1 else menu.selected + 1)
-            elif code == key(Application::KeyboardKeyCode.Tab) or code == key(Application::KeyboardKeyCode.Escape):
-                step(menu, MenuResult.Closed)
-            elif code == key(Application::KeyboardKeyCode.ArrowLeft) or code == key(Application::KeyboardKeyCode.ArrowRight):
-                if setting:
-                    MenuStep{menu: menu, result: MenuResult.Adjusted,
-                        delta: 1 if code == key(Application::KeyboardKeyCode.ArrowRight) else -1}
+            can Global.Read, Global.Write:
+                setting: bool = menu.selected >= SLOT_COUNT
+                if code == key(Application::KeyboardKeyCode.ArrowUp):
+                    return moved(menu, MENU_ROWS - 1 if menu.selected == 0 else menu.selected - 1)
+                elif code == key(Application::KeyboardKeyCode.ArrowDown):
+                    return moved(menu, 0 if menu.selected == MENU_ROWS - 1 else menu.selected + 1)
+                elif code == key(Application::KeyboardKeyCode.Tab) or code == key(Application::KeyboardKeyCode.Escape):
+                    return step(menu, MenuResult.Closed)
+                elif code == key(Application::KeyboardKeyCode.ArrowLeft) or code == key(Application::KeyboardKeyCode.ArrowRight):
+                    if setting:
+                        return MenuStep{menu: menu, result: MenuResult.Adjusted,
+                            delta: 1 if code == key(Application::KeyboardKeyCode.ArrowRight) else -1}
+                    else:
+                        return step(menu, MenuResult.Ignored)
+                elif setting:
+                    return step(menu, MenuResult.Ignored)
                 else:
-                    step(menu, MenuResult.Ignored)
-            elif setting:
-                step(menu, MenuResult.Ignored)
-            else:
-                outcome: AssignOutcome = assign(menu.keymap, menu.selected, code)
-                if outcome.result == AssignResult.Reserved or outcome.result == AssignResult.InvalidSlot:
-                    step(menu, MenuResult.Reserved)
-                else:
-                    step(Menu{keymap: outcome.keymap, selected: menu.selected}, MenuResult.Assigned)
+                    outcome: AssignOutcome = assign(menu.keymap, menu.selected, code)
+                    if outcome.result == AssignResult.Reserved or outcome.result == AssignResult.InvalidSlot:
+                        return step(menu, MenuResult.Reserved)
+                    else:
+                        return step(Menu{keymap: outcome.keymap, selected: menu.selected}, MenuResult.Assigned)
 
-        # Controllers navigate and adjust the same menu; they cannot assign
-        # keyboard keys.
+            # Controllers navigate and adjust the same menu; they cannot assign
+            # keyboard keys.
         def menu_button(menu: Menu, code: i64) -> MenuStep can[Global.Read, Global.Write]:
-            if code == pad(Application::GamepadButtonCode.DpadUp):
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
-            elif code == pad(Application::GamepadButtonCode.DpadDown):
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
-            elif code == pad(Application::GamepadButtonCode.DpadLeft):
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowLeft))
-            elif code == pad(Application::GamepadButtonCode.DpadRight):
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowRight))
-            elif code == pad(Application::GamepadButtonCode.East) or code == pad(Application::GamepadButtonCode.Back) or code == pad(Application::GamepadButtonCode.Start):
-                step(menu, MenuResult.Closed)
-            else:
-                step(menu, MenuResult.Ignored)
+            can Global.Read, Global.Write:
+                if code == pad(Application::GamepadButtonCode.DpadUp):
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
+                elif code == pad(Application::GamepadButtonCode.DpadDown):
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
+                elif code == pad(Application::GamepadButtonCode.DpadLeft):
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowLeft))
+                elif code == pad(Application::GamepadButtonCode.DpadRight):
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowRight))
+                elif code == pad(Application::GamepadButtonCode.East) or code == pad(Application::GamepadButtonCode.Back) or code == pad(Application::GamepadButtonCode.Start):
+                    return step(menu, MenuResult.Closed)
+                else:
+                    return step(menu, MenuResult.Ignored)
 
-        # A pointer press on legend row `row` (-1 when it missed): a left
-        # press selects a key slot, and a left or right press on a settings
-        # row selects it and steps it forward or back.
+            # A pointer press on legend row `row` (-1 when it missed): a left
+            # press selects a key slot, and a left or right press on a settings
+            # row selects it and steps it forward or back.
         def menu_pointer(menu: Menu, row: i64, button: i32) -> MenuStep can[Global.Read, Global.Write]:
-            left: bool = button == Application::PointerButtons::LEFT
-            right: bool = button == Application::PointerButtons::RIGHT
-            if row < 0 or row >= MENU_ROWS:
-                step(menu, MenuResult.Ignored)
-            elif row < SLOT_COUNT:
-                moved(menu, row) if left else step(menu, MenuResult.Ignored)
-            elif left or right:
-                MenuStep{menu: Menu{keymap: menu.keymap, selected: row},
-                    result: MenuResult.Adjusted, delta: 1 if left else -1}
-            else:
-                step(menu, MenuResult.Ignored)
+            can Global.Read, Global.Write:
+                left: bool = button == Application::PointerButtons::LEFT
+                right: bool = button == Application::PointerButtons::RIGHT
+                if row < 0 or row >= MENU_ROWS:
+                    return step(menu, MenuResult.Ignored)
+                elif row < SLOT_COUNT:
+                    return moved(menu, row) if left else step(menu, MenuResult.Ignored)
+                elif left or right:
+                    return MenuStep{menu: Menu{keymap: menu.keymap, selected: row},
+                        result: MenuResult.Adjusted, delta: 1 if left else -1}
+                else:
+                    return step(menu, MenuResult.Ignored)
 
-        # Wheel up selects the row above, like the Up arrow.
+            # Wheel up selects the row above, like the Up arrow.
         def menu_wheel(menu: Menu, delta_y: f32) -> MenuStep can[Global.Read, Global.Write]:
-            if delta_y > 0.0:
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
-            elif delta_y < 0.0:
-                menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
-            else:
-                step(menu, MenuResult.Ignored)
+            can Global.Read, Global.Write:
+                if delta_y > 0.0:
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowUp))
+                elif delta_y < 0.0:
+                    return menu_key(menu, key(Application::KeyboardKeyCode.ArrowDown))
+                else:
+                    return step(menu, MenuResult.Ignored)
 
-        # Gameplay has no pointer controls; pending pointer events are dropped
-        # each frame so a click never waits in the queue for the menu.
+            # Gameplay has no pointer controls; pending pointer events are dropped
+            # each frame so a click never waits in the queue for the menu.
         def discard_pointer() -> usize:
             dropped: mutable usize = 0
             event: mutable Application::PointerEvent = zeroed
@@ -461,33 +465,35 @@ module CourseControls:
             dropped
 
         def menu_event(menu: Menu, event: Application::InputEvent) -> MenuStep can[Global.Read, Global.Write]:
-            if not event.pressed or event.released:
-                step(menu, MenuResult.Ignored)
-            elif event.kind == Application::InputEventKind.Key:
-                menu_key(menu, event.code)
-            elif event.kind == Application::InputEventKind.GamepadButton:
-                menu_button(menu, event.code)
-            else:
-                step(menu, MenuResult.Ignored)
+            can Global.Read, Global.Write:
+                if not event.pressed or event.released:
+                    return step(menu, MenuResult.Ignored)
+                elif event.kind == Application::InputEventKind.Key:
+                    return menu_key(menu, event.code)
+                elif event.kind == Application::InputEventKind.GamepadButton:
+                    return menu_button(menu, event.code)
+                else:
+                    return step(menu, MenuResult.Ignored)
 
-        # Drains the frame's events into the menu and stops at Closed or
-        # Adjusted, so the caller applies each setting change before the next.
+            # Drains the frame's events into the menu and stops at Closed or
+            # Adjusted, so the caller applies each setting change before the next.
         def drain_menu(menu: Menu) -> MenuStep can[Global.Read, Global.Write]:
-            current: mutable MenuStep = step(menu, MenuResult.Ignored)
-            open: mutable bool = true
-            event: mutable Application::InputEvent = zeroed
-            while open and Application::next_input_event(&event) |current, open, event|:
-                next: MenuStep = menu_event(current.menu, event)
-                if next.result != MenuResult.Ignored:
-                    current <- next
-                open <- false if next.result == MenuResult.Closed or next.result == MenuResult.Adjusted
-            current
+            can Global.Read, Global.Write:
+                current: mutable MenuStep = step(menu, MenuResult.Ignored)
+                open: mutable bool = true
+                event: mutable Application::InputEvent = zeroed
+                while open and Application::next_input_event(&event) |current, open, event|:
+                    next: MenuStep = menu_event(current.menu, event)
+                    if next.result != MenuResult.Ignored:
+                        current <- next
+                    open <- false if next.result == MenuResult.Closed or next.result == MenuResult.Adjusted
+                return current
 
-        # Drains the frame's events into gameplay input and reports focus loss
-        # so the game can pause; focus loss also clears every held action.
-        # Every effect is also recorded at `tick` for the session recording
-        # saved on quit. The live input is updated even
-        # when the log is full; the log then reports itself untrusted.
+            # Drains the frame's events into gameplay input and reports focus loss
+            # so the game can pause; focus loss also clears every held action.
+            # Every effect is also recorded at `tick` for the session recording
+            # saved on quit. The live input is updated even
+            # when the log is full; the log then reports itself untrusted.
         def drain_gameplay_recorded(input: mutable ActionInput::Input&,
             log: mutable ActionInputReplay::Log&, tick: i64) -> bool can[Global.Read, Global.Write]:
             ActionInput::begin_frame(input)
