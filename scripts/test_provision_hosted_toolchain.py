@@ -103,8 +103,49 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         self.assertIn("Global.Read/Write", plan["message"])
         self.assertEqual(plan["build_blocker"]["kind"], "proof_global_grants_not_qualified")
         self.assertEqual(plan["upstream_ref_heads"], self.lock["upstream_ref_heads"])
+        self.assertIsNone(plan["upstream_verification"])
         self.assertIn("--seed", plan["build_contract"]["stage1"])
         self.assertEqual(plan["build_contract"]["proof"], ["bash", "scripts/build.sh"])
+
+    def test_verify_upstream_checks_each_recorded_main_head(self) -> None:
+        ref = self.lock["upstream_ref_heads"]["ref"]
+        heads = self.lock["upstream_ref_heads"]["heads"]
+        results = [subprocess.CompletedProcess(
+            ["git", "ls-remote"], 0, f"{heads[name]}\t{ref}\n", "")
+            for name in provision.REPOSITORIES]
+        with patch.object(provision.subprocess, "run", side_effect=results) as execute:
+            self.assertEqual(provision.verify_upstream_heads(self.lock), heads)
+        self.assertEqual(execute.call_count, len(provision.REPOSITORIES))
+        self.assertTrue(all(call.args[0][1] == "ls-remote" and call.args[0][-1] == ref
+                            for call in execute.call_args_list))
+
+    def test_verify_upstream_refuses_a_changed_compiler_head(self) -> None:
+        ref = self.lock["upstream_ref_heads"]["ref"]
+        heads = self.lock["upstream_ref_heads"]["heads"]
+        results = [
+            subprocess.CompletedProcess(["git", "ls-remote"], 0,
+                f"{'0' * 40 if name == 'elisa_compiler' else heads[name]}\t{ref}\n", "")
+            for name in provision.REPOSITORIES
+        ]
+        with patch.object(provision.subprocess, "run", side_effect=results):
+            with self.assertRaisesRegex(provision.ProvisionError,
+                                        "elisa_compiler upstream refs/heads/main changed"):
+                provision.verify_upstream_heads(self.lock)
+
+    def test_plan_can_verify_upstream_without_building(self) -> None:
+        ref = self.lock["upstream_ref_heads"]["ref"]
+        heads = self.lock["upstream_ref_heads"]["heads"]
+        results = [subprocess.CompletedProcess(
+            ["git", "ls-remote"], 0, f"{heads[name]}\t{ref}\n", "")
+            for name in provision.REPOSITORIES]
+        output = io.StringIO()
+        with patch.object(provision.subprocess, "run", side_effect=results), \
+                contextlib.redirect_stdout(output):
+            status = provision.main(["--plan", "--verify-upstream"])
+        self.assertEqual(status, 0)
+        plan = json.loads(output.getvalue())
+        self.assertEqual(plan["upstream_verification"]["state"], "passed")
+        self.assertEqual(plan["upstream_verification"]["heads"], heads)
 
     def test_blocked_build_fails_before_running_any_toolchain_command(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

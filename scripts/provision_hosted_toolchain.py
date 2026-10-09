@@ -94,6 +94,40 @@ def load_lock(path: Path) -> dict[str, Any]:
     return lock
 
 
+def verify_upstream_heads(lock: dict[str, Any]) -> dict[str, str]:
+    """Require every recorded main head to still match its remote ref."""
+    ref = lock["upstream_ref_heads"]["ref"]
+    observed: dict[str, str] = {}
+    for name, spec in lock["repositories"].items():
+        try:
+            result = subprocess.run(
+                ["git", "ls-remote", spec["url"], ref],
+                text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                check=False, timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as error:
+            raise ProvisionError(f"cannot verify {name} upstream {ref}: {error}") from error
+        if result.returncode != 0:
+            raise ProvisionError(
+                f"cannot verify {name} upstream {ref}: {result.stderr.strip() or result.returncode}"
+            )
+        matches = [
+            fields[0] for line in result.stdout.splitlines()
+            if len(fields := line.split()) == 2 and fields[1] == ref
+        ]
+        if len(matches) != 1:
+            raise ProvisionError(f"expected one {name} {ref} result, got {len(matches)}")
+        current = matches[0]
+        expected = lock["upstream_ref_heads"]["heads"][name]
+        if current != expected:
+            raise ProvisionError(
+                f"{name} upstream {ref} changed: recorded {expected}, current {current}; "
+                "refresh the upstream-head record and requalify affected pins"
+            )
+        observed[name] = current
+    return observed
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as source:
@@ -329,6 +363,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lock", type=Path, default=DEFAULT_LOCK)
     parser.add_argument("--root", type=Path, default=ENGINE_ROOT / "build/hosted-toolchain")
+    parser.add_argument("--verify-upstream", action="store_true",
+                        help="verify recorded upstream main heads (requires --plan)")
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--fetch", action="store_true", help="fetch exact source commits only")
     operation.add_argument("--build", action="store_true", help="build all pinned compiler/prover/script products")
@@ -341,13 +377,23 @@ def main(argv: list[str] | None = None) -> int:
             message = ("Hosted toolchain build is enabled for the pinned revisions."
                 if lock["build_eligibility"] == "ready" else
                 f"Hosted toolchain build is deferred: {lock['build_blocker']['detail']}")
-            print(json.dumps({"schema": lock["schema"], "bootstrap_go": lock["bootstrap_go"],
+            plan = {"schema": lock["schema"], "bootstrap_go": lock["bootstrap_go"],
                               "build_eligibility": lock["build_eligibility"], "build_blocker": lock.get("build_blocker"),
                               "hosted_build_execution": "deferred" if lock["build_eligibility"] != "ready" else "enabled",
                               "message": message,
                               "upstream_ref_heads": lock["upstream_ref_heads"],
-                              "repositories": lock["repositories"], "build_contract": lock["build_contract"]}, indent=2, sort_keys=True))
+                              "upstream_verification": None,
+                              "repositories": lock["repositories"], "build_contract": lock["build_contract"]}
+            if args.verify_upstream:
+                plan["upstream_verification"] = {
+                    "ref": lock["upstream_ref_heads"]["ref"],
+                    "state": "passed",
+                    "heads": verify_upstream_heads(lock),
+                }
+            print(json.dumps(plan, indent=2, sort_keys=True))
             return 0
+        if args.verify_upstream:
+            raise ProvisionError("--verify-upstream requires --plan")
         provisioner = Provisioner(args.root, lock)
         if args.fetch:
             provisioner.fetch_sources()

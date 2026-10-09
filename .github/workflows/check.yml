@@ -49,6 +49,9 @@ jobs:
           python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-policy -- python scripts/test_provision_hosted_toolchain.py
       - name: Hosted toolchain plan (build deferred until proof qualification)
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-plan -- python scripts/provision_hosted_toolchain.py --plan
+      - name: Verify recorded toolchain upstream heads
+        if: matrix.os == 'ubuntu-latest'
+        run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-upstream -- python scripts/provision_hosted_toolchain.py --plan --verify-upstream
       - name: Native smoke artifact self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" smoke-artifacts -- python scripts/native_smoke_artifacts.py --self-test
       - name: Course sounds match their generator

@@ -50,11 +50,13 @@ The lock reader also rejects malformed JSON shapes and field types with a
 controlled error: the root and repository pins must be objects, revisions,
 URLs, eligibility, and blocker fields must have their declared string types,
 and a ready lock cannot retain a blocker. The focused provisioner controls
-pass 14/14, including malformed roots, pins, states and blockers plus matching
-the selected compiler pin to the recorded upstream main head. The
-cross-platform CI job runs those controls alongside the global-grant harness;
-the workflow YAML and local CI-stage invocations validate, while no hosted
-Actions result is claimed yet.
+pass 17/17, including malformed roots, pins, states and blockers, selected
+compiler/head consistency, and drift detection. `--plan --verify-upstream`
+currently verifies all four recorded `refs/heads/main` heads with `git ls-remote`
+and keeps build execution deferred. The cross-platform CI job runs that online
+check once on Ubuntu and runs the policy suites on every matrix host. Local
+CI-stage invocations and workflow YAML validation pass; hosted Actions results
+have not yet been observed.
 
 After the exact proof/compiler/runtime tuple passes those gates, update the
 qualification state and enable `--fetch`/`--build` in the macOS job. The
