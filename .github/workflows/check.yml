@@ -42,7 +42,7 @@ jobs:
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" import-self-test -- python scripts/cook_assets.py --self-test
       - name: CI stage recorder self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" ci-stage-test -- python scripts/test_ci_stage.py
-      - name: Hosted toolchain plan (build deferred until compiler pin is published)
+      - name: Hosted toolchain plan (build deferred until proof qualification)
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" toolchain-plan -- python scripts/provision_hosted_toolchain.py --plan
       - name: Native smoke artifact self-test
         run: python scripts/ci_stage.py build/ci "cook-${{ matrix.os }}" smoke-artifacts -- python scripts/native_smoke_artifacts.py --self-test
@@ -79,7 +79,7 @@ jobs:
   # The real libraries that need a toolchain: the selected transport and the
   # Basis encoder are fetched, built, and run, and the boundary libraries run
   # under AddressSanitizer/UBSan. Elisa tool builds are intentionally deferred
-  # until the branch-local machine-over parser change has a published pin.
+  # until the pinned proof/compiler/runtime tuple passes strict qualification.
   native:
     runs-on: macos-latest
     env:

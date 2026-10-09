@@ -57,15 +57,16 @@ def load_lock(path: Path) -> dict[str, Any]:
            for command in contract.values()):
         raise ProvisionError("each build_contract command must be a nonempty array of strings")
     eligibility = lock.get("build_eligibility")
-    if eligibility not in {"ready", "blocked_upstream_compatibility"}:
-        raise ProvisionError("lock build_eligibility must be ready or blocked_upstream_compatibility")
+    if eligibility not in {"ready", "blocked_qualification"}:
+        raise ProvisionError("lock build_eligibility must be ready or blocked_qualification")
     blocker = lock.get("build_blocker")
-    if eligibility == "blocked_upstream_compatibility":
-        if not isinstance(blocker, dict) or not blocker.get("detail"):
-            raise ProvisionError("blocked lock must include an actionable build_blocker.detail")
-        required = blocker.get("required_compiler_commit", "")
-        if len(required) != 40 or any(char not in "0123456789abcdef" for char in required):
-            raise ProvisionError("build blocker must name the exact required compiler commit")
+    if eligibility == "blocked_qualification":
+        if not isinstance(blocker, dict) or not blocker.get("kind") or not blocker.get("detail"):
+            raise ProvisionError("blocked lock must include build_blocker.kind and actionable detail")
+        if blocker["kind"] == "compiler_revision_not_published":
+            required = blocker.get("required_compiler_commit", "")
+            if len(required) != 40 or any(char not in "0123456789abcdef" for char in required):
+                raise ProvisionError("build blocker must name the exact required compiler commit")
     return lock
 
 
@@ -313,11 +314,13 @@ def main(argv: list[str] | None = None) -> int:
     try:
         lock = load_lock(args.lock)
         if args.plan:
+            message = ("Hosted toolchain build is enabled for the pinned revisions."
+                if lock["build_eligibility"] == "ready" else
+                f"Hosted toolchain build is deferred: {lock['build_blocker']['detail']}")
             print(json.dumps({"schema": lock["schema"], "bootstrap_go": lock["bootstrap_go"],
                               "build_eligibility": lock["build_eligibility"], "build_blocker": lock.get("build_blocker"),
                               "hosted_build_execution": "deferred" if lock["build_eligibility"] != "ready" else "enabled",
-                              "message": ("Hosted toolchain build execution is deferred while the compatible compiler commit remains unpublished; update the lock only after verifying its immutable upstream ref."
-                                          if lock["build_eligibility"] != "ready" else "Hosted toolchain build execution is enabled for the pinned revisions."),
+                              "message": message,
                               "repositories": lock["repositories"], "build_contract": lock["build_contract"]}, indent=2, sort_keys=True))
             return 0
         provisioner = Provisioner(args.root, lock)

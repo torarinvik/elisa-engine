@@ -1,13 +1,11 @@
 {
   "schema": "elisa-engine-hosted-toolchain-lock-v1",
-  "upstream_ref_verified": "refs/heads/main at 2026-10-05 UTC",
-  "build_eligibility": "blocked_upstream_compatibility",
+  "upstream_ref_verified": "refs/heads/main at 2026-10-09 UTC",
+  "build_eligibility": "blocked_qualification",
   "build_blocker": {
-    "kind": "compiler_revision_not_published",
-    "required_compiler_commit": "955cde86f336dff0945e8918303e9f974cc97532",
-    "required_feature": "Support branch-local machine-over transitions",
-    "published_compiler_revision": "72a752820ab581d46bb17b3fb7158ba3879a16e3",
-    "detail": "ElisaScript contains branch-local machine-over transitions. The compatible compiler commit exists in the local codex/edir-host-effects checkout but is not advertised by an upstream ref; do not build against the older published pin or fetch the unpublished commit by guesswork."
+    "kind": "proof_global_grants_not_qualified",
+    "compiler_feature_revision": "955cde86f336dff0945e8918303e9f974cc97532",
+    "detail": "The previous machine-over blocker is cleared: compiler commit b11e9121c64d94bbc8881db58ae850bf4933ceb9 is verified on upstream main. Hosted builds remain blocked because the exact pinned proof/compiler/runtime tuple has not been qualified under default Global.Read/Write enforcement. A proof rebuild against the newer b719dbd5 callback compiler failed on missing Global.Read/Write annotations; do not enable hosted builds or use -permissive until the pinned proof pair passes strict build, independent replay, the original 265 obligations, five CLI regressions, and all 73 engine reports."
   },
   "bootstrap_go": "1.25.0",
   "repositories": {
@@ -17,7 +15,7 @@
     },
     "elisa_compiler": {
       "url": "https://github.com/torarinvik/Elisa-compiler.git",
-      "revision": "72a752820ab581d46bb17b3fb7158ba3879a16e3"
+      "revision": "b11e9121c64d94bbc8881db58ae850bf4933ceb9"
     },
     "elisa_proof": {
       "url": "https://github.com/torarinvik/elisa-proof.git",

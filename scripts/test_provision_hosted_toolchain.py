@@ -23,7 +23,7 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         self.assertEqual(set(self.lock["repositories"]), set(provision.REPOSITORIES))
         self.assertEqual(self.lock["bootstrap_go"], "1.25.0")
         self.assertEqual(self.lock["repositories"]["elisa_compiler"]["revision"],
-                         "72a752820ab581d46bb17b3fb7158ba3879a16e3")
+                         "b11e9121c64d94bbc8881db58ae850bf4933ceb9")
         self.assertEqual(self.lock["repositories"]["elisa_proof"]["revision"],
                          "04601de17703ac3ffa1b128086e8d6ea047e9501")
 
@@ -48,11 +48,10 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         plan = json.loads(result.stdout)
         self.assertEqual(plan["repositories"]["elisascript"]["revision"],
                          "a26f9fd09d59fe1498622feebee3d7b355123b84")
-        self.assertEqual(plan["build_eligibility"], "blocked_upstream_compatibility")
+        self.assertEqual(plan["build_eligibility"], "blocked_qualification")
         self.assertEqual(plan["hosted_build_execution"], "deferred")
-        self.assertIn("remains unpublished", plan["message"])
-        self.assertEqual(plan["build_blocker"]["required_compiler_commit"],
-                         "955cde86f336dff0945e8918303e9f974cc97532")
+        self.assertIn("Global.Read/Write", plan["message"])
+        self.assertEqual(plan["build_blocker"]["kind"], "proof_global_grants_not_qualified")
         self.assertIn("--seed", plan["build_contract"]["stage1"])
         self.assertEqual(plan["build_contract"]["proof"], ["bash", "scripts/build.sh"])
 
@@ -60,12 +59,21 @@ class HostedToolchainProvisionerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             runner = provision.Provisioner(Path(temporary), self.lock)
             with patch.object(runner, "fetch_sources", side_effect=AssertionError("must fail before fetch")):
-                with self.assertRaisesRegex(provision.ProvisionError, "not advertised by an upstream ref"):
+                with self.assertRaisesRegex(provision.ProvisionError, "Global.Read/Write"):
                     runner.build()
             report = json.loads(runner.report_path.read_text(encoding="utf-8"))
             self.assertEqual(report["state"], "blocked")
-            self.assertEqual(report["build_blocker"]["kind"], "compiler_revision_not_published")
+            self.assertEqual(report["build_blocker"]["kind"], "proof_global_grants_not_qualified")
             self.assertEqual(report["stages"], [])
+
+    def test_unpublished_compiler_blocker_requires_an_exact_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "lock.json"
+            lock = json.loads(json.dumps(self.lock))
+            lock["build_blocker"] = {"kind": "compiler_revision_not_published", "detail": "blocked"}
+            path.write_text(json.dumps(lock), encoding="utf-8")
+            with self.assertRaisesRegex(provision.ProvisionError, "exact required compiler commit"):
+                provision.load_lock(path)
 
     def test_go_preflight_accepts_only_the_exact_locked_version(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
