@@ -3,178 +3,179 @@ include "./prefab_scene_codec.elisa"
 include "../src/world/prefab_scene_resources.elisa"
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    definition: mutable Prefab::Definition = Prefab::Definition()
-    identity: Geometry::Transform = Geometry::transform_identity()
-    root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0, local: identity,
-        has_visual: false, visual: zeroed}
-    child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
-        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}),
-        has_visual: false, visual: zeroed}
-    return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
-    child_visual: Assets::VisualAsset = Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 50, low: 1},
-        material: Assets::AssetId{high: 50, low: 2},
-        local_bounds: Geometry::Bounds3{
-            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
-            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
-        },
-    }
+    can Global.Read, Global.Write:
+        definition: mutable Prefab::Definition = Prefab::Definition()
+        identity: Geometry::Transform = Geometry::transform_identity()
+        root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0, local: identity,
+            has_visual: false, visual: zeroed}
+        child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
+            local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}),
+            has_visual: false, visual: zeroed}
+        return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
+        child_visual: Assets::VisualAsset = Assets::VisualAsset{
+            mesh: Assets::AssetId{high: 50, low: 1},
+            material: Assets::AssetId{high: 50, low: 2},
+            local_bounds: Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            },
+        }
 
-    scene: mutable PrefabScene::Scene = PrefabScene::Scene()
-    return 2 if not PrefabScene::add_definition(&scene, 7, definition)
-    root_link: PrefabScene::Link = PrefabScene::Link{
-        link_id: 100,
-        prefab_id: 7,
-        instance_id: 1000,
-        root_authoring_id: 10,
-        parent_link_id: PrefabScene::ROOT,
-        parent_authoring_id: 0,
-        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}),
-    }
-    child_link: PrefabScene::Link = PrefabScene::Link{
-        link_id: 200,
-        prefab_id: 7,
-        instance_id: 2000,
-        root_authoring_id: 10,
-        parent_link_id: 100,
-        parent_authoring_id: 10,
-        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 10.0, y: 0.0, z: 0.0}),
-    }
-    return 3 if not PrefabScene::add_link(&scene, root_link) or not PrefabScene::add_link(&scene, child_link)
-    return 4 if not PrefabScene::scene_valid(&scene)
+        scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+        return 2 if not PrefabScene::add_definition(&scene, 7, definition)
+        root_link: PrefabScene::Link = PrefabScene::Link{
+            link_id: 100,
+            prefab_id: 7,
+            instance_id: 1000,
+            root_authoring_id: 10,
+            parent_link_id: PrefabScene::ROOT,
+            parent_authoring_id: 0,
+            local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}),
+        }
+        child_link: PrefabScene::Link = PrefabScene::Link{
+            link_id: 200,
+            prefab_id: 7,
+            instance_id: 2000,
+            root_authoring_id: 10,
+            parent_link_id: 100,
+            parent_authoring_id: 10,
+            local: Geometry::transform_translate(identity, Geometry::Vec3{x: 10.0, y: 0.0, z: 0.0}),
+        }
+        return 3 if not PrefabScene::add_link(&scene, root_link) or not PrefabScene::add_link(&scene, child_link)
+        return 4 if not PrefabScene::scene_valid(&scene)
 
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 5
-    instance: mutable PrefabScene::Instance = PrefabScene::Instance()
-    return 6 if not PrefabScene::spawn(&instance, &world, scene, 55)
-    return 7 if not PrefabScene::valid(&instance, &world) or World::world_live_count(&world) != 4
-    parent: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 100, 10)
-    nested: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 200, 10)
-    parent_pose: mutable Geometry::Transform = Geometry::transform_identity()
-    nested_pose: mutable Geometry::Transform = Geometry::transform_identity()
-    return 8 if not World::world_try_transform(&world, parent, &parent_pose) or parent_pose.position.x != 5.0
-    return 9 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 15.0
-    return 10 if parent.id == nested.id
-
-    moved_link: Geometry::Transform = Geometry::transform_translate(identity,
-        Geometry::Vec3{x: 12.0, y: 0.0, z: 0.0})
-    return 17 if not PrefabScene::override_local(&instance, &world, scene, 200, 10, moved_link)
-    return 18 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 17.0
-    return 19 if not PrefabScene::override_visual(&instance, &world, scene, 200, 20, true, child_visual)
-    return 42 if not PrefabScene::override_visual(&instance, &world, scene, 100, 20, true, child_visual)
-    return 20 if not PrefabScene::instance_has_visual(&instance, scene, 200, 20)
-    snapshot: PrefabScene::SceneSnapshot = PrefabScene::capture(&instance, &world, scene)
-    return 21 if not PrefabScene::snapshot_valid(&snapshot, scene, 55)
-
-    # Fail the second nested link after the first has been spawned. The scene
-    # restore must roll its own partial group back and leave the pre-existing
-    # world population intact. Freeing capacity must then allow the same
-    # instance value to restore and destroy cleanly.
-    replacement_world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 45
-    retained_refs: mutable World::EntityRef[4] = zeroed
-    for index in 0..<World::MAX_ENTITIES - 2 |replacement_world, retained_refs|:
-        retained: World::EntityRef = catch World::world_spawn(&replacement_world,
-            World::StaticObject.Structure):
+        world: mutable World::World = catch World::World():
             value: value
-            error failure: return 46
-        if index < 4:
-            retained_refs[index] <- retained
-    return 47 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
-    replacement: mutable PrefabScene::Instance = PrefabScene::Instance()
-    partial_restore: bool = PrefabScene::spawn_restored(&replacement, &replacement_world,
-        scene, 55, snapshot)
-    return 48 if partial_restore or PrefabScene::instance_link_count(&replacement) != 0
-    return 49 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
-    return 50 if not World::world_is_live(&replacement_world, retained_refs[0]) or not World::world_is_live(&replacement_world, retained_refs[3])
-    for index in 0..<4 |replacement_world, retained_refs|:
-        removed: bool = catch World::world_despawn(&replacement_world, retained_refs[index]):
+            error failure: return 5
+        instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+        return 6 if not PrefabScene::spawn(&instance, &world, scene, 55)
+        return 7 if not PrefabScene::valid(&instance, &world) or World::world_live_count(&world) != 4
+        parent: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 100, 10)
+        nested: World::EntityRef = PrefabScene::instance_reference(&instance, scene, 200, 10)
+        parent_pose: mutable Geometry::Transform = Geometry::transform_identity()
+        nested_pose: mutable Geometry::Transform = Geometry::transform_identity()
+        return 8 if not World::world_try_transform(&world, parent, &parent_pose) or parent_pose.position.x != 5.0
+        return 9 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 15.0
+        return 10 if parent.id == nested.id
+
+        moved_link: Geometry::Transform = Geometry::transform_translate(identity,
+            Geometry::Vec3{x: 12.0, y: 0.0, z: 0.0})
+        return 17 if not PrefabScene::override_local(&instance, &world, scene, 200, 10, moved_link)
+        return 18 if not World::world_try_transform(&world, nested, &nested_pose) or nested_pose.position.x != 17.0
+        return 19 if not PrefabScene::override_visual(&instance, &world, scene, 200, 20, true, child_visual)
+        return 42 if not PrefabScene::override_visual(&instance, &world, scene, 100, 20, true, child_visual)
+        return 20 if not PrefabScene::instance_has_visual(&instance, scene, 200, 20)
+        snapshot: PrefabScene::SceneSnapshot = PrefabScene::capture(&instance, &world, scene)
+        return 21 if not PrefabScene::snapshot_valid(&snapshot, scene, 55)
+
+        # Fail the second nested link after the first has been spawned. The scene
+        # restore must roll its own partial group back and leave the pre-existing
+        # world population intact. Freeing capacity must then allow the same
+        # instance value to restore and destroy cleanly.
+        replacement_world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 45
+        retained_refs: mutable World::EntityRef[4] = zeroed
+        for index in 0..<World::MAX_ENTITIES - 2 |replacement_world, retained_refs|:
+            retained: World::EntityRef = catch World::world_spawn(&replacement_world,
+                World::StaticObject.Structure):
+                value: value
+                error failure: return 46
+            if index < 4:
+                retained_refs[index] <- retained
+        return 47 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
+        replacement: mutable PrefabScene::Instance = PrefabScene::Instance()
+        partial_restore: bool = PrefabScene::spawn_restored(&replacement, &replacement_world,
+            scene, 55, snapshot)
+        return 48 if partial_restore or PrefabScene::instance_link_count(&replacement) != 0
+        return 49 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
+        return 50 if not World::world_is_live(&replacement_world, retained_refs[0]) or not World::world_is_live(&replacement_world, retained_refs[3])
+        for index in 0..<4 |replacement_world, retained_refs|:
+            removed: bool = catch World::world_despawn(&replacement_world, retained_refs[index]):
+                ok: true
+                error failure: false
+            return 51 if not removed
+        return 53 if not PrefabScene::spawn_restored(&replacement, &replacement_world,
+            scene, 55, snapshot)
+        return 54 if not PrefabScene::valid(&replacement, &replacement_world) or World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
+        return 55 if not PrefabScene::destroy(&replacement, &replacement_world)
+        return 56 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 6
+
+        resource_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
+        mesh_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
+            "beacon-lamp.elpk", "mesh"):
             ok: true
             error failure: false
-        return 51 if not removed
-    return 53 if not PrefabScene::spawn_restored(&replacement, &replacement_world,
-        scene, 55, snapshot)
-    return 54 if not PrefabScene::valid(&replacement, &replacement_world) or World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 2
-    return 55 if not PrefabScene::destroy(&replacement, &replacement_world)
-    return 56 if World::world_live_count(&replacement_world) != World::MAX_ENTITIES - 6
+        return 34 if not mesh_added
+        material_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.material,
+            "beacon-lit.elpk", "albedo"):
+            ok: true
+            error failure: false
+        return 35 if not material_added
+        resource_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
+        plan_status: bool = catch PrefabSceneResources::build_plan(&resource_plan, &snapshot, &resource_catalogue):
+            ok: true
+            error failure: false
+        return 36 if not plan_status or PrefabSceneResources::plan_count(&resource_plan) != 2
+        return 37 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 0), child_visual.mesh)
+        return 38 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 1), child_visual.material)
+        mesh_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 0)
+        return 39 if mesh_location.package != "beacon-lamp.elpk" or mesh_location.section != "mesh"
+        material_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 1)
+        return 43 if material_location.package != "beacon-lit.elpk" or material_location.section != "albedo"
+        duplicate_binding: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
+            "other.elpk", "mesh"):
+            ok: false
+            AssetResourceCatalogue::CatalogueError.Duplicate: true
+            error failure: false
+        return 44 if not duplicate_binding
 
-    resource_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
-    mesh_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
-        "beacon-lamp.elpk", "mesh"):
-        ok: true
-        error failure: false
-    return 34 if not mesh_added
-    material_added: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.material,
-        "beacon-lit.elpk", "albedo"):
-        ok: true
-        error failure: false
-    return 35 if not material_added
-    resource_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
-    plan_status: bool = catch PrefabSceneResources::build_plan(&resource_plan, &snapshot, &resource_catalogue):
-        ok: true
-        error failure: false
-    return 36 if not plan_status or PrefabSceneResources::plan_count(&resource_plan) != 2
-    return 37 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 0), child_visual.mesh)
-    return 38 if not Assets::same_asset_id(PrefabSceneResources::plan_id(&resource_plan, 1), child_visual.material)
-    mesh_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 0)
-    return 39 if mesh_location.package != "beacon-lamp.elpk" or mesh_location.section != "mesh"
-    material_location: AssetResourceCatalogue::Location = PrefabSceneResources::plan_location(&resource_plan, 1)
-    return 43 if material_location.package != "beacon-lit.elpk" or material_location.section != "albedo"
-    duplicate_binding: bool = catch AssetResourceCatalogue::add(&resource_catalogue, child_visual.mesh,
-        "other.elpk", "mesh"):
-        ok: false
-        AssetResourceCatalogue::CatalogueError.Duplicate: true
-        error failure: false
-    return 44 if not duplicate_binding
+        incomplete_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
+        incomplete_mesh_added: bool = catch AssetResourceCatalogue::add(&incomplete_catalogue, child_visual.mesh,
+            "beacon-lamp.elpk", "mesh"):
+            ok: true
+            error failure: false
+        return 40 if not incomplete_mesh_added
+        rejected_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
+        rejected: bool = catch PrefabSceneResources::build_plan(&rejected_plan, &snapshot, &incomplete_catalogue):
+            ok: true
+            error failure: false
+        return 41 if rejected or PrefabSceneResources::plan_count(&rejected_plan) != 0
 
-    incomplete_catalogue: mutable AssetResourceCatalogue::Catalogue = AssetResourceCatalogue::Catalogue()
-    incomplete_mesh_added: bool = catch AssetResourceCatalogue::add(&incomplete_catalogue, child_visual.mesh,
-        "beacon-lamp.elpk", "mesh"):
-        ok: true
-        error failure: false
-    return 40 if not incomplete_mesh_added
-    rejected_plan: mutable PrefabSceneResources::Plan = PrefabSceneResources::Plan()
-    rejected: bool = catch PrefabSceneResources::build_plan(&rejected_plan, &snapshot, &incomplete_catalogue):
-        ok: true
-        error failure: false
-    return 41 if rejected or PrefabSceneResources::plan_count(&rejected_plan) != 0
+        cycle_scene: mutable PrefabScene::Scene = PrefabScene::Scene()
+        return 11 if not PrefabScene::add_definition(&cycle_scene, 7, definition)
+        return 12 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
+            link_id: 1, prefab_id: 7, instance_id: 1, root_authoring_id: 10,
+            parent_link_id: 2, parent_authoring_id: 10, local: identity})
+        return 13 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
+            link_id: 2, prefab_id: 7, instance_id: 2, root_authoring_id: 10,
+            parent_link_id: 1, parent_authoring_id: 10, local: identity})
+        return 14 if PrefabScene::scene_valid(&cycle_scene)
+        invalid_snapshot: mutable PrefabScene::SceneSnapshot = snapshot
+        invalid_snapshot.links[1].overrides.records[0].authoring_id <- 999
+        return 22 if PrefabScene::snapshot_valid(&invalid_snapshot, scene, 55)
+        invalid_world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 23
+        invalid_instance: mutable PrefabScene::Instance = PrefabScene::Instance()
+        return 24 if PrefabScene::spawn_restored(&invalid_instance, &invalid_world, scene, 55, invalid_snapshot)
+        return 25 if World::world_live_count(&invalid_world) != 0
 
-    cycle_scene: mutable PrefabScene::Scene = PrefabScene::Scene()
-    return 11 if not PrefabScene::add_definition(&cycle_scene, 7, definition)
-    return 12 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
-        link_id: 1, prefab_id: 7, instance_id: 1, root_authoring_id: 10,
-        parent_link_id: 2, parent_authoring_id: 10, local: identity})
-    return 13 if not PrefabScene::add_link(&cycle_scene, PrefabScene::Link{
-        link_id: 2, prefab_id: 7, instance_id: 2, root_authoring_id: 10,
-        parent_link_id: 1, parent_authoring_id: 10, local: identity})
-    return 14 if PrefabScene::scene_valid(&cycle_scene)
-    invalid_snapshot: mutable PrefabScene::SceneSnapshot = snapshot
-    invalid_snapshot.links[1].overrides.records[0].authoring_id <- 999
-    return 22 if PrefabScene::snapshot_valid(&invalid_snapshot, scene, 55)
-    invalid_world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 23
-    invalid_instance: mutable PrefabScene::Instance = PrefabScene::Instance()
-    return 24 if PrefabScene::spawn_restored(&invalid_instance, &invalid_world, scene, 55, invalid_snapshot)
-    return 25 if World::world_live_count(&invalid_world) != 0
-
-    return 15 if not PrefabScene::destroy(&instance, &world)
-    return 16 if World::world_live_count(&world) != 0
-    reloaded_world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 26
-    reloaded: mutable PrefabScene::Instance = PrefabScene::Instance()
-    return 27 if not PrefabScene::spawn_restored(&reloaded, &reloaded_world, scene, 55, snapshot)
-    restored_parent: World::EntityRef = PrefabScene::instance_reference(&reloaded, scene, 100, 10)
-    restored_nested: World::EntityRef = PrefabScene::instance_reference(&reloaded, scene, 200, 10)
-    return 28 if restored_parent.world_epoch == parent.world_epoch or World::world_is_live(&reloaded_world, parent)
-    return 29 if not World::world_try_transform(&reloaded_world, restored_nested, &nested_pose) or nested_pose.position.x != 17.0
-    return 30 if not PrefabScene::instance_has_visual(&reloaded, scene, 200, 20)
-    return 31 if not Assets::same_asset_id(PrefabScene::instance_visual(&reloaded, scene, 200, 20).mesh, child_visual.mesh)
-    return 32 if not PrefabScene::destroy(&reloaded, &reloaded_world)
-    return 33 if World::world_live_count(&reloaded_world) != 0
-    codec_status: i32 = PrefabSceneCodecTest::run()
-    return codec_status if codec_status != 0
-    0
+        return 15 if not PrefabScene::destroy(&instance, &world)
+        return 16 if World::world_live_count(&world) != 0
+        reloaded_world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 26
+        reloaded: mutable PrefabScene::Instance = PrefabScene::Instance()
+        return 27 if not PrefabScene::spawn_restored(&reloaded, &reloaded_world, scene, 55, snapshot)
+        restored_parent: World::EntityRef = PrefabScene::instance_reference(&reloaded, scene, 100, 10)
+        restored_nested: World::EntityRef = PrefabScene::instance_reference(&reloaded, scene, 200, 10)
+        return 28 if restored_parent.world_epoch == parent.world_epoch or World::world_is_live(&reloaded_world, parent)
+        return 29 if not World::world_try_transform(&reloaded_world, restored_nested, &nested_pose) or nested_pose.position.x != 17.0
+        return 30 if not PrefabScene::instance_has_visual(&reloaded, scene, 200, 20)
+        return 31 if not Assets::same_asset_id(PrefabScene::instance_visual(&reloaded, scene, 200, 20).mesh, child_visual.mesh)
+        return 32 if not PrefabScene::destroy(&reloaded, &reloaded_world)
+        return 33 if World::world_live_count(&reloaded_world) != 0
+        codec_status: i32 = PrefabSceneCodecTest::run()
+        return codec_status if codec_status != 0
+        return 0

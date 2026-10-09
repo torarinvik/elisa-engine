@@ -270,8 +270,38 @@ resolved with narrow `can` scopes. Its strict check passes and the native
 exports and SDL live input. The viewport gizmo test similarly had 12 local grant
 diagnostics; scoped callback-counter access/calls now pass strict checking, and
 the executable's assertions pass. Logs and executable are under
-`build/validation/global-grant-12120-engine/`. This closes only those two exact
-targets; the full consumer census and proof pair remain open.
+`build/validation/global-grant-12120-engine/`.
+
+## Full engine gate grant adoption — 2026-10-09
+
+The first exact Stage1 semantic census found missing local `Global.Read/Write`
+grants in 27 of the 216 gate entrypoints, concentrated in shared world and audio
+APIs and their callers. Local scopes and explicit tail returns were added to 53
+affected functions across 34 source/test files. The scopes keep function effect
+signatures intact, so callers still need grants. Production scopes are limited
+to the specific identity, counter and weighted-variant operations where
+possible; test entrypoints scope their stateful API exercises.
+
+On exact compiler source `12120f6b7148ce3f72ea8fba66be29b8cf2825d3`, Stage1
+SHA256 `356d4a14433a90fb14dbf1cfac82e5856eb55205ab9b59da2c7b4eb03a757fbb`, and
+runtime SHA256 `013d317413defc5ffd2f79fb8dd791db6d6fd6a3217edc45fa62a81f4fc03df8`:
+
+- All 216 manifest entrypoints pass `-emit check`; zero grant diagnostics remain.
+- `scripts/run_tests.py <Stage1> -j 2 --no-cache` compiles and runs all 216 tests:
+  216 pass, 0 cached, 0 remote, status 0 in 29 seconds.
+- The standalone C-ABI embed probe and viewport gizmo assertions continue to
+  pass on the same pair.
+
+The report is
+`build/validation/global-grant-gate-census-12120-final.json`. The exact runtime
+object used for the engine gate was hash-checked against the compiler candidate's
+`build/runtime/elisacore_runtime.o` before testing.
+
+This is the last fully authenticated compiler pair. The separate compiler main
+checkout has advanced locally through `e6b5a0c4` and contains an uncommitted JSON
+grant edit; no Stage1/runtime from that exact source is qualified. Repeat this
+216-source and runtime gate after a clean product is available. The proof pair,
+full project build and current Studio acceptance remain open.
 
 The 600-line source-length gate is complete in engine commit `9e40976a`.
 `scripts/asset_cooks.py`, `scripts/package_macos_app.py`, and

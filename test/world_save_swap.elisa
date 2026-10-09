@@ -1,10 +1,11 @@
 include "../src/world/world_save_swap.elisa"
 
 def swap_code(world: mutable World::World&, bytes: u8&, length: usize) -> i32 can[Global.Read, Global.Write]:
-    catch World::SaveSwap::replace_world(world, bytes, length):
-        ok: 0
-        SaveSwapError.Rejected: 1
-        error failure: 2
+    can Global.Read, Global.Write:
+        return catch World::SaveSwap::replace_world(world, bytes, length):
+            ok: 0
+            SaveSwapError.Rejected: 1
+            error failure: 2
 
 def spawn(world: mutable World::World&, kind: World::Entity) -> World::EntityRef:
     catch World::world_spawn(world, kind):
@@ -12,57 +13,58 @@ def spawn(world: mutable World::World&, kind: World::Entity) -> World::EntityRef
         error failure: World::EntityRef{world_epoch: 0, id: 0}
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    # The saved world: a player with a guard child.
-    source: mutable World::World = catch World::World():
-        value: value
-        error failure: return 1
-    player: World::EntityRef = spawn(&source, World::Actor.Player)
-    guard: World::EntityRef = spawn(&source, World::Enemy.Guard)
-    linked: bool = catch World::world_reparent(&source, guard, player, true):
-        ok: true
-        error failure: false
-    return 1 if player.id == 0 or guard.id == 0 or not linked
-    bytes: mutable u8[World::SaveGame::MAX_BYTES] = zeroed
-    length: usize = catch World::SaveGame::save_world(&source, &bytes[0], World::SaveGame::MAX_BYTES):
-        value: value
-        error failure: 0
-    return 2 if length == 0
+    can Global.Read, Global.Write:
+        # The saved world: a player with a guard child.
+        source: mutable World::World = catch World::World():
+            value: value
+            error failure: return 1
+        player: World::EntityRef = spawn(&source, World::Actor.Player)
+        guard: World::EntityRef = spawn(&source, World::Enemy.Guard)
+        linked: bool = catch World::world_reparent(&source, guard, player, true):
+            ok: true
+            error failure: false
+        return 1 if player.id == 0 or guard.id == 0 or not linked
+        bytes: mutable u8[World::SaveGame::MAX_BYTES] = zeroed
+        length: usize = catch World::SaveGame::save_world(&source, &bytes[0], World::SaveGame::MAX_BYTES):
+            value: value
+            error failure: 0
+        return 2 if length == 0
 
-    # The running world: three structures, one parented, one despawned.
-    live: mutable World::World = catch World::World():
-        value: value
-        error failure: return 3
-    a: World::EntityRef = spawn(&live, World::StaticObject.Structure)
-    b: World::EntityRef = spawn(&live, World::StaticObject.Structure)
-    c: World::EntityRef = spawn(&live, World::StaticObject.Structure)
-    parented: bool = catch World::world_reparent(&live, b, a, true):
-        ok: true
-        error failure: false
-    gone: bool = catch World::world_despawn(&live, c):
-        ok: true
-        error failure: false
-    return 3 if not parented or not gone
-    epoch: i64 = World::world_epoch(&live)
-    high: i64 = World::world_last_issued(&live)
+        # The running world: three structures, one parented, one despawned.
+        live: mutable World::World = catch World::World():
+            value: value
+            error failure: return 3
+        a: World::EntityRef = spawn(&live, World::StaticObject.Structure)
+        b: World::EntityRef = spawn(&live, World::StaticObject.Structure)
+        c: World::EntityRef = spawn(&live, World::StaticObject.Structure)
+        parented: bool = catch World::world_reparent(&live, b, a, true):
+            ok: true
+            error failure: false
+        gone: bool = catch World::world_despawn(&live, c):
+            ok: true
+            error failure: false
+        return 3 if not parented or not gone
+        epoch: i64 = World::world_epoch(&live)
+        high: i64 = World::world_last_issued(&live)
 
-    # A corrupt payload is rejected and the running world is untouched.
-    bytes[30] <- bytes[30] ^ 1u8
-    return 4 if swap_code(&live, &bytes[0], length) != 1
-    bytes[30] <- bytes[30] ^ 1u8
-    return 5 if World::world_live_count(&live) != 2 or not World::world_is_live(&live, a) or not World::world_is_live(&live, b)
+        # A corrupt payload is rejected and the running world is untouched.
+        bytes[30] <- bytes[30] ^ 1u8
+        return 4 if swap_code(&live, &bytes[0], length) != 1
+        bytes[30] <- bytes[30] ^ 1u8
+        return 5 if World::world_live_count(&live) != 2 or not World::world_is_live(&live, a) or not World::world_is_live(&live, b)
 
-    return 6 if swap_code(&live, &bytes[0], length) != 0
-    return 7 if World::world_live_count(&live) != 2 or World::world_actor_count(&live) != 1 or World::world_enemy_count(&live) != 1 or World::world_static_object_count(&live) != 0
-    # Same epoch, fresh IDs: pre-swap references are stale, not aliased.
-    return 8 if World::world_epoch(&live) != epoch or World::world_is_live(&live, a) or World::world_is_live(&live, b)
-    first: World::EntityRef = catch World::world_live_reference_at(&live, 0):
-        value: value
-        error failure: return 9
-    second: World::EntityRef = catch World::world_live_reference_at(&live, 1):
-        value: value
-        error failure: return 9
-    return 9 if first.id <= high or second.id <= high
-    # The hierarchy link survived: the reverse link would cycle.
-    return 10 if World::world_can_reparent(&live, first, second)
-    return 11 if not World::world_is_valid(&live)
-    0
+        return 6 if swap_code(&live, &bytes[0], length) != 0
+        return 7 if World::world_live_count(&live) != 2 or World::world_actor_count(&live) != 1 or World::world_enemy_count(&live) != 1 or World::world_static_object_count(&live) != 0
+        # Same epoch, fresh IDs: pre-swap references are stale, not aliased.
+        return 8 if World::world_epoch(&live) != epoch or World::world_is_live(&live, a) or World::world_is_live(&live, b)
+        first: World::EntityRef = catch World::world_live_reference_at(&live, 0):
+            value: value
+            error failure: return 9
+        second: World::EntityRef = catch World::world_live_reference_at(&live, 1):
+            value: value
+            error failure: return 9
+        return 9 if first.id <= high or second.id <= high
+        # The hierarchy link survived: the reverse link would cycle.
+        return 10 if World::world_can_reparent(&live, first, second)
+        return 11 if not World::world_is_valid(&live)
+        return 0

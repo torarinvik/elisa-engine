@@ -3,52 +3,53 @@ include "../src/world/world.elisa"
 include "./world_rendering.elisa"
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 1
-    gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
-        value: value
-        error failure: return 2
-    snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
-    transform: Geometry::Transform = Geometry::transform_identity()
-    visual: Assets::VisualAsset = Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 3, low: 4},
-        material: Assets::AssetId{high: 3, low: 5},
-        local_bounds: Geometry::Bounds3{
-            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
-            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
-        },
-    }
-    return 3 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, visual, transform)
-    return 4 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 102, visual, transform)
-    return 5 if RenderSnapshot::snapshot_count(&snapshot) != 2 or not RenderSnapshot::snapshot_valid(&snapshot)
-    moved: Geometry::Transform = Geometry::transform_translate(transform, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
-    updated_visual: Assets::VisualAsset = Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 3, low: 6},
-        material: visual.material,
-        local_bounds: visual.local_bounds,
-    }
-    return 6 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, updated_visual, moved)
-    return 7 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay, 101)
-    return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
-    invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
-    return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, visual, transform)
-    other: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
-        value: value
-        error failure: return 10
-    return 11 if RenderSnapshot::snapshot_bind(&snapshot, other, 102, visual, transform)
-    return 12 if RenderSnapshot::snapshot_count(&snapshot) != 1 or not RenderSnapshot::snapshot_valid(&snapshot)
-    return 13 if not RenderSnapshot::snapshot_bind(&snapshot, other, 104, visual, transform) or not RenderSnapshot::snapshot_valid(&snapshot)
-    glow: RenderSnapshot::Tint = RenderSnapshot::Tint{
-        color: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
-        emissive: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
-        emissive_strength: 8.0,
-    }
-    return 14 if not RenderSnapshot::snapshot_bind_tinted(&snapshot, other, 104, visual, transform, glow)
-    return 15 if RenderSnapshot::tint_is_neutral(RenderSnapshot::snapshot_entry(&snapshot, 1).tint) or not RenderSnapshot::snapshot_valid(&snapshot)
-    dark: RenderSnapshot::Tint = RenderSnapshot::Tint{color: Geometry::vec3_zero(), emissive: Geometry::vec3_zero(), emissive_strength: 0.0}
-    return 16 if not RenderSnapshot::tint_valid(dark) or RenderSnapshot::tint_is_neutral(dark)
-    negative: RenderSnapshot::Tint = RenderSnapshot::Tint{color: glow.color, emissive: glow.emissive, emissive_strength: -1.0}
-    return 17 if RenderSnapshot::snapshot_bind_tinted(&snapshot, other, 105, visual, transform, negative) or RenderSnapshot::snapshot_count(&snapshot) != 2
-    return 18 if not RenderSnapshot::snapshot_bind(&snapshot, other, 104, visual, transform) or not RenderSnapshot::tint_is_neutral(RenderSnapshot::snapshot_entry(&snapshot, 1).tint)
-    WorldRenderingValidation::run()
+    can Global.Read, Global.Write:
+        world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 1
+        gameplay: World::EntityRef = catch World::world_spawn(&world, World::Actor.Player):
+            value: value
+            error failure: return 2
+        snapshot: mutable RenderSnapshot::Snapshot = RenderSnapshot::Snapshot()
+        transform: Geometry::Transform = Geometry::transform_identity()
+        visual: Assets::VisualAsset = Assets::VisualAsset{
+            mesh: Assets::AssetId{high: 3, low: 4},
+            material: Assets::AssetId{high: 3, low: 5},
+            local_bounds: Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            },
+        }
+        return 3 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, visual, transform)
+        return 4 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 102, visual, transform)
+        return 5 if RenderSnapshot::snapshot_count(&snapshot) != 2 or not RenderSnapshot::snapshot_valid(&snapshot)
+        moved: Geometry::Transform = Geometry::transform_translate(transform, Geometry::Vec3{x: 2.0, y: 0.0, z: 1.0})
+        updated_visual: Assets::VisualAsset = Assets::VisualAsset{
+            mesh: Assets::AssetId{high: 3, low: 6},
+            material: visual.material,
+            local_bounds: visual.local_bounds,
+        }
+        return 6 if not RenderSnapshot::snapshot_bind(&snapshot, gameplay, 101, updated_visual, moved)
+        return 7 if not RenderSnapshot::snapshot_remove(&snapshot, gameplay, 101)
+        return 8 if RenderSnapshot::snapshot_count(&snapshot) != 1
+        invalid: World::EntityRef = World::EntityRef{world_epoch: -1, id: 4}
+        return 9 if RenderSnapshot::snapshot_bind(&snapshot, invalid, 103, visual, transform)
+        other: World::EntityRef = catch World::world_spawn(&world, World::Enemy.Guard):
+            value: value
+            error failure: return 10
+        return 11 if RenderSnapshot::snapshot_bind(&snapshot, other, 102, visual, transform)
+        return 12 if RenderSnapshot::snapshot_count(&snapshot) != 1 or not RenderSnapshot::snapshot_valid(&snapshot)
+        return 13 if not RenderSnapshot::snapshot_bind(&snapshot, other, 104, visual, transform) or not RenderSnapshot::snapshot_valid(&snapshot)
+        glow: RenderSnapshot::Tint = RenderSnapshot::Tint{
+            color: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
+            emissive: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            emissive_strength: 8.0,
+        }
+        return 14 if not RenderSnapshot::snapshot_bind_tinted(&snapshot, other, 104, visual, transform, glow)
+        return 15 if RenderSnapshot::tint_is_neutral(RenderSnapshot::snapshot_entry(&snapshot, 1).tint) or not RenderSnapshot::snapshot_valid(&snapshot)
+        dark: RenderSnapshot::Tint = RenderSnapshot::Tint{color: Geometry::vec3_zero(), emissive: Geometry::vec3_zero(), emissive_strength: 0.0}
+        return 16 if not RenderSnapshot::tint_valid(dark) or RenderSnapshot::tint_is_neutral(dark)
+        negative: RenderSnapshot::Tint = RenderSnapshot::Tint{color: glow.color, emissive: glow.emissive, emissive_strength: -1.0}
+        return 17 if RenderSnapshot::snapshot_bind_tinted(&snapshot, other, 105, visual, transform, negative) or RenderSnapshot::snapshot_count(&snapshot) != 2
+        return 18 if not RenderSnapshot::snapshot_bind(&snapshot, other, 104, visual, transform) or not RenderSnapshot::tint_is_neutral(RenderSnapshot::snapshot_entry(&snapshot, 1).tint)
+        return WorldRenderingValidation::run()

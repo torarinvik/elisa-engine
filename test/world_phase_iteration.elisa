@@ -1,131 +1,132 @@
 include "../src/world/phase_iteration.elisa"
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 1
-    first: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
-        value: value
-        error failure: return 2
-    _ = catch World::world_spawn(&world, World::StaticObject.Structure):
-        value: 0
-        error failure: return 3
-    frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
-    _ = catch WorldSchedule::begin_frame(&frame):
-        ok: 0
-        error failure: return 4
-    _ = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation):
-        ok: 0
-        error failure: return 5
-    live_before: usize = World::world_live_count(&world)
-    cursor: mutable WorldPhaseIteration::Cursor = catch WorldPhaseIteration::open_cursor(&frame, &world):
-        value: value
-        error failure: return 6
-    return 7 if WorldPhaseIteration::cursor_remaining(&cursor) != live_before
-    # A despawn requested mid-iteration is deferred and cannot commit.
-    commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
-    return 8 if not WorldCommands::world_despawn(&commands, first)
-    blocked_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):
-        value: value
-        error failure: false
-    return 9 if blocked_commit or not World::world_is_live(&world, first)
-    return 10 if WorldCommands::world_command_count(&commands) != 1
-    blocked_advance: i32 = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics):
-        ok: 1
-        WorldSchedule::Error.AccessConflict: 0
-        error failure: 2
-    return 11 if blocked_advance != 0
-    blocked_end: i32 = catch WorldSchedule::end_frame(&frame):
-        value: 1
-        WorldSchedule::Error.AccessConflict: 0
-        error failure: 2
-    return 12 if blocked_end != 0
-    seen: mutable usize = 0
-    for step in 0..<live_before:
-        visited: World::EntityRef = catch WorldPhaseIteration::cursor_next(&cursor, &world):
+    can Global.Read, Global.Write:
+        world: mutable World::World = catch World::World():
             value: value
-            error failure: return 13
-        return 14 if not World::world_is_live(&world, visited)
-        seen <- seen + 1
-    return 15 if seen != live_before
-    exhausted: i32 = catch WorldPhaseIteration::cursor_next(&cursor, &world):
-        value: 1
-        WorldPhaseIteration::IterError.Exhausted: 0
-        error failure: 2
-    return 16 if exhausted != 0
-    _ = catch WorldPhaseIteration::close_cursor(&frame, &cursor):
-        ok: 0
-        error failure: return 17
-    return 18 if WorldPhaseIteration::cursor_open(&cursor)
-    closed_again: i32 = catch WorldPhaseIteration::close_cursor(&frame, &cursor):
-        ok: 1
-        WorldPhaseIteration::IterError.Closed: 0
-        error failure: 2
-    return 19 if closed_again != 0
-    closed_next: i32 = catch WorldPhaseIteration::cursor_next(&cursor, &world):
-        value: 1
-        WorldPhaseIteration::IterError.Closed: 0
-        error failure: 2
-    return 20 if closed_next != 0
-    # With the borrow released the deferred despawn commits whole.
-    committed: bool = catch WorldSchedule::commit(&frame, &commands, &world):
-        value: value
-        error failure: false
-    return 21 if not committed or World::world_is_live(&world, first)
-    return 22 if World::world_live_count(&world) + 1 != live_before
-    return 23 if not World::world_is_valid(&world)
-    # A cursor detects a world mutated behind the schedule instead of
-    # yielding a dangling reference.
-    second: mutable WorldPhaseIteration::Cursor = catch WorldPhaseIteration::open_cursor(&frame, &world):
-        value: value
-        error failure: return 24
-    unchanged_count: usize = World::world_live_ids_count(&world)
-    unchanged_epoch: i64 = World::world_epoch(&world)
-    revision_before_churn: i64 = World::world_structure_revision(&world)
-    removed_during_borrow: World::EntityRef = catch World::world_live_reference_at(&world, 0):
-        value: value
-        error failure: return 25
-    _ = catch World::world_despawn(&world, removed_during_borrow):
-        ok: 0
-        error failure: return 26
-    bypass: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
-        value: value
-        error failure: return 27
-    return 35 if not World::world_is_live(&world, bypass)
-    return 36 if World::world_live_ids_count(&world) != unchanged_count or World::world_epoch(&world) != unchanged_epoch
-    return 37 if World::world_structure_revision(&world) <= revision_before_churn
-    changed: i32 = catch WorldPhaseIteration::cursor_next(&second, &world):
-        value: 1
-        WorldPhaseIteration::IterError.WorldChanged: 0
-        error failure: 2
-    return 27 if changed != 0
-    # A cursor cannot be closed against another frame; its own frame stays locked.
-    other: mutable WorldSchedule::Frame = WorldSchedule::Frame()
-    _ = catch WorldSchedule::begin_frame(&other):
-        ok: 0
-        error failure: return 28
-    _ = catch WorldSchedule::advance_phase(&other, WorldEvents::Phase.Simulation):
-        ok: 0
-        error failure: return 29
-    wrong_frame: i32 = catch WorldPhaseIteration::close_cursor(&other, &second):
-        ok: 1
-        WorldPhaseIteration::IterError.ReleaseRejected: 0
-        error failure: 2
-    return 30 if wrong_frame != 0 or not WorldPhaseIteration::cursor_open(&second)
-    still_blocked: i32 = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics):
-        ok: 1
-        WorldSchedule::Error.AccessConflict: 0
-        error failure: 2
-    return 31 if still_blocked != 0
-    _ = catch WorldPhaseIteration::close_cursor(&frame, &second):
-        ok: 0
-        error failure: return 32
-    for next in [WorldEvents::Phase.Physics, WorldEvents::Phase.Animation,
-        WorldEvents::Phase.Render, WorldEvents::Phase.Audio]:
-        _ = catch WorldSchedule::advance_phase(&frame, next):
+            error failure: return 1
+        first: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+            value: value
+            error failure: return 2
+        _ = catch World::world_spawn(&world, World::StaticObject.Structure):
+            value: 0
+            error failure: return 3
+        frame: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+        _ = catch WorldSchedule::begin_frame(&frame):
             ok: 0
-            error failure: return 33
-    _ = catch WorldSchedule::end_frame(&frame):
-        value: 0
-        error failure: return 34
-    0
+            error failure: return 4
+        _ = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Simulation):
+            ok: 0
+            error failure: return 5
+        live_before: usize = World::world_live_count(&world)
+        cursor: mutable WorldPhaseIteration::Cursor = catch WorldPhaseIteration::open_cursor(&frame, &world):
+            value: value
+            error failure: return 6
+        return 7 if WorldPhaseIteration::cursor_remaining(&cursor) != live_before
+        # A despawn requested mid-iteration is deferred and cannot commit.
+        commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 8 if not WorldCommands::world_despawn(&commands, first)
+        blocked_commit: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+            value: value
+            error failure: false
+        return 9 if blocked_commit or not World::world_is_live(&world, first)
+        return 10 if WorldCommands::world_command_count(&commands) != 1
+        blocked_advance: i32 = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics):
+            ok: 1
+            WorldSchedule::Error.AccessConflict: 0
+            error failure: 2
+        return 11 if blocked_advance != 0
+        blocked_end: i32 = catch WorldSchedule::end_frame(&frame):
+            value: 1
+            WorldSchedule::Error.AccessConflict: 0
+            error failure: 2
+        return 12 if blocked_end != 0
+        seen: mutable usize = 0
+        for step in 0..<live_before:
+            visited: World::EntityRef = catch WorldPhaseIteration::cursor_next(&cursor, &world):
+                value: value
+                error failure: return 13
+            return 14 if not World::world_is_live(&world, visited)
+            seen <- seen + 1
+        return 15 if seen != live_before
+        exhausted: i32 = catch WorldPhaseIteration::cursor_next(&cursor, &world):
+            value: 1
+            WorldPhaseIteration::IterError.Exhausted: 0
+            error failure: 2
+        return 16 if exhausted != 0
+        _ = catch WorldPhaseIteration::close_cursor(&frame, &cursor):
+            ok: 0
+            error failure: return 17
+        return 18 if WorldPhaseIteration::cursor_open(&cursor)
+        closed_again: i32 = catch WorldPhaseIteration::close_cursor(&frame, &cursor):
+            ok: 1
+            WorldPhaseIteration::IterError.Closed: 0
+            error failure: 2
+        return 19 if closed_again != 0
+        closed_next: i32 = catch WorldPhaseIteration::cursor_next(&cursor, &world):
+            value: 1
+            WorldPhaseIteration::IterError.Closed: 0
+            error failure: 2
+        return 20 if closed_next != 0
+        # With the borrow released the deferred despawn commits whole.
+        committed: bool = catch WorldSchedule::commit(&frame, &commands, &world):
+            value: value
+            error failure: false
+        return 21 if not committed or World::world_is_live(&world, first)
+        return 22 if World::world_live_count(&world) + 1 != live_before
+        return 23 if not World::world_is_valid(&world)
+        # A cursor detects a world mutated behind the schedule instead of
+        # yielding a dangling reference.
+        second: mutable WorldPhaseIteration::Cursor = catch WorldPhaseIteration::open_cursor(&frame, &world):
+            value: value
+            error failure: return 24
+        unchanged_count: usize = World::world_live_ids_count(&world)
+        unchanged_epoch: i64 = World::world_epoch(&world)
+        revision_before_churn: i64 = World::world_structure_revision(&world)
+        removed_during_borrow: World::EntityRef = catch World::world_live_reference_at(&world, 0):
+            value: value
+            error failure: return 25
+        _ = catch World::world_despawn(&world, removed_during_borrow):
+            ok: 0
+            error failure: return 26
+        bypass: World::EntityRef = catch World::world_spawn(&world, World::StaticObject.Structure):
+            value: value
+            error failure: return 27
+        return 35 if not World::world_is_live(&world, bypass)
+        return 36 if World::world_live_ids_count(&world) != unchanged_count or World::world_epoch(&world) != unchanged_epoch
+        return 37 if World::world_structure_revision(&world) <= revision_before_churn
+        changed: i32 = catch WorldPhaseIteration::cursor_next(&second, &world):
+            value: 1
+            WorldPhaseIteration::IterError.WorldChanged: 0
+            error failure: 2
+        return 27 if changed != 0
+        # A cursor cannot be closed against another frame; its own frame stays locked.
+        other: mutable WorldSchedule::Frame = WorldSchedule::Frame()
+        _ = catch WorldSchedule::begin_frame(&other):
+            ok: 0
+            error failure: return 28
+        _ = catch WorldSchedule::advance_phase(&other, WorldEvents::Phase.Simulation):
+            ok: 0
+            error failure: return 29
+        wrong_frame: i32 = catch WorldPhaseIteration::close_cursor(&other, &second):
+            ok: 1
+            WorldPhaseIteration::IterError.ReleaseRejected: 0
+            error failure: 2
+        return 30 if wrong_frame != 0 or not WorldPhaseIteration::cursor_open(&second)
+        still_blocked: i32 = catch WorldSchedule::advance_phase(&frame, WorldEvents::Phase.Physics):
+            ok: 1
+            WorldSchedule::Error.AccessConflict: 0
+            error failure: 2
+        return 31 if still_blocked != 0
+        _ = catch WorldPhaseIteration::close_cursor(&frame, &second):
+            ok: 0
+            error failure: return 32
+        for next in [WorldEvents::Phase.Physics, WorldEvents::Phase.Animation,
+            WorldEvents::Phase.Render, WorldEvents::Phase.Audio]:
+            _ = catch WorldSchedule::advance_phase(&frame, next):
+                ok: 0
+                error failure: return 33
+        _ = catch WorldSchedule::end_frame(&frame):
+            value: 0
+            error failure: return 34
+        return 0

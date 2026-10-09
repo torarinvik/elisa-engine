@@ -75,8 +75,11 @@ module WorldStorage:
                 dynamic_count: mutable usize
 
         def Catalog() -> Catalog can[Global.Read, Global.Write]:
-            Catalog{
-                catalog_brand: allocate_catalog_brand(),
+            catalog_brand: mutable i64 = 0
+            can Global.Read, Global.Write:
+                catalog_brand <- allocate_catalog_brand()
+            return Catalog{
+                catalog_brand: catalog_brand,
                 next_id: Limits::FIRST_HANDLE_ID,
                 actor_ids: zeroed,
                 projectile_ids: zeroed,

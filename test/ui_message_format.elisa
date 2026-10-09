@@ -21,37 +21,38 @@ def same(t: UiMessageFormat::Text&, a: i64, b: i64, c: i64, d: i64) -> bool:
     true
 
 def main() -> i32:
-    mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
-    # "x{0}y" with 42 -> "x42y"; "{1}{0}" reorders arguments for a translation.
-    t1: UiMessageFormat::Text = text(120, 123, 48, 125, 121, 0)
-    return 1 if UiMessageFormat::format(&t1, [42, 0, 0, 0], &out) != UiMessageFormat::Result.Ok or not same(&out, 120, 52, 50, 121)
-    t2: UiMessageFormat::Text = text(123, 49, 125, 123, 48, 125)
-    return 2 if UiMessageFormat::format(&t2, [7, 0 - 3, 0, 0], &out) != UiMessageFormat::Result.Ok or not same(&out, 45, 51, 55, 0)
-    # Malformed and out-of-range placeholders are rejected.
-    t3: UiMessageFormat::Text = text(123, 52, 125, 0, 0, 0)
-    return 3 if UiMessageFormat::format(&t3, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
-    t4: UiMessageFormat::Text = text(97, 123, 48, 0, 0, 0)
-    return 4 if UiMessageFormat::format(&t4, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
-    t5: UiMessageFormat::Text = text(97, 125, 0, 0, 0, 0)
-    return 5 if UiMessageFormat::format(&t5, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
-    # A result longer than the buffer overflows instead of truncating silently.
-    mutable long: UiMessageFormat::Text = UiMessageFormat::Text()
-    for _ in 0..<21:
-        UiMessageFormat::push(&long, 123)
-        UiMessageFormat::push(&long, 48)
-        UiMessageFormat::push(&long, 125)
-    return 6 if UiMessageFormat::format(&long, [12345, 0, 0, 0], &out) != UiMessageFormat::Result.Overflow
-    # Plurals: Russian one/few/many forms pick by category; missing forms use OTHER.
-    mutable p: UiMessageFormat::Plural = UiMessageFormat::Plural()
-    UiMessageFormat::author(&p, UiLocale::ONE, text(123, 48, 125, 97, 0, 0))
-    UiMessageFormat::author(&p, UiLocale::FEW, text(123, 48, 125, 98, 0, 0))
-    UiMessageFormat::author(&p, UiLocale::OTHER, text(123, 48, 125, 99, 0, 0))
-    return 7 if UiMessageFormat::format_plural(&p, UiLocale::RU, 21, &out) != UiMessageFormat::Result.Ok or not same(&out, 50, 49, 97, 0)
-    return 8 if UiMessageFormat::format_plural(&p, UiLocale::RU, 3, &out) != UiMessageFormat::Result.Ok or not same(&out, 51, 98, 0, 0)
-    return 9 if UiMessageFormat::pick(&p, UiLocale::RU, 5) != UiLocale::OTHER
-    return 10 if UiMessageFormat::format_plural(&p, UiLocale::EN, 1, &out) != UiMessageFormat::Result.Ok or not same(&out, 49, 97, 0, 0)
-    return 11 if UiMessageFormat::format_plural(&p, UiLocale::JA, 1, &out) != UiMessageFormat::Result.Ok or not same(&out, 49, 99, 0, 0)
-    empty: UiMessageFormat::Plural = UiMessageFormat::Plural()
-    return 12 if UiMessageFormat::format_plural(&empty, UiLocale::EN, 1, &out) != UiMessageFormat::Result.BadPlaceholder
-    return 13 if UiMessageFormat::author(&p, 6, t1)
-    return 0
+    can Global.Read, Global.Write:
+        mutable out: UiMessageFormat::Text = UiMessageFormat::Text()
+        # "x{0}y" with 42 -> "x42y"; "{1}{0}" reorders arguments for a translation.
+        t1: UiMessageFormat::Text = text(120, 123, 48, 125, 121, 0)
+        return 1 if UiMessageFormat::format(&t1, [42, 0, 0, 0], &out) != UiMessageFormat::Result.Ok or not same(&out, 120, 52, 50, 121)
+        t2: UiMessageFormat::Text = text(123, 49, 125, 123, 48, 125)
+        return 2 if UiMessageFormat::format(&t2, [7, 0 - 3, 0, 0], &out) != UiMessageFormat::Result.Ok or not same(&out, 45, 51, 55, 0)
+        # Malformed and out-of-range placeholders are rejected.
+        t3: UiMessageFormat::Text = text(123, 52, 125, 0, 0, 0)
+        return 3 if UiMessageFormat::format(&t3, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
+        t4: UiMessageFormat::Text = text(97, 123, 48, 0, 0, 0)
+        return 4 if UiMessageFormat::format(&t4, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
+        t5: UiMessageFormat::Text = text(97, 125, 0, 0, 0, 0)
+        return 5 if UiMessageFormat::format(&t5, [0, 0, 0, 0], &out) != UiMessageFormat::Result.BadPlaceholder
+        # A result longer than the buffer overflows instead of truncating silently.
+        mutable long: UiMessageFormat::Text = UiMessageFormat::Text()
+        for _ in 0..<21:
+            UiMessageFormat::push(&long, 123)
+            UiMessageFormat::push(&long, 48)
+            UiMessageFormat::push(&long, 125)
+        return 6 if UiMessageFormat::format(&long, [12345, 0, 0, 0], &out) != UiMessageFormat::Result.Overflow
+        # Plurals: Russian one/few/many forms pick by category; missing forms use OTHER.
+        mutable p: UiMessageFormat::Plural = UiMessageFormat::Plural()
+        UiMessageFormat::author(&p, UiLocale::ONE, text(123, 48, 125, 97, 0, 0))
+        UiMessageFormat::author(&p, UiLocale::FEW, text(123, 48, 125, 98, 0, 0))
+        UiMessageFormat::author(&p, UiLocale::OTHER, text(123, 48, 125, 99, 0, 0))
+        return 7 if UiMessageFormat::format_plural(&p, UiLocale::RU, 21, &out) != UiMessageFormat::Result.Ok or not same(&out, 50, 49, 97, 0)
+        return 8 if UiMessageFormat::format_plural(&p, UiLocale::RU, 3, &out) != UiMessageFormat::Result.Ok or not same(&out, 51, 98, 0, 0)
+        return 9 if UiMessageFormat::pick(&p, UiLocale::RU, 5) != UiLocale::OTHER
+        return 10 if UiMessageFormat::format_plural(&p, UiLocale::EN, 1, &out) != UiMessageFormat::Result.Ok or not same(&out, 49, 97, 0, 0)
+        return 11 if UiMessageFormat::format_plural(&p, UiLocale::JA, 1, &out) != UiMessageFormat::Result.Ok or not same(&out, 49, 99, 0, 0)
+        empty: UiMessageFormat::Plural = UiMessageFormat::Plural()
+        return 12 if UiMessageFormat::format_plural(&empty, UiLocale::EN, 1, &out) != UiMessageFormat::Result.BadPlaceholder
+        return 13 if UiMessageFormat::author(&p, 6, t1)
+        return 0

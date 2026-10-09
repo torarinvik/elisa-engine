@@ -27,76 +27,77 @@ def invalid_scene() -> CanonicalScene:
     }
 
 def main() -> i32:
-    return 1 if manifest_version() != 1
-    return 2 if default_viewport_width() != 320 or default_viewport_height() != 200
-    return 3 if not viewport_valid(320, 200) or viewport_valid(0, 200) or viewport_valid(320, 0)
-    return 4 if canonical_fixture_epoch() != 7 or canonical_fixture_object().id != 3 or canonical_fixture_camera().id != 4
+    can Global.Read, Global.Write:
+        return 1 if manifest_version() != 1
+        return 2 if default_viewport_width() != 320 or default_viewport_height() != 200
+        return 3 if not viewport_valid(320, 200) or viewport_valid(0, 200) or viewport_valid(320, 0)
+        return 4 if canonical_fixture_epoch() != 7 or canonical_fixture_object().id != 3 or canonical_fixture_camera().id != 4
 
-    world: mutable World = catch World():
-        value: value
-        error failure: return 5
-    object: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: return 6
-    camera: EntityRef = catch world_spawn(&world, Enemy.Guard):
-        value: value
-        error failure: return 7
-    return 8 if object.world_epoch != camera.world_epoch or object.id == camera.id
+        world: mutable World = catch World():
+            value: value
+            error failure: return 5
+        object: EntityRef = catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: return 6
+        camera: EntityRef = catch world_spawn(&world, Enemy.Guard):
+            value: value
+            error failure: return 7
+        return 8 if object.world_epoch != camera.world_epoch or object.id == camera.id
 
-    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    visual: VisualAsset = sample_visual()
-    start: Transform = transform_identity()
-    moved: Transform = transform_translate(start, Vec3{x: 0.0, y: 0.0, z: 1.0})
-    camera_position: Vec3 = Vec3{x: 0.0, y: 0.0, z: -5.0}
-    created: i32 = catch submit_create(&recorder, object, start, visual):
-        ok: 0
-        error failure: 1
-    return 9 if created != 0
-    updated: i32 = catch submit_update(&recorder, object, moved):
-        ok: 0
-        error failure: 1
-    return 10 if updated != 0
-    destroyed: i32 = catch submit_destroy(&recorder, object):
-        ok: 0
-        error failure: 1
-    return 11 if destroyed != 0
+        recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        visual: VisualAsset = sample_visual()
+        start: Transform = transform_identity()
+        moved: Transform = transform_translate(start, Vec3{x: 0.0, y: 0.0, z: 1.0})
+        camera_position: Vec3 = Vec3{x: 0.0, y: 0.0, z: -5.0}
+        created: i32 = catch submit_create(&recorder, object, start, visual):
+            ok: 0
+            error failure: 1
+        return 9 if created != 0
+        updated: i32 = catch submit_update(&recorder, object, moved):
+            ok: 0
+            error failure: 1
+        return 10 if updated != 0
+        destroyed: i32 = catch submit_destroy(&recorder, object):
+            ok: 0
+            error failure: 1
+        return 11 if destroyed != 0
 
-    scene: CanonicalScene = catch scene_from_recorder(&recorder, object, camera, camera_position, 320, 200):
-        value: value
-        error failure: invalid_scene()
-    return 12 if scene.epoch != object.world_epoch or not scene_object_matches(&scene, object)
-    return 13 if scene.object_position.z != 1.0 or scene.camera_position.z != -5.0
-    return 14 if scene.viewport_width != 320 or scene.viewport_height != 200
-    return 15 if not scene_valid(&scene) or not scene_lifecycle_complete(&scene)
+        scene: CanonicalScene = catch scene_from_recorder(&recorder, object, camera, camera_position, 320, 200):
+            value: value
+            error failure: invalid_scene()
+        return 12 if scene.epoch != object.world_epoch or not scene_object_matches(&scene, object)
+        return 13 if scene.object_position.z != 1.0 or scene.camera_position.z != -5.0
+        return 14 if scene.viewport_width != 320 or scene.viewport_height != 200
+        return 15 if not scene_valid(&scene) or not scene_lifecycle_complete(&scene)
 
-    empty_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    missing: i32 = catch scene_from_recorder(&empty_recorder, object, camera, camera_position, 320, 200):
-        value: 1
-        BridgeError.MissingCreate: 0
-        error failure: 2
-    return 16 if missing != 0
+        empty_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        missing: i32 = catch scene_from_recorder(&empty_recorder, object, camera, camera_position, 320, 200):
+            value: 1
+            BridgeError.MissingCreate: 0
+            error failure: 2
+        return 16 if missing != 0
 
-    bad_viewport: i32 = catch scene_from_recorder(&recorder, object, camera, camera_position, 0, 200):
-        value: 1
-        BridgeError.InvalidViewport: 0
-        error failure: 2
-    return 17 if bad_viewport != 0
+        bad_viewport: i32 = catch scene_from_recorder(&recorder, object, camera, camera_position, 0, 200):
+            value: 1
+            BridgeError.InvalidViewport: 0
+            error failure: 2
+        return 17 if bad_viewport != 0
 
-    wrong_epoch: EntityRef = EntityRef{world_epoch: object.world_epoch + 1, id: object.id}
-    mismatch: i32 = catch scene_from_recorder(&recorder, wrong_epoch, camera, camera_position, 320, 200):
-        value: 1
-        BridgeError.IdentityMismatch: 0
-        error failure: 2
-    return 18 if mismatch != 0
+        wrong_epoch: EntityRef = EntityRef{world_epoch: object.world_epoch + 1, id: object.id}
+        mismatch: i32 = catch scene_from_recorder(&recorder, wrong_epoch, camera, camera_position, 320, 200):
+            value: 1
+            BridgeError.IdentityMismatch: 0
+            error failure: 2
+        return 18 if mismatch != 0
 
-    second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    camera_created: i32 = catch submit_create(&second_recorder, camera, start, visual):
-        ok: 0
-        error failure: 1
-    return 19 if camera_created != 0
-    camera_command_rejected: i32 = catch scene_from_recorder(&second_recorder, object, camera, camera_position, 320, 200):
-        value: 1
-        BridgeError.UnexpectedCommand: 0
-        error failure: 2
-    return 20 if camera_command_rejected != 0
-    0
+        second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        camera_created: i32 = catch submit_create(&second_recorder, camera, start, visual):
+            ok: 0
+            error failure: 1
+        return 19 if camera_created != 0
+        camera_command_rejected: i32 = catch scene_from_recorder(&second_recorder, object, camera, camera_position, 320, 200):
+            value: 1
+            BridgeError.UnexpectedCommand: 0
+            error failure: 2
+        return 20 if camera_command_rejected != 0
+        return 0

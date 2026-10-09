@@ -12,11 +12,13 @@ pass the focused current controls, including explicit `-permissive` bypasses.
 Studio and proof acceptance remain open; exact product details are in the
 candidate evidence below.
 
-## Current compiler candidate — 12120f6b
+## Last exactly qualified compiler candidate — 12120f6b
 
 Exact source/product qualification and the engine consumer fixes are recorded
-in [the 12120f6b candidate evidence](global-grants-12120f6b.md). The full proof
-pair, engine census and Studio acceptance remain open.
+in [the 12120f6b candidate evidence](global-grants-12120f6b.md). All 216 engine
+gate sources now pass semantic checking and all 216 compile-and-run tests pass
+on this exact pair. The full proof pair, latest-source requalification and Studio
+acceptance remain open.
 
 ## Superseded compiler milestones — cfbb8a8b and 107f5e14
 
@@ -566,7 +568,14 @@ explicit bypasses; do not use it as evidence for default grant behavior.
 The refreshed `12120f6b` Stage1/runtime includes upstream `53ae9363` and the
 nested match-arm repair. Strict compiler checking, authority and actual-CLI
 controls, Stage0/Stage1 parity, Stage1 freshness, gen3 self-host and the focused
-aggregate regression pass. The proof integration's earlier 1,166 diagnostics
-predate the corrected `trusted` behavior; recapture that inventory and qualify
-the generated proof pair against this exact compiler/runtime before accepting
-the migration.
+aggregate regression pass. The full engine gate has 216 source entrypoints; all
+pass `-emit check` and the uncached compile-and-run suite passes 216/216. The
+proof integration's earlier 1,166 diagnostics predate the corrected `trusted`
+behavior; recapture that inventory and qualify the generated proof pair against
+the latest clean compiler/runtime before accepting the migration.
+
+The compiler checkout has since advanced locally through `e6b5a0c4` and has an
+uncommitted JSON grant change. No Stage1/runtime from that exact source state is
+qualified yet. Treat `12120f6b` as the last authenticated pair, not the latest
+source, and repeat the 216-source and runtime gates after the compiler owner
+produces a clean product.

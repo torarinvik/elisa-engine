@@ -13,53 +13,55 @@ def setup(board: mutable AudioEvents::Board&, log: RuntimeDecisionLog::Log&) -> 
 # Fires event 7 on every third tick for 60 ticks (two voices, so later
 # triggers steal); returns the number of mismatched triggers.
 def run(board: mutable AudioEvents::Board&, log: mutable RuntimeDecisionLog::Log&) -> i64:
-    mutable misses: i64 = 0
-    for k in 0..<60 |misses|:
-        if k % 3 == 0:
-            r: i64 = catch AudioEventsLogged::trigger(board, 7, k.u64(), log):
-                value: 0 if value.matched else 1
-                error failure: 100
-            misses <- misses + r
-    misses
+    can Global.Read, Global.Write:
+        mutable misses: i64 = 0
+        for k in 0..<60 |misses|:
+            if k % 3 == 0:
+                r: i64 = catch AudioEventsLogged::trigger(board, 7, k.u64(), log):
+                    value: 0 if value.matched else 1
+                    error failure: 100
+                misses <- misses + r
+        return misses
 
 def main() -> i32:
-    mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(12345)
-    mutable a: AudioEvents::Board = AudioEvents::Board()
-    return 1 if setup(&a, &rec) != 0
-    return 2 if run(&a, &rec) != 0
-    return 3 if rec.count != 20
-    return 4 if rec.entries[19].tick != 57
-    # A duplicate trigger on an already-fired tick logs nothing.
-    again: i64 = catch AudioEventsLogged::trigger(&a, 7, 57, &rec):
-        value: 0 if value.trigger.outcome == AudioEvents::Outcome.Duplicate else 1
-        error failure: 2
-    return 11 if again != 0 or rec.count != 20
-    # Replaying against a fresh board with the same seed matches every entry.
-    mutable rep: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
-    mutable b: AudioEvents::Board = AudioEvents::Board()
-    return 5 if setup(&b, &rep) != 0
-    return 6 if run(&b, &rep) != 0 or not RuntimeDecisionLog::complete(&rep)
-    # A board rolled with another seed picks a different variant somewhere,
-    # and the replay names that tick.
-    mutable rep2: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
-    mutable c: AudioEvents::Board = AudioEvents::Board()
-    return 7 if setup(&c, &rep2) != 0
-    AudioEvents::set_seed(&c, 999)
-    return 8 if run(&c, &rep2) == 0 or rep2.diverged_at < 0 or RuntimeDecisionLog::complete(&rep2)
-    return 9 if rep2.diverged_at % 3 != 0
-    # Variants actually vary across the recording.
-    mutable seen: i64 = 0
-    for i in 0..<20 |seen|:
-        seen <- seen | (1 << (rec.entries[i].value % 100))
-    # Weights 1:2:3:4 over 20 picks: variants 1, 2 and 3 all appear.
-    return 10 if seen & 14 != 14
-    # The board takes its seed from the log: another run seed records a
-    # different variant sequence.
-    mutable other: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(777)
-    mutable d: AudioEvents::Board = AudioEvents::Board()
-    return 12 if setup(&d, &other) != 0 or run(&d, &other) != 0
-    mutable differ: i64 = 0
-    for i in 0..<20 |differ|:
-        differ <- differ + 1 if other.entries[i].value != rec.entries[i].value
-    return 13 if differ == 0
-    return 0
+    can Global.Read, Global.Write:
+        mutable rec: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(12345)
+        mutable a: AudioEvents::Board = AudioEvents::Board()
+        return 1 if setup(&a, &rec) != 0
+        return 2 if run(&a, &rec) != 0
+        return 3 if rec.count != 20
+        return 4 if rec.entries[19].tick != 57
+        # A duplicate trigger on an already-fired tick logs nothing.
+        again: i64 = catch AudioEventsLogged::trigger(&a, 7, 57, &rec):
+            value: 0 if value.trigger.outcome == AudioEvents::Outcome.Duplicate else 1
+            error failure: 2
+        return 11 if again != 0 or rec.count != 20
+        # Replaying against a fresh board with the same seed matches every entry.
+        mutable rep: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+        mutable b: AudioEvents::Board = AudioEvents::Board()
+        return 5 if setup(&b, &rep) != 0
+        return 6 if run(&b, &rep) != 0 or not RuntimeDecisionLog::complete(&rep)
+        # A board rolled with another seed picks a different variant somewhere,
+        # and the replay names that tick.
+        mutable rep2: RuntimeDecisionLog::Log = RuntimeDecisionLog::replayer(&rec)
+        mutable c: AudioEvents::Board = AudioEvents::Board()
+        return 7 if setup(&c, &rep2) != 0
+        AudioEvents::set_seed(&c, 999)
+        return 8 if run(&c, &rep2) == 0 or rep2.diverged_at < 0 or RuntimeDecisionLog::complete(&rep2)
+        return 9 if rep2.diverged_at % 3 != 0
+        # Variants actually vary across the recording.
+        mutable seen: i64 = 0
+        for i in 0..<20 |seen|:
+            seen <- seen | (1 << (rec.entries[i].value % 100))
+        # Weights 1:2:3:4 over 20 picks: variants 1, 2 and 3 all appear.
+        return 10 if seen & 14 != 14
+        # The board takes its seed from the log: another run seed records a
+        # different variant sequence.
+        mutable other: RuntimeDecisionLog::Log = RuntimeDecisionLog::recorder(777)
+        mutable d: AudioEvents::Board = AudioEvents::Board()
+        return 12 if setup(&d, &other) != 0 or run(&d, &other) != 0
+        mutable differ: i64 = 0
+        for i in 0..<20 |differ|:
+            differ <- differ + 1 if other.entries[i].value != rec.entries[i].value
+        return 13 if differ == 0
+        return 0

@@ -98,7 +98,8 @@ module WorldAccess:
         def begin_frame(frame: mutable Frame&) -> void error[AccessError] can[Global.Read, Global.Write]:
             raise AccessError.AlreadyActive if frame.active
             if frame.identity == 0:
-                frame.identity <- try issue_frame_identity()
+                can Global.Read, Global.Write:
+                    frame.identity <- try issue_frame_identity()
             frame.phase <- Phase.Input
             frame.active <- true
             frame.readers <- 0

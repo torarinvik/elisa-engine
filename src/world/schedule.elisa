@@ -49,13 +49,17 @@ module WorldSchedule:
 
         def begin_frame(frame: mutable Frame&) -> void error[Error] can[Global.Read, Global.Write]:
             raise Error.AlreadyActive if frame.active
-            events_started: bool = catch WorldEvents::begin_frame(&frame.events):
-                ok: true
-                error failure: false
+            events_started: mutable bool = false
+            can Global.Read, Global.Write:
+                events_started <- catch WorldEvents::begin_frame(&frame.events):
+                    ok: true
+                    error failure: false
             raise Error.EventRejected if not events_started
-            access_started: bool = catch WorldAccess::begin_frame(&frame.access):
-                ok: true
-                error failure: false
+            access_started: mutable bool = false
+            can Global.Read, Global.Write:
+                access_started <- catch WorldAccess::begin_frame(&frame.access):
+                    ok: true
+                    error failure: false
             raise Error.AccessConflict if not access_started
             frame.active <- true
 

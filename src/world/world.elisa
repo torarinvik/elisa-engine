@@ -307,8 +307,10 @@ module World:
                 hierarchy: mutable WorldHierarchy::Hierarchy
 
         def World() -> World error[WorldError] can[Global.Read, Global.Write]:
-            epoch: i64 = try next_epoch()
-            World{
+            epoch: mutable i64 = 0
+            can Global.Read, Global.Write:
+                epoch <- try next_epoch()
+            return World{
                 allocator: EntityId::EntityIdAllocator(),
                 epoch: epoch,
                 registry: zeroed,

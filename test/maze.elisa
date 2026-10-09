@@ -24,165 +24,166 @@ def near(value: f32, expected: f32) -> bool:
     adjusted < 0.01
 
 def main() -> i32:
-    return 1 if maze_width() != 8 or maze_height() != 8
-    return 2 if maze_goal_x() != 6 or maze_goal_y() != 6
-    state: mutable MazeState = MazeState()
-    return 3 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
-    return 4 if not maze_valid(&state) or maze_at_goal(&state)
-    return 5 if not is_wall(0, 1) or is_wall(1, 1) or not is_wall(3, 3) or is_wall(2, 2)
-    return 6 if maze_wall_count() != 34
-    layout: WallList = maze_layout_cells()
-    return 17 if layout.count != maze_wall_count()
-    return 18 if not maze_layout_matches_topology() or maze_layout_count() != layout.count
-    return 19 if not is_wall(layout.xs[0], layout.ys[0])
-    result: TraceResult = maze_play_script()
-    return 20 if not result.won or result.steps != 10 or result.moves != 10
-    return 21 if result.player_x != maze_goal_x() or result.player_y != maze_goal_y()
-    return 22 if not is_key(maze_key_x(), maze_key_y()) or not is_door(maze_door_x(), maze_door_y())
-    return 23 if not is_hazard(maze_hazard_a_x(), maze_hazard_a_y())
-    return 24 if not is_hazard(maze_hazard_b_x(), maze_hazard_b_y())
-    return 25 if is_wall(maze_key_x(), maze_key_y()) or is_wall(maze_door_x(), maze_door_y())
-    return 26 if is_wall(maze_hazard_a_x(), maze_hazard_a_y()) or is_wall(maze_hazard_b_x(), maze_hazard_b_y())
-    fixture: TraceResult = maze_fixture_state()
-    return 27 if fixture.won or fixture.steps != 3 or fixture.moves != 3
-    return 28 if fixture.player_x != 1 or fixture.player_y != 4
-    return 29 if is_wall(fixture.player_x, fixture.player_y)
-    walls: bool[64] = maze_walls()
-    hunter: mutable Hunter = Hunter(hunter_spawn_x(), hunter_spawn_y())
-    return 30 if not hunter_valid(&hunter, walls) or hunter_spawn_x() != 1 or hunter_spawn_y() != 1
-    return 31 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
-    one: bool = hunter_step(&hunter, 2, 6)
-    return 38 if not one or hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
-    taken: usize = hunter_chase(&hunter, 2, 6)
-    return 32 if taken != 5 or not hunter.arrived or hunter.x != 2 or hunter.y != 6
-    # Arriving switches to Idle, and the six walked steps left root motion at
-    # exactly six strides of 1/32. Animation follows movement; it never drives it.
-    return 39 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
-    if hunter_distance(&hunter) != 0.1875:
-        return 40
-    if not hunter_valid(&hunter, walls):
-        return 41
-    # A walled target has no route, so the hunter must not move at all.
-    stuck: mutable Hunter = Hunter(hunter_spawn_x(), hunter_spawn_y())
-    halted: usize = hunter_chase(&stuck, 3, 3)
-    return 33 if halted != 0 or stuck.arrived or stuck.x != 1 or stuck.y != 1
-    return 34 if not hunter_valid(&stuck, walls)
-    return 35 if maze_fixture_status() != 1
-    return 42 if maze_fixture_cue_count() != 4
-    route: Path = hunter_pursuit_route()
-    return 43 if not path_found(&route) or path_length(&route) != 4
-    return 44 if path_cell(&route, 0) != 9 or path_cell(&route, 3) != 12
-    return 45 if maze_fog_radius() != 3
-    return 46 if not maze_cell_visible(1, 4, 1, 4) or not maze_cell_visible(1, 4, 4, 4)
-    return 47 if maze_cell_visible(1, 4, 5, 4)
-    return 36 if game_status_code(GameStatus.Won) != 3 or game_status_code(GameStatus.Lost) != 4
-    return 37 if game_status_code(GameStatus.Menu) != 0 or game_status_code(GameStatus.Paused) != 2
+    can Global.Read, Global.Write:
+        return 1 if maze_width() != 8 or maze_height() != 8
+        return 2 if maze_goal_x() != 6 or maze_goal_y() != 6
+        state: mutable MazeState = MazeState()
+        return 3 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
+        return 4 if not maze_valid(&state) or maze_at_goal(&state)
+        return 5 if not is_wall(0, 1) or is_wall(1, 1) or not is_wall(3, 3) or is_wall(2, 2)
+        return 6 if maze_wall_count() != 34
+        layout: WallList = maze_layout_cells()
+        return 17 if layout.count != maze_wall_count()
+        return 18 if not maze_layout_matches_topology() or maze_layout_count() != layout.count
+        return 19 if not is_wall(layout.xs[0], layout.ys[0])
+        result: TraceResult = maze_play_script()
+        return 20 if not result.won or result.steps != 10 or result.moves != 10
+        return 21 if result.player_x != maze_goal_x() or result.player_y != maze_goal_y()
+        return 22 if not is_key(maze_key_x(), maze_key_y()) or not is_door(maze_door_x(), maze_door_y())
+        return 23 if not is_hazard(maze_hazard_a_x(), maze_hazard_a_y())
+        return 24 if not is_hazard(maze_hazard_b_x(), maze_hazard_b_y())
+        return 25 if is_wall(maze_key_x(), maze_key_y()) or is_wall(maze_door_x(), maze_door_y())
+        return 26 if is_wall(maze_hazard_a_x(), maze_hazard_a_y()) or is_wall(maze_hazard_b_x(), maze_hazard_b_y())
+        fixture: TraceResult = maze_fixture_state()
+        return 27 if fixture.won or fixture.steps != 3 or fixture.moves != 3
+        return 28 if fixture.player_x != 1 or fixture.player_y != 4
+        return 29 if is_wall(fixture.player_x, fixture.player_y)
+        walls: bool[64] = maze_walls()
+        hunter: mutable Hunter = Hunter(hunter_spawn_x(), hunter_spawn_y())
+        return 30 if not hunter_valid(&hunter, walls) or hunter_spawn_x() != 1 or hunter_spawn_y() != 1
+        return 31 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
+        one: bool = hunter_step(&hunter, 2, 6)
+        return 38 if not one or hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
+        taken: usize = hunter_chase(&hunter, 2, 6)
+        return 32 if taken != 5 or not hunter.arrived or hunter.x != 2 or hunter.y != 6
+        # Arriving switches to Idle, and the six walked steps left root motion at
+        # exactly six strides of 1/32. Animation follows movement; it never drives it.
+        return 39 if not hunter_clip_idle(&hunter) or not hunter_animating(&hunter)
+        if hunter_distance(&hunter) != 0.1875:
+            return 40
+        if not hunter_valid(&hunter, walls):
+            return 41
+        # A walled target has no route, so the hunter must not move at all.
+        stuck: mutable Hunter = Hunter(hunter_spawn_x(), hunter_spawn_y())
+        halted: usize = hunter_chase(&stuck, 3, 3)
+        return 33 if halted != 0 or stuck.arrived or stuck.x != 1 or stuck.y != 1
+        return 34 if not hunter_valid(&stuck, walls)
+        return 35 if maze_fixture_status() != 1
+        return 42 if maze_fixture_cue_count() != 4
+        route: Path = hunter_pursuit_route()
+        return 43 if not path_found(&route) or path_length(&route) != 4
+        return 44 if path_cell(&route, 0) != 9 or path_cell(&route, 3) != 12
+        return 45 if maze_fog_radius() != 3
+        return 46 if not maze_cell_visible(1, 4, 1, 4) or not maze_cell_visible(1, 4, 4, 4)
+        return 47 if maze_cell_visible(1, 4, 5, 4)
+        return 36 if game_status_code(GameStatus.Won) != 3 or game_status_code(GameStatus.Lost) != 4
+        return 37 if game_status_code(GameStatus.Menu) != 0 or game_status_code(GameStatus.Paused) != 2
 
-    # Phase 5 composition: the navigating, animating enemy is an owning World
-    # entity. It moves and keeps a valid IK-corrected leg pose, and unloading it
-    # removes liveness first with no partial entity left behind.
-    world: mutable World = catch World():
-        value: value
-        error failure: return 48
-    character: mutable Character = catch character_spawn(&world, hunter_spawn_x(), hunter_spawn_y()):
-        value: value
-        error failure: return 49
-    return 50 if world_live_count(&world) != 1 or not world_is_valid(&world) or not character_valid(&character)
-    return 51 if character_hip_y(&character) < 0.899 or character_hip_y(&character) > 0.901
-    return 52 if character_knee_y(&character) < 0.449 or character_knee_y(&character) > 0.451
-    moved_character: bool = character_step(&character, 2, 6)
-    return 53 if not moved_character or character_cell_x(&character) != 2 or character_cell_y(&character) != 1
-    return 54 if not character_valid(&character)
-    removed_character: bool = character_unload(&world, character.entity)
-    return 55 if not removed_character or world_live_count(&world) != 0 or not world_is_valid(&world)
-    dangling_character: i32 = catch world_lookup(&world, character.entity):
-        value: 1
-        WorldError.InvalidReference: 0
-        error failure: 2
-    return 56 if dangling_character != 0
+        # Phase 5 composition: the navigating, animating enemy is an owning World
+        # entity. It moves and keeps a valid IK-corrected leg pose, and unloading it
+        # removes liveness first with no partial entity left behind.
+        world: mutable World = catch World():
+            value: value
+            error failure: return 48
+        character: mutable Character = catch character_spawn(&world, hunter_spawn_x(), hunter_spawn_y()):
+            value: value
+            error failure: return 49
+        return 50 if world_live_count(&world) != 1 or not world_is_valid(&world) or not character_valid(&character)
+        return 51 if character_hip_y(&character) < 0.899 or character_hip_y(&character) > 0.901
+        return 52 if character_knee_y(&character) < 0.449 or character_knee_y(&character) > 0.451
+        moved_character: bool = character_step(&character, 2, 6)
+        return 53 if not moved_character or character_cell_x(&character) != 2 or character_cell_y(&character) != 1
+        return 54 if not character_valid(&character)
+        removed_character: bool = character_unload(&world, character.entity)
+        return 55 if not removed_character or world_live_count(&world) != 0 or not world_is_valid(&world)
+        dangling_character: i32 = catch world_lookup(&world, character.entity):
+            value: 1
+            WorldError.InvalidReference: 0
+            error failure: 2
+        return 56 if dangling_character != 0
 
-    # Root motion drives the walk: the clip's sampled root distance commits a
-    # cell, so a shorter clip needs more cycles per cell rather than a fixed
-    # timer deciding movement.
-    fast: mutable Walker = Walker()
-    for step in 0..<7 |fast|:
-        early_fast: bool = walker_step(&fast, 0.6)
-        return 57 if early_fast
-    return 58 if fast.cells != 0 or fast.tick != 7
-    fast_commit: bool = walker_step(&fast, 0.6)
-    return 59 if not fast_commit or fast.cells != 1 or fast.tick != 0 or walker_travelled(&fast) > 0.001
-    for step in 0..<8 |fast|:
-        _ = walker_step(&fast, 0.6)
-    return 60 if fast.cells != 2
-    slow: mutable Walker = Walker()
-    for step in 0..<8 |slow|:
-        early_slow: bool = walker_step(&slow, 0.3)
-        return 61 if early_slow
-    return 62 if slow.cells != 0 or walker_travelled(&slow) < 0.299 or walker_travelled(&slow) > 0.301
-    for step in 0..<8 |slow|:
-        _ = walker_step(&slow, 0.3)
-    return 63 if slow.cells != 1
+        # Root motion drives the walk: the clip's sampled root distance commits a
+        # cell, so a shorter clip needs more cycles per cell rather than a fixed
+        # timer deciding movement.
+        fast: mutable Walker = Walker()
+        for step in 0..<7 |fast|:
+            early_fast: bool = walker_step(&fast, 0.6)
+            return 57 if early_fast
+        return 58 if fast.cells != 0 or fast.tick != 7
+        fast_commit: bool = walker_step(&fast, 0.6)
+        return 59 if not fast_commit or fast.cells != 1 or fast.tick != 0 or walker_travelled(&fast) > 0.001
+        for step in 0..<8 |fast|:
+            _ = walker_step(&fast, 0.6)
+        return 60 if fast.cells != 2
+        slow: mutable Walker = Walker()
+        for step in 0..<8 |slow|:
+            early_slow: bool = walker_step(&slow, 0.3)
+            return 61 if early_slow
+        return 62 if slow.cells != 0 or walker_travelled(&slow) < 0.299 or walker_travelled(&slow) > 0.301
+        for step in 0..<8 |slow|:
+            _ = walker_step(&slow, 0.3)
+        return 63 if slow.cells != 1
 
-    # The fixture's portable input names mirror the engine's default map, so a
-    # host button name can never drift from what the engine binds.
-    input_map: InputMap = default_input_map()
-    return 69 if input_map.forward_key != Button.KeyW or input_map.left_key != Button.KeyA
-    return 70 if input_map.right_key != Button.KeyD or action_for(input_map, Button.KeyW) != Action.Forward
+        # The fixture's portable input names mirror the engine's default map, so a
+        # host button name can never drift from what the engine binds.
+        input_map: InputMap = default_input_map()
+        return 69 if input_map.forward_key != Button.KeyW or input_map.left_key != Button.KeyA
+        return 70 if input_map.right_key != Button.KeyD or action_for(input_map, Button.KeyW) != Action.Forward
 
-    # The character's leg pose is engine IK, not authored: the two segments have
-    # the bone lengths and the knee bends between the hip and the foot.
-    pose: LegPose = pose_leg(1.0, 1.0)
-    return 64 if not leg_pose_valid(&pose)
-    return 65 if pose.hip_x != 1.0 or pose.hip_y != 1.0 or not near(pose.foot_x, 1.0) or not near(pose.foot_y, 0.1)
-    return 66 if not near(pose.knee_x, 1.397) or not near(pose.knee_y, 0.55)
-    return 67 if pose.knee_y >= pose.hip_y or pose.knee_y <= pose.foot_y
-    return 68 if upper_length() != 0.6 or lower_length() != 0.6
+        # The character's leg pose is engine IK, not authored: the two segments have
+        # the bone lengths and the knee bends between the hip and the foot.
+        pose: LegPose = pose_leg(1.0, 1.0)
+        return 64 if not leg_pose_valid(&pose)
+        return 65 if pose.hip_x != 1.0 or pose.hip_y != 1.0 or not near(pose.foot_x, 1.0) or not near(pose.foot_y, 0.1)
+        return 66 if not near(pose.knee_x, 1.397) or not near(pose.knee_y, 0.55)
+        return 67 if pose.knee_y >= pose.hip_y or pose.knee_y <= pose.foot_y
+        return 68 if upper_length() != 0.6 or lower_length() != 0.6
 
-    # Skinned-mesh submission: a quad is deformed from the bind leg to the
-    # solved leg by the engine's skinning, so the host receives deformed
-    # positions rather than doing the skinning itself.
-    quad: QuadPose = deform_quad(1.0, 1.0)
-    return 71 if not near(quad.x0, 1.297) or not near(quad.y0, 0.05)
-    return 72 if not near(quad.x1, 1.497) or not near(quad.y1, 0.05)
-    return 73 if not near(quad.x2, 1.497) or not near(quad.y2, 0.25)
-    return 74 if not near(quad.x3, 1.297) or not near(quad.y3, 0.25)
-    return 75 if near(quad.x0, 0.9) or near(quad.y0, 0.0 - 0.1)
-    signed_mesh_transform: Geometry::Transform = Geometry::Transform{
-        position: Geometry::Vec3{x: 0.25, y: -0.5, z: 0.75},
-        rotation: Geometry::quat_identity(),
-        scale: Geometry::Vec3{x: -2.0, y: 0.5, z: 1.5},
-    }
-    world0: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x0, y: quad.y0, z: 0.0})
-    world1: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x1, y: quad.y1, z: 0.0})
-    world2: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x2, y: quad.y2, z: 0.0})
-    world3: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x3, y: quad.y3, z: 0.0})
-    return 76 if not near(world0.x, -2.344) or not near(world0.y, -0.475) or world0.z != 0.75
-    return 77 if not near(world1.x, -2.744) or not near(world1.y, -0.475) or world1.z != 0.75
-    return 78 if not near(world2.x, -2.744) or not near(world2.y, -0.375) or world2.z != 0.75
-    return 79 if not near(world3.x, -2.344) or not near(world3.y, -0.375) or world3.z != 0.75
+        # Skinned-mesh submission: a quad is deformed from the bind leg to the
+        # solved leg by the engine's skinning, so the host receives deformed
+        # positions rather than doing the skinning itself.
+        quad: QuadPose = deform_quad(1.0, 1.0)
+        return 71 if not near(quad.x0, 1.297) or not near(quad.y0, 0.05)
+        return 72 if not near(quad.x1, 1.497) or not near(quad.y1, 0.05)
+        return 73 if not near(quad.x2, 1.497) or not near(quad.y2, 0.25)
+        return 74 if not near(quad.x3, 1.297) or not near(quad.y3, 0.25)
+        return 75 if near(quad.x0, 0.9) or near(quad.y0, 0.0 - 0.1)
+        signed_mesh_transform: Geometry::Transform = Geometry::Transform{
+            position: Geometry::Vec3{x: 0.25, y: -0.5, z: 0.75},
+            rotation: Geometry::quat_identity(),
+            scale: Geometry::Vec3{x: -2.0, y: 0.5, z: 1.5},
+        }
+        world0: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x0, y: quad.y0, z: 0.0})
+        world1: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x1, y: quad.y1, z: 0.0})
+        world2: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x2, y: quad.y2, z: 0.0})
+        world3: Geometry::Vec3 = Geometry::transform_apply_point(signed_mesh_transform, Geometry::Vec3{x: quad.x3, y: quad.y3, z: 0.0})
+        return 76 if not near(world0.x, -2.344) or not near(world0.y, -0.475) or world0.z != 0.75
+        return 77 if not near(world1.x, -2.744) or not near(world1.y, -0.475) or world1.z != 0.75
+        return 78 if not near(world2.x, -2.744) or not near(world2.y, -0.375) or world2.z != 0.75
+        return 79 if not near(world3.x, -2.344) or not near(world3.y, -0.375) or world3.z != 0.75
 
-    blocked: bool = maze_try_move(&state, MazeMove.West)
-    return 7 if blocked or state.player_x != 1 or state.moves != 0
-    idle: bool = maze_try_move(&state, MazeMove.Idle)
-    return 8 if idle or state.moves != 0
+        blocked: bool = maze_try_move(&state, MazeMove.West)
+        return 7 if blocked or state.player_x != 1 or state.moves != 0
+        idle: bool = maze_try_move(&state, MazeMove.Idle)
+        return 8 if idle or state.moves != 0
 
-    first: bool = maze_try_move(&state, MazeMove.East)
-    return 9 if not first or state.player_x != 2 or state.moves != 1
-    down_one: bool = maze_try_move(&state, MazeMove.South)
-    return 10 if not down_one or state.player_y != 2
-    down_two: bool = maze_try_move(&state, MazeMove.South)
-    return 11 if not down_two or state.player_y != 3
-    into_wall: bool = maze_try_move(&state, MazeMove.East)
-    return 12 if into_wall or state.player_x != 2 or state.player_y != 3
+        first: bool = maze_try_move(&state, MazeMove.East)
+        return 9 if not first or state.player_x != 2 or state.moves != 1
+        down_one: bool = maze_try_move(&state, MazeMove.South)
+        return 10 if not down_one or state.player_y != 2
+        down_two: bool = maze_try_move(&state, MazeMove.South)
+        return 11 if not down_two or state.player_y != 3
+        into_wall: bool = maze_try_move(&state, MazeMove.East)
+        return 12 if into_wall or state.player_x != 2 or state.player_y != 3
 
-    maze_restart(&state)
-    return 13 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
+        maze_restart(&state)
+        return 13 if state.player_x != 1 or state.player_y != 1 or state.moves != 0
 
-    path: MazeMove[9] = [MazeMove.East, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East]
-    for step in 0..<9 |state|:
-        moved: bool = maze_try_move(&state, path[step])
-        return 14 if not moved
-    return 15 if state.player_x != 5 or state.player_y != 6 or not maze_valid(&state)
-    final: bool = maze_try_move(&state, MazeMove.East)
-    return 16 if not final or not maze_at_goal(&state)
-    0
+        path: MazeMove[9] = [MazeMove.East, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.South, MazeMove.East, MazeMove.East, MazeMove.East]
+        for step in 0..<9 |state|:
+            moved: bool = maze_try_move(&state, path[step])
+            return 14 if not moved
+        return 15 if state.player_x != 5 or state.player_y != 6 or not maze_valid(&state)
+        final: bool = maze_try_move(&state, MazeMove.East)
+        return 16 if not final or not maze_at_goal(&state)
+        return 0

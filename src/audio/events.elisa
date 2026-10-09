@@ -98,14 +98,17 @@ module AudioEvents:
             rotated: u32 = board.next_variant[index]
             board.next_variant[index] <- (rotated + 1) % definition.variants
             weighted: bool = board.weighted[index]
-            variant: u32 = pick(board, index, tick) if weighted else rotated
+            variant: mutable u32 = rotated
+            if weighted:
+                can Global.Read, Global.Write:
+                    variant <- pick(board, index, tick)
             board.fired[index] <- true
             board.last_tick[index] <- tick
             board.instance_live[slot] <- true
             board.instance_event[slot] <- index
             board.instance_started[slot] <- board.sequence
             board.sequence <- board.sequence + 1
-            Trigger{outcome: Outcome.Replace if replace else Outcome.Play, slot: slot, variant: variant}
+            return Trigger{outcome: Outcome.Replace if replace else Outcome.Play, slot: slot, variant: variant}
 
         # Weights for variants 0..3; weights past the event's variant count
         # must be zero and at least one weight must be positive.

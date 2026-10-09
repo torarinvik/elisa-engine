@@ -3,161 +3,163 @@ include "../src/world/phase_commands.elisa"
 using WorldHierarchy
 
 def phase_test() -> i32 can[Global.Read, Global.Write]:
-    frame: mutable WorldAccess::Frame = WorldAccess::Frame()
-    _ = catch WorldAccess::begin_frame(&frame):
-        ok: 0
-        error failure: return 123
-    return 100 if not WorldAccess::frame_active(&frame) or WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
-    read: mutable WorldAccess::Token = catch WorldAccess::acquire(
-        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Read):
-        value: value
-        error failure: return 101
-    rebegin_with_read: i32 = catch WorldAccess::begin_frame(&frame):
-        ok: 1
-        WorldAccess::AccessError.AlreadyActive: 0
-        error failure: 2
-    return 121 if rebegin_with_read != 0 or not WorldAccess::token_live(read)
-    return 122 if WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
+    can Global.Read, Global.Write:
+        frame: mutable WorldAccess::Frame = WorldAccess::Frame()
+        _ = catch WorldAccess::begin_frame(&frame):
+            ok: 0
+            error failure: return 123
+        return 100 if not WorldAccess::frame_active(&frame) or WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
+        read: mutable WorldAccess::Token = catch WorldAccess::acquire(
+            &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Read):
+            value: value
+            error failure: return 101
+        rebegin_with_read: i32 = catch WorldAccess::begin_frame(&frame):
+            ok: 1
+            WorldAccess::AccessError.AlreadyActive: 0
+            error failure: 2
+        return 121 if rebegin_with_read != 0 or not WorldAccess::token_live(read)
+        return 122 if WorldAccess::current_phase(&frame) != WorldAccess::Phase.Input
 
-    other_frame: mutable WorldAccess::Frame = WorldAccess::Frame()
-    _ = catch WorldAccess::begin_frame(&other_frame):
-        ok: 0
-        error failure: return 124
-    other_write: mutable WorldAccess::Token = catch WorldAccess::acquire(
-        &other_frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
-        value: value
-        error failure: return 125
-    wrong_frame_release: i32 = catch WorldAccess::release(&other_frame, &read):
-        ok: 1
-        WorldAccess::AccessError.WrongFrame: 0
-        error failure: 2
-    return 126 if wrong_frame_release != 0 or not WorldAccess::token_live(read)
-    other_write_conflict: i32 = catch WorldAccess::acquire(
-        &other_frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
-        value: 1
-        WorldAccess::AccessError.WriteConflict: 0
-        error failure: 2
-    return 127 if other_write_conflict != 0 or not WorldAccess::token_live(other_write)
-    _ = catch WorldAccess::release(&other_frame, &other_write):
-        ok: 0
-        error failure: return 128
-    _ = catch WorldAccess::end_frame(&other_frame):
-        ok: 0
-        error failure: return 129
-    write_conflict: i32 = catch WorldAccess::acquire(
-        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
-        value: 1
-        WorldAccess::AccessError.WriteConflict: 0
-        error failure: 2
-    return 102 if write_conflict != 0
-    structural_input: i32 = catch WorldAccess::acquire(
-        &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Structural):
-        value: 1
-        WorldAccess::AccessError.WrongPhase: 0
-        error failure: 2
-    return 103 if structural_input != 0
-    advance_held: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
-        ok: 1
-        WorldAccess::AccessError.ActiveBorrow: 0
-        error failure: 2
-    return 104 if advance_held != 0
-    _ = catch WorldAccess::release(&frame, &read):
-        ok: 0
-        error failure: return 105
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
-        ok: 0
-        error failure: return 106
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 107
-    commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
-    return 108 if not WorldCommands::world_spawn(&commands, World::Actor.Player)
-    return 109 if not WorldPhaseCommands::commit(&frame, &commands, &world)
-    return 110 if WorldCommands::world_command_count(&commands) != 0 or World::world_live_count(&world) != 1
-    active_structural: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame,
-        WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
-        value: value
-        error failure: return 111
-    advance_structural: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
-        ok: 1
-        WorldAccess::AccessError.ActiveBorrow: 0
-        error failure: 2
-    return 112 if advance_structural != 0
-    _ = catch WorldAccess::release(&frame, &active_structural):
-        ok: 0
-        error failure: return 113
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
-        ok: 0
-        error failure: return 114
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Animation):
-        ok: 0
-        error failure: return 115
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Render):
-        ok: 0
-        error failure: return 116
-    return 117 if WorldPhaseCommands::commit(&frame, &commands, &world)
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Audio):
-        ok: 0
-        error failure: return 118
-    _ = catch WorldAccess::end_frame(&frame):
-        ok: 0
-        error failure: return 119
-    return 120 if WorldAccess::frame_active(&frame)
-    0
+        other_frame: mutable WorldAccess::Frame = WorldAccess::Frame()
+        _ = catch WorldAccess::begin_frame(&other_frame):
+            ok: 0
+            error failure: return 124
+        other_write: mutable WorldAccess::Token = catch WorldAccess::acquire(
+            &other_frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
+            value: value
+            error failure: return 125
+        wrong_frame_release: i32 = catch WorldAccess::release(&other_frame, &read):
+            ok: 1
+            WorldAccess::AccessError.WrongFrame: 0
+            error failure: 2
+        return 126 if wrong_frame_release != 0 or not WorldAccess::token_live(read)
+        other_write_conflict: i32 = catch WorldAccess::acquire(
+            &other_frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
+            value: 1
+            WorldAccess::AccessError.WriteConflict: 0
+            error failure: 2
+        return 127 if other_write_conflict != 0 or not WorldAccess::token_live(other_write)
+        _ = catch WorldAccess::release(&other_frame, &other_write):
+            ok: 0
+            error failure: return 128
+        _ = catch WorldAccess::end_frame(&other_frame):
+            ok: 0
+            error failure: return 129
+        write_conflict: i32 = catch WorldAccess::acquire(
+            &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Write):
+            value: 1
+            WorldAccess::AccessError.WriteConflict: 0
+            error failure: 2
+        return 102 if write_conflict != 0
+        structural_input: i32 = catch WorldAccess::acquire(
+            &frame, WorldAccess::Phase.Input, WorldAccess::AccessKind.Structural):
+            value: 1
+            WorldAccess::AccessError.WrongPhase: 0
+            error failure: 2
+        return 103 if structural_input != 0
+        advance_held: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
+            ok: 1
+            WorldAccess::AccessError.ActiveBorrow: 0
+            error failure: 2
+        return 104 if advance_held != 0
+        _ = catch WorldAccess::release(&frame, &read):
+            ok: 0
+            error failure: return 105
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
+            ok: 0
+            error failure: return 106
+        world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 107
+        commands: mutable WorldCommands::WorldBuffer = WorldCommands::WorldBuffer()
+        return 108 if not WorldCommands::world_spawn(&commands, World::Actor.Player)
+        return 109 if not WorldPhaseCommands::commit(&frame, &commands, &world)
+        return 110 if WorldCommands::world_command_count(&commands) != 0 or World::world_live_count(&world) != 1
+        active_structural: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame,
+            WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
+            value: value
+            error failure: return 111
+        advance_structural: i32 = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
+            ok: 1
+            WorldAccess::AccessError.ActiveBorrow: 0
+            error failure: 2
+        return 112 if advance_structural != 0
+        _ = catch WorldAccess::release(&frame, &active_structural):
+            ok: 0
+            error failure: return 113
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Physics):
+            ok: 0
+            error failure: return 114
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Animation):
+            ok: 0
+            error failure: return 115
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Render):
+            ok: 0
+            error failure: return 116
+        return 117 if WorldPhaseCommands::commit(&frame, &commands, &world)
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Audio):
+            ok: 0
+            error failure: return 118
+        _ = catch WorldAccess::end_frame(&frame):
+            ok: 0
+            error failure: return 119
+        return 120 if WorldAccess::frame_active(&frame)
+        return 0
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    buffer: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 1 if not WorldCommands::spawn(&buffer, 1)
-    return 2 if not WorldCommands::reparent(&buffer, 2, 1)
-    return 3 if WorldCommands::command_count(&buffer) != 2 or not WorldCommands::batch_valid(&buffer)
-    return 4 if not WorldCommands::commit(&buffer) or WorldCommands::command_count(&buffer) != 0
-    return 5 if not WorldCommands::spawn(&buffer, 3) or not WorldCommands::despawn(&buffer, 3)
-    return 6 if WorldCommands::batch_valid(&buffer)
-    return 8 if WorldCommands::commit(&buffer)
-    return 7 if WorldCommands::command_count(&buffer) != 2
-    return 9 if WorldCommands::spawn_count(&buffer) != 1
-    return 10 if WorldCommands::commit_with_capacity(&buffer, 0)
-    return 11 if WorldCommands::command_count(&buffer) != 2
-    retry: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 12 if not WorldCommands::spawn(&retry, 4)
-    return 13 if WorldCommands::commit_with_capacity(&retry, 0)
-    return 14 if WorldCommands::command_count(&retry) != 1
-    return 15 if not WorldCommands::commit_with_capacity(&retry, 1)
-    return 16 if WorldCommands::command_count(&retry) != 0
+    can Global.Read, Global.Write:
+        buffer: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 1 if not WorldCommands::spawn(&buffer, 1)
+        return 2 if not WorldCommands::reparent(&buffer, 2, 1)
+        return 3 if WorldCommands::command_count(&buffer) != 2 or not WorldCommands::batch_valid(&buffer)
+        return 4 if not WorldCommands::commit(&buffer) or WorldCommands::command_count(&buffer) != 0
+        return 5 if not WorldCommands::spawn(&buffer, 3) or not WorldCommands::despawn(&buffer, 3)
+        return 6 if WorldCommands::batch_valid(&buffer)
+        return 8 if WorldCommands::commit(&buffer)
+        return 7 if WorldCommands::command_count(&buffer) != 2
+        return 9 if WorldCommands::spawn_count(&buffer) != 1
+        return 10 if WorldCommands::commit_with_capacity(&buffer, 0)
+        return 11 if WorldCommands::command_count(&buffer) != 2
+        retry: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 12 if not WorldCommands::spawn(&retry, 4)
+        return 13 if WorldCommands::commit_with_capacity(&retry, 0)
+        return 14 if WorldCommands::command_count(&retry) != 1
+        return 15 if not WorldCommands::commit_with_capacity(&retry, 1)
+        return 16 if WorldCommands::command_count(&retry) != 0
 
-    hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
-    return 17 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 1, Geometry::transform_identity())
-    return 18 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 2, Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}))
-    WorldHierarchy::hierarchy_update(&hierarchy)
-    structural: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 19 if not WorldCommands::spawn(&structural, 3)
-    return 20 if not WorldCommands::commit_hierarchy(&structural, &hierarchy)
-    return 21 if WorldCommands::command_count(&structural) != 0 or WorldHierarchy::hierarchy_count(&hierarchy) != 3
-    return 22 if not WorldHierarchy::hierarchy_set_local(&hierarchy, 3, Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}), false)
-    WorldHierarchy::hierarchy_update(&hierarchy)
-    reparent: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 23 if not WorldCommands::reparent(&reparent, 3, 1)
-    return 24 if not WorldCommands::commit_hierarchy(&reparent, &hierarchy)
-    WorldHierarchy::hierarchy_update(&hierarchy)
-    return 25 if WorldHierarchy::hierarchy_world(&hierarchy, 3).position.x != 2.0
-    cycle: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 26 if not WorldCommands::reparent(&cycle, 1, 3)
-    return 27 if WorldCommands::commit_hierarchy(&cycle, &hierarchy)
-    return 28 if WorldCommands::command_count(&cycle) != 1
-    invalid: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 29 if not WorldCommands::reparent(&invalid, 2, 99)
-    before_invalid: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
-    return 30 if WorldCommands::commit_hierarchy(&invalid, &hierarchy)
-    return 31 if WorldCommands::command_count(&invalid) != 1
-    WorldHierarchy::hierarchy_update(&hierarchy)
-    after_invalid: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
-    return 32 if after_invalid.position.x != before_invalid.position.x
-    duplicate: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 33 if not WorldCommands::spawn(&duplicate, 1)
-    return 34 if WorldCommands::commit_hierarchy(&duplicate, &hierarchy)
-    return 35 if WorldCommands::command_count(&duplicate) != 1 or WorldHierarchy::hierarchy_count(&hierarchy) != 3
-    remove: mutable WorldCommands::Buffer = WorldCommands::Buffer()
-    return 36 if not WorldCommands::despawn(&remove, 3)
-    return 37 if not WorldCommands::commit_hierarchy(&remove, &hierarchy)
-    return 38 if WorldHierarchy::hierarchy_count(&hierarchy) != 2
-    phase_test()
+        hierarchy: mutable WorldHierarchy::Hierarchy = WorldHierarchy::Hierarchy()
+        return 17 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 1, Geometry::transform_identity())
+        return 18 if not WorldHierarchy::hierarchy_spawn(&hierarchy, 2, Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}))
+        WorldHierarchy::hierarchy_update(&hierarchy)
+        structural: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 19 if not WorldCommands::spawn(&structural, 3)
+        return 20 if not WorldCommands::commit_hierarchy(&structural, &hierarchy)
+        return 21 if WorldCommands::command_count(&structural) != 0 or WorldHierarchy::hierarchy_count(&hierarchy) != 3
+        return 22 if not WorldHierarchy::hierarchy_set_local(&hierarchy, 3, Geometry::transform_translate(Geometry::transform_identity(), Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}), false)
+        WorldHierarchy::hierarchy_update(&hierarchy)
+        reparent: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 23 if not WorldCommands::reparent(&reparent, 3, 1)
+        return 24 if not WorldCommands::commit_hierarchy(&reparent, &hierarchy)
+        WorldHierarchy::hierarchy_update(&hierarchy)
+        return 25 if WorldHierarchy::hierarchy_world(&hierarchy, 3).position.x != 2.0
+        cycle: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 26 if not WorldCommands::reparent(&cycle, 1, 3)
+        return 27 if WorldCommands::commit_hierarchy(&cycle, &hierarchy)
+        return 28 if WorldCommands::command_count(&cycle) != 1
+        invalid: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 29 if not WorldCommands::reparent(&invalid, 2, 99)
+        before_invalid: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
+        return 30 if WorldCommands::commit_hierarchy(&invalid, &hierarchy)
+        return 31 if WorldCommands::command_count(&invalid) != 1
+        WorldHierarchy::hierarchy_update(&hierarchy)
+        after_invalid: Geometry::Transform = WorldHierarchy::hierarchy_world(&hierarchy, 2)
+        return 32 if after_invalid.position.x != before_invalid.position.x
+        duplicate: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 33 if not WorldCommands::spawn(&duplicate, 1)
+        return 34 if WorldCommands::commit_hierarchy(&duplicate, &hierarchy)
+        return 35 if WorldCommands::command_count(&duplicate) != 1 or WorldHierarchy::hierarchy_count(&hierarchy) != 3
+        remove: mutable WorldCommands::Buffer = WorldCommands::Buffer()
+        return 36 if not WorldCommands::despawn(&remove, 3)
+        return 37 if not WorldCommands::commit_hierarchy(&remove, &hierarchy)
+        return 38 if WorldHierarchy::hierarchy_count(&hierarchy) != 2
+        return phase_test()

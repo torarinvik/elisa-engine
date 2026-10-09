@@ -80,9 +80,10 @@ def load_status(board: mutable AudioEvents::Board&, source: SoundEventAssets::So
 
 # 0 fired (Play or Replace), 1 held back (Duplicate or Cooling), 2 error.
 def outcome(board: mutable AudioEvents::Board&, id: u32, tick: u64) -> i32:
-    catch AudioEvents::trigger(board, id, tick):
-        value: 1 if value.outcome == AudioEvents::Outcome.Duplicate or value.outcome == AudioEvents::Outcome.Cooling else 0
-        error failure: 2
+    can Global.Read, Global.Write:
+        return catch AudioEvents::trigger(board, id, tick):
+            value: 1 if value.outcome == AudioEvents::Outcome.Duplicate or value.outcome == AudioEvents::Outcome.Cooling else 0
+            error failure: 2
 
 # The course's asset shape: comments, blank lines, a seed and a weighted event.
 def course_asset() -> SoundEventAssets::Source:
@@ -105,15 +106,16 @@ def course_asset() -> SoundEventAssets::Source:
     source
 
 def accepted_test() -> i32:
-    source: SoundEventAssets::Source = course_asset()
-    board: mutable AudioEvents::Board = AudioEvents::Board()
-    return 1 if load_status(&board, &source) != 0
-    return 2 if SoundEventAssets::failing_line(&source) != 0
-    return 3 if outcome(&board, 1, 10) != 0 or outcome(&board, 2, 10) != 0
-    # Land has a cooldown of 6 ticks.
-    return 4 if outcome(&board, 2, 16) != 1 or outcome(&board, 2, 17) != 0
-    return 5 if outcome(&board, 3, 10) != 2
-    0
+    can Global.Read, Global.Write:
+        source: SoundEventAssets::Source = course_asset()
+        board: mutable AudioEvents::Board = AudioEvents::Board()
+        return 1 if load_status(&board, &source) != 0
+        return 2 if SoundEventAssets::failing_line(&source) != 0
+        return 3 if outcome(&board, 1, 10) != 0 or outcome(&board, 2, 10) != 0
+        # Land has a cooldown of 6 ticks.
+        return 4 if outcome(&board, 2, 16) != 1 or outcome(&board, 2, 17) != 0
+        return 5 if outcome(&board, 3, 10) != 2
+        return 0
 
 def load_one(source: SoundEventAssets::Source&) -> i32:
     board: mutable AudioEvents::Board = AudioEvents::Board()
@@ -184,16 +186,17 @@ def rejected_test() -> i32:
 
 # A rejected asset leaves the caller's board as it was.
 def atomic_test() -> i32:
-    board: mutable AudioEvents::Board = AudioEvents::Board()
-    first: SoundEventAssets::Source = course_asset()
-    return 30 if load_status(&board, &first) != 0
-    broken: mutable SoundEventAssets::Source = SoundEventAssets::Source()
-    event(&broken, 9, 0, 1, 1, 0)
-    newline(&broken)
-    event(&broken, 9, 0, 1, 1, 0)
-    return 31 if load_status(&board, &broken) != 7
-    return 32 if outcome(&board, 9, 10) != 2 or outcome(&board, 1, 10) != 0
-    0
+    can Global.Read, Global.Write:
+        board: mutable AudioEvents::Board = AudioEvents::Board()
+        first: SoundEventAssets::Source = course_asset()
+        return 30 if load_status(&board, &first) != 0
+        broken: mutable SoundEventAssets::Source = SoundEventAssets::Source()
+        event(&broken, 9, 0, 1, 1, 0)
+        newline(&broken)
+        event(&broken, 9, 0, 1, 1, 0)
+        return 31 if load_status(&board, &broken) != 7
+        return 32 if outcome(&board, 9, 10) != 2 or outcome(&board, 1, 10) != 0
+        return 0
 
 # `footstep` or `impact` in ASCII.
 def trigger_word(source: mutable SoundEventAssets::Source&, impact: bool) -> void:
@@ -459,16 +462,17 @@ def anim_test() -> i32:
     0
 
 def main() -> i32:
-    accepted: i32 = accepted_test()
-    return accepted if accepted != 0
-    rejected: i32 = rejected_test()
-    return rejected if rejected != 0
-    atomic: i32 = atomic_test()
-    return atomic if atomic != 0
-    triggered: i32 = trigger_test()
-    return triggered if triggered != 0
-    moods: i32 = mood_test()
-    return moods if moods != 0
-    music: i32 = music_test()
-    return music if music != 0
-    anim_test()
+    can Global.Read, Global.Write:
+        accepted: i32 = accepted_test()
+        return accepted if accepted != 0
+        rejected: i32 = rejected_test()
+        return rejected if rejected != 0
+        atomic: i32 = atomic_test()
+        return atomic if atomic != 0
+        triggered: i32 = trigger_test()
+        return triggered if triggered != 0
+        moods: i32 = mood_test()
+        return moods if moods != 0
+        music: i32 = music_test()
+        return music if music != 0
+        return anim_test()

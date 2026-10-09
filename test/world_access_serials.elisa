@@ -23,52 +23,53 @@ def hold_serial_reads(frame: mutable WorldAccess::Frame&, remaining: usize) -> i
     0
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    frame: mutable WorldAccess::Frame = WorldAccess::Frame()
-    _ = catch WorldAccess::begin_frame(&frame):
-        ok: 0
-        error failure: return 1
-    _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
-        ok: 0
-        error failure: return 2
-    first: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
-        value: value
-        error failure: return 3
-    # A copy of the token is a compile error; the frame still refuses a replayed release.
-    duplicate: mutable WorldAccess::Token = move first
-    second: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
-        value: value
-        error failure: return 4
-    return 5 if WorldAccess::frame_live_tokens(&frame) != 2
-    _ = catch WorldAccess::release(&frame, &duplicate):
-        ok: 0
-        error failure: return 6
-    replay: i32 = catch WorldAccess::release(&frame, &duplicate):
-        ok: 1
-        WorldAccess::AccessError.UnknownToken: 0
-        error failure: 2
-    return 7 if replay != 0
-    return 8 if WorldAccess::frame_live_tokens(&frame) != 1
-    # The second reader still holds the phase, so structural access stays refused.
-    blocked: i32 = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
-        value: 1
-        WorldAccess::AccessError.StructuralConflict: 0
-        error failure: 2
-    return 9 if blocked != 0
-    return 10 if WorldAccess::can_advance(&frame, WorldAccess::Phase.Physics)
-    _ = catch WorldAccess::release(&frame, &second):
-        ok: 0
-        error failure: return 11
-    return 12 if WorldAccess::frame_live_tokens(&frame) != 0
-    held_status: i32 = hold_serial_reads(&frame, WorldAccessBounds::MAX_LIVE_TOKENS)
-    return held_status if held_status != 0
-    return 13 if WorldAccess::frame_live_tokens(&frame) != 0
-    structural: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
-        value: value
-        error failure: return 14
-    _ = catch WorldAccess::release(&frame, &structural):
-        ok: 0
-        error failure: return 15
-    _ = catch WorldAccess::end_frame(&frame):
-        ok: 0
-        error failure: return 16
-    0
+    can Global.Read, Global.Write:
+        frame: mutable WorldAccess::Frame = WorldAccess::Frame()
+        _ = catch WorldAccess::begin_frame(&frame):
+            ok: 0
+            error failure: return 1
+        _ = catch WorldAccess::advance(&frame, WorldAccess::Phase.Simulation):
+            ok: 0
+            error failure: return 2
+        first: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
+            value: value
+            error failure: return 3
+        # A copy of the token is a compile error; the frame still refuses a replayed release.
+        duplicate: mutable WorldAccess::Token = move first
+        second: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Read):
+            value: value
+            error failure: return 4
+        return 5 if WorldAccess::frame_live_tokens(&frame) != 2
+        _ = catch WorldAccess::release(&frame, &duplicate):
+            ok: 0
+            error failure: return 6
+        replay: i32 = catch WorldAccess::release(&frame, &duplicate):
+            ok: 1
+            WorldAccess::AccessError.UnknownToken: 0
+            error failure: 2
+        return 7 if replay != 0
+        return 8 if WorldAccess::frame_live_tokens(&frame) != 1
+        # The second reader still holds the phase, so structural access stays refused.
+        blocked: i32 = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
+            value: 1
+            WorldAccess::AccessError.StructuralConflict: 0
+            error failure: 2
+        return 9 if blocked != 0
+        return 10 if WorldAccess::can_advance(&frame, WorldAccess::Phase.Physics)
+        _ = catch WorldAccess::release(&frame, &second):
+            ok: 0
+            error failure: return 11
+        return 12 if WorldAccess::frame_live_tokens(&frame) != 0
+        held_status: i32 = hold_serial_reads(&frame, WorldAccessBounds::MAX_LIVE_TOKENS)
+        return held_status if held_status != 0
+        return 13 if WorldAccess::frame_live_tokens(&frame) != 0
+        structural: mutable WorldAccess::Token = catch WorldAccess::acquire(&frame, WorldAccess::Phase.Simulation, WorldAccess::AccessKind.Structural):
+            value: value
+            error failure: return 14
+        _ = catch WorldAccess::release(&frame, &structural):
+            ok: 0
+            error failure: return 15
+        _ = catch WorldAccess::end_frame(&frame):
+            ok: 0
+            error failure: return 16
+        return 0

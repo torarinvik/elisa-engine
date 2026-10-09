@@ -2,81 +2,82 @@ include "../src/world/prefab_world.elisa"
 include "../src/world/prefab_persistence.elisa"
 
 def main() -> i32 can[Global.Read, Global.Write]:
-    definition: mutable Prefab::Definition = Prefab::Definition()
-    identity: Geometry::Transform = Geometry::transform_identity()
-    root_visual: Assets::VisualAsset = Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 30, low: 1},
-        material: Assets::AssetId{high: 30, low: 2},
-        local_bounds: Geometry::Bounds3{
-            minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
-            maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
-        },
-    }
-    child_visual: Assets::VisualAsset = Assets::VisualAsset{
-        mesh: Assets::AssetId{high: 31, low: 1},
-        material: Assets::AssetId{high: 31, low: 2},
-        local_bounds: Geometry::Bounds3{
-            minimum: Geometry::Vec3{x: -2.0, y: -2.0, z: -2.0},
-            maximum: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
-        },
-    }
-    root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0,
-        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}),
-        has_visual: true, visual: root_visual}
-    child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
-        local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}),
-        has_visual: false, visual: zeroed}
-    return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
-    return 2 if not Prefab::definition_valid(&definition)
+    can Global.Read, Global.Write:
+        definition: mutable Prefab::Definition = Prefab::Definition()
+        identity: Geometry::Transform = Geometry::transform_identity()
+        root_visual: Assets::VisualAsset = Assets::VisualAsset{
+            mesh: Assets::AssetId{high: 30, low: 1},
+            material: Assets::AssetId{high: 30, low: 2},
+            local_bounds: Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0},
+                maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0},
+            },
+        }
+        child_visual: Assets::VisualAsset = Assets::VisualAsset{
+            mesh: Assets::AssetId{high: 31, low: 1},
+            material: Assets::AssetId{high: 31, low: 2},
+            local_bounds: Geometry::Bounds3{
+                minimum: Geometry::Vec3{x: -2.0, y: -2.0, z: -2.0},
+                maximum: Geometry::Vec3{x: 2.0, y: 2.0, z: 2.0},
+            },
+        }
+        root: Prefab::Node = Prefab::Node{authoring_id: 10, parent_id: 0,
+            local: Geometry::transform_translate(identity, Geometry::Vec3{x: 5.0, y: 0.0, z: 0.0}),
+            has_visual: true, visual: root_visual}
+        child: Prefab::Node = Prefab::Node{authoring_id: 20, parent_id: 10,
+            local: Geometry::transform_translate(identity, Geometry::Vec3{x: 2.0, y: 0.0, z: 0.0}),
+            has_visual: false, visual: zeroed}
+        return 1 if not Prefab::definition_add(&definition, root) or not Prefab::definition_add(&definition, child)
+        return 2 if not Prefab::definition_valid(&definition)
 
-    world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 3
-    first: mutable PrefabWorld::Instance = PrefabWorld::Instance()
-    second: mutable PrefabWorld::Instance = PrefabWorld::Instance()
-    return 4 if not PrefabWorld::spawn(&first, &world, &definition, 7, 1)
-    return 5 if not PrefabWorld::valid(&first, &world) or World::world_live_count(&world) != 2
-    return 6 if not PrefabWorld::spawn(&second, &world, &definition, 7, 2)
-    return 7 if PrefabWorld::instance_reference(&first, 10).id == PrefabWorld::instance_reference(&second, 10).id
+        world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 3
+        first: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+        second: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+        return 4 if not PrefabWorld::spawn(&first, &world, &definition, 7, 1)
+        return 5 if not PrefabWorld::valid(&first, &world) or World::world_live_count(&world) != 2
+        return 6 if not PrefabWorld::spawn(&second, &world, &definition, 7, 2)
+        return 7 if PrefabWorld::instance_reference(&first, 10).id == PrefabWorld::instance_reference(&second, 10).id
 
-    child_reference: World::EntityRef = PrefabWorld::instance_reference(&first, 20)
-    child_world: mutable Geometry::Transform = Geometry::transform_identity()
-    return 8 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 7.0
-    local_override: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0})
-    return 9 if not PrefabWorld::override_local(&first, &world, 20, local_override)
-    return 10 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 8.0
-    return 11 if PrefabWorld::override_local(&first, &world, 999, identity)
-    return 25 if not PrefabWorld::override_visual(&first, &world, 20, true, child_visual)
-    return 26 if not PrefabWorld::instance_has_visual(&first, 20)
-    return 33 if PrefabWorld::override_visual(&first, &world, 20, true, zeroed)
-    return 34 if not Assets::same_asset_id(PrefabWorld::instance_visual(&first, 20).mesh, child_visual.mesh)
+        child_reference: World::EntityRef = PrefabWorld::instance_reference(&first, 20)
+        child_world: mutable Geometry::Transform = Geometry::transform_identity()
+        return 8 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 7.0
+        local_override: Geometry::Transform = Geometry::transform_translate(identity, Geometry::Vec3{x: 3.0, y: 0.0, z: 0.0})
+        return 9 if not PrefabWorld::override_local(&first, &world, 20, local_override)
+        return 10 if not World::world_try_transform(&world, child_reference, &child_world) or child_world.position.x != 8.0
+        return 11 if PrefabWorld::override_local(&first, &world, 999, identity)
+        return 25 if not PrefabWorld::override_visual(&first, &world, 20, true, child_visual)
+        return 26 if not PrefabWorld::instance_has_visual(&first, 20)
+        return 33 if PrefabWorld::override_visual(&first, &world, 20, true, zeroed)
+        return 34 if not Assets::same_asset_id(PrefabWorld::instance_visual(&first, 20).mesh, child_visual.mesh)
 
-    snapshot: mutable PrefabPersistence::Snapshot = PrefabPersistence::capture(&first)
-    return 12 if not PrefabPersistence::snapshot_valid(&snapshot)
-    invalid_snapshot: mutable PrefabPersistence::Snapshot = snapshot
-    invalid_snapshot.records[0].visual.mesh <- Assets::AssetId{high: 0, low: 0}
-    return 35 if PrefabPersistence::snapshot_valid(&invalid_snapshot)
+        snapshot: mutable PrefabPersistence::Snapshot = PrefabPersistence::capture(&first)
+        return 12 if not PrefabPersistence::snapshot_valid(&snapshot)
+        invalid_snapshot: mutable PrefabPersistence::Snapshot = snapshot
+        invalid_snapshot.records[0].visual.mesh <- Assets::AssetId{high: 0, low: 0}
+        return 35 if PrefabPersistence::snapshot_valid(&invalid_snapshot)
 
-    return 13 if not PrefabWorld::destroy(&first, &world)
-    return 14 if World::world_live_count(&world) != 2 or PrefabWorld::instance_binding_count(&first) != 0
-    return 15 if not PrefabWorld::valid(&second, &world)
-    reloaded_world: mutable World::World = catch World::World():
-        value: value
-        error failure: return 22
-    reloaded: mutable PrefabWorld::Instance = PrefabWorld::Instance()
-    return 16 if not PrefabWorld::spawn(&reloaded, &reloaded_world, &definition, 7, 1)
-    return 27 if not PrefabWorld::instance_has_visual(&reloaded, 10)
-    return 28 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 10).mesh, root_visual.mesh)
-    return 29 if PrefabWorld::instance_has_visual(&reloaded, 20)
-    reloaded_child: World::EntityRef = PrefabWorld::instance_reference(&reloaded, 20)
-    return 23 if reloaded_child.world_epoch == child_reference.world_epoch
-    return 24 if World::world_is_live(&reloaded_world, child_reference)
-    return 17 if not PrefabPersistence::restore(&reloaded, &reloaded_world, snapshot)
-    return 18 if not World::world_try_transform(&reloaded_world, reloaded_child, &child_world) or child_world.position.x != 8.0
-    return 30 if not PrefabWorld::instance_has_visual(&reloaded, 20)
-    return 31 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 20).mesh, child_visual.mesh)
-    return 32 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 20).material, child_visual.material)
-    return 19 if not PrefabWorld::destroy(&second, &world)
-    return 20 if not PrefabWorld::destroy(&reloaded, &reloaded_world)
-    return 21 if World::world_live_count(&world) != 0 or World::world_live_count(&reloaded_world) != 0
-    0
+        return 13 if not PrefabWorld::destroy(&first, &world)
+        return 14 if World::world_live_count(&world) != 2 or PrefabWorld::instance_binding_count(&first) != 0
+        return 15 if not PrefabWorld::valid(&second, &world)
+        reloaded_world: mutable World::World = catch World::World():
+            value: value
+            error failure: return 22
+        reloaded: mutable PrefabWorld::Instance = PrefabWorld::Instance()
+        return 16 if not PrefabWorld::spawn(&reloaded, &reloaded_world, &definition, 7, 1)
+        return 27 if not PrefabWorld::instance_has_visual(&reloaded, 10)
+        return 28 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 10).mesh, root_visual.mesh)
+        return 29 if PrefabWorld::instance_has_visual(&reloaded, 20)
+        reloaded_child: World::EntityRef = PrefabWorld::instance_reference(&reloaded, 20)
+        return 23 if reloaded_child.world_epoch == child_reference.world_epoch
+        return 24 if World::world_is_live(&reloaded_world, child_reference)
+        return 17 if not PrefabPersistence::restore(&reloaded, &reloaded_world, snapshot)
+        return 18 if not World::world_try_transform(&reloaded_world, reloaded_child, &child_world) or child_world.position.x != 8.0
+        return 30 if not PrefabWorld::instance_has_visual(&reloaded, 20)
+        return 31 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 20).mesh, child_visual.mesh)
+        return 32 if not Assets::same_asset_id(PrefabWorld::instance_visual(&reloaded, 20).material, child_visual.material)
+        return 19 if not PrefabWorld::destroy(&second, &world)
+        return 20 if not PrefabWorld::destroy(&reloaded, &reloaded_world)
+        return 21 if World::world_live_count(&world) != 0 or World::world_live_count(&reloaded_world) != 0
+        return 0

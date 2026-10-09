@@ -60,62 +60,63 @@ def sample_visual() -> VisualAsset:
     }
 
 def main() -> i32:
-    widgets: i32 = widgets_test()
-    return widgets if widgets != 0
-    budget: PerfBudget = default_budget()
-    return 1 if not budget_valid(&budget) or budget.max_frame_micros != 16667
-    counters: mutable PerfCounters = PerfCounters()
-    return 2 if mean_frame_micros(&counters) != 0
+    can Global.Read, Global.Write:
+        widgets: i32 = widgets_test()
+        return widgets if widgets != 0
+        budget: PerfBudget = default_budget()
+        return 1 if not budget_valid(&budget) or budget.max_frame_micros != 16667
+        counters: mutable PerfCounters = PerfCounters()
+        return 2 if mean_frame_micros(&counters) != 0
 
-    world: mutable World = catch World():
-        value: value
-        error failure: return 3
-    object: EntityRef = catch world_spawn(&world, Actor.Player):
-        value: value
-        error failure: return 4
-    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    created: i32 = catch submit_create(&recorder, object, transform_identity(), sample_visual()):
-        ok: 0
-        error failure: 1
-    return 5 if created != 0
+        world: mutable World = catch World():
+            value: value
+            error failure: return 3
+        object: EntityRef = catch world_spawn(&world, Actor.Player):
+            value: value
+            error failure: return 4
+        recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        created: i32 = catch submit_create(&recorder, object, transform_identity(), sample_visual()):
+            ok: 0
+            error failure: 1
+        return 5 if created != 0
 
-    view: Inspector::Snapshot = snapshot_from_world(&world, &recorder, 7, 1500, 0)
-    return 6 if not snapshot_valid(&view) or view.live_entities != 1 or view.queued_commands != 1
-    return 7 if view.tick != 7 or view.frame_micros != 1500
-    return 8 if not snapshot_within_budget(&view, &budget)
-    # Submitted bytes are a recorded workload: one command is the fixed size,
-    # and the default byte budget covers the full command queue.
-    return 15 if view.queued_bytes != 80 or recorder_submitted_bytes(&recorder) != 80
-    return 16 if budget.max_queued_bytes != 20480
+        view: Inspector::Snapshot = snapshot_from_world(&world, &recorder, 7, 1500, 0)
+        return 6 if not snapshot_valid(&view) or view.live_entities != 1 or view.queued_commands != 1
+        return 7 if view.tick != 7 or view.frame_micros != 1500
+        return 8 if not snapshot_within_budget(&view, &budget)
+        # Submitted bytes are a recorded workload: one command is the fixed size,
+        # and the default byte budget covers the full command queue.
+        return 15 if view.queued_bytes != 80 or recorder_submitted_bytes(&recorder) != 80
+        return 16 if budget.max_queued_bytes != 20480
 
-    tight: PerfBudget = PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 40, max_live_entities: 256}
-    return 17 if not budget_valid(&tight) or snapshot_within_budget(&view, &tight)
+        tight: PerfBudget = PerfBudget{max_frame_micros: 16667, max_queued_commands: 256, max_queued_bytes: 40, max_live_entities: 256}
+        return 17 if not budget_valid(&tight) or snapshot_within_budget(&view, &tight)
 
-    slow: Inspector::Snapshot = snapshot_from_world(&world, &recorder, 8, 20000, 0)
-    return 9 if snapshot_within_budget(&slow, &budget)
+        slow: Inspector::Snapshot = snapshot_from_world(&world, &recorder, 8, 20000, 0)
+        return 9 if snapshot_within_budget(&slow, &budget)
 
-    record_frame(&counters, 1500, false)
-    record_frame(&counters, 20000, true)
-    record_frame(&counters, 1000, false)
-    return 10 if counters.frames != 3 or counters.over_budget != 1
-    return 11 if mean_frame_micros(&counters) != 7500 or counters.worst_micros != 20000
-    return 12 if counters.sample_count != 3
+        record_frame(&counters, 1500, false)
+        record_frame(&counters, 20000, true)
+        record_frame(&counters, 1000, false)
+        return 10 if counters.frames != 3 or counters.over_budget != 1
+        return 11 if mean_frame_micros(&counters) != 7500 or counters.worst_micros != 20000
+        return 12 if counters.sample_count != 3
 
-    samples: i64[16] = [1500, 20000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
-    return 13 if worst_sample(samples, 3) != 20000 or frames_over_budget(samples, 3, 16667) != 1
-    return 14 if worst_sample(samples, 0) != 0 or frames_over_budget(samples, 17, 16667) != 0
+        samples: i64[16] = [1500, 20000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000, 1000]
+        return 13 if worst_sample(samples, 3) != 20000 or frames_over_budget(samples, 3, 16667) != 1
+        return 14 if worst_sample(samples, 0) != 0 or frames_over_budget(samples, 17, 16667) != 0
 
-    # Debug collision geometry: cell boxes, kind counts, and the capacity guard
-    # that refuses a full collection instead of dropping geometry silently.
-    boxes: mutable Boxes = Boxes()
-    return 15 if not boxes_add(&boxes, cell_box(BoxKind.Solid, 1.0, 2.0)) or boxes.count != 1
-    solid_box: Box = boxes.entries[0]
-    return 16 if solid_box.bounds.minimum.x < 0.699 or solid_box.bounds.minimum.x > 0.701
-    return 17 if solid_box.bounds.maximum.x < 1.299 or solid_box.bounds.maximum.x > 1.301
-    return 18 if not boxes_valid(&boxes) or box_kind_count(&boxes, BoxKind.Solid) != 1 or box_kind_count(&boxes, BoxKind.Goal) != 0
-    return 19 if not boxes_add(&boxes, cell_box(BoxKind.Goal, 0.0, 0.0)) or box_kind_count(&boxes, BoxKind.Goal) != 1
-    for index in 2..<box_capacity() |boxes|:
-        _ = boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0))
-    return 20 if boxes.count != box_capacity() or not boxes_valid(&boxes)
-    return 21 if boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0)) or boxes.count != box_capacity()
-    0
+        # Debug collision geometry: cell boxes, kind counts, and the capacity guard
+        # that refuses a full collection instead of dropping geometry silently.
+        boxes: mutable Boxes = Boxes()
+        return 15 if not boxes_add(&boxes, cell_box(BoxKind.Solid, 1.0, 2.0)) or boxes.count != 1
+        solid_box: Box = boxes.entries[0]
+        return 16 if solid_box.bounds.minimum.x < 0.699 or solid_box.bounds.minimum.x > 0.701
+        return 17 if solid_box.bounds.maximum.x < 1.299 or solid_box.bounds.maximum.x > 1.301
+        return 18 if not boxes_valid(&boxes) or box_kind_count(&boxes, BoxKind.Solid) != 1 or box_kind_count(&boxes, BoxKind.Goal) != 0
+        return 19 if not boxes_add(&boxes, cell_box(BoxKind.Goal, 0.0, 0.0)) or box_kind_count(&boxes, BoxKind.Goal) != 1
+        for index in 2..<box_capacity() |boxes|:
+            _ = boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0))
+        return 20 if boxes.count != box_capacity() or not boxes_valid(&boxes)
+        return 21 if boxes_add(&boxes, cell_box(BoxKind.Hazard, 0.0, 0.0)) or boxes.count != box_capacity()
+        return 0

@@ -17,12 +17,13 @@ module World::SaveSwap:
 
     private:
         def saveswap_stage(bytes: u8&, length: usize) -> bool can[Global.Read, Global.Write]:
-            staging: mutable World::World = catch World::World():
-                value: value
-                error failure: return false
-            catch World::SaveGame::load_world(&staging, bytes, length):
-                ok: true
-                error failure: false
+            can Global.Read, Global.Write:
+                staging: mutable World::World = catch World::World():
+                    value: value
+                    error failure: return false
+                return catch World::SaveGame::load_world(&staging, bytes, length):
+                    ok: true
+                    error failure: false
 
         def saveswap_despawn(world: mutable World::World&, reference: World::EntityRef) -> bool:
             catch World::world_despawn(world, reference):

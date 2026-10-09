@@ -41,7 +41,20 @@ callback invocations and callers. Narrow scopes now cover those stateful sites.
 Its strict check passes and its built executable returns 0 with all assertions;
 logs are in `build/validation/global-grant-12120-engine/`.
 
-These results qualify the compiler candidate and these two engine targets. They
-do not qualify the proof pair, the full engine build, or a current Studio app.
+The full engine gate manifest has 216 Elisa entrypoints. Every entrypoint passes
+`-emit check` on this exact Stage1. The uncached compile-and-run gate also passes
+all 216 tests (0 cached, 0 remote, 29 seconds). The census report is
+`build/validation/global-grant-gate-census-12120-final.json`; the gate output is
+recorded by `scripts/run_tests.py`.
+
+These results qualify the compiler candidate and the gate-manifest consumers;
+they do not qualify the proof pair, every engine source outside that manifest,
+or a current Studio app.
 The callback hidden-region/result-arena repair is not in `12120f6b`; the
 reproduced null-arena FBX crash remains open.
+
+The compiler checkout has since advanced locally through `e6b5a0c4` and has an
+uncommitted JSON grant change. No Stage1/runtime from that exact source state is
+qualified yet. `12120f6b` is the last authenticated candidate, not the newest
+compiler source; rerun this engine gate after the compiler owner produces a
+clean matching product.

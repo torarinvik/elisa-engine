@@ -11,124 +11,126 @@ using Assets
 # dangling reference. Identity advances monotonically while storage slots are
 # reused, so a recycled slot never resurrects an old identity.
 def lifecycle_audit() -> i32:
-    world: mutable World = catch World():
-        value: value
-        error failure: return 30
-    recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    visual: mutable VisualAsset = VisualAsset{
-        mesh: AssetId{high: 30, low: 1},
-        material: AssetId{high: 30, low: 2},
-        local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
-    }
-    previous_id: mutable i64 = 0
-    for cycle in 0..<8 |world, recorder, visual, previous_id|:
-        player: PlayerState = catch spawn_player(&world, &recorder, visual):
+    can Global.Read, Global.Write:
+        world: mutable World = catch World():
             value: value
-            error failure: return 31
-        return 32 if player.player.id <= previous_id
-        previous_id <- player.player.id
-        return 33 if world_live_count(&world) != 1 or not world_is_valid(&world) or recorder_live_count(&recorder) != 1
-        removed: bool = catch world_despawn(&world, player.player):
-            ok: true
-            error failure: false
-        return 34 if not removed or world_live_count(&world) != 0
-        dangling: i32 = catch world_lookup(&world, player.player):
-            value: 1
-            WorldError.InvalidReference: 0
-            error failure: 2
-        return 35 if dangling != 0
-        return 36 if not world_is_valid(&world)
-        destroyed: bool = catch submit_destroy(&recorder, player.player):
-            ok: true
-            error failure: false
-        return 37 if not destroyed or recorder_live_count(&recorder) != 0
-        # A second destroy must be refused rather than free the same object twice.
-        double_destroy: i32 = catch submit_destroy(&recorder, player.player):
-            value: 1
-            SceneError.DestroyedObject: 0
-            error failure: 2
-        return 38 if double_destroy != 0
-        world_compact(&world)
-        return 39 if world_registry_count(&world) != 0 or world_actor_count(&world) != 0 or not world_is_valid(&world)
-    0
+            error failure: return 30
+        recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        visual: mutable VisualAsset = VisualAsset{
+            mesh: AssetId{high: 30, low: 1},
+            material: AssetId{high: 30, low: 2},
+            local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
+        }
+        previous_id: mutable i64 = 0
+        for cycle in 0..<8 |world, recorder, visual, previous_id|:
+            player: PlayerState = catch spawn_player(&world, &recorder, visual):
+                value: value
+                error failure: return 31
+            return 32 if player.player.id <= previous_id
+            previous_id <- player.player.id
+            return 33 if world_live_count(&world) != 1 or not world_is_valid(&world) or recorder_live_count(&recorder) != 1
+            removed: bool = catch world_despawn(&world, player.player):
+                ok: true
+                error failure: false
+            return 34 if not removed or world_live_count(&world) != 0
+            dangling: i32 = catch world_lookup(&world, player.player):
+                value: 1
+                WorldError.InvalidReference: 0
+                error failure: 2
+            return 35 if dangling != 0
+            return 36 if not world_is_valid(&world)
+            destroyed: bool = catch submit_destroy(&recorder, player.player):
+                ok: true
+                error failure: false
+            return 37 if not destroyed or recorder_live_count(&recorder) != 0
+            # A second destroy must be refused rather than free the same object twice.
+            double_destroy: i32 = catch submit_destroy(&recorder, player.player):
+                value: 1
+                SceneError.DestroyedObject: 0
+                error failure: 2
+            return 38 if double_destroy != 0
+            world_compact(&world)
+            return 39 if world_registry_count(&world) != 0 or world_actor_count(&world) != 0 or not world_is_valid(&world)
+        return 0
 
 def main() -> i32:
-    churn: i32 = lifecycle_audit()
-    return churn if churn != 0
-    first_world: mutable World = catch World():
-        value: value
-        error failure: return 1
-    second_world: mutable World = catch World():
-        value: value
-        error failure: return 2
-    first_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
-    first_clock: mutable StepClock = StepClock()
-    second_clock: mutable StepClock = StepClock()
-    visual: VisualAsset = VisualAsset{
-        mesh: AssetId{high: 23, low: 1},
-        material: AssetId{high: 23, low: 2},
-        local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
-    }
-    first: mutable PlayerState = catch spawn_player(&first_world, &first_recorder, visual):
-        value: value
-        error failure: return 3
-    second: mutable PlayerState = catch spawn_player(&second_world, &second_recorder, visual):
-        value: value
-        error failure: return 4
-
-    mapping: InputMap = default_input_map()
-    buttons: Button[4] = [Button.KeyW, Button.PadRight, Button.Unbound, Button.KeyA]
-    elapsed: i64[4] = [fixed_step_micros(), fixed_step_micros() * 2, 0, fixed_step_micros()]
-    for frame in 0..<4 |first, second, first_clock, second_clock, first_recorder, second_recorder|:
-        action: Action = action_for(mapping, buttons[frame])
-        first_steps: usize = catch advance_player(&first, &first_clock, &first_recorder, action, elapsed[frame]):
+    can Global.Read, Global.Write:
+        churn: i32 = lifecycle_audit()
+        return churn if churn != 0
+        first_world: mutable World = catch World():
             value: value
-            error failure: return 5
-        second_steps: usize = catch advance_player(&second, &second_clock, &second_recorder, action, elapsed[frame]):
+            error failure: return 1
+        second_world: mutable World = catch World():
             value: value
-            error failure: return 6
-        return 7 if first_steps != second_steps
-
-    return 8 if first_clock.tick_count != 4 or Backend::recorder_command_count(&first_recorder) != 5
-    return 9 if first.transform.position.x != 0.25 or first.transform.position.z != -0.25
-    return 10 if not world_is_live(&first_world, first.player) or not world_is_valid(&first_world)
-
-    for index in 0..<Backend::recorder_command_count(&first_recorder) |first_recorder, second_recorder|:
-        left: SceneCommand = catch recorded_command(&first_recorder, index):
+            error failure: return 2
+        first_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        second_recorder: mutable Backend::SceneRecorder = Backend::SceneRecorder()
+        first_clock: mutable StepClock = StepClock()
+        second_clock: mutable StepClock = StepClock()
+        visual: VisualAsset = VisualAsset{
+            mesh: AssetId{high: 23, low: 1},
+            material: AssetId{high: 23, low: 2},
+            local_bounds: Geometry::Bounds3{minimum: Geometry::Vec3{x: -1.0, y: -1.0, z: -1.0}, maximum: Geometry::Vec3{x: 1.0, y: 1.0, z: 1.0}},
+        }
+        first: mutable PlayerState = catch spawn_player(&first_world, &first_recorder, visual):
             value: value
-            error failure: return 11
-        right: SceneCommand = catch recorded_command(&second_recorder, index):
+            error failure: return 3
+        second: mutable PlayerState = catch spawn_player(&second_world, &second_recorder, visual):
             value: value
-            error failure: return 12
-        return 13 if left.kind != right.kind or left.reference.id != right.reference.id or left.transform.position.x != right.transform.position.x or left.transform.position.z != right.transform.position.z or not same_asset_id(left.visual.mesh, right.visual.mesh)
+            error failure: return 4
 
-    before: usize = Backend::recorder_command_count(&first_recorder)
-    invalid: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, -1):
-        value: 1
-        GameError.ClockFailure: 0
-        error failure: 2
-    return 14 if invalid != 0 or Backend::recorder_command_count(&first_recorder) != before
+        mapping: InputMap = default_input_map()
+        buttons: Button[4] = [Button.KeyW, Button.PadRight, Button.Unbound, Button.KeyA]
+        elapsed: i64[4] = [fixed_step_micros(), fixed_step_micros() * 2, 0, fixed_step_micros()]
+        for frame in 0..<4 |first, second, first_clock, second_clock, first_recorder, second_recorder|:
+            action: Action = action_for(mapping, buttons[frame])
+            first_steps: usize = catch advance_player(&first, &first_clock, &first_recorder, action, elapsed[frame]):
+                value: value
+                error failure: return 5
+            second_steps: usize = catch advance_player(&second, &second_clock, &second_recorder, action, elapsed[frame]):
+                value: value
+                error failure: return 6
+            return 7 if first_steps != second_steps
 
-    for index in before..<256 |first_recorder|:
-        filled: i32 = catch submit_update(&first_recorder, first.player, first.transform):
-            ok: 0
-            error failure: 1
-        return 15 if filled != 0
-    prior_ticks: i64 = first_clock.tick_count
-    prior_z: f32 = first.transform.position.z
-    full: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, fixed_step_micros()):
-        value: 1
-        GameError.RecordingFailure: 0
-        error failure: 2
-    return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or Backend::recorder_command_count(&first_recorder) != 256
+        return 8 if first_clock.tick_count != 4 or Backend::recorder_command_count(&first_recorder) != 5
+        return 9 if first.transform.position.x != 0.25 or first.transform.position.z != -0.25
+        return 10 if not world_is_live(&first_world, first.player) or not world_is_valid(&first_world)
 
-    third_world: mutable World = catch World():
-        value: value
-        error failure: return 17
-    rejected_spawn: i32 = catch spawn_player(&third_world, &first_recorder, visual):
-        value: 1
-        GameError.RecordingFailure: 0
-        error failure: 2
-    return 18 if rejected_spawn != 0 or world_live_count(&third_world) != 0 or world_last_issued(&third_world) != 1 or not world_is_valid(&third_world)
-    0
+        for index in 0..<Backend::recorder_command_count(&first_recorder) |first_recorder, second_recorder|:
+            left: SceneCommand = catch recorded_command(&first_recorder, index):
+                value: value
+                error failure: return 11
+            right: SceneCommand = catch recorded_command(&second_recorder, index):
+                value: value
+                error failure: return 12
+            return 13 if left.kind != right.kind or left.reference.id != right.reference.id or left.transform.position.x != right.transform.position.x or left.transform.position.z != right.transform.position.z or not same_asset_id(left.visual.mesh, right.visual.mesh)
+
+        before: usize = Backend::recorder_command_count(&first_recorder)
+        invalid: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, -1):
+            value: 1
+            GameError.ClockFailure: 0
+            error failure: 2
+        return 14 if invalid != 0 or Backend::recorder_command_count(&first_recorder) != before
+
+        for index in before..<256 |first_recorder|:
+            filled: i32 = catch submit_update(&first_recorder, first.player, first.transform):
+                ok: 0
+                error failure: 1
+            return 15 if filled != 0
+        prior_ticks: i64 = first_clock.tick_count
+        prior_z: f32 = first.transform.position.z
+        full: i32 = catch advance_player(&first, &first_clock, &first_recorder, Action.Forward, fixed_step_micros()):
+            value: 1
+            GameError.RecordingFailure: 0
+            error failure: 2
+        return 16 if full != 0 or first_clock.tick_count != prior_ticks or first.transform.position.z != prior_z or Backend::recorder_command_count(&first_recorder) != 256
+
+        third_world: mutable World = catch World():
+            value: value
+            error failure: return 17
+        rejected_spawn: i32 = catch spawn_player(&third_world, &first_recorder, visual):
+            value: 1
+            GameError.RecordingFailure: 0
+            error failure: 2
+        return 18 if rejected_spawn != 0 or world_live_count(&third_world) != 0 or world_last_issued(&third_world) != 1 or not world_is_valid(&third_world)
+        return 0
