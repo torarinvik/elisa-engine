@@ -1,2 +1,4 @@
 #!/bin/sh
-exec ssh -o LogLevel=ERROR -o ControlMaster=auto -o ControlPath=$HOME/.ssh/cm-%C -o ControlPersist=300 -p 15803 root@ssh9.vast.ai "$@"
+# Compatibility entry point; no retired host is configured.
+: "${ELISA_REMOTE_HOST:?Set ELISA_REMOTE_HOST to an explicitly verified user@host}"
+exec ssh -o BatchMode=yes -o ConnectTimeout=15 -p "${ELISA_REMOTE_PORT:-22}" "$ELISA_REMOTE_HOST" "$@"
