@@ -159,12 +159,10 @@ restarted the character at the entrance and resumed play. The fresh app stayed
 open after restart and exited with status 0 when its window was closed. This
 replaces the stale-binary observation; it does not complete a human traversal.
 
-The available computer-use key API emits discrete key presses and has no
-key-down/hold operation. Repeated W/Up taps did not produce an observable
-continuous walk, so visible traversal, held crouch, and manual summit/fall
-presentation remain unverified. The hidden SDL-input route and its captured
-win/fall images above still pass. The concrete prerequisite for closing Q07a is
-a hold-capable interactive keyboard session (or a user-observed manual run).
+The 2026-10-07 review treated the available computer-use API as tap-only, so it
+did not attempt a held-key route. That limitation is superseded by the later
+manual run below: `pressKey` accepts `durationMs`, including a modifier chord.
+The hidden SDL-input route and its captured win/fall images above still pass.
 
 Build and stage commands, run from the engine root:
 
@@ -192,6 +190,29 @@ python3 scripts/package_macos_app.py \
 ```
 
 The staged app is a local ignored build artifact, not a release package.
+
+## Manual live traversal (2026-10-09)
+
+The staged `CharacterCourse-Q07a-2026-10-07.app` was opened in the visible
+desktop session. Its provenance identifies game source commit `8ef3d4c2`, main
+source SHA-256
+`75ca46a97426a6c9eb57b2a03d6ace09badde7391d329b3b84904125a898f7ce`, packaged
+binary SHA-256
+`edcadd1f61613a6c9d75070962ccc56b2bfe56e2dc5391ecb7b6b2e47123ce70`, and
+compiler launcher SHA-256
+`2f28e5c9ab40101fbc99c7a0b67f5d86cbba0b1fadf735384767487da60de2b3`. The
+bundle's build identity is `51432688980c4386`; this is the earlier, non-optimized
+October 7 product, not the current compiler candidate or a fresh release build.
+
+The CUA keyboard API's `pressKey(key, { durationMs })` supports key holds.
+Crouch was temporarily rebound from C to Right Shift, then `Shift_R+w` was held
+for 2.5 seconds to crouch-walk through the tunnel. Continued movement completed
+the course: the visible HUD reported all three beacons lit, followed by the summit
+win prompt. The crouch binding was restored to C and the controls screen
+confirmed it was saved. This closes the earlier visible-traversal and held-
+crouch uncertainty for this package. It does not verify jump or fall
+presentation, and it does not qualify the current compiler or a fresh optimized
+package. The hidden route still supplies jump, restart and fall coverage.
 
 ## Suspended focus recovery (2026-10-07)
 

@@ -1,20 +1,45 @@
 # Targeted runtime delivery — 2026-10-09
 
-This refines the active queue in `IMPLEMENTATION_PLAN.md`. The full backlog
-remains open. Select a concrete defect or missing acceptance result in the
-Character Course before promoting a subsystem-wide feature.
+This supports the active queue in `IMPLEMENTATION_PLAN.md`; that file is the
+scheduling authority. The full backlog remains open. Select a concrete defect
+or missing acceptance result in the Character Course before promoting a
+subsystem-wide feature.
 
 ## Current delivery order
 
-The [active delivery queue](../../IMPLEMENTATION_PLAN.md#active-delivery-queue--highest-return-first)
-is the only scheduling authority and was refreshed on 2026-10-09. Its current
-highest-return gates start with the global rehome defect for owning values,
-followed by the separate callback-region ABI repair and default-grant proof
-integration. Exact Studio acceptance, the original-budget prover run, native
-redraw/reveal, and renderer lifecycle diagnosis follow. Package refresh,
-ordinary-project rehearsal, hosted CI, and physical gameplay acceptance come
-after those prerequisites. The technical slices below are supporting guidance,
-not a second queue.
+The [immediate high-ROI execution order](../../IMPLEMENTATION_PLAN.md#immediate-high-roi-execution-order--2026-10-09)
+is the only scheduling authority. The newest compiler source `06e94584` has a
+fresh Stage1/runtime pair: 42/42 actual-CLI grant controls and 89/89 strict
+engine entrypoint checks and the uncached 216-test engine gate pass, and the
+nested global-rehome regression passes at O0, O2 and ASan. Finish exact-product
+parity and self-host qualification; the earlier broad parity attempt mixed
+compiler revisions and is diagnostic only. Then rebuild
+the same Studio consumer and check whether its global-rehome crash is resolved,
+close proof admission/replay, optimize the measured authority-check hot path,
+and qualify incremental semantic reuse. Renderer lifecycle and package/hosted-CI
+gates follow. The mutable-global authority pass
+consumed about 92.5% of the baseline semantic-only run, so its optimization
+remains high value after the immediate consumer and correctness blockers. Across
+two paired full-LLVM runs, the candidate averages 158.7s versus main at 155.7s;
+the 1.9% difference has substantial run-to-run variation and does not clear the
+no-slowdown gate.
+The emitted-IR count found one candidate-only carrier on
+`arena_dict_new__i64`, which takes an explicit arena. The owner traced it to
+treating any hidden generic ABI slot as a local result region and narrowed
+insertion to true caller-result slots. New controls cover explicit-arena returns
+and scalar generic mutation through a growable reference; their run and full
+focused controls pass at O0, O2 and ASan. Product hashes and full qualification
+gates are pending.
+The exact same-source cold semantic check now passes with 63.1% lower wall time
+and effectively flat peak RSS; it does not measure incremental reuse. The r5
+fail-closed collector and 15 disk-persistence cases are supporting evidence
+only: expand incremental reuse after the shared checker optimization, and keep
+production reuse disabled until combined parity and matched workload timing
+pass. Complete proof admission/replay and Studio ownership/playback in the
+order above. Renderer lifecycle diagnosis waits for the Studio/UI slot. Package
+refresh, ordinary-project rehearsal, hosted CI and physical gameplay acceptance
+follow these blockers. The technical slices below are supporting guidance, not
+a second queue.
 
 For the second ordinary-application gate, use the existing
 `examples/maze` consumer: its manifest cooks an authored PNG texture bundle, its
