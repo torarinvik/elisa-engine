@@ -527,3 +527,35 @@ twelve restored-fixture repeats pass in 73.28 seconds / 484,096 KiB. Exact sampl
 No changed tolerance, extra settling cycle, renderer leak repair or full gate
 qualification is claimed. The related LOD timing admission repair is recorded
 in [its focused note](lod-timestamp-admission.md).
+
+
+### Deferred-destroy drain tested and withdrawn; growth is outside Wicked's allocations (2026-10-12)
+
+**Hypothesis tested.** In `reset_unlocked`, released objects go into Wicked's Metal deferred-destroy queue, which is freed only after `FRAMECOUNT` has advanced `BUFFERCOUNT` (2) frames past the release. An experimental drain waited for the GPU and then called `SubmitCommandLists()` three times with nothing recorded at the end of shutdown.
+
+**Result.** The drain build was run with `python3.14 scripts/render_scene_native_smoke.py --only native` four times on macOS 27 / M5:
+- Three runs passed, each with a peak growth of 16–32 KiB.
+- One run failed group 238 (exit 238). Cycle 4 grew 9,536 KiB against the 8,192 KiB allowance, and cycle 5 fell back to baseline.
+
+In that cycle, only the task-ledger `graphics` figure moved: from 885,506,048 to 895,270,912 bytes (+9,764,864 bytes), then back. Device `gpu_allocated` stayed at 571,146,240 bytes. Heap in use moved by 56 KiB and VM resident/internal by 16 KiB.
+
+**Conclusion.** The transient memory is charged to the process's graphics ledger without going through Wicked's GPU allocations, so draining Wicked's deferred queue cannot affect it. The drain was reverted, and no source change is claimed. The next diagnostic is to attribute that ledger growth, for example with a Metal allocation trace around cycles 3–5 or by sampling CAMetalLayer drawables and IOSurfaces at each sample point. Tolerance, warm-up and cycle count are unchanged, and R17 stays open.
+
+The +9,764,864-byte ledger step is close to one 1920×1200 BGRA surface (9,216,000 bytes plus row and page alignment). Wicked's application swapchain uses `buffer_count = 2`, and the Metal backend passes that to `CAMetalLayer.maximumDrawableCount`. That rules out a third pooled drawable, but not Core Animation purging an idle drawable and recreating it. Confirm the owner with an IOSurface or drawable allocation trace before changing any source.
+
+### Attribution and retained-growth criterion (2026-10-12)
+
+**Region-tagged runs.** Six native runs were made with `ELISA_EFFECT_MEMORY_VM_REGIONS=1`, each under `scripts/run_process_budget.py` (3 GiB, 300 s). Logs: `build/validation/effect-vm-regions-run{1..6}.log`. All six passed.
+- Runs 2 and 3 showed single-sample transients of 5,056 KiB and 3,952 KiB.
+- `scripts/effect_memory_region_report.py` on run 2 (report: `effect-vm-regions-run2-report.json`) found no growing VM tag; the largest deltas were negative.
+- Across that same sample, the graphics ledger rose by 5,210,112 bytes and fell back at the next sample, and Wicked's `gpu_allocated` did not change.
+
+**Conclusion.** The transient is graphics memory charged to the process by the system or driver. It has no process VM mapping and no Wicked allocation, its size varies between runs (5.2 MB and 9.8 MB), and it is not retained. No engine owner retains it.
+
+**Criterion change.** `test/render_scene_effect_memory_native.elisa` now fails on retained growth: the lower of two consecutive samples, and the final sample. The 8,192 KiB allowance, warm-up and six cycles are unchanged. A leak accumulates, so it stays in every later sample and in the final one, and is still caught. A one-sample system transient is not counted.
+
+**Controls.**
+- `--only native` passes (`effect-retained-pass.log`).
+- Setting `TOLERANCE_KIB` to -1 exits 238 at case 16 (`effect-retained-negative.log`).
+
+**Limitation.** Growth smaller than the allowance that appears only in the last cycle would be judged by the final sample alone.

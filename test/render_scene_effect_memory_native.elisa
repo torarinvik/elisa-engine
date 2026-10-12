@@ -1,6 +1,11 @@
 # Render smoke group 238: owner despawn plus a RenderScene restart must return
 # effect counts and process memory to baseline. One warm-up cycle settles
 # allocator pools and pipelines; later cycles must stay within the tolerance.
+# Growth counts as retained when it is still present one cycle later (and at
+# the final sample): a leak accumulates in every later sample, while the
+# system-owned graphics memory seen on 2026-10-12 (graphics ledger only, no
+# process VM mapping or Wicked GPU allocation) appeared in one sample and was
+# gone by the next.
 module RenderSceneEffectMemoryNativeTests:
     private:
         const MEASURED_CYCLES: i32 = 6
@@ -64,7 +69,8 @@ module RenderSceneEffectMemoryNativeTests:
             0
 
     public:
-        # Returns 0, a cycle failure as 20 * cycle + case, or 15/16 for memory.
+        # Returns 0, a cycle failure as 20 * cycle + case, or 15/16 for memory
+        # (16: retained growth above TOLERANCE_KIB).
         def exercise() -> i32 can[Global.Read, Global.Write]:
             world: mutable World::World = catch World::World() can Global.Read, Global.Write:
                 value: value
@@ -76,14 +82,19 @@ module RenderSceneEffectMemoryNativeTests:
             return 15 if baseline <= 0
             failed: mutable i32 = 0
             peak: mutable i64 = baseline
-            for index in 0..<MEASURED_CYCLES |world, effects, failed, peak|:
+            previous: mutable i64 = baseline
+            for index in 0..<MEASURED_CYCLES |world, effects, failed, peak, previous|:
                 cycle: i32 = index + 1
                 status: i32 = effect_memory_cycle(&world, &effects)
                 if status != 0 and failed == 0:
                     failed <- 20 * cycle + status
                 sample: i64 = elisa_render_scene_v1_test_footprint_kib(cycle)
-                if sample > peak:
+                retained: i64 = sample if sample < previous else previous
+                if index > 0 and retained > peak:
+                    peak <- retained
+                if index == MEASURED_CYCLES - 1 and sample > peak:
                     peak <- sample
+                previous <- sample
             return failed if failed != 0
             return 16 if peak - baseline > TOLERANCE_KIB
             0
